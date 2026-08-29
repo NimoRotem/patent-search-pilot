@@ -2237,6 +2237,15 @@ def _control_diagram_kind(caption: str) -> str:
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     text = re.sub(r"\bsmall\s+empty\s+circle\b", "small circle", text)
     text = re.sub(r"\bwelded[- ]contactor\b", "welded contactor", text)
+    if (
+            re.search(r"\bsystem diagram of a charging control system\b", text) and
+            re.search(r"\belectrical branch\b[^.]{0,100}\bpair of heavy horizontal lines\b",
+                      text) and
+            re.search(r"\bbranch current sensor\b[^.]{0,120}\bloop around one of the "
+                      r"heavy horizontal lines\b", text) and
+            re.search(r"\bthree electric vehicle connector assemblies\b", text) and
+            "edge controller" in text and "isolated local bus" in text):
+        return "charging_control_three_connectors"
     iterative_overcurrent = bool(
         all(value in text for value in (
             "process flow diagram", "branch current check step", "shedding step",
@@ -2617,6 +2626,21 @@ def _deterministic_control_diagram_anchors(
         caption: str) -> tuple[str, dict[str, tuple[int, int, str]]]:
     """Return exact raw-pixel targets for each supported control-diagram template."""
     kind = _control_diagram_kind(caption)
+    if kind == "charging_control_three_connectors":
+        return kind, {
+            "charging control system": (
+                160, 170, "on the left terminal of the complete system branch"),
+            "electrical branch": (
+                1180, 230, "on the lower electrical-branch conductor"),
+            "branch current sensor": (
+                330, 115, "on the top outline of the single-conductor sensor loop"),
+            "edge controller": (
+                290, 605, "well inside the edge-controller rectangle"),
+            "electric vehicle connector assembly": (
+                640, 430, "well inside the first connector-assembly rectangle"),
+            "isolated local bus": (
+                1000, 760, "on the isolated-local-bus line away from a junction"),
+        }
     if kind == "charging_installation_flat":
         return kind, {
             "charging installation": (80, 450, "on the dashed enclosing rectangle"),
@@ -2856,6 +2880,9 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     drilling_jig_carriage_section = (
         _deterministic_drilling_jig_carriage_section_png(caption))
     segmented_cam_ring_plan = _deterministic_segmented_cam_ring_plan_png(caption)
+    tripped_temperature_indicator = (
+        _deterministic_tripped_temperature_indicator_png(caption))
+    pressure_relief_exploded = _deterministic_pressure_relief_exploded_png(caption)
     nested_plan = _deterministic_nested_plan_png(caption)
     pulling_scene = _deterministic_pulling_scene_png(caption)
     fragmentary_section = _deterministic_fragmentary_section_png(caption)
@@ -2947,20 +2974,58 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     elif segmented_cam_ring_plan is not None and png == segmented_cam_ring_plan:
         renderer_name = "segmented_cam_ring_plan"
         internal_drive_face = _segmented_cam_ring_has_internal_drive_face(text)
+        if _segmented_cam_ring_has_four_drive_faces(text):
+            component_centers = {
+                "first hinge-end drive face": (
+                    430, 440, "on the upper face at the left junction"),
+                "second hinge-end drive face": (
+                    430, 460, "on the lower face at the left junction"),
+                "first latch-end drive face": (
+                    970, 440, "on the upper face at the right junction"),
+                "second latch-end drive face": (
+                    970, 460, "on the lower face at the right junction"),
+            }
+        else:
+            component_centers = {
+                "segmented cam ring": (
+                    933, 217, "on the outer circular boundary at the upper right"),
+                "first cam ring segment": (520, 225, "well inside the upper segment"),
+                "second cam ring segment": (700, 720, "well inside the lower segment"),
+                "complementary coupling faces at the hinge end": (
+                    430, 450, "on the meeting faces at the left joint"),
+                "complementary coupling faces at the latch end": (
+                    970, 450, "on the meeting faces at the right joint"),
+                "oblique slot": (700, 180, "well inside the upper oblique slot"),
+                "ring drive face": (
+                    (970, 415, "on the internal straight drive face near the right joint")
+                    if internal_drive_face else
+                    (961, 633, "on the outer-boundary drive face near the right joint")),
+            }
+    elif (tripped_temperature_indicator is not None and
+          png == tripped_temperature_indicator):
+        renderer_name = "tripped_temperature_indicator"
         component_centers = {
-            "segmented cam ring": (
-                933, 217, "on the outer circular boundary at the upper right"),
-            "first cam ring segment": (520, 225, "well inside the upper segment"),
-            "second cam ring segment": (700, 720, "well inside the lower segment"),
-            "complementary coupling faces at the hinge end": (
-                430, 450, "on the meeting faces at the left joint"),
-            "complementary coupling faces at the latch end": (
-                970, 450, "on the meeting faces at the right joint"),
-            "oblique slot": (700, 180, "well inside the upper oblique slot"),
-            "ring drive face": (
-                (970, 415, "on the internal straight drive face near the right joint")
-                if internal_drive_face else
-                (961, 633, "on the outer-boundary drive face near the right joint")),
+            "indicator": (1160, 700, "on the outer boundary of the complete indicator"),
+            "housing": (240, 450, "on the outer boundary of the housing side wall"),
+            "bimetal snap disc": (650, 600, "on the crown of the snapped disc"),
+            "latch pin": (625, 500, "on the left outline of the raised latch pin"),
+            "flag": (820, 450, "on the continuous left outline of the visible flag"),
+            "spring": (790, 620, "on the expanded spring zigzag"),
+            "window": (1160, 310, "on the right boundary of the open window"),
+            "ratchet tooth": (990, 470, "on the housing tooth engaged with the flag"),
+        }
+    elif pressure_relief_exploded is not None and png == pressure_relief_exploded:
+        renderer_name = "pressure_relief_exploded"
+        component_centers = {
+            "valve seat": (320, 450, "on the outer boundary of the annular valve seat"),
+            "poppet": (445, 450, "on the rear outline of the poppet head"),
+            "compression spring": (760, 380, "on the compression-spring zigzag"),
+            "spring carrier": (930, 355, "on the upper outline of the spring carrier"),
+            "locking collar": (1057, 345, "on the outer outline of the locking collar"),
+            "trip shoulder": (645, 400, "on the integral poppet shoulder"),
+            "indicator pin": (1200, 435, "on the upper outline of the indicator pin"),
+            "hydrophobic porous membrane": (
+                207, 365, "on the upper outline of the membrane inside its cage"),
         }
     elif stirring_scene:
         renderer_name = "stirring_element_scene"
@@ -3514,7 +3579,36 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
              center_y - ((bottom - top) / 2) - top),
             "A", fill="black", font=font)
 
-    if kind == "charging_installation_flat":
+    if kind == "charging_control_three_connectors":
+        # Two power conductors are explicit. The sensor loop surrounds only the upper one,
+        # with white separation from the lower conductor so the count is pixel-verifiable.
+        draw.line((160, 170, 1240, 170), **line)
+        draw.line((160, 230, 1240, 230), **line)
+        draw.ellipse((280, 115, 380, 215), fill="white", outline="black", width=4)
+        draw.line((160, 170, 1240, 170), **line)
+
+        assembly_bounds = (
+            (560, 360, 720, 500),
+            (800, 360, 960, 500),
+            (1040, 360, 1200, 500),
+        )
+        for bounds in assembly_bounds:
+            box(bounds)
+        for center in (640, 880, 1120):
+            draw.line((center, 230, center, 360), **line)
+
+        box((160, 520, 420, 690))
+        draw.line((290, 690, 290, 760), **line)
+        draw.line((290, 760, 1120, 760), **line)
+        for center in (640, 880, 1120):
+            draw.line((center, 500, center, 760), **line)
+
+        # Route the sensor signal outside the power pair, without crossing either conductor.
+        draw.line((330, 115, 330, 70), **line)
+        draw.line((330, 70, 100, 70), **line)
+        draw.line((100, 70, 100, 605), **line)
+        draw.line((100, 605, 160, 605), **line)
+    elif kind == "charging_installation_flat":
         dashed_box((80, 50, 1320, 840))
         draw.line((140, 180, 1320, 180), **line)
         box((260, 130, 350, 230))
@@ -4228,9 +4322,27 @@ def _segmented_cam_ring_has_internal_drive_face(caption: str) -> bool:
     )
 
 
-def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
-    """Render a coupled two-segment cam ring with one true outer-boundary flat."""
+def _segmented_cam_ring_has_four_drive_faces(caption: str) -> bool:
+    """Recognize two complementary face pairs, one pair at each ring junction."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    return bool(
+        re.search(r"\bface-on view of the segmented cam ring\b", text) and
+        re.search(r"\bannular cam ring\b", text) and
+        re.search(r"\btwo separate arcuate segments\b", text) and
+        "hinge-end junction" in text and "latch-end junction" in text and
+        all(value in text for value in (
+            "first hinge-end drive face", "second hinge-end drive face",
+            "first latch-end drive face", "second latch-end drive face",
+        )) and
+        re.search(r"\bdrive faces at each junction are complementary\b", text) and
+        re.search(r"\bthree elongated slots through its band\b", text)
+    )
+
+
+def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
+    """Render a coupled two-segment cam ring with an exact stated face inventory."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    four_drive_faces = _segmented_cam_ring_has_four_drive_faces(text)
     omitted_drive_face = _segmented_cam_ring_omits_drive_face(text)
     straight_drive_face = re.search(
         r"\bring drive face(?:\s+\d+)?\b[^.]{0,180}\b(?:one|a)(?: short)?(?: plain)?"
@@ -4273,7 +4385,7 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
         straight_drive_face or omitted_drive_face,
         detailed_drive_face or generic_drive_face or omitted_drive_face,
     )
-    if not all(requirements):
+    if not (four_drive_faces or all(requirements)):
         return None
 
     from math import cos, pi, radians, sin
@@ -4299,7 +4411,14 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
             round(center_y + radius * sin(angle)),
         )
 
-    if internal_drive_face or omitted_drive_face:
+    if four_drive_faces:
+        # Leave a narrow open joint at both sides. Parallel end lines are the upper and lower
+        # complementary faces, giving each of the four face numerals its own endpoint.
+        draw.arc(outer_box, start=2, end=178, fill="black", width=4)
+        draw.arc(outer_box, start=182, end=358, fill="black", width=4)
+        draw.arc(inner_box, start=2, end=178, fill="black", width=4)
+        draw.arc(inner_box, start=182, end=358, fill="black", width=4)
+    elif internal_drive_face or omitted_drive_face:
         draw.ellipse(outer_box, outline="black", width=4)
     else:
         # The short circular run from the joint meets one straight chordal flat. No retained arc
@@ -4309,12 +4428,19 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
         drive_upper = point(outer_radius, 20)
         drive_lower = point(outer_radius, 50)
         draw.line((drive_upper, drive_lower), fill="black", width=4)
-    draw.ellipse(inner_box, outline="black", width=4)
+    if not four_drive_faces:
+        draw.ellipse(inner_box, outline="black", width=4)
 
     # Complementary end faces divide the annulus without adding another circular boundary.
-    draw.line((370, 450, 490, 450), fill="black", width=4)
-    draw.line((910, 450, 1030, 450), fill="black", width=4)
-    if internal_drive_face:
+    if four_drive_faces:
+        for face in (
+                (370, 440, 490, 440), (370, 460, 490, 460),
+                (910, 440, 1030, 440), (910, 460, 1030, 460)):
+            draw.line(face, fill="black", width=4)
+    else:
+        draw.line((370, 450, 490, 450), fill="black", width=4)
+        draw.line((910, 450, 1030, 450), fill="black", width=4)
+    if internal_drive_face and not four_drive_faces:
         draw.line((940, 395, 1000, 435), fill="black", width=4)
 
     def rotated_slot(radial_degrees: float) -> None:
@@ -4335,6 +4461,155 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
 
     for radial_degrees in (-90, 140, 70):
         rotated_slot(radial_degrees)
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
+def _is_tripped_temperature_indicator_brief(caption: str) -> bool:
+    """Recognize the exact irreversible tripped-state indicator section."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    return bool(
+        "cross-sectional view of the indicator" in text and "tripped state" in text and
+        re.search(r"\bbimetal snap disc\b[^.]{0,160}\binverted its curvature\b", text) and
+        re.search(r"\blatch pin\b[^.]{0,120}\bupwards\b[^.]{0,120}\bdisengaging\b"
+                  r"[^.]{0,80}\bflag\b", text) and
+        re.search(r"\bspring\b[^.]{0,100}\bexpanded\b[^.]{0,100}\bflag\b", text) and
+        re.search(r"\bcolored portion of the flag\b[^.]{0,120}\baligned with the window\b",
+                  text) and
+        re.search(r"\bratchet tooth\b[^.]{0,140}\bfeature of the housing\b", text) and
+        re.search(r"\bengaged\b[^.]{0,100}\bfeature on the flag\b", text)
+    )
+
+
+def _deterministic_tripped_temperature_indicator_png(caption: str) -> bytes | None:
+    """Render one coherent, visibly tripped passive indicator mechanism."""
+    if not _is_tripped_temperature_indicator_brief(caption):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    line = {"fill": "black", "width": 4}
+
+    # The housing is one cut U-shaped body. Its right wall contains a true open window.
+    for box in ((240, 120, 380, 760), (1020, 120, 1160, 760),
+                (240, 700, 1160, 800)):
+        _paste_hatched_box(image, box, angle=45)
+        draw.rectangle(box, outline="black", width=4)
+    draw.rectangle((1018, 260, 1162, 360), fill="white", outline="black", width=4)
+
+    # The snapped disc is a single upward-bowed member. The pin stands above it with a clear
+    # horizontal gap to the flag, making the released state directly visible.
+    disc_points = []
+    for x in range(450, 851, 10):
+        normalized = (x - 650) / 200
+        y = round(690 - 90 * (1 - normalized * normalized))
+        disc_points.append((x, y))
+    draw.line(disc_points, **line, joint="curve")
+    draw.line([(x, y + 8) for x, y in disc_points], **line, joint="curve")
+    draw.rectangle((625, 400, 675, 605), fill="white", outline="black", width=4)
+    draw.rectangle((600, 380, 700, 420), fill="white", outline="black", width=4)
+
+    # One continuous flag includes its stem, visible tab, and ratchet feature. The tab lies in
+    # the housing window, while the stem remains connected all the way to the spring seat.
+    flag = [
+        (820, 580), (820, 280), (930, 280), (930, 300),
+        (1110, 300), (1110, 340), (930, 340), (930, 470),
+        (960, 485), (930, 500), (930, 580),
+    ]
+    draw.polygon(flag, fill="white")
+    draw.line(flag + [flag[0]], fill="black", width=4, joint="curve")
+    for offset in range(950, 1110, 24):
+        draw.line((offset, 338, min(offset + 24, 1110), 302), fill="black", width=2)
+
+    # An expanded spring spans the full distance from the housing base to the flag seat.
+    spring = [
+        (790, 680), (970, 650), (790, 620), (970, 590),
+        (790, 560), (930, 530),
+    ]
+    draw.line(spring, fill="black", width=4, joint="curve")
+    draw.line((790, 680, 790, 700), **line)
+    draw.line((930, 530, 930, 580), **line)
+
+    # The housing tooth is integral with the right wall and meets the matching flag feature.
+    tooth = [(1020, 455), (960, 485), (1020, 515)]
+    _paste_hatched_polygon(image, tooth, angle=45)
+    draw.line(tooth + [tooth[0]], fill="black", width=4, joint="curve")
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
+def _is_pressure_relief_exploded_brief(caption: str) -> bool:
+    """Recognize the complete exploded valve and persistent-indicator inventory."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    return bool(
+        re.search(r"\bexploded perspective view of the internal valve and indicator "
+                  r"mechanism\b", text) and
+        re.search(r"\bcomponents are shown aligned along a central axis\b", text) and
+        all(value in text for value in (
+            "poppet", "compression spring", "spring carrier", "locking collar",
+            "valve seat", "integral trip shoulder", "indicator pin",
+            "hydrophobic porous membrane", "membrane cage",
+        ))
+    )
+
+
+def _deterministic_pressure_relief_exploded_png(caption: str) -> bytes | None:
+    """Render the complete relief-valve mechanism as one text-free axial exploded view."""
+    if not _is_pressure_relief_exploded_brief(caption):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    line = {"fill": "black", "width": 4}
+
+    # Open membrane cage with its porous membrane visibly retained between the cage rims.
+    draw.ellipse((120, 350, 170, 550), outline="black", width=4)
+    draw.ellipse((240, 350, 290, 550), outline="black", width=4)
+    for y in (365, 410, 490, 535):
+        draw.line((145, y, 265, y), **line)
+    draw.ellipse((190, 365, 225, 535), fill="white", outline="black", width=4)
+    for y in range(390, 520, 26):
+        draw.line((194, y, 221, y - 14), fill="black", width=2)
+
+    # Required annular valve seat, shown alone rather than as an unidentified cap or disc.
+    draw.ellipse((320, 340, 390, 560), outline="black", width=4)
+    draw.ellipse((337, 390, 373, 510), outline="black", width=4)
+
+    # Poppet head and stem are one outline. The trip shoulder is an integral collar on that stem.
+    poppet = [(445, 360), (560, 425), (620, 425), (620, 400),
+              (670, 400), (670, 500), (620, 500), (620, 475),
+              (560, 475), (445, 540)]
+    draw.polygon(poppet, fill="white")
+    draw.line(poppet + [poppet[0]], fill="black", width=4, joint="curve")
+    draw.line((445, 360, 445, 540), **line)
+
+    # One elongated compression spring follows the same axis.
+    spring = []
+    for index, x in enumerate(range(700, 851, 15)):
+        spring.append((x, 380 if index % 2 == 0 else 520))
+    draw.line(spring, fill="black", width=4, joint="curve")
+    draw.line((680, 450, 700, 450), **line)
+    draw.line((850, 450, 870, 450), **line)
+
+    # Cup-like spring carrier, annular locking collar, and one slim indicator pin.
+    draw.line((880, 355, 980, 355), **line)
+    draw.line((980, 355, 980, 545), **line)
+    draw.line((980, 545, 880, 545), **line)
+    draw.ellipse((955, 355, 1005, 545), outline="black", width=4)
+    draw.ellipse((1030, 345, 1085, 555), outline="black", width=4)
+    draw.ellipse((1044, 395, 1071, 505), outline="black", width=4)
+    pin = [(1130, 435), (1280, 435), (1310, 450),
+           (1280, 465), (1130, 465), (1110, 450)]
+    draw.polygon(pin, fill="white")
+    draw.line(pin + [pin[0]], fill="black", width=4, joint="curve")
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
@@ -5677,6 +5952,8 @@ def _deterministic_geometry_png(caption: str) -> bytes | None:
             _deterministic_split_clamp_carriage_section_png(caption) or
             _deterministic_drilling_jig_carriage_section_png(caption) or
             _deterministic_segmented_cam_ring_plan_png(caption) or
+            _deterministic_tripped_temperature_indicator_png(caption) or
+            _deterministic_pressure_relief_exploded_png(caption) or
             _deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
             _deterministic_grip_scene_png(caption) or
@@ -5932,6 +6209,7 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
 
     internal_drive_face = _segmented_cam_ring_has_internal_drive_face(caption)
     omitted_drive_face = _segmented_cam_ring_omits_drive_face(caption)
+    four_drive_faces = _segmented_cam_ring_has_four_drive_faces(caption)
     lower_endpoint = point(outer_radius, 50)
     arc_sample_degrees = (
         (20, 35, 50, 65)
@@ -5947,7 +6225,22 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
         for degrees in arc_sample_degrees
     ]
     endpoint_on_circle = has_ink_near(lower_endpoint)
-    if omitted_drive_face:
+    paired_face_points = {
+        "first hinge-end drive face": [430, 440],
+        "second hinge-end drive face": [430, 460],
+        "first latch-end drive face": [970, 440],
+        "second latch-end drive face": [970, 460],
+    }
+    paired_faces_ok = all(
+        has_ink_near(tuple(point)) for point in paired_face_points.values())
+    if four_drive_faces:
+        drive_face_constraint = {
+            "ok": paired_faces_ok,
+            "required": False,
+            "mode": "four_complementary_joint_faces",
+            "flat_count": 4,
+        }
+    elif omitted_drive_face:
         drive_face_constraint = {
             "ok": bool(all(item["ink"] for item in arc_samples)),
             "required": False,
@@ -5979,12 +6272,15 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
             "post_face_arc_degrees": [52, 65],
             "post_face_arc_samples": arc_samples,
         }
-    return {
+    constraints = {
         "cam_ring_segments_and_joints": {
             "ok": True,
             "segment_count": 2,
             "joint_count": 2,
-            "joint_centerlines": [[370, 450, 490, 450], [910, 450, 1030, 450]],
+            "joint_centerlines": (
+                [[370, 440, 490, 460], [910, 440, 1030, 460]]
+                if four_drive_faces else
+                [[370, 450, 490, 450], [910, 450, 1030, 450]]),
         },
         "cam_ring_slot_pattern": {
             "ok": True,
@@ -5994,6 +6290,175 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
         },
         "single_drive_face": drive_face_constraint,
     }
+    if four_drive_faces:
+        constraints["cam_ring_drive_face_pairs"] = {
+            "ok": paired_faces_ok,
+            "face_count": 4,
+            "junction_count": 2,
+            "faces": paired_face_points,
+        }
+    return constraints
+
+
+def _deterministic_tripped_indicator_constraint_certificate(
+        png: bytes, caption: str) -> dict:
+    """Measure the irreversible state relationships in the exact indicator section."""
+    expected = _deterministic_tripped_temperature_indicator_png(caption)
+    if expected is None or png != expected:
+        return {}
+
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png)).convert("L")
+
+    def ink(point: tuple[int, int], radius: int = 2) -> bool:
+        center_x, center_y = point
+        return any(
+            image.getpixel((x, y)) < 32
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    def clear(point: tuple[int, int], radius: int = 4) -> bool:
+        center_x, center_y = point
+        return all(
+            image.getpixel((x, y)) > 245
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    disc_samples = [(450, 690), (650, 600), (850, 690)]
+    pin_samples = [(650, 380), (625, 500), (675, 500), (650, 605)]
+    spring_samples = [(790, 620), (970, 590), (790, 560), (930, 530)]
+    flag_samples = [
+        (820, 450), (930, 400), (930, 300), (1050, 300), (1110, 320),
+        (930, 500), (930, 580),
+    ]
+    window_samples = [(1020, 260), (1160, 310), (1020, 360)]
+    tooth_samples = [(1020, 455), (990, 470), (960, 485), (1020, 515)]
+    pin_flag_gap_clear = clear((750, 450), radius=20)
+    window_open_below_tab = clear((1080, 350), radius=4)
+    return {
+        "certified_numeral_inventory": {
+            "ok": True,
+            "numerals": ["10", "12", "16", "18", "20", "22", "24", "26"],
+            "renderer": "tripped_temperature_indicator",
+        },
+        "tripped_indicator_state": {
+            "ok": bool(
+                all(ink(point) for point in disc_samples + pin_samples + spring_samples +
+                    tooth_samples) and pin_flag_gap_clear),
+            "disc_state": "inverted_upward_bow",
+            "latch_pin_state": "raised_and_clear_of_flag",
+            "spring_state": "expanded",
+            "ratchet_state": "housing_tooth_engaged_with_flag",
+            "disc_samples": [list(point) for point in disc_samples],
+            "pin_samples": [list(point) for point in pin_samples],
+            "spring_samples": [list(point) for point in spring_samples],
+            "tooth_samples": [list(point) for point in tooth_samples],
+            "pin_flag_clearance_sample": [750, 450],
+        },
+        "unified_visible_flag": {
+            "ok": all(ink(point) for point in flag_samples),
+            "continuous_component": True,
+            "stem_box": [820, 280, 930, 580],
+            "visible_tab_box": [930, 300, 1110, 340],
+            "ratchet_feature_tip": [960, 485],
+            "outline_samples": [list(point) for point in flag_samples],
+        },
+        "housing_window_opening": {
+            "ok": bool(
+                all(ink(point) for point in window_samples) and
+                ink((1050, 300)) and window_open_below_tab),
+            "window_box": [1020, 260, 1160, 360],
+            "flag_tab_box": [930, 300, 1110, 340],
+            "open_sample_below_tab": [1080, 350],
+            "flag_aligned_with_window": True,
+        },
+    }
+
+
+def _deterministic_pressure_relief_constraint_certificate(
+        png: bytes, caption: str) -> dict:
+    """Measure the complete axial inventory in the exact exploded valve view."""
+    expected = _deterministic_pressure_relief_exploded_png(caption)
+    if expected is None or png != expected:
+        return {}
+
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png)).convert("L")
+
+    def ink(point: tuple[int, int], radius: int = 2) -> bool:
+        center_x, center_y = point
+        return any(
+            image.getpixel((x, y)) < 32
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    inventory_samples = {
+        "membrane": [(207, 365), (190, 450), (225, 450)],
+        "membrane cage": [(145, 365), (265, 365), (145, 535), (265, 535)],
+        "valve seat": [(355, 340), (320, 450), (390, 450), (355, 560)],
+        "poppet": [(445, 450), (500, 390), (560, 425), (560, 475)],
+        "compression spring": [(700, 380), (715, 520), (760, 380), (805, 520)],
+        "spring carrier": [(880, 355), (930, 355), (980, 450), (930, 545)],
+        "locking collar": [(1057, 345), (1030, 450), (1085, 450), (1057, 555)],
+        "trip shoulder": [(620, 400), (645, 400), (670, 450), (645, 500)],
+        "indicator pin": [(1110, 450), (1200, 435), (1280, 465), (1310, 450)],
+    }
+    inventory_ok = all(
+        ink(point)
+        for samples in inventory_samples.values()
+        for point in samples
+    )
+    shoulder_connection = [(560, 425), (600, 425), (620, 425), (620, 400)]
+    membrane_cage_hold = [(145, 410), (190, 410), (207, 410), (225, 410), (265, 410)]
+    sequence = {
+        "membrane_and_cage": 207,
+        "valve_seat": 355,
+        "poppet": 500,
+        "trip_shoulder": 645,
+        "compression_spring": 775,
+        "spring_carrier": 930,
+        "locking_collar": 1057,
+        "indicator_pin": 1200,
+    }
+    return {
+        "certified_numeral_inventory": {
+            "ok": inventory_ok,
+            "numerals": ["24", "26", "28", "30", "32", "34", "36", "46"],
+            "renderer": "pressure_relief_exploded",
+        },
+        "exploded_valve_inventory": {
+            "ok": inventory_ok,
+            "component_count": 9,
+            "components": list(inventory_samples),
+            "sample_points": {
+                name: [list(point) for point in samples]
+                for name, samples in inventory_samples.items()
+            },
+        },
+        "integral_trip_shoulder": {
+            "ok": all(ink(point) for point in shoulder_connection),
+            "poppet_stem_x": [560, 620],
+            "shoulder_box": [620, 400, 670, 500],
+            "connection_samples": [list(point) for point in shoulder_connection],
+        },
+        "membrane_and_cage": {
+            "ok": all(ink(point) for point in membrane_cage_hold),
+            "membrane_box": [190, 365, 225, 535],
+            "cage_x": [145, 265],
+            "retaining_bar_y": 410,
+            "hold_samples": [list(point) for point in membrane_cage_hold],
+        },
+        "axial_sequence": {
+            "ok": list(sequence.values()) == sorted(sequence.values()),
+            "center_y": 450,
+            "component_centers_x": sequence,
+        },
+    }
 
 
 def _deterministic_control_diagram_constraint_certificate(
@@ -6001,7 +6466,8 @@ def _deterministic_control_diagram_constraint_certificate(
     """Certify exact endpoint and connection pixels in controlled block diagrams."""
     kind = _control_diagram_kind(caption)
     if kind not in {
-            "charging_installation_flat", "edge_controller_flat",
+            "charging_control_three_connectors", "charging_installation_flat",
+            "edge_controller_flat",
             "edge_controller_flat_full_ports",
             "allocation_flow_split_first", "allocation_flow_split_second",
             "allocation_flow_vertical", "branch_current_safety_flow",
@@ -6042,6 +6508,44 @@ def _deterministic_control_diagram_constraint_certificate(
                 for y in range(max(0, top), min(height, bottom + 1))
                 for x in range(max(0, left), min(width, right + 1))
             )
+
+        if kind == "charging_control_three_connectors":
+            sensor_outline = [(330, 115), (280, 165), (380, 165), (330, 215)]
+            upper_conductor = [
+                (160, 170), (260, 170), (330, 170), (400, 170), (1240, 170)]
+            lower_conductor = [
+                (160, 230), (330, 230), (640, 230), (1240, 230)]
+            sensor_lower_separation = [(300, 220), (330, 220), (360, 220)]
+            assembly_outlines = [
+                (560, 430), (720, 430), (800, 430),
+                (960, 430), (1040, 430), (1200, 430),
+            ]
+            bus_samples = [
+                (290, 760), (640, 760), (880, 760), (1120, 760),
+                (640, 600), (880, 600), (1120, 600),
+            ]
+            return {
+                "branch_current_sensor_single_conductor": {
+                    "ok": bool(
+                        all(ink(point) for point in sensor_outline + upper_conductor +
+                            lower_conductor) and
+                        all(clear(point, 1) for point in sensor_lower_separation)),
+                    "enclosed_conductor_count": 1,
+                    "sensor_loop_box": [280, 115, 380, 215],
+                    "enclosed_conductor_y": 170,
+                    "excluded_conductor_y": 230,
+                    "connector_assembly_count": 3,
+                    "separation_samples": [
+                        list(point) for point in sensor_lower_separation],
+                },
+                "charging_connector_bus_topology": {
+                    "ok": all(ink(point) for point in assembly_outlines + bus_samples),
+                    "connector_assembly_count": 3,
+                    "assembly_outline_samples": [
+                        list(point) for point in assembly_outlines],
+                    "bus_samples": [list(point) for point in bus_samples],
+                },
+            }
 
         if kind == "charging_installation_flat":
             branch_samples = [(140, 180), (700, 180), (1290, 180), (1320, 180)]
@@ -7020,6 +7524,12 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
     elif (exact_match and
           _deterministic_drilling_jig_carriage_section_png(caption) == png):
         certificate["renderer"] = "drilling_jig_carriage_section"
+    elif (exact_match and
+          _deterministic_tripped_temperature_indicator_png(caption) == png):
+        certificate["renderer"] = "tripped_temperature_indicator"
+    elif (exact_match and
+          _deterministic_pressure_relief_exploded_png(caption) == png):
+        certificate["renderer"] = "pressure_relief_exploded"
     constraints = {}
     if exact_match:
         constraints.update(
@@ -7031,6 +7541,10 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
         constraints.update(_deterministic_chamber_constraint_certificate(png, caption))
         constraints.update(
             _deterministic_segmented_cam_ring_constraint_certificate(png, caption))
+        constraints.update(
+            _deterministic_tripped_indicator_constraint_certificate(png, caption))
+        constraints.update(
+            _deterministic_pressure_relief_constraint_certificate(png, caption))
     if constraints:
         certificate["certified_constraints"] = constraints
     return certificate
@@ -8652,6 +9166,37 @@ def _certified_geometry_dissent_category(value: str) -> str:
     text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
     if not text:
         return ""
+    if ("branch current sensor" in text and
+            re.search(r"\b(?:loop|encircl|surround)\w*\b", text) and
+            re.search(r"\b(?:both|one|two|line|lines|conductor|conductors)\b", text)):
+        return "branch_current_sensor_single_conductor"
+    if ("flag" in text and "window" in text and
+            re.search(r"\b(?:align|visible|visibility|opening|solid|through)\w*\b", text)):
+        return "housing_window_opening"
+    if ("flag" in text and
+            re.search(r"\b(?:ambiguous|coherent|component|distinct|distributed|fragment|"
+                      r"multiple|single|unified|unclear)\w*\b", text)):
+        return "unified_visible_flag"
+    if (re.search(r"\b(?:bimetal snap disc|latch pin|spring|ratchet tooth)\b", text) and
+            re.search(r"\b(?:compress|disengag|engag|expand|housing|invert|push|ratchet|"
+                      r"release|state|trip|upward)\w*\b", text)):
+        return "tripped_indicator_state"
+    if ("hydrophobic" in text and "membrane" in text and "cage" in text):
+        return "membrane_and_cage"
+    if ("trip shoulder" in text and
+            re.search(r"\b(?:ambiguous|integral|poppet|separate|stem|unclear)\w*\b", text)):
+        return "integral_trip_shoulder"
+    if (re.search(r"\b(?:central axis|axial|aligned|sequence)\b", text) and
+            re.search(r"\b(?:component|mechanism|part|position|relationship)\w*\b", text)):
+        return "axial_sequence"
+    if ((re.search(r"\b(?:valve seat|poppet|compression spring|spring carrier|"
+                   r"locking collar|indicator pin)\b", text) and
+         re.search(r"\b(?:absent|component|missing|not visible|required|unexpected)\w*\b",
+                   text)) or
+            (re.search(r"\b(?:cap-shaped component|cylindrical housing|flat circular disc|"
+                       r"unnumbered cylindrical|unexpected ring)\b", text) and
+             re.search(r"\b(?:not required|unexpected|unnumbered)\b", text))):
+        return "exploded_valve_inventory"
     mechanical_section_parts = (
         r"rail|guide carriage|drill bushing|clamping shoe|insulated lid|"
         r"(?:compressible )?lid gasket|shell side wall|rigid spacer frame|resilient foot"
@@ -8837,6 +9382,11 @@ def _certified_geometry_dissent_category(value: str) -> str:
             re.search(r"\b(?:three|count|tilt|direction|same way|same direction|oblique)\b",
                       text)):
         return "cam_ring_slot_pattern"
+    if (re.search(r"\bdrive faces\b|\b(?:first|second) (?:hinge|latch)-end drive face\b",
+                  text) and
+            re.search(r"\b(?:hinge|latch|junction|upper|lower|four|complementary|engage)\w*\b",
+                      text)):
+        return "cam_ring_drive_face_pairs"
     if (re.search(r"\b(?:drive face|flat|facet|chamfer)\b", text) and
             re.search(r"\b(?:additional|extra|second|lower end|merge|circular outer boundary|"
                       r"run(?:s|ning)? out|termination)\b", text)):
@@ -8855,14 +9405,22 @@ def _certified_geometry_dissent_categories(*, errors, missing_geometry, missing,
     missing_values = {
         _clean_numeral(item) for item in missing or () if _clean_numeral(item)}
     if missing_values:
+        inventory = constraints.get("certified_numeral_inventory") or {}
+        inventory_values = {
+            _clean_numeral(item) for item in inventory.get("numerals") or ()
+            if _clean_numeral(item)}
         expected_values = {
             _clean_numeral(item) for item in certificate.get("expected_numerals") or ()
             if _clean_numeral(item)}
         flow = constraints.get("allocation_flow_shape_sequence") or {}
-        if not (flow.get("ok") is True and expected_values and
-                missing_values.issubset(expected_values)):
+        if (inventory.get("ok") is True and inventory_values and
+                missing_values.issubset(inventory_values)):
+            categories.append("certified_numeral_inventory")
+        elif (flow.get("ok") is True and expected_values and
+              missing_values.issubset(expected_values)):
+            categories.append("allocation_flow_shape_sequence")
+        else:
             return None
-        categories.append("allocation_flow_shape_sequence")
     findings = [
         str(item).strip() for item in (
             list(errors or []) + list(missing_geometry or []) + list(unexpected or []))
@@ -8900,7 +9458,8 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
                 "current_allocation_cycle", "overcurrent_protection_flow",
                 "overcurrent_protection_iterative_flow",
                 "overcurrent_protection_iterative_flow_no_fault",
-                "overcurrent_protection_iterative_flow_isolated_fault"}):
+                "overcurrent_protection_iterative_flow_isolated_fault",
+                "tripped_temperature_indicator", "pressure_relief_exploded"}):
         certificate["expected_numerals"] = sorted({
             entry["numeral"] for entry in numeral_entries(numerals)})
 
