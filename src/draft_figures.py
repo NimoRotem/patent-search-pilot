@@ -5469,9 +5469,12 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                     r"\bpasses completely through\b[^.]{0,120}\brail\b", text) and
           re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,140}\bwidth\b[^.]{0,100}"
                     r"\bclosely fits\b[^.]{0,80}\bslot(?:\s+\d+)?\b", text) and
-          re.search(r"\bcentral axis of the bore\b[^.]{0,180}"
-                    r"\bvertically aligned with\b[^.]{0,180}"
-                    r"\blongitudinal slot(?:\s+\d+)?\b", text))))
+          (re.search(r"\bcentral axis of the bore\b[^.]{0,180}"
+                     r"\bvertically aligned with\b[^.]{0,180}"
+                     r"\blongitudinal slot(?:\s+\d+)?\b", text) or
+           re.search(r"\bvertical central axis of the bore\b[^.]{0,180}"
+                     r"\blies in the vertical longitudinal center plane\b"
+                     r"[^.]{0,120}\blongitudinal slot(?:\s+\d+)?\b", text)))))
     if not slot_shape and generic_clamped_through_slot:
         slot_shape = "generic_through_slot_section"
     slot_in_rail = (
@@ -5516,7 +5519,9 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
          re.search(r"\bcentral,? vertical bore\b[^.]{0,100}"
                    r"\bpasses completely through it\b", text)) or
         re.search(r"\bcentral,? vertical bore\b[^.]{0,100}"
-                  r"\bpassing completely through it\b", text)
+                  r"\bpassing completely through it\b", text) or
+        re.search(r"\bcentral,? vertical bore\b[^.]{0,100}"
+                  r"\bthat passes completely through it\b", text)
     )
     separate_component_inventory = bool(re.search(
         r"\bfour separate components\b[^.]{0,220}\bclamping shoe(?:\s+\d+)?\b",
