@@ -9183,6 +9183,11 @@ def _certified_geometry_dissent_category(value: str) -> str:
         return "tripped_indicator_state"
     if ("hydrophobic" in text and "membrane" in text and "cage" in text):
         return "membrane_and_cage"
+    if ("membrane cage" in text and
+            re.search(r"\b(?:absent|hold|missing|required)\w*\b", text)):
+        return "membrane_and_cage"
+    if re.fullmatch(r"(?:the )?valve seat(?:\s*\(?24\)?)?", text):
+        return "exploded_valve_inventory"
     if ("trip shoulder" in text and
             re.search(r"\b(?:ambiguous|integral|poppet|separate|stem|unclear)\w*\b", text)):
         return "integral_trip_shoulder"
@@ -9193,9 +9198,10 @@ def _certified_geometry_dissent_category(value: str) -> str:
                    r"locking collar|indicator pin)\b", text) and
          re.search(r"\b(?:absent|component|missing|not visible|required|unexpected)\w*\b",
                    text)) or
-            (re.search(r"\b(?:cap-shaped component|cylindrical housing|flat circular disc|"
-                       r"unnumbered cylindrical|unexpected ring)\b", text) and
-             re.search(r"\b(?:not required|unexpected|unnumbered)\b", text))):
+            (re.search(r"\b(?:cap-shaped component|cylindrical housing|elliptical ring|"
+                       r"flat circular disc|unnumbered cylindrical|unexpected ring)\b",
+                       text) and
+             re.search(r"\b(?:not(?: explicitly)? required|unexpected|unnumbered)\b", text))):
         return "exploded_valve_inventory"
     mechanical_section_parts = (
         r"rail|guide carriage|drill bushing|clamping shoe|insulated lid|"
