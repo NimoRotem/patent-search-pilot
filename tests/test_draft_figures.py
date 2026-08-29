@@ -9186,3 +9186,90 @@ def test_old_leader_reviews_are_not_materialized_for_independent_review(monkeypa
         draft_figures, "png_bytes",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not copy stale pixels")))
     assert draft_figures.materialize_review_images(7, 91, tmp_path) == 0
+
+
+def _drilling_jig_carriage_section_specification():
+    return """
+    A cross-sectional view taken on line 8-8 of FIG. 2.
+
+    The surfaces cut by the section plane are shown with hatching. To distinguish adjacent
+    components, their hatching is in different directions. The cut surface of the rail 10 is
+    hatched with lines slanting at +45 degrees from the horizontal. The cut surface of the
+    second guide carriage 70 is hatched with lines slanting at -45 degrees from the horizontal.
+    The cut surface of the clamping shoe 80 is hatched with lines slanting at -45 degrees from
+    the horizontal.
+
+    The rail 10 is shown in cross-section, with the longitudinal slot 16 passing through it.
+    The rail has an upper face 12. The second guide carriage 70 sits on the upper face 12 of the
+    rail 10. A key 72 projects downward from the carriage 70 into the longitudinal slot 16.
+
+    A cylindrical drill bushing 74 is carried by the second guide carriage 70. The drill
+    bushing 74 is shown in cross-section, and its cut surfaces are hatched with lines slanting
+    at +45 degrees from the horizontal, opposite to the hatching of the second guide carriage
+    70. The drill bushing has a vertical cylindrical bore passing completely through it. The
+    bore is coaxial with the drill bushing 74.
+
+    The clamp knob 78 is above the carriage 70. A threaded shank extends downward from the
+    clamp knob 78, passes through the second guide carriage 70 and the longitudinal slot 16,
+    and is threaded into the clamping shoe 80. The clamping shoe 80 is a separate body below
+    the rail 10, with a visible clearance between the top surface of the clamping shoe 80 and
+    the bottom surface of the rail 10.
+    """
+
+
+def test_drilling_jig_carriage_section_has_exact_geometry_hatching_and_anchors():
+    specification = _drilling_jig_carriage_section_specification()
+    numerals = [
+        "10: rail", "12: upper face", "16: longitudinal slot",
+        "70: second guide carriage", "72: key of the second guide carriage",
+        "74: drill bushing of the second guide carriage",
+        "78: clamp knob of the second guide carriage",
+        "80: clamping shoe of the second guide carriage",
+    ]
+
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    certificate = draft_figures._deterministic_geometry_certificate(
+        png, specification)
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "drilling_jig_carriage_section"
+    assert all(
+        item["ok"] is True
+        for item in certificate["certified_constraints"].values())
+
+    section = draft_figures._deterministic_section_hatch_certificate(
+        png, specification)
+    assert section["ok"] is True
+    assert section["renderer"] == "drilling_jig_carriage_section"
+    assert {
+        item["component"]: item["direction"] for item in section["components"]
+    } == {
+        "rail": "rises_to_right",
+        "guide carriage": "falls_to_right",
+        "drill bushing": "rises_to_right",
+        "clamping shoe": "falls_to_right",
+    }
+
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": value.split(":", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for value in numerals
+            ],
+        })
+    anchors = {
+        item["numeral"]: item
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    }
+    assert set(anchors) == {"10", "12", "16", "70", "72", "74", "78", "80"}
+    assert (anchors["72"]["raw_x"], anchors["72"]["raw_y"]) == (660, 475)
+    assert (anchors["16"]["raw_x"], anchors["16"]["raw_y"]) == (790, 555)
+    assert all(
+        item.get("anchor_source") ==
+        draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+        for item in semantic["anchors"])
