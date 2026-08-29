@@ -3669,6 +3669,27 @@ def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
     assert repository.complete_turn.call_args.kwargs["session_id"] == "draft-session"
 
 
+def test_resumed_figure_plan_is_compared_with_the_published_version():
+    repaired_figures = [
+        {**FIGURES[0], "caption": FIGURES[0]["caption"] + " The outlet is shown separately."},
+        FIGURES[1],
+    ]
+    context = {
+        "published_snapshot": {
+            "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES},
+        "prepared_snapshot": {
+            "sections": GOOD, "numerals": NUMERALS, "figures": repaired_figures},
+        "previous_sections": GOOD,
+    }
+
+    assert draft_studio._candidate_differs_from_published(context, {
+        "sections": GOOD, "numerals": NUMERALS, "figures": repaired_figures,
+    }) is True
+    assert draft_studio._candidate_differs_from_published(context, {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES,
+    }) is False
+
+
 def test_drawing_faults_are_repaired_before_the_independent_review(monkeypatch, tmp_path):
     repository = Mock()
     agent = Mock()
@@ -4008,6 +4029,8 @@ def test_retry_preparation_uses_the_durable_checked_candidate_instead_of_publish
     assert values["sections"] == candidate_sections
     assert values["qa_report"] == candidate_report
     assert context["previous_sections"] == GOOD
+    assert context["published_snapshot"] == {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
 
 
 def test_turn_preparation_keeps_the_complete_bounded_inventor_history(monkeypatch, tmp_path):
