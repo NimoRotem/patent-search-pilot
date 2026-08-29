@@ -552,6 +552,13 @@ def _workspace_path(workspace: Path, value: Any, *, write: bool = False) -> Path
         raise ValueError("The path is outside the drafting workspace's allowed directories.")
     if write and relative.parts[0] not in _VERTEX_WRITE_ROOTS:
         raise ValueError("Only draft/ and figures/ may be edited.")
+    if write and relative.parts[0] == "draft":
+        import draft_workspace
+        if (len(relative.parts) != 2 or
+                relative.name not in draft_workspace.CANONICAL_DRAFT_FILES):
+            allowed = ", ".join(sorted(draft_workspace.CANONICAL_DRAFT_FILES))
+            raise ValueError(
+                "Only canonical application files may be edited under draft/: " + allowed)
     return candidate
 
 

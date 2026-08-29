@@ -368,6 +368,10 @@ def test_vertex_workspace_tools_are_confined_and_only_edit_filing_files(tmp_path
         draft_agent._vertex_tool(
             tmp_path, "write_file", {"path": "draft/../../outside", "content": "x"},
             writable=True)
+    with pytest.raises(ValueError, match="canonical application files"):
+        draft_agent._vertex_tool(
+            tmp_path, "write_file", {"path": "draft/08-claims.md", "content": "wrong"},
+            writable=True)
     assert (tmp_path / "input" / "disclosure.md").read_text(encoding="utf-8") == "authority"
 
 
