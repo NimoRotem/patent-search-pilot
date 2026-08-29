@@ -4570,6 +4570,27 @@ def _paste_hatched_polygon(image, points, *, angle: int) -> None:
     image.paste(hatch_layer, (0, 0), mask)
 
 
+def _drilling_jig_slot_shape(caption: str) -> str:
+    """Return the expressly disclosed slot shape, rejecting omissions and contradictions."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    t_shaped = bool(re.search(r"\b(?:t-slot|t-shaped (?:longitudinal )?slot)\b", text))
+    straight_rectangular = bool(
+        re.search(r"\bstraight rectangular (?:longitudinal )?slot\b", text) or
+        re.search(r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
+                  r"\bis a straight rectangular slot\b", text)
+    )
+    straight_through = bool(re.search(
+        r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,220}\bpassing completely through\b"
+        r"[^.]{0,180}\bupper face\b[^.]{0,180}\b(?:lower face|bottom surface)\b",
+        text,
+    ))
+    stepped_portions = bool(re.search(
+        r"\b(?:narrower upper portion|wider lower portion)\b", text))
+    if straight_rectangular and straight_through and not t_shaped and not stepped_portions:
+        return "straight_rectangular_through"
+    return ""
+
+
 def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | None:
     """Render the drilling-jig carriage section with certified part separation."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
@@ -4593,12 +4614,21 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,220}"
                   r"\bvisible clearance\b[^.]{0,180}\brail\b", text)
     )
+    slot_shape = _drilling_jig_slot_shape(text)
+    slot_in_rail = (
+        re.search(r"\brail(?:\s+\d+)?\b[^.]{0,160}\blongitudinal slot\b", text) or
+        (re.search(r"\brail(?:\s+\d+)?\b[^.]{0,100}\bshown in cross-section\b", text) and
+         re.search(r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,180}"
+                   r"\bpassing completely through\b[^.]{0,100}\brail\b", text))
+    )
     requirements = (
         re.search(r"\bcross-sectional view taken on line\b[^.]{0,80}\bof fig\. 2\b", text),
-        re.search(r"\brail(?:\s+\d+)?\b[^.]{0,160}\blongitudinal slot\b", text),
+        slot_in_rail,
+        slot_shape,
         carriage_on_upper_face,
-        re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,120}\bprojects downward\b[^.]{0,120}"
-                  r"\blongitudinal slot\b", text),
+        re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,140}"
+                  r"\b(?:projects|extends) downward\b[^.]{0,180}"
+                  r"\b(?:into|fits into)\b[^.]{0,100}\blongitudinal slot\b", text),
         bushing_carried,
         re.search(r"\bvertical,? cylindrical bore\b[^.]{0,100}\bpassing completely through\b",
                   text),
@@ -4629,19 +4659,19 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
 
     draw = ImageDraw.Draw(image)
 
-    # The T-shaped slot is open at the upper face. Its wide lower cavity leaves distinct open
-    # regions beside both the threaded shank and the carriage key.
-    slot = [(430, 430), (430, 500), (400, 500), (400, 580),
-            (880, 580), (880, 500), (770, 500), (770, 430)]
+    slot = [(400, 430), (880, 430), (880, 620), (400, 620)]
     draw.polygon(slot, fill="white")
     _paste_hatched_box(image, (624, 430, 696, 516), angle=45)
     draw = ImageDraw.Draw(image)
 
-    draw.line((160, 430, 430, 430), fill="black", width=4)
-    draw.line((770, 430, 1240, 430), fill="black", width=4)
-    draw.line((160, 430, 160, 620, 1240, 620, 1240, 430),
+    draw.line((160, 430, 400, 430), fill="black", width=4)
+    draw.line((880, 430, 1240, 430), fill="black", width=4)
+    draw.line((160, 430, 160, 620, 400, 620),
               fill="black", width=4, joint="curve")
-    draw.line(slot, fill="black", width=4, joint="curve")
+    draw.line((880, 620, 1240, 620, 1240, 430),
+              fill="black", width=4, joint="curve")
+    draw.line((400, 430, 400, 620), fill="black", width=4)
+    draw.line((880, 430, 880, 620), fill="black", width=4)
 
     draw.rectangle((300, 250, 1100, 430), outline="black", width=4)
     draw.rectangle((620, 426, 700, 520), outline="black", width=4)
@@ -5138,7 +5168,16 @@ def _deterministic_drilling_jig_constraint_certificate(
         )
 
     section = _deterministic_section_hatch_certificate(png, caption) or {}
+    slot_shape = _drilling_jig_slot_shape(caption)
     slot_open = open_region((790, 555), radius=12)
+    top_opening_x = [400, 880]
+    bottom_opening_x = [400, 880]
+    open_at_upper_face = open_region((790, 445), radius=4)
+    open_at_lower_face = open_region((790, 620), radius=4)
+    slot_shape_ok = bool(
+        slot_shape == "straight_rectangular_through" and
+        open_at_upper_face and open_at_lower_face and
+        ink((400, 525)) and ink((880, 525)))
     key_boundaries = all(ink(point) for point in (
         (620, 475), (700, 475), (660, 430), (660, 520)))
     carriage_box = (300, 250, 1100, 430)
@@ -5164,15 +5203,20 @@ def _deterministic_drilling_jig_constraint_certificate(
     support_material_visible = support_ink >= 100
     shank_continuous = all(ink(point) for point in (
         (455, 210), (505, 330), (455, 550), (505, 650), (455, 735)))
-    clearance_open = open_region((600, 655), radius=16)
-    separation_boundaries = ink((600, 620)) and ink((600, 690))
+    clearance_open = open_region((350, 655), radius=16)
+    separation_boundaries = ink((350, 620)) and ink((350, 690))
     return {
         "section_hatching": {
             "ok": bool(section.get("ok") and section.get("exact_renderer_match")),
             "components": list(section.get("components") or []),
         },
         "slot_and_key": {
-            "ok": bool(slot_open and key_boundaries),
+            "ok": bool(slot_open and key_boundaries and slot_shape_ok),
+            "shape": slot_shape,
+            "top_opening_x": top_opening_x,
+            "bottom_opening_x": bottom_opening_x,
+            "open_at_upper_face": open_at_upper_face,
+            "open_at_lower_face": open_at_lower_face,
             "slot_open_sample": [790, 555],
             "key_box": [620, 430, 700, 520],
         },
@@ -5197,7 +5241,7 @@ def _deterministic_drilling_jig_constraint_certificate(
             "ok": bool(clearance_open and separation_boundaries),
             "rail_bottom_y": 620,
             "shoe_top_y": 690,
-            "clearance_sample": [600, 655],
+            "clearance_sample": [350, 655],
         },
     }
 

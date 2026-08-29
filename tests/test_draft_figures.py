@@ -9199,9 +9199,10 @@ def _drilling_jig_carriage_section_specification():
     The cut surface of the clamping shoe 80 is hatched with lines slanting at -45 degrees from
     the horizontal.
 
-    The rail 10 is shown in cross-section, with the longitudinal slot 16 passing through it.
-    The rail has an upper face 12. The second guide carriage 70 sits on the upper face 12 of the
-    rail 10. A key 72 projects downward from the carriage 70 into the longitudinal slot 16.
+    The rail 10 is shown in cross-section, with the straight rectangular longitudinal slot 16
+    passing completely through it from the upper face 12 to a bottom surface of the rail 10.
+    The second guide carriage 70 sits on the upper face 12 of the rail 10. A key 72 projects
+    downward from the carriage 70 into the longitudinal slot 16.
 
     A cylindrical drill bushing 74 is carried by the second guide carriage 70. The drill
     bushing 74 is shown in cross-section, and its cut surfaces are hatched with lines slanting
@@ -9246,6 +9247,12 @@ def test_drilling_jig_carriage_section_has_exact_geometry_hatching_and_anchors()
     assert carried_bushing["carriage_box"] == [300, 250, 1100, 430]
     assert carried_bushing["bushing_box"] == [840, 270, 980, 390]
     assert carried_bushing["support_band"] == [840, 390, 980, 430]
+    slot = certificate["certified_constraints"]["slot_and_key"]
+    assert slot["shape"] == "straight_rectangular_through"
+    assert slot["top_opening_x"] == [400, 880]
+    assert slot["bottom_opening_x"] == [400, 880]
+    assert slot["open_at_upper_face"] is True
+    assert slot["open_at_lower_face"] is True
 
     section = draft_figures._deterministic_section_hatch_certificate(
         png, specification)
@@ -9291,6 +9298,68 @@ def test_drilling_jig_carriage_section_accepts_a_pronoun_split_surface_relations
     )
 
     assert "It sits on the upper face" in specification
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is not None
+
+
+def test_drilling_jig_carriage_section_rejects_an_unspecified_slot_shape():
+    specification = re.sub(
+        r"the straight rectangular longitudinal slot 16\s+passing completely through it from "
+        r"the upper face 12 to a bottom surface of the rail 10",
+        "the longitudinal slot 16 passing through it",
+        _drilling_jig_carriage_section_specification(),
+    )
+
+    assert "straight rectangular" not in specification
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is None
+
+
+def test_drilling_jig_carriage_section_does_not_reuse_straight_geometry_for_a_t_slot():
+    specification = re.sub(
+        r"the straight rectangular longitudinal slot 16\s+passing completely through it from "
+        r"the upper face 12 to a bottom surface of the rail 10",
+        "a T-shaped longitudinal slot 16 having a narrower upper portion and a wider lower "
+        "portion",
+        _drilling_jig_carriage_section_specification(),
+    )
+
+    assert "T-shaped longitudinal slot" in specification
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is None
+
+
+def test_drilling_jig_carriage_section_rejects_a_contradictory_straight_slot():
+    specification = _drilling_jig_carriage_section_specification().replace(
+        "into the longitudinal slot 16",
+        "into the narrower upper portion of the longitudinal slot 16",
+    )
+
+    assert "straight rectangular" in specification
+    assert "narrower upper portion" in specification
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is None
+
+
+def test_drilling_jig_carriage_section_accepts_source_faithful_straight_slot_wording():
+    specification = re.sub(
+        r"The rail 10 is shown in cross-section, with the straight rectangular longitudinal "
+        r"slot 16\s+passing completely through it from the upper face 12 to a bottom surface "
+        r"of the rail 10\.",
+        "The rail 10 is shown in cross-section. The longitudinal slot 16 is a straight "
+        "rectangular slot passing completely through the rail 10 from the upper face 12 to a "
+        "lower face opposite the upper face.",
+        _drilling_jig_carriage_section_specification(),
+    )
+    specification = re.sub(
+        r"A key 72 projects\s+downward from the carriage 70 into the longitudinal slot 16\.",
+        "A key 72, which is a rectangular projection, extends downward from the carriage 70 "
+        "and fits into the longitudinal slot 16.",
+        specification,
+    )
+
+    assert draft_figures._drilling_jig_slot_shape(
+        specification) == "straight_rectangular_through"
     assert draft_figures._deterministic_drilling_jig_carriage_section_png(
         specification) is not None
 
