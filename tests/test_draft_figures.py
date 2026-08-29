@@ -5987,6 +5987,22 @@ def test_branch_current_flow_dissent_categories_are_constraint_specific(finding,
     assert draft_figures._certified_geometry_dissent_category(finding) == category
 
 
+@pytest.mark.parametrize(("finding", "category"), [
+    (
+        "The outermost rectangular frame is not required by the current allocation flow "
+        "specification.",
+        "allocation_flow_shape_sequence",
+    ),
+    (
+        "The feedback path has an unexpected arrowhead where it re-enters the top of the first "
+        "rectangle.",
+        "allocation_flow_right_return",
+    ),
+])
+def test_current_allocation_dissent_categories_use_exact_pixel_constraints(finding, category):
+    assert draft_figures._certified_geometry_dissent_category(finding) == category
+
+
 def test_split_allocation_flow_templates_certify_connector_and_every_route():
     first = draft_figures._deterministic_control_diagram_png(
         _split_allocation_flow_first_specification())

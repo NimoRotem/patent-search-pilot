@@ -8240,6 +8240,13 @@ def _certified_geometry_dissent_category(value: str) -> str:
     if ("right return" in text or
             ("return path" in text and "right" in text)):
         return "allocation_flow_right_return"
+    if ("feedback path" in text and
+            re.search(r"\b(?:arrow|re-enter|reenter|enter|top|side|first rectangle)\w*\b", text)):
+        return "allocation_flow_right_return"
+    if (("current allocation" in text or "allocation flow" in text) and
+            re.search(r"\b(?:extra|unexpected|nested|not required|additional)\b", text) and
+            re.search(r"\b(?:enclos|rectangle|frame|boundary)\w*\b", text)):
+        return "allocation_flow_shape_sequence"
     if ("branch current check" in text and
             ("self-loop" in text or "self loop" in text or
              ("right vertex" in text and "top vertex" in text))):
