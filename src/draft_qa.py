@@ -1829,7 +1829,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v19-condition-verifier-fidelity"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v20-deterministic-precision-qualifiers"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -2173,6 +2173,184 @@ def reconcile_source_depiction_convention_findings(
     return kept, reconciled
 
 
+_UNSUPPORTED_CLOSE_FIT_RE = re.compile(
+    r"\b(?:closely\s+fit(?:s|ting)?|fit(?:s|ting)?\s+closely|"
+    r"close(?:ly)?[- ]fit(?:s|ting)?|tight(?:ly)?[- ]fit(?:s|ting)?|"
+    r"snug(?:ly)?[- ]fit(?:s|ting)?|(?:interference|press|friction|clearance)\s+fit)\b",
+    re.IGNORECASE,
+)
+_FIT_CONTEXT_STOPWORDS = frozenset({
+    "a", "an", "and", "are", "be", "body", "close", "closely", "component",
+    "clearance", "drawn", "fit", "fits", "fitted", "fitting", "friction", "from",
+    "has", "have", "having", "in", "interference", "into", "is", "member", "of",
+    "or", "part", "press", "shown", "snug", "snugly", "that", "the", "these", "this",
+    "tight", "tightly", "to", "was", "were", "width", "with", "within",
+})
+
+
+def _fit_qualifier_kind(value: str) -> str:
+    text = str(value or "").casefold()
+    for kind in ("interference", "press", "friction", "clearance", "tight", "snug"):
+        if kind in text:
+            return kind
+    return "close"
+
+
+def _fit_context(value: str, match: re.Match[str]) -> str:
+    start = max(value.rfind(".", 0, match.start()), value.rfind("\n", 0, match.start())) + 1
+    stops = [position for position in (
+        value.find(".", match.end()), value.find("\n", match.end())) if position >= 0]
+    end = min(stops) if stops else len(value)
+    return re.sub(r"\s+", " ", value[start:end]).strip()
+
+
+def _fit_context_tokens(value: str) -> set[str]:
+    tokens = set()
+    for token in re.findall(r"[a-z][a-z-]{2,}", value.casefold()):
+        token = token.replace("-", "")
+        if token in _FIT_CONTEXT_STOPWORDS:
+            continue
+        if token.endswith("s") and len(token) > 4:
+            token = token[:-1]
+        tokens.add(token)
+    return tokens
+
+
+def _affirmative_inventor_text(workspace: Path) -> str:
+    """Return disclosure text and only USER-labeled conversation passages."""
+    root = Path(workspace)
+    disclosure_path = root / "input" / "disclosure.md"
+    disclosure = (disclosure_path.read_text(encoding="utf-8")
+                  if disclosure_path.is_file() else "")
+    conversation_path = root / "input" / "conversation.md"
+    conversation = (conversation_path.read_text(encoding="utf-8")
+                    if conversation_path.is_file() else "")
+    headings = list(re.finditer(
+        r"(?im)^\s{0,3}#{1,6}\s+(USER|YOU|REVIEWER|SYSTEM)\s*$",
+        conversation,
+    ))
+    user_passages = []
+    if headings:
+        for index, heading in enumerate(headings):
+            if heading.group(1).upper() != "USER":
+                continue
+            end = headings[index + 1].start() if index + 1 < len(headings) else len(
+                conversation)
+            user_passages.append(conversation[heading.end():end])
+    elif conversation:
+        user_passages.append(conversation)
+    return "\n".join([disclosure, *user_passages])
+
+
+def deterministic_source_fidelity_findings(workspace: Path) -> list[dict[str, Any]]:
+    """Catch narrow precision limitations that a probabilistic source review can miss."""
+    root = Path(workspace)
+    source = _affirmative_inventor_text(root)
+    source_support = [
+        (_fit_qualifier_kind(match.group(0)),
+         _fit_context_tokens(_fit_context(source, match)))
+        for match in _UNSUPPORTED_CLOSE_FIT_RE.finditer(source)
+    ]
+    candidate_paths = [
+        root / "draft" / name for key, name, _heading in draft_workspace.SECTION_FILES
+        if key in {
+            "summary", "drawing_descriptions", "detailed_description", "claims", "abstract",
+        }
+    ]
+    figure_dir = root / "figures"
+    if figure_dir.is_dir():
+        candidate_paths.extend(sorted(figure_dir.glob("*.md")))
+    findings = []
+    for path in candidate_paths:
+        if not path.is_file():
+            continue
+        content = path.read_text(encoding="utf-8")
+        match = _UNSUPPORTED_CLOSE_FIT_RE.search(content)
+        if match is None:
+            continue
+        candidate_context = _fit_context(content, match)
+        candidate_kind = _fit_qualifier_kind(match.group(0))
+        candidate_tokens = _fit_context_tokens(candidate_context)
+        supported = any(
+            source_kind == candidate_kind and candidate_tokens & source_tokens
+            for source_kind, source_tokens in source_support)
+        if supported:
+            continue
+        line_number = content.count("\n", 0, match.start()) + 1
+        line_start = content.rfind("\n", 0, match.start()) + 1
+        line_end = content.find("\n", match.end())
+        if line_end < 0:
+            line_end = len(content)
+        evidence_line = re.sub(r"\s+", " ", content[line_start:line_end]).strip()[:600]
+        relative = path.relative_to(root).as_posix()
+        findings.append({
+            "severity": "critical",
+            "category": "disclosure_fidelity",
+            "title": "Unsupported close-fit precision qualifier",
+            "where": f"{relative}:{line_number}",
+            "detail": (
+                "The candidate adds a close, tight, snug, interference, press, friction, or "
+                "clearance-fit limitation that is absent from the affirmative inventor sources."
+            ),
+            "evidence": (
+                f"Candidate text: {evidence_line} The disclosure and USER conversation passages "
+                "contain no matching close-fit limitation."
+            ),
+            "fix": (
+                "Remove the unsupported fit-precision qualifier and retain only the neutral, "
+                "source-supported statement that the component is received in or fits within "
+                "the named opening."
+            ),
+        })
+    return findings
+
+
+def enforce_deterministic_source_fidelity(
+        report: Mapping[str, Any], workspace: Path) -> dict[str, Any]:
+    """Apply deterministic source constraints to both fresh and cached model reviews."""
+    out = dict(report or {})
+    extra = deterministic_source_fidelity_findings(workspace)
+    if not extra:
+        return out
+    existing = [dict(item) for item in out.get("findings") or []]
+    fingerprints = {
+        (str(item.get("title") or ""), str(item.get("where") or ""),
+         str(item.get("evidence") or ""))
+        for item in existing
+    }
+    for finding in extra:
+        fingerprint = (
+            finding["title"], finding["where"], finding["evidence"])
+        if fingerprint not in fingerprints:
+            existing.append(finding)
+            fingerprints.add(fingerprint)
+    findings = normalize_findings(existing)
+    checks = [dict(item) for item in out.get("checks") or []]
+    source_check = next((item for item in checks
+                         if item.get("name") == "Source fidelity is clean before rendering"), None)
+    detail = (
+        "Deterministic source constraints found an unsupported technical precision qualifier "
+        "that the model review did not reject."
+    )
+    if source_check is None:
+        source_check = {"name": "Source fidelity is clean before rendering"}
+        checks.append(source_check)
+    source_check.update({
+        "status": "fail", "severity": "error", "category": "disclosure_fidelity",
+        "detail": detail,
+        "items": [str(item.get("title") or "Source-fidelity finding")[:600]
+                  for item in findings],
+    })
+    summary = str(out.get("summary") or "").strip()
+    if detail not in summary:
+        summary = (summary + " " + detail).strip()
+    out.update({
+        "status": "complete", "verdict": "fail", "summary": summary[:8000],
+        "checks": checks, "findings": findings, "counts": counts_for(checks, findings),
+    })
+    return out
+
+
 def review_sources(workspace: Path, *, transcript: Path | None = None, model: str = "",
                    timeout: int = draft_agent.QA_TIMEOUT,
                    cancel: threading.Event | None = None) -> dict[str, Any]:
@@ -2250,6 +2428,8 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
             findings, omission_reconciled = reconcile_source_drawing_omission_findings(findings)
             findings, notation_reconciled = reconcile_source_depiction_convention_findings(
                 findings)
+            findings = normalize_findings([
+                *findings, *deterministic_source_fidelity_findings(workspace)])
             reconciled = [*omission_reconciled, *notation_reconciled]
             if reconciled and not findings:
                 summary = (

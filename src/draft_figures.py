@@ -5482,6 +5482,14 @@ def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
     def angle(subject_pattern: str, default: int) -> int:
         for subject in re.finditer(rf"\b(?:{subject_pattern})\b", normalized):
             clause = normalized[subject.start():subject.start() + 360].split(".", 1)[0]
+            if re.search(r"\blower left\b[^.]{0,80}\bupper right\b", clause):
+                return -45
+            if re.search(r"\blower right\b[^.]{0,80}\bupper left\b", clause):
+                return 45
+            if re.search(
+                    r"\b(?:drawn|oriented|running)\s+vertically\b|"
+                    r"\bvertical\s+(?:hatching|hatch lines?)\b", clause):
+                return 90
             signed = re.search(
                 r"\b(?:hatched|hatching)[^.]{0,160}?\b(?:slanting|inclined)\s+at\s*"
                 r"([+-])\s*(\d{1,2})\s*degrees?\b",
@@ -5563,6 +5571,17 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"\bfrom (?:the )?lower face of (?:the )?rail(?:\s+\d+)?\b", text)
     )
     slot_shape = _drilling_jig_slot_shape(text)
+    sectioned_through_slot = bool(
+        re.search(r"\brail(?:\s+\d+)?\b[^.]{0,180}\bappears as two separate "
+                  r"hatched regions\b[^.]{0,140}\bon either side of\b[^.]{0,120}"
+                  r"\bcentral,? un-?hatched vertical longitudinal slot(?:\s+\d+)?\b",
+                  text) and
+        re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,160}\bwidth\b[^.]{0,120}"
+                  r"\b(?:closely fits|fits(?: closely)? within)\b[^.]{0,80}"
+                  r"\bslot(?:\s+\d+)?\b", text) and
+        re.search(r"\bvertical centerline of the bore\b[^.]{0,140}\bcollinear with\b"
+                  r"[^.]{0,120}\bvertical centerline of the longitudinal slot\b", text)
+    )
     generic_clamped_through_slot = bool(
         clamped_contact and
         ((re.search(r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,120}"
@@ -5581,7 +5600,8 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                      r"\blongitudinal slot(?:\s+\d+)?\b", text) or
            re.search(r"\bvertical central axis of the bore\b[^.]{0,180}"
                      r"\blies in the vertical longitudinal center plane\b"
-                     r"[^.]{0,120}\blongitudinal slot(?:\s+\d+)?\b", text)))))
+                     r"[^.]{0,120}\blongitudinal slot(?:\s+\d+)?\b", text))) or
+         sectioned_through_slot))
     if not slot_shape and generic_clamped_through_slot:
         slot_shape = "generic_through_slot_section"
     slot_in_rail = (
