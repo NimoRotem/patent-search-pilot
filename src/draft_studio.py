@@ -227,6 +227,23 @@ def _gate_resume_run(context: Mapping[str, Any], turn: Mapping[str, Any]
     )
 
 
+def _candidate_differs_from_published(context: Mapping[str, Any],
+                                      snapshot: Mapping[str, Any]) -> bool:
+    """Compare a resumed candidate with the published version, not its restored copy."""
+    published = context.get("published_snapshot")
+    if isinstance(published, Mapping):
+        return any(
+            snapshot.get(key) != published.get(key)
+            for key in ("sections", "numerals", "figures")
+        )
+    prepared = context.get("prepared_snapshot")
+    prepared = prepared if isinstance(prepared, Mapping) else {}
+    return bool(
+        snapshot.get("sections") != context.get("previous_sections", {}) or
+        snapshot.get("numerals") != prepared.get("numerals") or
+        snapshot.get("figures") != prepared.get("figures"))
+
+
 # =============================================================================================
 # The drafting prompt
 # =============================================================================================
@@ -2233,6 +2250,11 @@ class TurnRunner:
                                                  else None),
                 "prepared_snapshot": {"sections": sections or {}, "numerals": numerals,
                                       "figures": figures},
+                "published_snapshot": {
+                    "sections": loaded["sections"] or {},
+                    "numerals": loaded["numerals"],
+                    "figures": loaded["figures"],
+                },
                 "prepared_qa": latest_qa or {},
                 "previous_sections": loaded["sections"] or {}}
 
@@ -3115,11 +3137,8 @@ class TurnRunner:
 
         version = None
         final_run = runs[-1]
-        prepared = context.get("prepared_snapshot") or {}
-        candidate_changed = bool(
-            sections != context["previous_sections"] or
-            snapshot.get("numerals") != prepared.get("numerals") or
-            snapshot.get("figures") != prepared.get("figures"))
+        candidate_changed = _candidate_differs_from_published(
+            context, {**snapshot, "sections": sections})
         if candidate_changed:
             version = self.repository.save_version(
                 turn_id, lease, sections=sections, citations=citations_of(sections),
