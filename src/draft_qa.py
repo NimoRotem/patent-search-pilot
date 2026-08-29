@@ -1033,6 +1033,86 @@ def claim_dependencies(claim_text: str) -> list[int]:
     return sorted(numbers)
 
 
+_CLAIM_ACTION_FORMS = {
+    "advance": "advancing",
+    "apply": "applying",
+    "assign": "assigning",
+    "calculate": "calculating",
+    "close": "closing",
+    "compare": "comparing",
+    "compress": "compressing",
+    "continue": "continuing",
+    "control": "controlling",
+    "determine": "determining",
+    "distribute": "distributing",
+    "drive": "driving",
+    "engage": "engaging",
+    "inhibit": "inhibiting",
+    "measure": "measuring",
+    "move": "moving",
+    "obtain": "obtaining",
+    "open": "opening",
+    "operate": "operating",
+    "place": "placing",
+    "receive": "receiving",
+    "record": "recording",
+    "refuse": "refusing",
+    "release": "releasing",
+    "retract": "retracting",
+    "rotate": "rotating",
+    "send": "sending",
+    "store": "storing",
+    "subtract": "subtracting",
+    "support": "supporting",
+    "verify": "verifying",
+    "withhold": "withholding",
+}
+
+
+def _claim_parallel_verb_forms(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Reject a narrow but objective mixed-form defect in coordinated method steps."""
+    base_pattern = "|".join(
+        re.escape(value) for value in sorted(_CLAIM_ACTION_FORMS, key=len, reverse=True))
+    gerund_pattern = "|".join(
+        re.escape(value)
+        for value in sorted(_CLAIM_ACTION_FORMS.values(), key=len, reverse=True))
+    base_then_gerund = re.compile(
+        rf"(?:^|,\s+)(?P<first>{base_pattern})\b[^;]{{0,700}}?,\s+and\s+"
+        rf"(?P<second>{gerund_pattern})\b",
+        re.IGNORECASE,
+    )
+    gerund_then_base = re.compile(
+        rf"(?:^|,\s+)(?P<first>{gerund_pattern})\b[^;]{{0,700}}?,\s+and\s+"
+        rf"(?P<second>{base_pattern})\b",
+        re.IGNORECASE,
+    )
+    problems = []
+    for claim in claims:
+        claim_text = re.sub(r"\s+", " ", str(claim.get("text") or "")).strip()
+        if not re.match(r"(?i)^(?:a|the)\s+method\b", claim_text):
+            continue
+        comprising = re.search(r"(?i)\bcomprising\s*:?", claim_text)
+        if not comprising:
+            continue
+        for limitation in claim_text[comprising.end():].split(";"):
+            match = base_then_gerund.search(limitation) or gerund_then_base.search(limitation)
+            if not match:
+                continue
+            problems.append(
+                f"claim {claim['number']}: coordinated verbs mix “{match.group('first')}” "
+                f"with “{match.group('second')}”")
+    if problems:
+        return _check(
+            "Method claim steps use parallel verb forms", "fail",
+            "A coordinated method step mixes base-form and gerund-form verbs. Rewrite the "
+            "coordination so every action uses the same grammatical form.",
+            severity="error", items=problems,
+        )
+    return _check(
+        "Method claim steps use parallel verb forms", "pass",
+        "No coordinated method step mixes base-form and gerund-form action verbs.")
+
+
 def _claim_checks(claims_text: str, spec_text: str) -> list[dict[str, Any]]:
     claims = split_claims(claims_text)
     out: list[dict[str, Any]] = []
@@ -1097,6 +1177,7 @@ def _claim_checks(claims_text: str, spec_text: str) -> list[dict[str, Any]]:
                           f"{len(independents)} independent claim(s): "
                           f"{[c['number'] for c in independents]}."))
 
+    out.append(_claim_parallel_verb_forms(claims))
     out.append(_antecedent_basis(claims))
     out.append(_claim_support(claims, spec_text))
     means = [f"claim {c['number']}" for c in claims

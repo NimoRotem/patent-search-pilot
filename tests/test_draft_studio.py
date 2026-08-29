@@ -898,6 +898,35 @@ def test_claims_must_be_numbered_consecutively_from_one():
     assert checks_for(broken)["Claims are numbered consecutively"]["status"] == "fail"
 
 
+def test_method_claim_rejects_a_gerund_mixed_into_coordinated_base_verbs():
+    broken = dict(GOOD)
+    broken["claims"] = """
+    1. A method of controlling charging, the method comprising:
+    at each allocation interval, subtract a measured load from a branch limit, assign a
+    sustaining current to each connector, and distributing a remainder among the connectors.
+    """
+
+    check = checks_for(broken)["Method claim steps use parallel verb forms"]
+
+    assert check["status"] == "fail"
+    assert any("claim 1" in item and "distributing" in item for item in check["items"])
+
+
+def test_method_claim_accepts_coordinated_base_verbs_with_matching_forms():
+    clean = dict(GOOD)
+    clean["claims"] = """
+    1. A method of controlling charging, the method comprising:
+    at each allocation interval, subtract a measured load from a branch limit, assign a
+    sustaining current to each connector, and distribute a remainder among the connectors;
+    sending the assigned limit through a control-pilot interface, and verifying current with
+    a sensor.
+    """
+
+    check = checks_for(clean)["Method claim steps use parallel verb forms"]
+
+    assert check["status"] == "pass"
+
+
 def test_a_multiple_dependent_claim_on_another_is_a_rule_violation():
     broken = dict(GOOD)
     broken["claims"] += ("\n\n4. The vacuum lifting tool of any one of claims 1 or 2, wherein the "
