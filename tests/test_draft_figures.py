@@ -10397,6 +10397,13 @@ def test_current_live_renderer_findings_map_only_to_measured_constraints():
         "membrane_and_cage"
     assert draft_figures._certified_geometry_dissent_category(
         "The valve seat is required but not visible.") == "exploded_valve_inventory"
+    assert draft_figures._certified_geometry_dissent_category(
+        "A single, thin elliptical ring is not explicitly required as a standalone "
+        "component.") == "exploded_valve_inventory"
+    assert draft_figures._certified_geometry_dissent_category(
+        "valve seat (24)") == "exploded_valve_inventory"
+    assert draft_figures._certified_geometry_dissent_category(
+        "membrane cage (required to hold 46)") == "membrane_and_cage"
 
 
 def test_tripped_indicator_certificate_resolves_only_exact_state_dissent():
