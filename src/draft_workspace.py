@@ -270,26 +270,90 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------------------------
+_RENDERED_FIGURE_FILE_RE = re.compile(
+    r"^rendered-[A-Za-z0-9][A-Za-z0-9-]*\.png$", re.IGNORECASE)
+
+
+def figure_filename(label: Any, index: int = 0) -> str:
+    """Return the one workspace filename that belongs to a figure heading."""
+    clean_label = _clean(label, 240)
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", clean_label[:60]).strip("-").upper()
+    if not slug and index:
+        slug = f"FIG-{int(index)}"
+    return f"{slug}.md" if slug else ""
+
+
+def figure_heading(markdown: Any) -> str:
+    lines = str(markdown or "").splitlines()
+    if not lines or not lines[0].lstrip().startswith("#"):
+        return ""
+    return lines[0].lstrip().lstrip("#").strip()
+
+
+def _noncanonical_figure_entries(directory: Path) -> list[tuple[Path, str]]:
+    if not directory.is_dir():
+        return []
+    invalid = []
+    for entry in sorted(directory.iterdir(), key=lambda item: item.name):
+        if (entry.is_file() and not entry.is_symlink() and
+                _RENDERED_FIGURE_FILE_RE.fullmatch(entry.name)):
+            continue
+        expected = ""
+        if entry.is_file() and not entry.is_symlink() and entry.suffix.lower() == ".md":
+            try:
+                expected = figure_filename(figure_heading(
+                    entry.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                expected = ""
+            if expected and entry.name == expected:
+                continue
+        invalid.append((entry, expected))
+    return invalid
+
+
+def _reject_noncanonical_figure_entries(directory: Path) -> None:
+    invalid = _noncanonical_figure_entries(directory)
+    if not invalid:
+        return
+    problems = []
+    for entry, expected in invalid:
+        problems.append(
+            f"{entry.name} must be named {expected}" if expected else
+            f"{entry.name} is not a canonical Markdown figure specification")
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink(missing_ok=True)
+    detail = (
+        "Removed noncanonical figure files created during the drafting turn: "
+        + "; ".join(problems)
+        + ". Each Markdown filename must be derived from its own # FIG. heading."
+    )
+    error_type = drafting.DraftingValidationError if drafting is not None else ValueError
+    raise error_type(detail)
+
+
 def write_figures(workspace: Path, figures: Sequence[Mapping[str, Any]]) -> None:
     directory = Path(workspace) / "figures"
     directory.mkdir(parents=True, exist_ok=True)
     for existing in directory.iterdir():
         if existing.is_file() or existing.is_symlink():
             existing.unlink()
+        elif existing.is_dir():
+            shutil.rmtree(existing)
     for index, figure in enumerate(figures, 1):
         label = _clean(figure.get("label") or f"FIG. {index}", 240)
-        slug = (re.sub(r"[^A-Za-z0-9]+", "-", label[:60]).strip("-").upper() or
-                f"FIG-{index}")
         body = [f"# {label}", "", _clean(figure.get("caption"), 4000)]
         numerals = figure.get("numerals") or []
         if numerals:
             body += ["", "## Numerals shown on this figure", ""]
             body += [f"- {_clean(n, 200)}" for n in numerals]
-        _write(directory / f"{slug}.md", "\n".join(body))
+        _write(directory / figure_filename(label, index), "\n".join(body))
 
 
 def read_figures(workspace: Path) -> list[dict[str, Any]]:
     directory = Path(workspace) / "figures"
+    _reject_noncanonical_figure_entries(directory)
     out = []
     for path in sorted(directory.glob("*.md")):
         try:

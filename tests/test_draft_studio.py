@@ -1270,12 +1270,36 @@ def test_figures_round_trip(tmp_path):
     figures.mkdir()
     (figures / "agent-created.svg").write_text("<svg/>", encoding="utf-8")
     (figures / "rendered-stale.png").write_bytes(b"stale")
+    (figures / "scratch").mkdir()
+    (figures / "scratch" / "notes.md").write_text("not a figure", encoding="utf-8")
     draft_workspace.write_figures(tmp_path, FIGURES)
     out = draft_workspace.read_figures(tmp_path)
     assert [f["label"] for f in out] == ["FIG. 1", "FIG. 2"]
     assert out[1]["numerals"] == ["16 sealing ring", "18 groove", "20 passage"]
     assert not (figures / "agent-created.svg").exists()
     assert not (figures / "rendered-stale.png").exists()
+    assert not (figures / "scratch").exists()
+
+
+def test_figure_snapshot_removes_and_rejects_a_filename_alias_from_the_current_turn(tmp_path):
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    alias = tmp_path / "figures" / "FIG-1-SHORT.md"
+    alias.write_text("# FIG. 1\n\nAn aliased duplicate brief.\n", encoding="utf-8")
+
+    with pytest.raises(drafting.DraftingValidationError, match="FIG-1-SHORT.md.*FIG-1.md"):
+        draft_workspace.read_figures(tmp_path)
+
+    assert not alias.exists()
+    assert (tmp_path / "figures" / "FIG-1.md").exists()
+
+
+def test_figure_snapshot_allows_rendered_review_evidence(tmp_path):
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    evidence = tmp_path / "figures" / "rendered-FIG-1.png"
+    evidence.write_bytes(b"checked pixels")
+
+    assert len(draft_workspace.read_figures(tmp_path)) == 2
+    assert evidence.exists()
 
 
 def test_long_figure_labels_round_trip_without_mid_word_truncation(tmp_path):
@@ -5300,7 +5324,7 @@ def test_a_figure_written_as_prose_still_yields_its_numerals(tmp_path):
     """The agent writes a drawing brief, not a bullet list; the numerals must be found anyway."""
     directory = tmp_path / "figures"
     directory.mkdir()
-    (directory / "fig-01.md").write_text(
+    (directory / "FIG-1-PERSPECTIVE-VIEW.md").write_text(
         "# FIG. 1 — Perspective view\n\n**View type:** isometric.\n\n"
         "The body 12 carries the handle 14; the sealing ring 16 is visible at the underside.\n",
         encoding="utf-8")
@@ -5312,7 +5336,7 @@ def test_a_figure_written_as_prose_still_yields_its_numerals(tmp_path):
 def test_an_explicit_numeral_list_still_wins_over_the_prose_scan(tmp_path):
     directory = tmp_path / "figures"
     directory.mkdir()
-    (directory / "fig-02.md").write_text(
+    (directory / "FIG-2.md").write_text(
         "# FIG. 2\n\nSection through the body 12.\n\n## Numerals shown on this figure\n\n"
         "- 12 body\n- 14 handle\n", encoding="utf-8")
     figure = draft_workspace.read_figures(tmp_path)[0]
