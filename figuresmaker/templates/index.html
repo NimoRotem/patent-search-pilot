@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patent figures maker</title>
+<link rel="stylesheet" href="{{ prefix }}/static/fm.css">
+</head>
+<body>
+<div class="topbar">
+  <h1>Patent figures maker</h1>
+  <span class="sub">a draft in, a checked figure set out</span>
+  <span class="who">{{ who }}</span>
+</div>
+
+<div class="wrap narrow">
+  <div class="card">
+    <h2>Start from a draft</h2>
+    <p class="hint">Paste the specification, give a patent number or a link, or attach a PDF or a
+      Word file. The reference numerals in the description are what the figures are built from.</p>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-pane="paste">Paste a draft</button>
+      <button role="tab" aria-selected="false" data-pane="link">Link or patent number</button>
+      <button role="tab" aria-selected="false" data-pane="file">Attach a file</button>
+    </div>
+
+    <form id="start" enctype="multipart/form-data">
+      <div data-pane="paste">
+        <textarea name="text" id="text" placeholder="A gripping apparatus 100 includes a housing 102 ...&#10;&#10;Paste the whole specification: the claims and the detailed description both matter."></textarea>
+      </div>
+      <div data-pane="link" class="hidden">
+        <label class="field" for="url">A patent number, or any link to a specification</label>
+        <input type="text" name="url" id="url" placeholder="US 10,123,456 B2   or   https://patents.google.com/patent/US10123456B2/en">
+        <p class="hint">A number is resolved against Google Patents. Any other link is fetched
+          and stripped to its text.</p>
+      </div>
+      <div data-pane="file" class="hidden">
+        <label class="field" for="file">A PDF or a .docx</label>
+        <input type="file" name="file" id="file" accept=".pdf,.docx,.txt,.md">
+        <p class="hint">A scanned PDF with no text layer cannot be read; it needs OCR first.</p>
+      </div>
+
+      <label class="field" for="sources">Sources, if you have them</label>
+      <input type="file" name="sources" id="sources" multiple
+             accept=".stl,.obj,.ply,.off,.png,.jpg,.jpeg,.gif,.bmp,.webp,.pdf,.svg">
+      <p class="hint">A sketch (photograph or scan), CAD (STL, OBJ, PLY), a screenshot, or an
+        existing drawing set. A sketch is traced to its centrelines, straightened and redrawn at a
+        uniform weight: the lines stay yours, the pen changes.
+        A mechanical view is only filing-ready when it is compiled from geometry you supplied;
+        without one it comes out as a blockout, clearly marked, useful for agreeing the layout
+        and not for filing. Block diagrams, flow charts and screens are fine from the text alone.
+        You can add sources later, before you approve.</p>
+
+      <div class="row" style="margin-top:1rem">
+        <label class="field" for="paper" style="margin:0">Sheet size</label>
+        <select name="paper" id="paper" style="width:auto">
+          <option value="a4">A4, 21.0 x 29.7 cm</option>
+          <option value="letter">Letter, 21.6 x 27.9 cm</option>
+        </select>
+        <span class="grow"></span>
+        <button type="submit" class="primary" id="go">Build the figures</button>
+      </div>
+      <p class="hint" id="err" style="color:var(--bad)"></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Recent</h2>
+    <p class="hint">Jobs run on this host and do not survive a restart of the application.</p>
+    <table class="list">
+      <thead><tr><th>when</th><th>draft</th><th>figures</th><th>checks</th><th></th></tr></thead>
+      <tbody id="jobs">
+      {% for job in jobs %}
+        <tr>
+          <td class="muted mono small" data-epoch="{{ job.created }}">-</td>
+          <td><a href="{{ prefix }}/job/{{ job.id }}">{{ job.title or job.source or job.id }}</a></td>
+          <td class="mono small">{{ job.summary.figures if job.summary.figures is defined else '-' }}</td>
+          <td class="small">
+            {% if job.summary.errors is defined %}
+              {% if job.summary.errors %}<span class="pill failed">{{ job.summary.errors }} error</span>
+              {% else %}<span class="pill done">passes</span>{% endif %}
+            {% else %}-{% endif %}
+          </td>
+          <td><span class="pill {{ job.status }}">{{ job.status }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="muted">Nothing yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="small muted">Every figure is checked against 37 CFR 1.84 and 1.83(a) before it is
+    shown: numerals against the description, claim elements against the views, margins, character
+    height, line weight, hatching on sections, and lead lines that touch what they point at and
+    never cross each other.</p>
+</div>
+
+<script>
+const PREFIX = {{ prefix|tojson }};
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b =>
+      b.setAttribute('aria-selected', String(b === btn)));
+    document.querySelectorAll('form [data-pane]').forEach(p =>
+      p.classList.toggle('hidden', p.dataset.pane !== btn.dataset.pane));
+  });
+});
+document.querySelectorAll('[data-epoch]').forEach(td => {
+  const t = parseFloat(td.dataset.epoch);
+  if (t) td.textContent = new Date(t * 1000).toLocaleString(undefined,
+    { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+});
+document.getElementById('start').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const go = document.getElementById('go'), err = document.getElementById('err');
+  go.disabled = true; go.textContent = 'Starting...'; err.textContent = '';
+  try {
+    const res = await fetch(PREFIX + '/api/start', { method: 'POST', body: new FormData(ev.target) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    location.href = data.url;
+  } catch (e) {
+    err.textContent = e.message;
+    go.disabled = false; go.textContent = 'Build the figures';
+  }
+});
+</script>
+</body>
+</html>
