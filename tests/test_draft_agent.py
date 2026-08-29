@@ -401,6 +401,25 @@ def test_vertex_workspace_tool_requires_a_figure_filename_derived_from_its_headi
     assert path.read_text(encoding="utf-8") == content
 
 
+def test_vertex_workspace_tool_can_delete_only_a_canonical_figure_specification(tmp_path):
+    (tmp_path / "figures").mkdir()
+    (tmp_path / "draft").mkdir()
+    figure = tmp_path / "figures" / "FIG-2.md"
+    figure.write_text("# FIG. 2\n\nA sectional view.\n", encoding="utf-8")
+    claim = tmp_path / "draft" / "09-claims.md"
+    claim.write_text("1. A device.", encoding="utf-8")
+
+    deleted, _attachments = draft_agent._vertex_tool(
+        tmp_path, "delete_figure", {"path": "figures/FIG-2.md"}, writable=True)
+
+    assert deleted == {"ok": True, "path": "figures/FIG-2.md", "deleted": True}
+    assert not figure.exists()
+    with pytest.raises(ValueError, match="Only figure specifications may be deleted"):
+        draft_agent._vertex_tool(
+            tmp_path, "delete_figure", {"path": "draft/09-claims.md"}, writable=True)
+    assert claim.exists()
+
+
 def test_vertex_image_read_attaches_pixels_without_exposing_raw_bytes_in_json(tmp_path):
     (tmp_path / "figures").mkdir()
     image = b"\x89PNG\r\n\x1a\nnot-a-real-image"

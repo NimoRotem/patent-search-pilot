@@ -634,6 +634,10 @@ def _vertex_tool_declarations(types, *, schema: Mapping[str, Any], tools: str,
                 "path": {"type": "string"}, "old_text": {"type": "string"},
                 "new_text": {"type": "string"}, "replace_all": {"type": "boolean"},
             }, ["path", "old_text", "new_text"]))
+        declarations.append(declaration(
+            "delete_figure",
+            "Delete one superseded canonical Markdown figure specification.",
+            {"path": {"type": "string"}}, ["path"]))
     if ("Bash" in allowed and
             any(str(command).strip() == LOOKUP_COMMAND for command in allowed_bash)):
         declarations.append(declaration(
@@ -763,10 +767,24 @@ def _vertex_tool(workspace: Path, name: str, arguments: Mapping[str, Any], *, wr
                         return {"ok": True, "matches": matches, "truncated": True}, attachments
         return {"ok": True, "matches": matches, "truncated": False}, attachments
 
-    if name in {"write_file", "replace_text"}:
+    if name in {"write_file", "replace_text", "delete_figure"}:
         if not writable:
             raise ValueError("This review run has no write permission.")
         path = _workspace_path(root, arguments.get("path"), write=True)
+        if name == "delete_figure":
+            if path.parent != root / "figures":
+                raise ValueError("Only figure specifications may be deleted.")
+            if not path.is_file():
+                raise ValueError("The figure specification to delete does not exist.")
+            import draft_workspace
+            expected = draft_workspace.figure_filename(
+                draft_workspace.figure_heading(
+                    path.read_text(encoding="utf-8", errors="replace")))
+            if not expected or path.name != expected:
+                raise ValueError("Only a canonical figure specification may be deleted.")
+            relative_path = path.relative_to(root).as_posix()
+            path.unlink()
+            return {"ok": True, "path": relative_path, "deleted": True}, attachments
         path.parent.mkdir(parents=True, exist_ok=True)
         if name == "write_file":
             content = str(arguments.get("content") or "")
@@ -909,7 +927,9 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
         "CLAUDE.md, user settings, plugins, hooks, skills, MCP servers, or instructions outside "
         "this workspace. Do not run shell commands. Finish by calling submit_result exactly once "
         "with the required structured answer. Never put filing text in submit_result; filing text "
-        "must be written to draft/ and figures/."
+        "must be written to draft/ and figures/. Use delete_figure to remove a superseded or "
+        "duplicate Markdown figure brief; do not leave an empty file or a second filename for "
+        "the same FIG. number."
     )
     contents = [types.Content(
         role="user", parts=[types.Part.from_text(text=(
