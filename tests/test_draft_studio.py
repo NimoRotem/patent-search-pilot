@@ -1301,6 +1301,23 @@ def test_the_numeral_table_round_trips(tmp_path):
     assert draft_workspace.read_numerals(tmp_path) == NUMERALS
 
 
+def test_the_numeral_reader_accepts_plain_agent_list_formats(tmp_path):
+    path = tmp_path / "draft" / "numerals.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "# Reference numerals\n\n"
+        "10, cartridge body\n"
+        "12: valve seat\n"
+        "- 14 - compression spring\n",
+        encoding="utf-8")
+
+    assert draft_workspace.read_numerals(tmp_path) == [
+        {"numeral": "10", "part": "cartridge body"},
+        {"numeral": "12", "part": "valve seat"},
+        {"numeral": "14", "part": "compression spring"},
+    ]
+
+
 def test_workspace_draft_files_contain_no_process_scaffolding(tmp_path):
     draft_workspace.write_sections(tmp_path, GOOD)
     draft_workspace.write_numerals(tmp_path, NUMERALS)
