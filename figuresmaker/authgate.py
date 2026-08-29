@@ -1,14 +1,21 @@
-"""Sign-in shared with the patent search app at the root of this domain.
+"""Sign-in shared with the app that serves the ROOT of this domain.
 
-There is one account system on this host: the search app's ``app_users`` table. This app has no
+A visitor of this domain has one account, in the root app's ``app_users`` table. This app has no
 password of its own and never will. A second credential for the same person on the same domain is
 a thing to lose, not a security measure.
 
-* The search app signs a Flask session cookie with the key in ``~/patent-search-pilot/.secret_key``
-  at path ``/``, so the browser sends it here too, and the same key verifies it. A forged cookie
-  cannot get in and no password is stored on this side.
+* The root app signs a Flask session cookie with the key in ``$AUTH_ROOT/.secret_key`` at path
+  ``/``, so the browser sends it here too, and the same key verifies it. A forged cookie cannot
+  get in and no password is stored on this side.
+* THE KEY AND THE ACCOUNT DATABASE ARE ONE SETTING ON PURPOSE. The key that verifies a cookie and
+  the database asked about the user id inside it must belong to the same app. On 2026-08-27 the
+  root of nimo.iptorch.com moved from patent-search-pilot to patent-fulltext, and the two number
+  their users independently: id 1 is the owner at the root and a retired QA account in the old
+  database. Verifying with the new key while looking the id up in the old one denied the owner and
+  bounced him to the login page he had just used, which is indistinguishable from a wrong password.
+  Two separate settings are what allowed that pair to drift, so there is now one, ``AUTH_ROOT``.
 * A valid signature is necessary but not sufficient. The cookie lasts thirty days and carries
-  ``session_version``, which the search app bumps on a password change, so deactivating a user or
+  ``session_version``, which the root app bumps on a password change, so deactivating a user or
   resetting their password closes this app to them as well.
 * If Postgres cannot be reached we fail CLOSED. An outage in the account system must not turn a
   public endpoint into an open one.
@@ -16,6 +23,7 @@ a thing to lose, not a security measure.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from functools import wraps
 from pathlib import Path
@@ -25,9 +33,14 @@ from urllib.parse import quote
 from flask import Flask, jsonify, redirect, request
 from flask.sessions import SecureCookieSessionInterface
 
+#  PILOT_ROOT is the RETRIEVAL side: the search app's tree, its figures and its corpus. AUTH_ROOT
+#  is the IDENTITY side, and defaults to it because on a host where one app does both they are the
+#  same tree. Point AUTH_ROOT at whichever app owns the front door and the signing key and the
+#  account database move together, which is the only combination that can be correct.
 PILOT_ROOT = Path(os.environ.get("PILOT_ROOT", os.path.expanduser("~/patent-search-pilot")))
-SECRET_FILE = Path(os.environ.get("PILOT_SECRET_FILE", PILOT_ROOT / ".secret_key"))
-ENV_FILE = Path(os.environ.get("PILOT_ENV_FILE", PILOT_ROOT / ".env"))
+AUTH_ROOT = Path(os.environ.get("AUTH_ROOT", PILOT_ROOT))
+SECRET_FILE = AUTH_ROOT / ".secret_key"
+ENV_FILE = AUTH_ROOT / ".env"
 LOGIN_URL = os.environ.get("PATENTS_LOGIN_URL", "https://nimo.iptorch.com/login")
 COOKIE_NAME = os.environ.get("PILOT_SESSION_COOKIE", "session")
 CACHE_SECONDS = float(os.environ.get("AUTH_USER_CACHE_SECONDS", "60"))
@@ -53,8 +66,12 @@ def _secret_key() -> str:
 
 
 def _pg_settings() -> dict[str, str]:
-    values = {"PGHOST": "127.0.0.1", "PGPORT": "5433", "PGDATABASE": "patents",
-              "PGUSER": "patents", "PGPASSWORD": "patents_pilot_local"}
+    #  NO DEFAULTS. An unreadable env file used to fall back to the search app's database, so a
+    #  misconfigured AUTH_ROOT would quietly ask the wrong store about a user id and answer with
+    #  somebody else's account, or with a denial nobody could explain. Not being able to read it
+    #  is an outage, and an outage here fails closed.
+    values: dict[str, str] = {}
+    wanted = ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD")
     try:
         for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -62,10 +79,13 @@ def _pg_settings() -> dict[str, str]:
                 continue
             key, raw = line.split("=", 1)
             key = key.strip()
-            if key in values:
+            if key in wanted:
                 values[key] = raw.strip().strip('"').strip("'")
-    except OSError:
-        pass
+    except OSError as exc:
+        raise AuthUnavailable(f"cannot read {ENV_FILE}: {exc}") from exc
+    missing = [key for key in wanted if not values.get(key)]
+    if missing:
+        raise AuthUnavailable(f"{ENV_FILE} is missing {', '.join(missing)}")
     return values
 
 
@@ -92,8 +112,8 @@ def _lookup(user_id: int) -> Optional[dict]:
     hit = _cache.get(user_id)
     if hit and hit[0] > now:
         return hit[1]
-    settings = _pg_settings()
     try:
+        settings = _pg_settings()
         import psycopg
 
         with psycopg.connect(
@@ -105,8 +125,12 @@ def _lookup(user_id: int) -> Optional[dict]:
                     "SELECT id, email, is_active, session_version FROM app_users WHERE id=%s",
                     (int(user_id),))
                 row = cursor.fetchone()
-    except Exception:
+    except Exception as exc:
         # Could not ask. Do not cache a failure as an answer and do not let it authorise anyone.
+        # SAY SO IN THE LOG: to the person in front of it a silent denial looks exactly like a
+        # wrong password, and that is why the cutover above went a day without being noticed.
+        print(f"authgate: cannot read account {user_id} from {ENV_FILE}: {exc!r}",
+              file=sys.stderr, flush=True)
         return None
     user = None
     if row:
