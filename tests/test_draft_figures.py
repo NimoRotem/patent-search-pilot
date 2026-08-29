@@ -9239,6 +9239,13 @@ def test_drilling_jig_carriage_section_has_exact_geometry_hatching_and_anchors()
     assert all(
         item["ok"] is True
         for item in certificate["certified_constraints"].values())
+    carried_bushing = certificate["certified_constraints"][
+        "carried_bushing_and_coaxial_bore"]
+    assert carried_bushing["contained_by_carriage"] is True
+    assert carried_bushing["outer_carriage_boundary_continuous"] is True
+    assert carried_bushing["carriage_box"] == [300, 250, 1100, 430]
+    assert carried_bushing["bushing_box"] == [840, 270, 980, 390]
+    assert carried_bushing["support_band"] == [840, 390, 980, 430]
 
     section = draft_figures._deterministic_section_hatch_certificate(
         png, specification)
@@ -9284,5 +9291,37 @@ def test_drilling_jig_carriage_section_accepts_a_pronoun_split_surface_relations
     )
 
     assert "It sits on the upper face" in specification
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is not None
+
+
+def test_drilling_jig_carriage_section_accepts_embedded_bushing_wording():
+    specification = _drilling_jig_carriage_section_specification().replace(
+        "The second guide carriage 70 sits on the upper face 12 of the\n"
+        "    rail 10.",
+        "The second guide carriage 70 is a solid body shown in cross-section, seated on the "
+        "upper face 12 of the rail 10.",
+    )
+    specification = re.sub(
+        r"A cylindrical drill bushing 74 is carried by.*?"
+        r"The\s+bore is coaxial with the drill bushing 74\.",
+        "A cylindrical drill bushing 74 is installed within the second guide carriage 70, "
+        "such that the body of the carriage 70 surrounds the drill bushing 74. The cut "
+        "surface of the drill bushing 74 is hatched with lines slanting at +45 degrees from "
+        "the horizontal. The drill bushing 74 has a vertical cylindrical bore passing "
+        "completely through it.",
+        specification,
+        flags=re.DOTALL,
+    )
+    specification = specification.replace(
+        "The clamping shoe 80 is a separate body below\n"
+        "    the rail 10, with a visible clearance between the top surface of the clamping "
+        "shoe 80 and\n"
+        "    the bottom surface of the rail 10.",
+        "The clamping shoe 80 is a separate body below the rail 10, with a distinct visible "
+        "clearance between its top surface and the bottom surface of the rail 10.",
+    )
+
+    assert "installed within the second guide carriage" in specification
     assert draft_figures._deterministic_drilling_jig_carriage_section_png(
         specification) is not None
