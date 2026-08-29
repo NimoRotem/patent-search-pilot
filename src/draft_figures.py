@@ -93,7 +93,7 @@ PIXEL_ANCHOR_VERSION = "pixel-anchor-v12-brief-target-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
     "marked-progress-v8-anchor-map-bound-" +
     DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION + "-" + PIXEL_ANCHOR_VERSION)
-OCR_PROMPT_VERSION = "google-vision-document-text-v3-section-designations"
+OCR_PROMPT_VERSION = "google-vision-document-text-v4-lettered-section-designations"
 OCR_GEOMETRY_RESOLUTION_VERSION = (
     "ocr-zero-geometry-resolution-v1-label-probe-two-review-consensus")
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
@@ -758,11 +758,11 @@ _FIGURE_ID_RE = re.compile(
 _SHEET_NUMBER_RE = re.compile(
     r"(?<![A-Za-z0-9])(\d{1,3})\s*/\s*(\d{1,3})(?![A-Za-z0-9])")
 _SECTION_DESIGNATION_RE = re.compile(
-    r"\bline\s*,?\s+([0-9]{1,3}[A-Za-z]?)\s*[-\u2012-\u2015]\s*\1\b",
-    re.IGNORECASE)
+    r"(?i:\bline)\s*,?\s+([0-9]{1,3}[A-Za-z]?|[A-Z]{1,3})"
+    r"\s*[-\u2012-\u2015]\s*\1\b")
 _REPEATED_SECTION_END_RE = re.compile(
     r"\brepeated designation\s+[\"'\u2018\u2019\u201c\u201d]?"
-    r"([0-9]{1,3}[A-Za-z]?)[\"'\u2018\u2019\u201c\u201d]?\s+"
+    r"([0-9]{1,3}[A-Za-z]?|[A-Z]{1,3})[\"'\u2018\u2019\u201c\u201d]?\s+"
     r"(?:is|appears?)\s+at\s+(?:each|both)\s+ends?\b",
     re.IGNORECASE)
 _SOURCE_CUTTING_PLANE_RE = re.compile(
@@ -12415,7 +12415,7 @@ def parse_ocr_response(payload: dict) -> dict:
     response = ((payload or {}).get("responses") or [{}])[0]
     if response.get("error"):
         return {"ok": False, "numerals": [], "figure_label": "", "sheet_numbers": [],
-                "other_text": [],
+                "section_designations": [], "other_text": [],
                 "confidence": 0.0, "error": str(response["error"])[:300]}
     annotation = response.get("fullTextAnnotation") or {}
     text = str(annotation.get("text") or "")
@@ -12435,6 +12435,10 @@ def parse_ocr_response(payload: dict) -> dict:
     numerals = [value for value in numerals if value]
     stripped = re.sub(r"(?<![A-Za-z0-9])(?:[A-Za-z]?\d{1,4}[A-Za-z]?)(?![A-Za-z0-9])", " ",
                       without_label)
+    section_values = re.findall(
+        r"(?<![A-Za-z0-9])([A-Z]{1,3})(?![A-Za-z0-9])", stripped)
+    stripped = re.sub(
+        r"(?<![A-Za-z0-9])[A-Z]{1,3}(?![A-Za-z0-9])", " ", stripped)
     other_text = re.findall(r"[A-Za-z]{2,}", stripped)
     confidences = []
     for page in annotation.get("pages") or []:
@@ -12446,7 +12450,8 @@ def parse_ocr_response(payload: dict) -> dict:
     confidence = sum(confidences) / len(confidences) if confidences else (1.0 if text else 0.0)
     return {"ok": bool(text), "numerals": numerals, "figure_label": figure_label,
             "sheet_numbers": sheet_numbers,
-            "other_text": other_text, "confidence": confidence, "raw_text": text[:2000]}
+            "section_designations": section_values, "other_text": other_text,
+            "confidence": confidence, "raw_text": text[:2000]}
 
 
 def inspect_labels(png: bytes, label: str = "", sheet_number: str = "") -> dict:
@@ -12718,12 +12723,18 @@ def ocr_audit(expected, inspection: dict, label: str, *, sheet_number: str = "",
     expected_section_values = [value for value in section_values for _ in range(2)]
     detected_counts = Counter(detected_values)
     detected_section_values = [
+        str(value or "").strip().upper()
+        for value in (inspection or {}).get("section_designations") or ()
+        if str(value or "").strip()
+    ]
+    detected_section_values.extend(
         value for value in section_values
         for _ in range(max(0, detected_counts[value] - reference_counts[value]))
-    ]
+        if _clean_numeral(value))
     removals = {
         value: min(2, max(0, detected_counts[value] - reference_counts[value]))
         for value in section_values
+        if _clean_numeral(value)
     }
     remaining_values = []
     for value in detected_values:
