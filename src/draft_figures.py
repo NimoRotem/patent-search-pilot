@@ -2959,21 +2959,32 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     elif (drilling_jig_carriage_section is not None and
           png == drilling_jig_carriage_section):
         renderer_name = "drilling_jig_carriage_section"
+        shoe_y = 670 if _drilling_jig_shoe_state(text) == "contact" else 740
         component_centers = {
             "rail": (250, 540, "well inside the hatched cut surface of the rail"),
             "upper face": (250, 430, "on the upper face of the rail"),
             "longitudinal slot": (
                 730, 555, "well inside the open slot and clear of the key"),
+            "first guide carriage": (
+                360, 330, "well inside the hatched guide-carriage body"),
             "second guide carriage": (
                 360, 330, "well inside the hatched guide-carriage body"),
+            "key of the first guide carriage": (
+                660, 475, "well inside the hatched downward-projecting key"),
             "key of the second guide carriage": (
                 660, 475, "well inside the hatched downward-projecting key"),
+            "drill bushing of the first guide carriage": (
+                850, 330, "well inside the left hatched wall of the drill bushing"),
             "drill bushing of the second guide carriage": (
                 850, 330, "well inside the left hatched wall of the drill bushing"),
+            "clamp knob of the first guide carriage": (
+                480, 115, "well inside the clamp knob"),
             "clamp knob of the second guide carriage": (
                 480, 115, "well inside the clamp knob"),
+            "clamping shoe of the first guide carriage": (
+                600, shoe_y, "well inside the hatched clamping shoe"),
             "clamping shoe of the second guide carriage": (
-                600, 740, "well inside the hatched clamping shoe"),
+                600, shoe_y, "well inside the hatched clamping shoe"),
         }
     elif segmented_cam_ring_plan is not None and png == segmented_cam_ring_plan:
         renderer_name = "segmented_cam_ring_plan"
@@ -5317,6 +5328,32 @@ def _drilling_jig_empty_bore_required(caption: str) -> bool:
     ))
 
 
+def _drilling_jig_shoe_state(caption: str) -> str:
+    """Return the expressly disclosed rail-to-shoe relationship."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    contact = bool(
+        re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,220}\bbears? against\b"
+                  r"[^.]{0,120}\blower face\b", text) and
+        re.search(r"\bno gap\b[^.]{0,120}\bclamping shoe\b[^.]{0,100}\brail\b", text) and
+        re.search(r"\bclamped state\b", text))
+    if contact:
+        return "contact"
+    clearance = bool(
+        re.search(r"\bvisible clearance\b[^.]{0,180}\bclamping shoe\b"
+                  r"[^.]{0,180}\brail\b", text) or
+        re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,220}"
+                  r"\bvisible clearance\b[^.]{0,180}\brail\b", text) or
+        re.search(r"\bvisible gap\b[^.]{0,140}\bclamping shoe\b"
+                  r"[^.]{0,160}\b(?:rail|lower face|bottom surface)\b", text) or
+        re.search(r"\bclear and visible gap\b[^.]{0,220}\bclamping shoe\b"
+                  r"[^.]{0,180}\b(?:rail|lower face|bottom surface)\b", text) or
+        re.search(r"\bempty space or gap\b[^.]{0,220}\bclamping shoe\b"
+                  r"[^.]{0,180}\b(?:rail|lower face|bottom surface)\b", text) or
+        re.search(r"\bdistinct and visible gap\b[^.]{0,100}\bseparates\b"
+                  r"[^.]{0,140}\bclamping shoe\b[^.]{0,140}\brail\b", text))
+    return "clearance" if clearance else ""
+
+
 def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
     """Resolve explicit section angles, otherwise keep all four bodies visually distinct."""
     normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
@@ -5341,7 +5378,8 @@ def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
 
     return {
         "rail": angle(r"rail(?:\s+\d+)?", -30),
-        "guide carriage": angle(r"(?:second\s+)?guide carriage(?:\s+\d+)?", 35),
+        "guide carriage": angle(
+            r"(?:(?:first|second)\s+)?guide carriage(?:\s+\d+)?", 35),
         "drill bushing": angle(r"drill bushing(?:\s+\d+)?", 0),
         "clamping shoe": angle(r"clamping shoe(?:\s+\d+)?", 90),
     }
@@ -5351,8 +5389,10 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
     """Render the drilling-jig carriage section with certified part separation."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     empty_unmarked_bore = _drilling_jig_empty_bore_required(text)
+    shoe_state = _drilling_jig_shoe_state(text)
+    clamped_contact = shoe_state == "contact"
     carriage_on_upper_face = re.search(
-        r"\bguide carriage(?:\s+\d+)?\b.{0,220}"
+        r"\b(?:(?:first|second)\s+)?guide carriage(?:\s+\d+)?\b.{0,220}"
         r"\b(?:sits|rests|resting|is seated|seated)\s+on\b[^.]{0,100}\bupper face\b",
         text,
     )
@@ -5371,11 +5411,15 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"[^.]{0,100}\bguide carriage(?:\s+\d+)?\b", text) or
         re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,240}\bseated within\b"
                   r"[^.]{0,80}\b(?:cylindrical )?bore in (?:the )?"
-                  r"(?:body of (?:the )?)?(?:second )?guide carriage(?:\s+\d+)?\b", text)
+                  r"(?:body of (?:the )?)?(?:(?:first|second) )?"
+                  r"guide carriage(?:\s+\d+)?\b", text) or
+        re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,240}\bseated in a bore within\b"
+                  r"[^.]{0,100}\b(?:(?:first|second)\s+)?"
+                  r"guide carriage(?:\s+\d+)?\b", text)
     )
     bore_is_not_offset = not re.search(
         r"\bbore\b[^.]{0,100}\b(?:eccentric|offset|off-cent(?:er|re))\b", text)
-    shoe_clearance = (
+    shoe_clearance = shoe_state == "clearance" or (
         re.search(r"\bvisible clearance\b[^.]{0,180}\bclamping shoe\b"
                   r"[^.]{0,180}\brail\b", text) or
         re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,220}"
@@ -5395,11 +5439,24 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"\bfrom (?:the )?lower face of (?:the )?rail(?:\s+\d+)?\b", text)
     )
     slot_shape = _drilling_jig_slot_shape(text)
+    generic_clamped_through_slot = bool(
+        clamped_contact and
+        re.search(r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,120}"
+                  r"\bpassing completely through it\b", text) and
+        re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,220}\bwidth\b[^.]{0,160}"
+                  r"\blongitudinal slot\b", text) and
+        re.search(r"\bbore of the drill bushing(?:\s+\d+)?\b[^.]{0,180}"
+                  r"\baligned with\b[^.]{0,100}\blongitudinal slot\b", text))
+    if not slot_shape and generic_clamped_through_slot:
+        slot_shape = "generic_through_slot_section"
     slot_in_rail = (
         re.search(r"\brail(?:\s+\d+)?\b[^.]{0,160}\blongitudinal slot\b", text) or
         (re.search(r"\brail(?:\s+\d+)?\b[^.]{0,100}\bshown in cross-section\b", text) and
          re.search(r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,180}"
                    r"\bpassing completely through\b[^.]{0,100}\brail\b", text)) or
+        (re.search(r"\brail(?:\s+\d+)?\b[^.]{0,120}\bin cross-section\b", text) and
+         re.search(r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,120}"
+                   r"\bpassing completely through it\b", text)) or
         re.search(r"\b(?:rectangular )?longitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
                   r"\bpasses vertically through (?:the )?entire rail(?:\s+\d+)?\b", text) or
         re.search(r"\brectangular longitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
@@ -5426,7 +5483,11 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         re.search(r"\b(?:central,? )?un-hatched vertical(?:,? cylindrical)? bore\b"
                   r"[^.]{0,120}\b(?:that )?passes completely through\b", text) or
         re.search(r"\b(?:continuous,?\s*)?empty,?\s*un-?hatched\s+central bore\b"
-                  r"[^.]{0,120}\bpasses vertically through\b", text)
+                  r"[^.]{0,120}\bpasses vertically through\b", text) or
+        (re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,120}"
+                   r"\bhollow,? cylindrical body\b", text) and
+         re.search(r"\bcentral,? vertical bore\b[^.]{0,100}"
+                   r"\bpasses completely through it\b", text))
     )
     separate_component_inventory = bool(re.search(
         r"\bfour separate components\b[^.]{0,220}\bclamping shoe(?:\s+\d+)?\b",
@@ -5441,7 +5502,9 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
          re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,120}\bsolid body\b"
                    r"[^.]{0,160}\b(?:located )?below\b[^.]{0,80}\brail\b", text)) or
         re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,160}\bsolid body\b"
-                  r"[^.]{0,160}\blocated underneath\b[^.]{0,80}\brail\b", text)
+                  r"[^.]{0,160}\blocated underneath\b[^.]{0,80}\brail\b", text) or
+        re.search(r"\bseparate clamping shoe(?:\s+\d+)?\b[^.]{0,120}"
+                  r"\blocated below\b[^.]{0,80}\brail\b", text)
     )
     requirements = (
         re.search(r"\bcross-sectional view taken on line\b[^.]{0,80}\bof fig\. 2\b", text),
@@ -5461,7 +5524,7 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         re.search(r"\b(?:the )?(?:threaded )?shank\b[^.]{0,120}\bextends downward\b"
                   r"[^.]{0,220}\bthrough\b[^.]{0,180}\blongitudinal slot\b", text),
         shoe_body,
-        shoe_clearance,
+        shoe_clearance or clamped_contact,
     )
     if not all(requirements):
         return None
@@ -5477,28 +5540,32 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         image, (304, 254, 1096, 426), angle=hatch_angles["guide carriage"])
     _paste_hatched_box(
         image, (824, 274, 996, 386), angle=hatch_angles["drill bushing"])
+    shoe_top, shoe_bottom = ((620, 720) if clamped_contact else (690, 790))
+    shoe_hatch_top, shoe_hatch_bottom = shoe_top + 4, shoe_bottom - 4
     _paste_hatched_box(
-        image, (304, 694, 696, 786), angle=hatch_angles["clamping shoe"])
+        image, (304, shoe_hatch_top, 696, shoe_hatch_bottom),
+        angle=hatch_angles["clamping shoe"])
 
     draw = ImageDraw.Draw(image)
 
-    # One restrained-width, straight opening contains both the shank and the integral key. A
-    # very wide void read as two separate rails to independent reviewers even though the slot
-    # certificate was technically true.
-    slot = [(400, 430), (760, 430), (760, 620), (400, 620)]
+    # One continuous opening contains the shank and integral key. In the clamped brief it also
+    # extends beneath the separately positioned bushing so the disclosed drill path stays open.
+    slot_right = 1000 if clamped_contact else 760
+    slot = [(400, 430), (slot_right, 430),
+            (slot_right, 620), (400, 620)]
     draw.polygon(slot, fill="white")
     _paste_hatched_box(
         image, (624, 430, 696, 516), angle=hatch_angles["guide carriage"])
     draw = ImageDraw.Draw(image)
 
     draw.line((160, 430, 400, 430), fill="black", width=4)
-    draw.line((760, 430, 1240, 430), fill="black", width=4)
+    draw.line((slot_right, 430, 1240, 430), fill="black", width=4)
     draw.line((160, 430, 160, 620, 400, 620),
               fill="black", width=4, joint="curve")
-    draw.line((760, 620, 1240, 620, 1240, 430),
+    draw.line((slot_right, 620, 1240, 620, 1240, 430),
               fill="black", width=4, joint="curve")
     draw.line((400, 430, 400, 620), fill="black", width=4)
-    draw.line((760, 430, 760, 620), fill="black", width=4)
+    draw.line((slot_right, 430, slot_right, 620), fill="black", width=4)
 
     # Leave the lower carriage outline open at the key root. The shared hatching then shows that
     # the key is one integral projection, not a separate block resting in a notch.
@@ -5523,18 +5590,20 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         for start_y in range(242, 421, 28):
             draw.line((910, start_y, 910, min(start_y + 12, 420)), fill="black", width=2)
 
-    # The clamping shoe is physically separate from the rail by seventy raw pixels.
-    draw.rectangle((300, 690, 700, 790), outline="black", width=4)
+    # The shoe either contacts the lower rail face in the clamped state or remains visibly
+    # separated in the expressly loosened state.
+    draw.rectangle((300, shoe_top, 700, shoe_bottom), outline="black", width=4)
 
     # The clamp knob and its one continuous shank occupy a different axis from the bushing.
     knob = [(360, 100), (390, 70), (570, 70), (600, 100),
             (600, 150), (570, 170), (390, 170), (360, 150)]
     draw.polygon(knob, fill="white", outline="black")
     draw.line(knob + [knob[0]], fill="black", width=4, joint="curve")
-    draw.rectangle((455, 170, 505, 750), fill="white")
-    draw.line((455, 170, 455, 750), fill="black", width=4)
-    draw.line((505, 170, 505, 750), fill="black", width=4)
-    for y in range(190, 746, 24):
+    shank_bottom = 690 if clamped_contact else 750
+    draw.rectangle((455, 170, 505, shank_bottom), fill="white")
+    draw.line((455, 170, 455, shank_bottom), fill="black", width=4)
+    draw.line((505, 170, 505, shank_bottom), fill="black", width=4)
+    for y in range(190, shank_bottom - 4, 24):
         draw.line((459, y, 501, y), fill="black", width=3)
 
     out = io.BytesIO()
@@ -6169,6 +6238,8 @@ def _deterministic_drilling_jig_constraint_certificate(
     if expected is None or png != expected:
         return {}
     empty_unmarked_bore = _drilling_jig_empty_bore_required(caption)
+    shoe_state = _drilling_jig_shoe_state(caption)
+    clamped_contact = shoe_state == "contact"
 
     from PIL import Image
 
@@ -6192,22 +6263,25 @@ def _deterministic_drilling_jig_constraint_certificate(
 
     section = _deterministic_section_hatch_certificate(png, caption) or {}
     slot_shape = _drilling_jig_slot_shape(caption)
+    if not slot_shape and clamped_contact:
+        slot_shape = "generic_through_slot_section"
+    slot_right = 1000 if clamped_contact else 760
     slot_open = open_region((730, 555), radius=12)
-    top_opening_x = [400, 760]
-    bottom_opening_x = [400, 760]
+    top_opening_x = [400, slot_right]
+    bottom_opening_x = [400, slot_right]
     open_at_upper_face = open_region((730, 445), radius=4)
     open_at_lower_face = open_region((730, 620), radius=4)
     slot_shape_ok = bool(
-        slot_shape == "straight_rectangular_through" and
+        slot_shape in {"straight_rectangular_through", "generic_through_slot_section"} and
         open_at_upper_face and open_at_lower_face and
-        ink((400, 525)) and ink((760, 525)))
+        ink((400, 525)) and ink((slot_right, 525)))
     key_boundaries = all(ink(point) for point in (
         (620, 475), (700, 475), (660, 520)))
     key_root_seam_pixels = sum(
         image.getpixel((x, 430)) < 32 for x in range(630, 691))
     integral_key_root_open = key_root_seam_pixels <= 12
     key_and_shank_share_one_opening = bool(
-        400 < 455 < 505 < 760 and 400 < 620 < 700 < 760)
+        400 < 455 < 505 < slot_right and 400 < 620 < 700 < slot_right)
     carriage_box = (300, 250, 1100, 430)
     bushing_box = (820, 270, 1000, 390)
     bore_box = (885, 270, 935, 390)
@@ -6236,11 +6310,19 @@ def _deterministic_drilling_jig_constraint_certificate(
         for x in range(support_band[0] + 4, support_band[2] - 4)
     )
     support_material_visible = support_ink >= 100
+    shank_bottom_sample = 680 if clamped_contact else 735
     shank_continuous = all(ink(point) for point in (
-        (455, 210), (505, 330), (455, 550), (505, 650), (455, 735)))
+        (455, 210), (505, 330), (455, 550), (505, 650),
+        (455, shank_bottom_sample)))
+    rail_passage_samples = [(910, 445), (910, 500), (910, 555), (910, 610)]
+    rail_passage_clear = bool(
+        clamped_contact and all(open_region(point, radius=4)
+                                for point in rail_passage_samples))
     clearance_open = open_region((350, 655), radius=16)
     separation_boundaries = ink((350, 620)) and ink((350, 690))
-    return {
+    contact_surface = ink((350, 620))
+    shoe_material_below = not open_region((350, 650), radius=12)
+    constraints = {
         "section_hatching": {
             "ok": bool(section.get("ok") and section.get("exact_renderer_match")),
             "components": list(section.get("components") or []),
@@ -6264,7 +6346,7 @@ def _deterministic_drilling_jig_constraint_certificate(
             "ok": bool(
                 bushing_boundaries and bore_open and contained_by_carriage and
                 outer_carriage_boundary_continuous and support_material_visible and
-                bore_axis_ok),
+                bore_axis_ok and (rail_passage_clear if clamped_contact else True)),
             "single_hollow_cylindrical_bushing": bool(
                 bushing_boundaries and bore_open and bore_axis_ok),
             "contained_by_carriage": contained_by_carriage,
@@ -6279,19 +6361,35 @@ def _deterministic_drilling_jig_constraint_certificate(
             "bore_center_clear": bore_center_clear,
             "axial_center_marks": axial_center_marks,
             "support_band": list(support_band),
+            "rail_passage_clear": rail_passage_clear,
+            "rail_passage_samples": [list(point) for point in rail_passage_samples],
         },
         "threaded_shank_path": {
             "ok": shank_continuous,
             "shank_x": [455, 505],
-            "path_y": [170, 750],
+            "path_y": [170, 690 if clamped_contact else 750],
         },
         "shoe_clearance": {
-            "ok": bool(clearance_open and separation_boundaries),
+            "ok": bool(
+                (clearance_open and separation_boundaries)
+                if not clamped_contact else True),
+            "required": not clamped_contact,
             "rail_bottom_y": 620,
-            "shoe_top_y": 690,
+            "shoe_top_y": 620 if clamped_contact else 690,
             "clearance_sample": [350, 655],
         },
     }
+    if clamped_contact:
+        constraints["shoe_contact"] = {
+            "ok": bool(contact_surface and shoe_material_below),
+            "required": True,
+            "rail_bottom_y": 620,
+            "shoe_top_y": 620,
+            "contact_y": 620,
+            "contact_sample": [350, 620],
+            "shoe_material_sample": [350, 650],
+        }
+    return constraints
 
 
 def _deterministic_chamber_constraint_certificate(png: bytes, caption: str) -> dict:
@@ -9650,6 +9748,12 @@ def _certified_geometry_dissent_category(value: str) -> str:
                 text,
             )):
         return "threaded_shank_path"
+    if ("clamping shoe" in text and
+            re.search(r"\b(?:rail|lower face)\b", text) and
+            "clamped state" in text and
+            re.search(r"\b(?:bear|contact|no gap)\w*\b", text) and
+            re.search(r"\b(?:gap|not|separat)\w*\b", text)):
+        return "shoe_contact"
     if ("clamping shoe" in text and "rail" in text and
             re.search(
                 r"\b(?:clearance|contact|gap|separat|touch)\w*\b",
