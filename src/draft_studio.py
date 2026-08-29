@@ -408,6 +408,10 @@ must specify a broken cutting-plane line, both physical endpoints, its alignment
 direction of both arrows. Put the same repeated designation N at both ends so the brief expressly
 says line N-N. A section designation is drawing annotation, not a reference numeral: never add it
 to numerals.md or the figure's reference-numeral list.
+An axial section through a hollow cylindrical part shows two opposed sectioned walls separated by
+the open bore. An annulus is the appearance in a transverse section. Keep the view orientation,
+the sectioned walls, and the through-bore consistent instead of changing one to excuse rendered
+pixels.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 leader lines, cutting lines, arrows, and section designations deterministically. Describe the

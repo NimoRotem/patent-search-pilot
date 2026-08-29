@@ -301,6 +301,25 @@ def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_an_axial_hollow_cylinder_cannot_be_specified_as_an_annulus():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A cross-sectional view taken on line 8-8 of FIG. 2. A single drill bushing 14 is "
+            "shown in cross-section inside a carriage. The drill bushing is cylindrical, so "
+            "its cross-section is a hatched annulus. The drill bushing has a vertical "
+            "cylindrical bore passing completely through it. A threaded shank descends "
+            "through the carriage beside the bushing."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "axial section" in check["items"][0]
+    assert "two opposed sectioned walls" in check["items"][0]
+
+
 def test_a_figure_numeral_cannot_target_a_different_grouping_shape():
     figures = [{
         **FIGURES[0],
@@ -2838,6 +2857,9 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "cutting-plane line" in system
     assert "same repeated designation" in normalized
     assert "not a reference numeral" in normalized
+    assert "axial section through a hollow cylindrical part" in normalized
+    assert "two opposed sectioned walls" in normalized
+    assert "transverse section" in normalized
     assert "broad interior target" in draft_studio.FINALIZE_PROMPT
     assert "generic negative linework controls" in draft_studio.FINALIZE_PROMPT
     assert "generic face-linework controls" in draft_studio.FINALIZE_PROMPT

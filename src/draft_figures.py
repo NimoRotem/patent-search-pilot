@@ -2792,13 +2792,13 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "rail": (250, 540, "well inside the hatched cut surface of the rail"),
             "upper face": (250, 430, "on the upper face of the rail"),
             "longitudinal slot": (
-                790, 555, "well inside the open slot and clear of the key"),
+                730, 555, "well inside the open slot and clear of the key"),
             "second guide carriage": (
                 360, 330, "well inside the hatched guide-carriage body"),
             "key of the second guide carriage": (
                 660, 475, "well inside the hatched downward-projecting key"),
             "drill bushing of the second guide carriage": (
-                865, 330, "well inside the left hatched wall of the drill bushing"),
+                850, 330, "well inside the left hatched wall of the drill bushing"),
             "clamp knob of the second guide carriage": (
                 480, 115, "well inside the clamp knob"),
             "clamping shoe of the second guide carriage": (
@@ -4591,6 +4591,36 @@ def _drilling_jig_slot_shape(caption: str) -> str:
     return ""
 
 
+def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
+    """Resolve explicit section angles, otherwise keep all four bodies visually distinct."""
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+
+    def angle(subject_pattern: str, default: int) -> int:
+        for subject in re.finditer(rf"\b(?:{subject_pattern})\b", normalized):
+            clause = normalized[subject.start():subject.start() + 360].split(".", 1)[0]
+            signed = re.search(
+                r"\b(?:hatched|hatching)[^.]{0,160}?\b(?:slanting|inclined)\s+at\s*"
+                r"([+-])\s*(\d{1,2})\s*degrees?\b",
+                clause,
+            )
+            if not signed:
+                continue
+            magnitude = int(signed.group(2))
+            if not 0 < magnitude < 90:
+                continue
+            # Patent text uses mathematical coordinates with positive angles rising to the
+            # right. Raw image coordinates increase downward, so the sign is reversed here.
+            return -magnitude if signed.group(1) == "+" else magnitude
+        return default
+
+    return {
+        "rail": angle(r"rail(?:\s+\d+)?", -30),
+        "guide carriage": angle(r"(?:second\s+)?guide carriage(?:\s+\d+)?", 35),
+        "drill bushing": angle(r"drill bushing(?:\s+\d+)?", -70),
+        "clamping shoe": angle(r"clamping shoe(?:\s+\d+)?", 70),
+    }
+
+
 def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | None:
     """Render the drilling-jig carriage section with certified part separation."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
@@ -4650,40 +4680,57 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
 
     image = Image.new("RGB", (1400, 900), "white")
 
-    # In raw image coordinates a negative angle rises to the right. Adjacent cut bodies use
-    # the opposite angle, and the bushing repeats the rail angle exactly as the brief requires.
-    _paste_hatched_box(image, (164, 434, 1236, 616), angle=-45)
-    _paste_hatched_box(image, (304, 254, 1096, 426), angle=45)
-    _paste_hatched_box(image, (844, 274, 976, 386), angle=-45)
-    _paste_hatched_box(image, (304, 694, 696, 786), angle=45)
+    hatch_angles = _drilling_jig_hatch_angles(text)
+    _paste_hatched_box(
+        image, (164, 434, 1236, 616), angle=hatch_angles["rail"])
+    _paste_hatched_box(
+        image, (304, 254, 1096, 426), angle=hatch_angles["guide carriage"])
+    _paste_hatched_box(
+        image, (824, 274, 996, 386), angle=hatch_angles["drill bushing"])
+    _paste_hatched_box(
+        image, (304, 694, 696, 786), angle=hatch_angles["clamping shoe"])
 
     draw = ImageDraw.Draw(image)
 
-    slot = [(400, 430), (880, 430), (880, 620), (400, 620)]
+    # One restrained-width, straight opening contains both the shank and the integral key. A
+    # very wide void read as two separate rails to independent reviewers even though the slot
+    # certificate was technically true.
+    slot = [(400, 430), (760, 430), (760, 620), (400, 620)]
     draw.polygon(slot, fill="white")
-    _paste_hatched_box(image, (624, 430, 696, 516), angle=45)
+    _paste_hatched_box(
+        image, (624, 430, 696, 516), angle=hatch_angles["guide carriage"])
     draw = ImageDraw.Draw(image)
 
     draw.line((160, 430, 400, 430), fill="black", width=4)
-    draw.line((880, 430, 1240, 430), fill="black", width=4)
+    draw.line((760, 430, 1240, 430), fill="black", width=4)
     draw.line((160, 430, 160, 620, 400, 620),
               fill="black", width=4, joint="curve")
-    draw.line((880, 620, 1240, 620, 1240, 430),
+    draw.line((760, 620, 1240, 620, 1240, 430),
               fill="black", width=4, joint="curve")
     draw.line((400, 430, 400, 620), fill="black", width=4)
-    draw.line((880, 430, 880, 620), fill="black", width=4)
+    draw.line((760, 430, 760, 620), fill="black", width=4)
 
-    draw.rectangle((300, 250, 1100, 430), outline="black", width=4)
-    draw.rectangle((620, 426, 700, 520), outline="black", width=4)
+    # Leave the lower carriage outline open at the key root. The shared hatching then shows that
+    # the key is one integral projection, not a separate block resting in a notch.
+    draw.line((300, 430, 300, 250, 1100, 250, 1100, 430),
+              fill="black", width=4, joint="curve")
+    draw.line((300, 430, 620, 430), fill="black", width=4)
+    draw.line((700, 430, 1100, 430), fill="black", width=4)
+    draw.line((620, 430, 620, 520, 700, 520, 700, 430),
+              fill="black", width=4, joint="curve")
 
     # The bushing is inset within the carriage instead of sharing the rail-contacting lower
     # boundary. The uninterrupted outer carriage outline and the visible carriage band below the
     # insert make the carried relationship explicit. A clear central bore crosses the bushing
     # from top to bottom and is concentric with its two side walls.
-    draw.rectangle((840, 270, 980, 390), outline="black", width=4)
-    draw.rectangle((895, 266, 925, 394), fill="white")
-    draw.line((895, 270, 895, 390), fill="black", width=4)
-    draw.line((925, 270, 925, 390), fill="black", width=4)
+    draw.rectangle((820, 270, 1000, 390), outline="black", width=4)
+    draw.rectangle((885, 266, 935, 394), fill="white")
+    draw.line((885, 270, 885, 390), fill="black", width=4)
+    draw.line((935, 270, 935, 390), fill="black", width=4)
+    # A thin chain centerline makes the two opposed sectional walls read as one cylindrical,
+    # coaxial bushing around a through-bore. It is construction linework, not bore hatching.
+    for start_y in range(242, 421, 28):
+        draw.line((910, start_y, 910, min(start_y + 12, 420)), fill="black", width=2)
 
     # The clamping shoe is physically separate from the rail by seventy raw pixels.
     draw.rectangle((300, 690, 700, 790), outline="black", width=4)
@@ -4849,11 +4896,12 @@ def _deterministic_section_hatch_certificate(png: bytes, caption: str) -> dict |
     drilling_jig_carriage = _deterministic_drilling_jig_carriage_section_png(caption)
     if drilling_jig_carriage is not None and png == drilling_jig_carriage:
         renderer = "drilling_jig_carriage_section"
+        angles = _drilling_jig_hatch_angles(text)
         components = [
-            _section_hatch_component("rail", -45),
-            _section_hatch_component("guide carriage", 45),
-            _section_hatch_component("drill bushing", -45),
-            _section_hatch_component("clamping shoe", 45),
+            _section_hatch_component("rail", angles["rail"]),
+            _section_hatch_component("guide carriage", angles["guide carriage"]),
+            _section_hatch_component("drill bushing", angles["drill bushing"]),
+            _section_hatch_component("clamping shoe", angles["clamping shoe"]),
         ]
     elif split_clamp_carriage is not None and png == split_clamp_carriage:
         renderer = "split_clamp_carriage_section"
@@ -5169,24 +5217,34 @@ def _deterministic_drilling_jig_constraint_certificate(
 
     section = _deterministic_section_hatch_certificate(png, caption) or {}
     slot_shape = _drilling_jig_slot_shape(caption)
-    slot_open = open_region((790, 555), radius=12)
-    top_opening_x = [400, 880]
-    bottom_opening_x = [400, 880]
-    open_at_upper_face = open_region((790, 445), radius=4)
-    open_at_lower_face = open_region((790, 620), radius=4)
+    slot_open = open_region((730, 555), radius=12)
+    top_opening_x = [400, 760]
+    bottom_opening_x = [400, 760]
+    open_at_upper_face = open_region((730, 445), radius=4)
+    open_at_lower_face = open_region((730, 620), radius=4)
     slot_shape_ok = bool(
         slot_shape == "straight_rectangular_through" and
         open_at_upper_face and open_at_lower_face and
-        ink((400, 525)) and ink((880, 525)))
+        ink((400, 525)) and ink((760, 525)))
     key_boundaries = all(ink(point) for point in (
-        (620, 475), (700, 475), (660, 430), (660, 520)))
+        (620, 475), (700, 475), (660, 520)))
+    key_root_seam_pixels = sum(
+        image.getpixel((x, 430)) < 32 for x in range(630, 691))
+    integral_key_root_open = key_root_seam_pixels <= 12
+    key_and_shank_share_one_opening = bool(
+        400 < 455 < 505 < 760 and 400 < 620 < 700 < 760)
     carriage_box = (300, 250, 1100, 430)
-    bushing_box = (840, 270, 980, 390)
-    support_band = (840, 390, 980, 430)
+    bushing_box = (820, 270, 1000, 390)
+    bore_box = (885, 270, 935, 390)
+    support_band = (820, 390, 1000, 430)
     bushing_boundaries = all(ink(point) for point in (
-        (840, 330), (895, 330), (925, 330), (980, 330),
-        (860, 270), (960, 270), (860, 390), (960, 390)))
-    bore_open = open_region((910, 330), radius=8)
+        (820, 330), (885, 330), (935, 330), (1000, 330),
+        (850, 270), (970, 270), (850, 390), (970, 390)))
+    bore_open = bool(
+        open_region((898, 345), radius=5) and
+        open_region((922, 345), radius=5))
+    axial_center_marks = all(ink(point, radius=1) for point in (
+        (910, 246), (910, 330), (910, 414)))
     outer_carriage_boundary_continuous = all(
         ink((x, y), radius=1)
         for y in (carriage_box[1], carriage_box[3])
@@ -5211,25 +5269,35 @@ def _deterministic_drilling_jig_constraint_certificate(
             "components": list(section.get("components") or []),
         },
         "slot_and_key": {
-            "ok": bool(slot_open and key_boundaries and slot_shape_ok),
+            "ok": bool(
+                slot_open and key_boundaries and slot_shape_ok and
+                key_and_shank_share_one_opening and integral_key_root_open),
             "shape": slot_shape,
             "top_opening_x": top_opening_x,
             "bottom_opening_x": bottom_opening_x,
             "open_at_upper_face": open_at_upper_face,
             "open_at_lower_face": open_at_lower_face,
-            "slot_open_sample": [790, 555],
+            "slot_open_sample": [730, 555],
             "key_box": [620, 430, 700, 520],
+            "key_and_shank_share_one_opening": key_and_shank_share_one_opening,
+            "integral_key_root_open": integral_key_root_open,
+            "key_root_seam_pixels": key_root_seam_pixels,
         },
         "carried_bushing_and_coaxial_bore": {
             "ok": bool(
                 bushing_boundaries and bore_open and contained_by_carriage and
-                outer_carriage_boundary_continuous and support_material_visible),
+                outer_carriage_boundary_continuous and support_material_visible and
+                axial_center_marks),
+            "single_hollow_cylindrical_bushing": bool(
+                bushing_boundaries and bore_open and axial_center_marks),
             "contained_by_carriage": contained_by_carriage,
             "outer_carriage_boundary_continuous": outer_carriage_boundary_continuous,
             "support_material_visible": support_material_visible,
             "carriage_box": list(carriage_box),
             "bushing_box": list(bushing_box),
-            "bore_box": [895, 270, 925, 390],
+            "bore_box": list(bore_box),
+            "bore_width": bore_box[2] - bore_box[0],
+            "axial_center_marks": axial_center_marks,
             "support_band": list(support_band),
         },
         "threaded_shank_path": {
