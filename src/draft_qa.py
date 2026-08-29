@@ -1015,6 +1015,10 @@ def _figure_checks(sections: Mapping[str, str],
 # ---------------------------------------------------------------------------------------------
 # Claims
 # ---------------------------------------------------------------------------------------------
+STANDARD_TOTAL_CLAIMS = 20
+STANDARD_INDEPENDENT_CLAIMS = 3
+
+
 def split_claims(claims_text: str) -> list[dict[str, Any]]:
     """Split a numbered claim set into individual claims, preserving the numbers as written."""
     text = (claims_text or "").strip()
@@ -1192,6 +1196,26 @@ def _claim_checks(claims_text: str, spec_text: str) -> list[dict[str, Any]]:
         out.append(_check("At least one independent claim", "pass",
                           f"{len(independents)} independent claim(s): "
                           f"{[c['number'] for c in independents]}."))
+
+    excess_claim_items = []
+    if len(claims) > STANDARD_TOTAL_CLAIMS:
+        excess_claim_items.append(
+            f"{len(claims)} total claims exceeds the standard {STANDARD_TOTAL_CLAIMS}")
+    if len(independents) > STANDARD_INDEPENDENT_CLAIMS:
+        excess_claim_items.append(
+            f"{len(independents)} independent claims exceeds the standard "
+            f"{STANDARD_INDEPENDENT_CLAIMS}")
+    if excess_claim_items:
+        out.append(_check(
+            "Standard USPTO claim count", "fail",
+            "USPTO excess-claim fees apply above 20 total claims or three independent claims. "
+            "Consolidate overlapping fallbacks while preserving source-supported coverage.",
+            severity="error", items=excess_claim_items))
+    else:
+        out.append(_check(
+            "Standard USPTO claim count", "pass",
+            f"The set has {len(claims)} total claim(s) and {len(independents)} independent "
+            "claim(s), within the standard no-excess-claim-fee counts."))
 
     out.append(_claim_parallel_verb_forms(claims))
     out.append(_antecedent_basis(claims))
