@@ -9273,3 +9273,16 @@ def test_drilling_jig_carriage_section_has_exact_geometry_hatching_and_anchors()
         item.get("anchor_source") ==
         draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
         for item in semantic["anchors"])
+
+
+def test_drilling_jig_carriage_section_accepts_a_pronoun_split_surface_relationship():
+    specification = re.sub(
+        r"The second guide carriage 70 sits on the upper face 12 of the\s+rail 10\.",
+        "The second guide carriage 70 is depicted as a single solid body. It sits on the "
+        "upper face 12 of the rail 10.",
+        _drilling_jig_carriage_section_specification(),
+    )
+
+    assert "It sits on the upper face" in specification
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is not None
