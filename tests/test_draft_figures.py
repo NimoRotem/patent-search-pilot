@@ -10188,11 +10188,11 @@ def _current_unhatched_clamped_first_carriage_section_specification():
     The key 52 has a width that closely fits the slot 16.
 
     A single, cylindrical drill bushing 54 is seated in a vertical bore within the first guide
-    carriage 50. In this cross-sectional view, the drill bushing 54 appears as a hollow annulus,
-    with its solid wall shown in section with hatching. The drill bushing 54 has a central, vertical
-    bore passing completely through it. The central axis of the bore of the drill bushing 54 is
-    vertically aligned with the central axis of the longitudinal slot 16 of the rail 10. This
-    alignment creates a continuous, straight passage.
+    carriage 50. In this axial cross-section, the drill bushing 54 is shown as two opposed sectioned
+    walls separated by the central, vertical bore that passes completely through it. The vertical
+    central axis of the bore of the drill bushing 54 lies in the vertical longitudinal center plane
+    of the longitudinal slot 16 of the rail 10. This alignment creates a continuous, straight
+    passage.
 
     The clamp knob 58 is shown in elevation above the first guide carriage 50. A threaded shank,
     which is part of the clamp knob 58, extends vertically downward from the knob. The shank passes
