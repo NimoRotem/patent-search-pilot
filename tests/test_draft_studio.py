@@ -2029,6 +2029,51 @@ def test_drafting_agent_has_a_filing_clean_default_for_no_government_support():
     assert "government-support section" in draft_studio.DRAFT_SYSTEM
 
 
+def test_deterministic_source_gate_rejects_an_unsupported_close_fit(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "disclosure.md").write_text(
+        "A key passes into a longitudinal slot and prevents rotation while allowing sliding.",
+        encoding="utf-8",
+    )
+    (input_dir / "conversation.md").write_text(
+        "The key is received in the slot.", encoding="utf-8")
+    draft_workspace.write_figures(tmp_path, [{
+        "label": "FIG. 5",
+        "caption": "The key 52 has a width that fits closely within the slot 16.",
+        "numerals": ["52 key", "16 slot"],
+    }])
+
+    findings = draft_qa.deterministic_source_fidelity_findings(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0]["where"].startswith("figures/FIG-5.md:")
+    assert "close-fit" in findings[0]["title"].lower()
+    assert "fits closely within" in findings[0]["evidence"]
+    enforced = draft_qa.enforce_deterministic_source_fidelity({
+        "status": "complete", "verdict": "pass", "summary": "Model review passed.",
+        "checks": [], "findings": [], "counts": {},
+    }, tmp_path)
+    assert enforced["verdict"] == "fail"
+    assert enforced["checks"][0]["status"] == "fail"
+    assert enforced["findings"] == findings
+
+    (input_dir / "disclosure.md").write_text(
+        "A drill bushing has a press fit within a carriage.", encoding="utf-8")
+    assert len(draft_qa.deterministic_source_fidelity_findings(tmp_path)) == 1
+
+    (input_dir / "disclosure.md").write_text(
+        "The key fits closely within the longitudinal slot.", encoding="utf-8")
+    assert draft_qa.deterministic_source_fidelity_findings(tmp_path) == []
+
+    draft_workspace.write_figures(tmp_path, [{
+        "label": "FIG. 5",
+        "caption": "The key 52 has a width that fits within the slot 16.",
+        "numerals": ["52 key", "16 slot"],
+    }])
+    assert draft_qa.deterministic_source_fidelity_findings(tmp_path) == []
+
+
 def test_standard_exports_contain_only_clean_application_text():
     from docx import Document
     version = {"version_no": 1, "sections": GOOD, "status": "approved"}

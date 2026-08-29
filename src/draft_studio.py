@@ -2625,6 +2625,15 @@ class TurnRunner:
                 self.repository.save_source_review_cache(source_hash, report)
             except Exception:                                  # a cache write is only an optimization
                 traceback.print_exc()
+        enforced_report = human_text(
+            draft_qa.enforce_deterministic_source_fidelity(report, workspace))
+        if enforced_report != report:
+            report = enforced_report
+            self._source_review_cache[source_hash] = report
+            try:
+                self.repository.save_source_review_cache(source_hash, report)
+            except Exception:                                  # a cache write is only an optimization
+                traceback.print_exc()
         return report
 
     def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
