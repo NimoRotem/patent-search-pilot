@@ -1633,8 +1633,16 @@ WHAT TO CHECK, in this order of importance:
    Inspect the claim set for useful supported dependent coverage of each commercially distinct
    embodiment and safety or recovery mode, and report a material omission as claim_scope only when
    a filing-clean claim can be made from the existing source. Do not require every optional feature
-   in an independent claim. Do not demand coverage of filing formalities, motivations, background
-   observations, rejected or corrective passages, or wording that is merely redundant.
+   in an independent claim. Description-only preservation is not claim coverage. When the claim
+   set remains below 20 total claims, treat a disclosed capability as a material claim_scope
+   omission when it supplies a commercially distinct technical operation or a technical safeguard
+   against misconfiguration or failure and is not already necessarily recited. Installation or
+   calibration controls, tamper-evident technical records, recovery or fallback behavior, and
+   serviceable technical modules are examples when technically supported. A passing summary may
+   leave such a feature description-only only by naming it and giving a concrete reason that it is
+   redundant, nontechnical, inseparable from an existing limitation, or would exceed the standard
+   claim count. Do not demand coverage of filing formalities, motivations, background observations,
+   rejected or corrective passages, or wording that is merely redundant.
 
 2. FIGURES, NUMERALS AND DESCRIPTIONS AGREE.
    Every reference numeral labels one part and only that part, everywhere it appears. The part a
@@ -1739,7 +1747,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v15-bidirectional-disclosure-coverage"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v16-material-dependent-claim-coverage"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1818,8 +1826,16 @@ relationship or leaves a stated problem without its disclosed solution. Inspect 
 useful supported dependent coverage of each commercially distinct embodiment and safety or
 recovery mode. Report a material claim omission as claim_scope only when a filing-clean claim can
 be made from the existing source. Do not require every optional feature in an independent claim.
-Do not demand coverage of filing formalities, motivations, background observations, rejected or
-corrective passages, or wording that is merely redundant.
+Description-only preservation is not claim coverage. When the claim set remains below 20 total
+claims, treat a disclosed capability as a material claim_scope omission when it supplies a
+commercially distinct technical operation or a technical safeguard against misconfiguration or
+failure and is not already necessarily recited. Installation or calibration controls,
+tamper-evident technical records, recovery or fallback behavior, and serviceable technical modules
+are examples when technically supported. A passing summary may leave such a feature
+description-only only by naming it and giving a concrete reason that it is redundant, nontechnical,
+inseparable from an existing limitation, or would exceed the standard claim count. Do not demand
+coverage of filing formalities, motivations, background observations, rejected or corrective
+passages, or wording that is merely redundant.
 
 Then check the text itself: claims and description must use the same relationships and terms;
 every numbered part must mean one thing; figure descriptions and briefs must depict only

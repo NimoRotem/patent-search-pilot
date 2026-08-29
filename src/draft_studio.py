@@ -299,7 +299,12 @@ and alternative embodiment unless a later affirmative USER passage withdraws or 
 Use supported dependent claims to cover commercially distinct embodiments and safety or recovery
 modes where claim form can capture them cleanly. Do not force every optional feature into an
 independent claim, and do not copy filing instructions, motivations, rejected details, or redundant
-wording as though they were technical embodiments.
+wording as though they were technical embodiments. Description-only preservation is not claim
+coverage. When the claim set remains below 20 total claims, include a source-supported dependent
+claim for each distinct technical safeguard against misconfiguration or failure and each distinct
+commercial technical capability that is not already necessarily recited. Installation or
+calibration controls, tamper-evident technical records, recovery or fallback behavior, and
+serviceable technical modules are examples when the source gives them technical substance.
 
 FILING-CLEAN OUTPUT IS ABSOLUTE
 No placeholder, drafting note, TODO, TBD, blank field, instruction to a draftsperson, question to
@@ -375,6 +380,8 @@ first time its part is named ("a suction cup 10"), and use the same words for it
 Figures live in figures/, one file per drawing, listing the numerals that appear on it - a numeral
 on a drawing that is not in the table, or a part described as visible in a figure whose file does
 not list it, is a defect the review will find. Every application must include at least one figure.
+Never leave two figure files with the same FIG. number. When renaming or replacing a figure brief,
+use the figure deletion tool to delete the superseded file before returning.
 Use a structural view, system diagram, or process flow as appropriate to the disclosed invention.
 Normally use two to four figures. Do not list more than eight numerals on one sheet. When more
 structure must be shown, add a focused detail or sectional sheet instead of overcrowding one image,

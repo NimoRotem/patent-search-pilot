@@ -2953,6 +2953,17 @@ def test_source_reviews_preserve_disclosed_features_in_both_directions():
         assert "commercially distinct embodiment" in prompt
         assert "Do not require every optional feature in an independent claim" in prompt
     assert "Never silently drop affirmative technical matter" in drafting_prompt
+    for prompt in (preflight, final_review, drafting_prompt):
+        assert "Description-only preservation is not claim coverage" in prompt
+        assert "below 20 total claims" in prompt
+        assert "technical safeguard against misconfiguration or failure" in prompt
+
+
+def test_drafting_prompt_removes_superseded_figure_briefs():
+    prompt = " ".join(draft_studio.DRAFT_SYSTEM.split())
+
+    assert "Never leave two figure files with the same FIG. number" in prompt
+    assert "delete the superseded file before returning" in prompt
 
 
 @pytest.mark.real_source_review
