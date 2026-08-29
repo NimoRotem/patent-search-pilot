@@ -80,6 +80,11 @@ MAX_CONVERSATION_CHARS = 32_000
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _NUMERAL_CELL_RE = re.compile(r"^\d{1,4}[a-zA-Z]?$", re.IGNORECASE)
+_PLAIN_NUMERAL_ROW_RE = re.compile(
+    r"^\s*(?:[-*+]\s+)?(?P<numeral>\d{1,4}[a-zA-Z]?)\s*"
+    r"(?:[:,]\s*|\s+-\s+)(?P<part>\S(?:.*\S)?)\s*$",
+    re.IGNORECASE,
+)
 
 
 def root() -> Path:
@@ -256,12 +261,19 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
         return []
     out: list[dict[str, str]] = []
     for line in raw.splitlines():
-        if not line.strip().startswith("|"):
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+            numeral, part = cells[0], cells[1]
+        else:
+            match = _PLAIN_NUMERAL_ROW_RE.fullmatch(line)
+            if not match:
+                continue
+            numeral, part = match.group("numeral"), match.group("part")
+        if not _NUMERAL_CELL_RE.fullmatch(numeral):
             continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 2 or not _NUMERAL_CELL_RE.fullmatch(cells[0]):
-            continue
-        numeral, part = cells[0], cells[1]
         if not numeral or part.lower() in ("part", "---", "") or set(part) <= {"-", " "}:
             continue
         out.append({"numeral": numeral, "part": part})
