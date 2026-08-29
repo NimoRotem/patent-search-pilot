@@ -9861,3 +9861,47 @@ def test_drilling_jig_carriage_section_accepts_current_live_separate_bushing_bri
 
     assert draft_figures._deterministic_drilling_jig_carriage_section_png(
         specification) is not None
+
+
+def test_drilling_jig_carriage_section_accepts_current_autonomous_repair_wording():
+    specification = """
+    A cross-sectional view taken on line 8-8 of FIG. 2.
+
+    The view shows four separate components in cross-section: the rail 10, the second guide
+    carriage 70, the drill bushing 74, and the clamping shoe 80. All four sectioned components
+    are shown with distinct hatching to indicate they are separate parts shown in cross-section.
+
+    The rail 10 is shown in cross-section. It has a flat upper face 12 and an opposite flat lower
+    face. A single, continuous, rectangular longitudinal slot 16 passes vertically through the
+    entire rail 10 from the upper face 12 to the lower face.
+
+    The second guide carriage 70 is a solid body shown in cross-section. It rests on the upper
+    face 12 of the rail 10. A key 72 projects downward from the second guide carriage 70 into the
+    longitudinal slot 16.
+
+    The drill bushing 74 is a single, continuous, hollow cylindrical part shown in cross-section,
+    seated within a bore in the second guide carriage 70. The cross-section shows the two walls
+    of the bushing as hatched regions on opposite sides of a central axis. A continuous, empty,
+    un-hatched central bore passes vertically through the center of the drill bushing 74.
+
+    The clamp knob 78 is shown in elevation above the second guide carriage 70. A threaded shank
+    extends downward from the clamp knob 78, passing through a hole in the body of the carriage
+    70, and then passing through the longitudinal slot 16 in the rail. The shank extends into the
+    clamping shoe 80.
+
+    The clamping shoe 80 is a solid body shown in cross-section, located underneath the rail 10.
+    There is a distinct, visible, empty space or gap between the upper surface of the clamping
+    shoe 80 and the lower face of the rail 10.
+    """
+
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "drilling_jig_carriage_section"
+    bore = certificate["certified_constraints"]["carried_bushing_and_coaxial_bore"]
+    assert bore["ok"] is True
+    assert bore["bore_mode"] == "empty_unmarked"
+    assert bore["bore_center_clear"] is True
+    assert bore["axial_center_marks"] is False
