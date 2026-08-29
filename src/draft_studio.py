@@ -305,6 +305,11 @@ claim for each distinct technical safeguard against misconfiguration or failure 
 commercial technical capability that is not already necessarily recited. Installation or
 calibration controls, tamper-evident technical records, recovery or fallback behavior, and
 serviceable technical modules are examples when the source gives them technical substance.
+Treat each conditional, temporal, negative, exception, threshold, actor, and verification
+relationship as an indivisible source constraint. Preserve qualifiers such as only, until, unless,
+after, before, remains, corresponding, independent, and expired in substance. Never replace
+sensor-confirmed agreement with human confirmation, a named sensed channel with a generic
+response, or an unexpired-token condition with generic authorization.
 No automatic fix may leave more than 20 total claims or more than three independent claims.
 When additional source-supported coverage is needed at either limit, consolidate redundant
 coverage or amend an existing claim instead of adding a claim that exceeds the limit.

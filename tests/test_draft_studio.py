@@ -3004,6 +3004,21 @@ def test_source_reviews_preserve_disclosed_features_in_both_directions():
         assert "technical safeguard against misconfiguration or failure" in prompt
 
 
+def test_drafting_and_review_preserve_compound_source_conditions_and_verifiers():
+    prompts = (
+        " ".join(draft_studio.DRAFT_SYSTEM.split()),
+        " ".join(draft_qa.SOURCE_REVIEW_SYSTEM.split()),
+        " ".join(draft_qa.REVIEW_SYSTEM.split()),
+    )
+
+    for prompt in prompts:
+        assert "conditional, temporal, negative, exception, threshold, actor, and verification" \
+            in prompt
+        assert "indivisible source constraint" in prompt
+        assert "sensor-confirmed agreement with human confirmation" in prompt
+        assert "unexpired-token condition with generic authorization" in prompt
+
+
 def test_drafting_and_review_repairs_respect_standard_claim_count_limits():
     instruction = (
         "No automatic fix may leave more than 20 total claims or more than three "
