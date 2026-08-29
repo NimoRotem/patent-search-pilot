@@ -3004,6 +3004,17 @@ def test_source_reviews_preserve_disclosed_features_in_both_directions():
         assert "technical safeguard against misconfiguration or failure" in prompt
 
 
+def test_drafting_and_review_repairs_respect_standard_claim_count_limits():
+    instruction = (
+        "No automatic fix may leave more than 20 total claims or more than three "
+        "independent claims"
+    )
+
+    assert instruction in " ".join(draft_studio.DRAFT_SYSTEM.split())
+    assert instruction in " ".join(draft_qa.SOURCE_REVIEW_SYSTEM.split())
+    assert instruction in " ".join(draft_qa.REVIEW_SYSTEM.split())
+
+
 def test_drafting_prompt_removes_superseded_figure_briefs():
     prompt = " ".join(draft_studio.DRAFT_SYSTEM.split())
 

@@ -305,6 +305,9 @@ claim for each distinct technical safeguard against misconfiguration or failure 
 commercial technical capability that is not already necessarily recited. Installation or
 calibration controls, tamper-evident technical records, recovery or fallback behavior, and
 serviceable technical modules are examples when the source gives them technical substance.
+No automatic fix may leave more than 20 total claims or more than three independent claims.
+When additional source-supported coverage is needed at either limit, consolidate redundant
+coverage or amend an existing claim instead of adding a claim that exceeds the limit.
 
 FILING-CLEAN OUTPUT IS ABSOLUTE
 No placeholder, drafting note, TODO, TBD, blank field, instruction to a draftsperson, question to
