@@ -1623,6 +1623,19 @@ WHAT TO CHECK, in this order of importance:
    characterisations trace to prior_art/ under step 4 instead; do not require the inventor's
    disclosure to describe the prior art.
 
+   Build the disclosure ledger in both directions. After tracing candidate matter back to the
+   sources, trace every affirmative source passage forward into the candidate. Verify that every
+   disclosed technical structure, relationship, operation, safety or recovery behavior,
+   installation or calibration procedure, data-recording behavior, and alternative embodiment is
+   preserved in the Detailed Description. Report silently omitted substantive technical matter as
+   a major disclosure_coverage finding, or as critical when the omission removes a core or safety
+   relationship or leaves a problem asserted by the application without its disclosed solution.
+   Inspect the claim set for useful supported dependent coverage of each commercially distinct
+   embodiment and safety or recovery mode, and report a material omission as claim_scope only when
+   a filing-clean claim can be made from the existing source. Do not require every optional feature
+   in an independent claim. Do not demand coverage of filing formalities, motivations, background
+   observations, rejected or corrective passages, or wording that is merely redundant.
+
 2. FIGURES, NUMERALS AND DESCRIPTIONS AGREE.
    Every reference numeral labels one part and only that part, everywhere it appears. The part a
    numeral labels in the detailed description is the part it labels in draft/numerals.md and on
@@ -1726,7 +1739,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v14-supported-drawing-notation"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v15-bidirectional-disclosure-coverage"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1794,6 +1807,19 @@ affirmative passage in the disclosure or conversation. Report every untraced ite
 disclosure_fidelity finding, including optional embodiments and dependent-claim limitations.
 Quote the candidate wording and the inventor passage that supports it. When no affirmative
 passage exists, say that explicitly and quote the nearest source passage that shows the gap.
+
+Build the disclosure ledger in both directions. After tracing candidate matter back to the
+sources, trace every affirmative source passage forward into the candidate. Verify that every
+disclosed technical structure, relationship, operation, safety or recovery behavior,
+installation or calibration procedure, data-recording behavior, and alternative embodiment is
+preserved in the Detailed Description. Report silently omitted substantive technical matter as a
+major disclosure_coverage finding, or as critical when the omission removes a core or safety
+relationship or leaves a stated problem without its disclosed solution. Inspect the claim set for
+useful supported dependent coverage of each commercially distinct embodiment and safety or
+recovery mode. Report a material claim omission as claim_scope only when a filing-clean claim can
+be made from the existing source. Do not require every optional feature in an independent claim.
+Do not demand coverage of filing formalities, motivations, background observations, rejected or
+corrective passages, or wording that is merely redundant.
 
 Then check the text itself: claims and description must use the same relationships and terms;
 every numbered part must mean one thing; figure descriptions and briefs must depict only

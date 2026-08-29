@@ -2941,6 +2941,20 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "Do not inspect or rely on rendered images" in preflight
 
 
+def test_source_reviews_preserve_disclosed_features_in_both_directions():
+    preflight = " ".join(draft_qa.SOURCE_REVIEW_SYSTEM.split())
+    final_review = " ".join(draft_qa.REVIEW_SYSTEM.split())
+    drafting_prompt = " ".join(draft_studio.DRAFT_SYSTEM.split())
+
+    for prompt in (preflight, final_review):
+        assert "Build the disclosure ledger in both directions" in prompt
+        assert "installation or calibration procedure" in prompt
+        assert "data-recording behavior" in prompt
+        assert "commercially distinct embodiment" in prompt
+        assert "Do not require every optional feature in an independent claim" in prompt
+    assert "Never silently drop affirmative technical matter" in drafting_prompt
+
+
 @pytest.mark.real_source_review
 def test_source_fidelity_preflight_blocks_rendering_unsupported_geometry(
         monkeypatch, tmp_path):
@@ -3991,6 +4005,28 @@ def test_internal_gate_resume_uses_a_legacy_candidate_without_a_result_marker():
     assert run.ok
     assert run.session_id == ""
     assert run.result["action"] == "revised"
+
+
+def test_repeated_gate_resume_reuses_a_saved_checkpoint_with_no_provider_session():
+    marker = {
+        "session_id": "", "model": "saved-candidate", "cost_usd": 0.0,
+        "duration_ms": 0, "num_turns": 0, "steps": [],
+        "result": {"action": "revised", "summary": "restored candidate",
+                   "reasoning": [], "changes": [], "questions": [],
+                   "prior_art_strategy": "", "answer": ""},
+    }
+    run = draft_studio._gate_resume_run({
+        "resuming_candidate_turn_id": 60,
+        "prepared_qa": {"_gate_resume": marker},
+    }, {
+        "id": 61, "kind": "gate_resume",
+        "idempotency_key": "auto-filing-repair-60-1",
+    })
+
+    assert run is not None
+    assert run.session_id == ""
+    assert run.model == "saved-candidate"
+    assert run.result["summary"] == "restored candidate"
 
 
 def test_client_qa_fix_cannot_reuse_a_prior_turn_gate_checkpoint():
