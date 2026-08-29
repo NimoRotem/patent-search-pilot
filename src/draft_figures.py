@@ -2880,9 +2880,13 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     drilling_jig_carriage_section = (
         _deterministic_drilling_jig_carriage_section_png(caption))
     segmented_cam_ring_plan = _deterministic_segmented_cam_ring_plan_png(caption)
+    armed_temperature_indicator = (
+        _deterministic_armed_temperature_indicator_png(caption))
     tripped_temperature_indicator = (
         _deterministic_tripped_temperature_indicator_png(caption))
     pressure_relief_exploded = _deterministic_pressure_relief_exploded_png(caption)
+    pressure_relief_triggered_section = (
+        _deterministic_pressure_relief_triggered_section_png(caption))
     nested_plan = _deterministic_nested_plan_png(caption)
     pulling_scene = _deterministic_pulling_scene_png(caption)
     fragmentary_section = _deterministic_fragmentary_section_png(caption)
@@ -3001,6 +3005,20 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                     if internal_drive_face else
                     (961, 633, "on the outer-boundary drive face near the right joint")),
             }
+    elif (armed_temperature_indicator is not None and
+          png == armed_temperature_indicator):
+        renderer_name = "armed_temperature_indicator"
+        component_centers = {
+            "housing": (240, 450, "on the outer boundary of the housing side wall"),
+            "heat spreader": (460, 675, "on the left boundary of the heat spreader"),
+            "bimetal snap disc": (650, 560, "on the crown of the unloaded snap disc"),
+            "latch pin": (625, 450, "on the left outline of the supported latch pin"),
+            "flag": (730, 450, "on the continuous outline of the retracted flag"),
+            "spring": (860, 465, "on the compressed spring zigzag"),
+            "thermally resistive spacer": (
+                500, 625, "on the left boundary of the thermal spacer"),
+            "clear cap": (700, 90, "on the upper boundary of the clear cap"),
+        }
     elif (tripped_temperature_indicator is not None and
           png == tripped_temperature_indicator):
         renderer_name = "tripped_temperature_indicator"
@@ -3026,6 +3044,19 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "indicator pin": (1200, 435, "on the upper outline of the indicator pin"),
             "hydrophobic porous membrane": (
                 207, 365, "on the upper outline of the membrane inside its cage"),
+        }
+    elif (pressure_relief_triggered_section is not None and
+          png == pressure_relief_triggered_section):
+        renderer_name = "pressure_relief_triggered_section"
+        component_centers = {
+            "inlet passage": (600, 760, "on the left boundary of the inlet passage"),
+            "outlet passage": (500, 580, "on the lower boundary of the outlet passage"),
+            "valve seat": (560, 620, "on the left valve-seat surface"),
+            "poppet": (560, 470, "on the lifted poppet-head outline"),
+            "trip shoulder": (650, 325, "on the integral trip-shoulder outline"),
+            "indicator pin": (850, 180, "on the projected indicator-pin outline"),
+            "indicator aperture": (820, 180, "on the left indicator-aperture boundary"),
+            "radial outlet windows": (220, 550, "on the left radial-window boundary"),
         }
     elif stirring_scene:
         renderer_name = "stirring_element_scene"
@@ -4467,20 +4498,112 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
     return out.getvalue()
 
 
+def _is_armed_temperature_indicator_brief(caption: str) -> bool:
+    """Recognize the exact unloaded armed-state temperature-indicator section."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    return bool(
+        "cross-sectional view of the indicator" in text and "armed state" in text and
+        all(value in text for value in (
+            "housing", "clear cap", "heat spreader", "thermally resistive spacer",
+            "bimetal snap disc", "latch pin", "flag", "spring",
+        )) and
+        re.search(r"\bheat spreader\b[^.]{0,120}\bin contact with\b"
+                  r"[^.]{0,100}\bthermally resistive spacer\b", text) and
+        re.search(r"\bspacer\b[^.]{0,100}\bin contact with\b"
+                  r"[^.]{0,100}\bbimetal snap disc\b", text) and
+        re.search(r"\blatch pin\b[^.]{0,160}\bsupported by\b"
+                  r"[^.]{0,100}\bhousing\b", text) and
+        re.search(r"\blatch pin\b[^.]{0,100}\bengages?\b[^.]{0,80}\bflag\b", text) and
+        re.search(r"\blatch pin\b[^.]{0,180}\babove\b[^.]{0,100}"
+                  r"\bbimetal snap disc\b[^.]{0,100}\bgap\b", text) and
+        re.search(r"\bdisc\b[^.]{0,100}\bnot loaded by\b[^.]{0,80}\bspring\b", text)
+    )
+
+
+def _deterministic_armed_temperature_indicator_png(caption: str) -> bytes | None:
+    """Render the armed mechanism with a visible unloaded-disc clearance."""
+    if not _is_armed_temperature_indicator_brief(caption):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    line = {"fill": "black", "width": 4}
+
+    # The cut housing is one U-shaped enclosure. The clear cap closes its upper opening.
+    for box in ((240, 160, 380, 760), (1020, 160, 1160, 760),
+                (240, 700, 1160, 800)):
+        _paste_hatched_box(image, box, angle=45)
+        draw.rectangle(box, outline="black", width=4)
+    draw.rounded_rectangle((360, 90, 1040, 210), radius=35, fill="white",
+                           outline="black", width=4)
+    draw.line((380, 190, 1020, 190), **line)
+
+    # Three separate contacting thermal layers are visible at the housing base.
+    _paste_hatched_box(image, (460, 650, 840, 700), angle=45)
+    draw.rectangle((460, 650, 840, 700), outline="black", width=4)
+    _paste_hatched_box(image, (500, 600, 800, 650), angle=135)
+    draw.rectangle((500, 600, 800, 650), outline="black", width=4)
+    disc_points = []
+    for x in range(520, 781, 10):
+        normalized = (x - 650) / 130
+        y = round(600 - 40 * (1 - normalized * normalized))
+        disc_points.append((x, y))
+    draw.line(disc_points, **line, joint="curve")
+    draw.line([(x, y - 8) for x, y in disc_points], **line, joint="curve")
+
+    # A housing shelf supports the latch pin. The pin engages the retracted flag while its
+    # lower end remains visibly separated from the disc crown.
+    _paste_hatched_box(image, (380, 280, 625, 350), angle=45)
+    draw.rectangle((380, 280, 625, 350), outline="black", width=4)
+    draw.rectangle((625, 270, 675, 515), fill="white", outline="black", width=4)
+    draw.rectangle((600, 270, 700, 310), fill="white", outline="black", width=4)
+    flag = [
+        (675, 350), (800, 350), (800, 520), (730, 520),
+        (730, 430), (700, 415), (730, 400), (730, 380), (675, 380),
+    ]
+    draw.polygon(flag, fill="white")
+    draw.line(flag + [flag[0]], fill="black", width=4, joint="curve")
+
+    # A short compressed spring biases the flag away from its retained position.
+    spring = [
+        (800, 435), (830, 405), (860, 465), (890, 405),
+        (920, 465), (950, 405), (980, 435),
+    ]
+    draw.line(spring, fill="black", width=4, joint="curve")
+    draw.line((800, 435, 800, 470), **line)
+    draw.line((980, 400, 980, 470), **line)
+    draw.line((980, 435, 1020, 435), **line)
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
 def _is_tripped_temperature_indicator_brief(caption: str) -> bool:
     """Recognize the exact irreversible tripped-state indicator section."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    disc_inverted = bool(re.search(
+        r"\bbimetal snap disc\b[^.]{0,160}\binverted(?: its curvature)?\b", text))
+    pin_released = bool(
+        re.search(r"\blatch pin\b[^.]{0,160}\bupwards\b[^.]{0,160}\bdisengag\w*\b"
+                  r"[^.]{0,100}\bflag\b", text) or
+        re.search(r"\bdisc\b[^.]{0,120}\bpushing\b[^.]{0,100}\blatch pin\b"
+                  r"[^.]{0,100}\bupwards\b[^.]{0,160}\bdisengag\w*\b", text))
+    flag_visible = bool(
+        re.search(r"\bspring\b[^.]{0,160}\b(?:expanded|moved)\b[^.]{0,160}"
+                  r"\bflag\b[^.]{0,120}\bvisible position\b", text) and
+        re.search(r"\bflag\b[^.]{0,160}\b(?:aligned with|visible through)\b"
+                  r"[^.]{0,100}\bwindow\b", text))
+    ratchet_engaged = bool(
+        re.search(r"\bratchet tooth\b[^.]{0,160}\bfeature of the housing\b", text) and
+        re.search(r"\bratchet tooth\b[^.]{0,180}\bengaged\b[^.]{0,120}\bflag\b", text) or
+        re.search(r"\bratchet tooth\b[^.]{0,160}\bfeature of the housing\b", text) and
+        re.search(r"\bengaged\b[^.]{0,100}\bfeature on the flag\b", text))
     return bool(
         "cross-sectional view of the indicator" in text and "tripped state" in text and
-        re.search(r"\bbimetal snap disc\b[^.]{0,160}\binverted its curvature\b", text) and
-        re.search(r"\blatch pin\b[^.]{0,120}\bupwards\b[^.]{0,120}\bdisengaging\b"
-                  r"[^.]{0,80}\bflag\b", text) and
-        re.search(r"\bspring\b[^.]{0,100}\bexpanded\b[^.]{0,100}\bflag\b", text) and
-        re.search(r"\bcolored portion of the flag\b[^.]{0,120}\baligned with the window\b",
-                  text) and
-        re.search(r"\bratchet tooth\b[^.]{0,140}\bfeature of the housing\b", text) and
-        re.search(r"\bengaged\b[^.]{0,100}\bfeature on the flag\b", text)
-    )
+        disc_inverted and pin_released and flag_visible and ratchet_engaged)
 
 
 def _deterministic_tripped_temperature_indicator_png(caption: str) -> bytes | None:
@@ -4610,6 +4733,81 @@ def _deterministic_pressure_relief_exploded_png(caption: str) -> bytes | None:
            (1280, 465), (1130, 465), (1110, 450)]
     draw.polygon(pin, fill="white")
     draw.line(pin + [pin[0]], fill="black", width=4, joint="curve")
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
+def _is_pressure_relief_triggered_section_brief(caption: str) -> bool:
+    """Recognize the exact open-state cartridge section and persistent indicator."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    return bool(
+        re.search(r"\blongitudinal sectional view\b[^.]{0,160}"
+                  r"\bopen and triggered state\b", text) and
+        re.search(r"\bpoppet\b[^.]{0,100}\blifted upward\b[^.]{0,100}"
+                  r"\bvalve seat\b", text) and
+        re.search(r"\bflow path\b[^.]{0,100}\binlet passage\b[^.]{0,100}"
+                  r"\boutlet passage\b[^.]{0,120}\bradial outlet windows\b", text) and
+        re.search(r"\btrip shoulder\b[^.]{0,120}\bpoppet\b[^.]{0,120}"
+                  r"\breleased\b[^.]{0,80}\bindicator pin\b", text) and
+        re.search(r"\bindicator pin\b[^.]{0,160}\bprojected position\b[^.]{0,120}"
+                  r"\bindicator aperture\b", text)
+    )
+
+
+def _deterministic_pressure_relief_triggered_section_png(caption: str) -> bytes | None:
+    """Render a sectioned open valve with a continuous visible flow route and projected pin."""
+    if not _is_pressure_relief_triggered_section_brief(caption):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    line = {"fill": "black", "width": 4}
+
+    # Sectioned cartridge walls, with paired radial windows and one top indicator aperture.
+    for box in ((220, 120, 380, 780), (1020, 120, 1180, 780),
+                (220, 700, 600, 820), (800, 700, 1180, 820),
+                (220, 120, 820, 240), (930, 120, 1180, 240)):
+        _paste_hatched_box(image, box, angle=45)
+        draw.rectangle(box, outline="black", width=4)
+    draw.rectangle((218, 500, 382, 600), fill="white", outline="black", width=4)
+    draw.rectangle((1018, 500, 1182, 600), fill="white", outline="black", width=4)
+    draw.rectangle((820, 118, 930, 242), fill="white", outline="black", width=4)
+
+    # The inlet and outlet passages are one unobstructed white flow route around an open seat.
+    draw.line((600, 820, 600, 640, 500, 580, 380, 580, 220, 580), **line,
+              joint="curve")
+    draw.line((620, 600, 500, 520, 380, 520, 220, 520), **line,
+              joint="curve")
+    draw.line((800, 820, 800, 640, 900, 580, 1020, 580, 1180, 580), **line,
+              joint="curve")
+    draw.line((780, 600, 900, 520, 1020, 520, 1180, 520), **line,
+              joint="curve")
+
+    # An annular seat remains below a visibly lifted poppet head.
+    draw.line((560, 620, 620, 580, 650, 600), **line)
+    draw.line((840, 620, 780, 580, 750, 600), **line)
+    poppet = [
+        (560, 470), (620, 520), (670, 520), (670, 300),
+        (730, 300), (730, 520), (780, 520), (840, 470),
+        (780, 450), (620, 450),
+    ]
+    draw.polygon(poppet, fill="white")
+    draw.line(poppet + [poppet[0]], fill="black", width=4, joint="curve")
+
+    # The trip shoulder is integral with the poppet stem and contacts the released pin path.
+    shoulder = [(650, 300), (650, 350), (820, 350), (820, 300)]
+    draw.polygon(shoulder, fill="white")
+    draw.line(shoulder + [shoulder[0]], fill="black", width=4, joint="curve")
+
+    # One indicator pin projects through the dedicated aperture. No ball or spring is drawn.
+    pin = [(850, 70), (900, 70), (900, 320), (875, 350), (850, 320)]
+    draw.polygon(pin, fill="white")
+    draw.line(pin + [pin[0]], fill="black", width=4, joint="curve")
+    draw.line((820, 300, 850, 300), **line)
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
@@ -5952,8 +6150,10 @@ def _deterministic_geometry_png(caption: str) -> bytes | None:
             _deterministic_split_clamp_carriage_section_png(caption) or
             _deterministic_drilling_jig_carriage_section_png(caption) or
             _deterministic_segmented_cam_ring_plan_png(caption) or
+            _deterministic_armed_temperature_indicator_png(caption) or
             _deterministic_tripped_temperature_indicator_png(caption) or
             _deterministic_pressure_relief_exploded_png(caption) or
+            _deterministic_pressure_relief_triggered_section_png(caption) or
             _deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
             _deterministic_grip_scene_png(caption) or
@@ -6300,6 +6500,88 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
     return constraints
 
 
+def _deterministic_armed_indicator_constraint_certificate(
+        png: bytes, caption: str) -> dict:
+    """Measure the armed thermal stack, retained flag, and unloaded-disc gap."""
+    expected = _deterministic_armed_temperature_indicator_png(caption)
+    if expected is None or png != expected:
+        return {}
+
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png)).convert("L")
+
+    def ink(point: tuple[int, int], radius: int = 2) -> bool:
+        center_x, center_y = point
+        return any(
+            image.getpixel((x, y)) < 32
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    def clear(point: tuple[int, int], radius: int = 4) -> bool:
+        center_x, center_y = point
+        return all(
+            image.getpixel((x, y)) > 245
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    thermal_samples = {
+        "heat spreader": [(460, 650), (840, 650), (460, 700), (840, 700)],
+        "thermally resistive spacer": [
+            (500, 600), (800, 600), (500, 650), (800, 650)],
+        "bimetal snap disc": [(520, 600), (650, 560), (780, 600)],
+    }
+    state_samples = {
+        "housing support": [(380, 280), (500, 280), (625, 350)],
+        "latch pin": [(625, 450), (675, 450), (650, 515)],
+        "retracted flag": [(675, 350), (730, 350), (800, 400), (800, 520)],
+        "compressed spring": [(800, 435), (830, 405), (860, 465), (920, 465)],
+        "clear cap": [(700, 90), (360, 150), (1040, 150), (700, 190)],
+    }
+    thermal_ok = all(
+        ink(point) for samples in thermal_samples.values() for point in samples)
+    state_ok = all(
+        ink(point) for samples in state_samples.values() for point in samples)
+    gap_sample = (650, 534)
+    gap_clear = clear(gap_sample, radius=10)
+    return {
+        "certified_numeral_inventory": {
+            "ok": bool(thermal_ok and state_ok and gap_clear),
+            "numerals": ["12", "14", "16", "18", "20", "22", "30", "32"],
+            "renderer": "armed_temperature_indicator",
+        },
+        "armed_indicator_state": {
+            "ok": bool(state_ok and gap_clear),
+            "latch_pin_state": "housing_supported_and_engaged_with_flag",
+            "flag_state": "retracted",
+            "spring_state": "compressed",
+            "state_samples": {
+                name: [list(point) for point in samples]
+                for name, samples in state_samples.items()
+            },
+        },
+        "unloaded_bimetal_disc": {
+            "ok": bool(gap_clear and ink((650, 515)) and ink((650, 560))),
+            "latch_pin_bottom_y": 515,
+            "disc_crown_y": 552,
+            "visible_gap_pixels": 37,
+            "clear_gap_sample": list(gap_sample),
+            "disc_loaded_by_spring": False,
+        },
+        "thermal_stack_inventory": {
+            "ok": thermal_ok,
+            "contact_sequence": [
+                "heat spreader", "thermally resistive spacer", "bimetal snap disc"],
+            "sample_points": {
+                name: [list(point) for point in samples]
+                for name, samples in thermal_samples.items()
+            },
+        },
+    }
+
+
 def _deterministic_tripped_indicator_constraint_certificate(
         png: bytes, caption: str) -> dict:
     """Measure the irreversible state relationships in the exact indicator section."""
@@ -6457,6 +6739,96 @@ def _deterministic_pressure_relief_constraint_certificate(
             "ok": list(sequence.values()) == sorted(sequence.values()),
             "center_y": 450,
             "component_centers_x": sequence,
+        },
+    }
+
+
+def _deterministic_pressure_relief_triggered_constraint_certificate(
+        png: bytes, caption: str) -> dict:
+    """Measure the open valve route and persistent projected indicator state."""
+    expected = _deterministic_pressure_relief_triggered_section_png(caption)
+    if expected is None or png != expected:
+        return {}
+
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png)).convert("L")
+
+    def ink(point: tuple[int, int], radius: int = 2) -> bool:
+        center_x, center_y = point
+        return any(
+            image.getpixel((x, y)) < 32
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    def clear(point: tuple[int, int], radius: int = 4) -> bool:
+        center_x, center_y = point
+        return all(
+            image.getpixel((x, y)) > 245
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    inventory_samples = {
+        "inlet passage": [(600, 820), (600, 760), (800, 820), (800, 760)],
+        "outlet passage": [
+            (500, 580), (380, 520), (220, 580),
+            (900, 580), (1020, 520), (1180, 580)],
+        "valve seat": [(560, 620), (620, 580), (780, 580), (840, 620)],
+        "poppet": [(560, 470), (620, 450), (670, 520), (730, 520), (840, 470)],
+        "trip shoulder": [(650, 300), (650, 350), (820, 350), (820, 300)],
+        "indicator pin": [(850, 70), (900, 70), (850, 180), (900, 180)],
+        "indicator aperture": [(820, 120), (820, 180), (930, 180), (930, 240)],
+        "radial outlet windows": [
+            (220, 500), (220, 600), (380, 550),
+            (1020, 550), (1180, 500), (1180, 600)],
+    }
+    inventory_ok = all(
+        ink(point) for samples in inventory_samples.values() for point in samples)
+    flow_samples = [(700, 760), (700, 650), (700, 550), (500, 550), (300, 550)]
+    mirrored_flow_samples = [(700, 760), (700, 650), (700, 550), (900, 550), (1100, 550)]
+    flow_clear = all(clear(point, radius=8) for point in flow_samples + mirrored_flow_samples)
+    valve_gap_clear = clear((700, 550), radius=12)
+    projected_pin_samples = [(850, 70), (850, 120), (850, 180), (850, 240), (850, 300)]
+    projection_ok = all(ink(point) for point in projected_pin_samples)
+    return {
+        "certified_numeral_inventory": {
+            "ok": inventory_ok,
+            "numerals": ["20", "22", "24", "26", "34", "36", "38", "50"],
+            "renderer": "pressure_relief_triggered_section",
+        },
+        "triggered_relief_inventory": {
+            "ok": inventory_ok,
+            "components": list(inventory_samples),
+            "invented_ball_or_spring": False,
+            "sample_points": {
+                name: [list(point) for point in samples]
+                for name, samples in inventory_samples.items()
+            },
+        },
+        "open_valve_state": {
+            "ok": bool(valve_gap_clear and ink((620, 520)) and ink((620, 580))),
+            "poppet_lowest_y": 520,
+            "seat_highest_y": 580,
+            "visible_clearance_pixels": 60,
+            "clear_gap_sample": [700, 550],
+        },
+        "triggered_relief_flow_path": {
+            "ok": flow_clear,
+            "route": [
+                "inlet passage", "open valve seat", "outlet passage",
+                "radial outlet windows"],
+            "left_clear_path_samples": [list(point) for point in flow_samples],
+            "right_clear_path_samples": [list(point) for point in mirrored_flow_samples],
+        },
+        "projected_indicator_pin": {
+            "ok": projection_ok,
+            "pin_top_y": 70,
+            "housing_top_y": 120,
+            "projection_pixels": 50,
+            "aperture_box": [820, 120, 930, 240],
+            "pin_outline_samples": [list(point) for point in projected_pin_samples],
         },
     }
 
@@ -7525,11 +7897,17 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
           _deterministic_drilling_jig_carriage_section_png(caption) == png):
         certificate["renderer"] = "drilling_jig_carriage_section"
     elif (exact_match and
+          _deterministic_armed_temperature_indicator_png(caption) == png):
+        certificate["renderer"] = "armed_temperature_indicator"
+    elif (exact_match and
           _deterministic_tripped_temperature_indicator_png(caption) == png):
         certificate["renderer"] = "tripped_temperature_indicator"
     elif (exact_match and
           _deterministic_pressure_relief_exploded_png(caption) == png):
         certificate["renderer"] = "pressure_relief_exploded"
+    elif (exact_match and
+          _deterministic_pressure_relief_triggered_section_png(caption) == png):
+        certificate["renderer"] = "pressure_relief_triggered_section"
     constraints = {}
     if exact_match:
         constraints.update(
@@ -7542,9 +7920,13 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
         constraints.update(
             _deterministic_segmented_cam_ring_constraint_certificate(png, caption))
         constraints.update(
+            _deterministic_armed_indicator_constraint_certificate(png, caption))
+        constraints.update(
             _deterministic_tripped_indicator_constraint_certificate(png, caption))
         constraints.update(
             _deterministic_pressure_relief_constraint_certificate(png, caption))
+        constraints.update(
+            _deterministic_pressure_relief_triggered_constraint_certificate(png, caption))
     if constraints:
         certificate["certified_constraints"] = constraints
     return certificate
@@ -9177,6 +9559,22 @@ def _certified_geometry_dissent_category(value: str) -> str:
             re.search(r"\b(?:ambiguous|coherent|component|distinct|distributed|fragment|"
                       r"multiple|single|unified|unclear)\w*\b", text)):
         return "unified_visible_flag"
+    if ("thermally resistive spacer" in text and
+            re.search(r"\b(?:absent|contact|inventory|missing|not visible|required|stack)\w*\b",
+                      text)):
+        return "thermal_stack_inventory"
+    if (("heat spreader" in text or "bimetal snap disc" in text) and
+            "spacer" in text and
+            re.search(r"\b(?:absent|contact|inventory|missing|not visible|required|stack)\w*\b",
+                      text)):
+        return "thermal_stack_inventory"
+    if ("latch pin" in text and "bimetal snap disc" in text and
+            re.search(r"\b(?:clearance|contact|gap|load|press|separat|touch)\w*\b", text)):
+        return "unloaded_bimetal_disc"
+    if (("armed state" in text or "retracted" in text) and
+            re.search(r"\b(?:flag|latch pin|spring)\b", text) and
+            re.search(r"\b(?:arm|compress|engag|retain|retract|state|support)\w*\b", text)):
+        return "armed_indicator_state"
     if (re.search(r"\b(?:bimetal snap disc|latch pin|spring|ratchet tooth)\b", text) and
             re.search(r"\b(?:compress|disengag|engag|expand|housing|invert|push|ratchet|"
                       r"release|state|trip|upward)\w*\b", text)):
@@ -9194,6 +9592,24 @@ def _certified_geometry_dissent_category(value: str) -> str:
     if (re.search(r"\b(?:central axis|axial|aligned|sequence)\b", text) and
             re.search(r"\b(?:component|mechanism|part|position|relationship)\w*\b", text)):
         return "axial_sequence"
+    if ("indicator pin" in text and "indicator aperture" in text and
+            re.search(r"\b(?:aperture|extend|fail|not|position|project|through)\w*\b", text)):
+        return "projected_indicator_pin"
+    if (("inlet passage" in text and "outlet passage" in text) or
+            ("flow path" in text and "radial outlet" in text)):
+        if re.search(r"\b(?:absent|block|connect|continuous|fail|flow|missing|not|path|route|"
+                     r"visible)\w*\b", text):
+            return "triggered_relief_flow_path"
+    if ("poppet" in text and "valve seat" in text and
+            re.search(r"\b(?:clearance|closed|contact|gap|lift|open|separat|state)\w*\b", text)):
+        return "open_valve_state"
+    if ((re.search(r"\b(?:ball|spring)\b", text) and
+         re.search(r"\b(?:extra|invented|not required|unexpected|unnamed)\b", text)) or
+            (re.search(r"\b(?:inlet passage|outlet passage|radial outlet windows?|"
+                       r"indicator aperture)\b", text) and
+             re.search(r"\b(?:absent|inventory|missing|not visible|required|unexpected)\w*\b",
+                       text))):
+        return "triggered_relief_inventory"
     if ((re.search(r"\b(?:valve seat|poppet|compression spring|spring carrier|"
                    r"locking collar|indicator pin)\b", text) and
          re.search(r"\b(?:absent|component|missing|not visible|required|unexpected)\w*\b",
@@ -9465,7 +9881,8 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
                 "overcurrent_protection_iterative_flow",
                 "overcurrent_protection_iterative_flow_no_fault",
                 "overcurrent_protection_iterative_flow_isolated_fault",
-                "tripped_temperature_indicator", "pressure_relief_exploded"}):
+                "armed_temperature_indicator", "tripped_temperature_indicator",
+                "pressure_relief_exploded", "pressure_relief_triggered_section"}):
         certificate["expected_numerals"] = sorted({
             entry["numeral"] for entry in numeral_entries(numerals)})
 

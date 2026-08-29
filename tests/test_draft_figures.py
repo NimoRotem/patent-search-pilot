@@ -10331,6 +10331,93 @@ def test_tripped_indicator_renderer_certifies_irreversible_visible_state():
     } == {"10", "12", "16", "18", "20", "22", "24", "26"}
 
 
+def _armed_temperature_indicator_specification():
+    return """
+    A cross-sectional view of the indicator of FIG. 1, in its armed state.
+
+    The view is a vertical cross-section through the center of the indicator.
+    The housing 12 and clear cap 32 form an enclosure.
+    Inside, the heat spreader 14 is in contact with a thermally resistive spacer 30.
+    The spacer 30 is in contact with a bimetal snap disc 16.
+    A latch pin 18 is supported by a portion of the housing 12. The latch pin 18 engages a
+    flag 20, holding the flag 20 in a retracted position against the bias of a spring 22. The
+    latch pin 18 is positioned above the bimetal snap disc 16 with a small gap, such that the
+    disc is not loaded by the spring 22.
+
+    - 12 housing
+    - 14 heat spreader
+    - 16 bimetal snap disc
+    - 18 latch pin
+    - 20 flag
+    - 22 spring
+    - 30 thermally resistive spacer
+    - 32 clear cap
+    """
+
+
+def test_armed_indicator_renderer_certifies_unloaded_disc_and_complete_thermal_stack():
+    specification = _armed_temperature_indicator_specification()
+    numerals = [
+        "12 = housing", "14 = heat spreader", "16 = bimetal snap disc",
+        "18 = latch pin", "20 = flag", "22 = spring",
+        "30 = thermally resistive spacer", "32 = clear cap",
+    ]
+
+    png = draft_figures._deterministic_armed_temperature_indicator_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    assert certificate["renderer"] == "armed_temperature_indicator"
+    constraints = certificate["certified_constraints"]
+    assert constraints["armed_indicator_state"]["ok"] is True
+    assert constraints["unloaded_bimetal_disc"]["ok"] is True
+    assert constraints["unloaded_bimetal_disc"]["visible_gap_pixels"] >= 24
+    assert constraints["thermal_stack_inventory"]["ok"] is True
+    assert constraints["certified_numeral_inventory"]["numerals"] == [
+        "12", "14", "16", "18", "20", "22", "30", "32",
+    ]
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+    anchors = semantic["deterministic_anchor_certificate"]
+    assert anchors["ok"] is True
+    assert anchors["renderer"] == "armed_temperature_indicator"
+    assert {item["numeral"] for item in anchors["anchors"]} == {
+        "12", "14", "16", "18", "20", "22", "30", "32",
+    }
+
+
+def test_current_tripped_indicator_wording_selects_certified_renderer():
+    specification = """
+    A cross-sectional view of the indicator 10 of FIG. 1, in its tripped state.
+    The bimetal snap disc 16 has inverted, pushing the latch pin 18 upwards and disengaging it
+    from the flag 20. The spring 22 has moved the flag 20 into its visible position, aligned
+    with the window 24. A ratchet tooth 26, a feature of the housing 12, is now engaged with
+    the flag 20.
+    - 10 indicator
+    - 12 housing
+    - 16 bimetal snap disc
+    - 18 latch pin
+    - 20 flag
+    - 22 spring
+    - 24 window
+    - 26 ratchet tooth
+    """
+
+    png = draft_figures._deterministic_tripped_temperature_indicator_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    assert certificate["renderer"] == "tripped_temperature_indicator"
+    assert certificate["certified_constraints"]["tripped_indicator_state"]["ok"] is True
+
+
 def _pressure_relief_exploded_specification():
     return """
     An exploded perspective view of the internal valve and indicator mechanism of the pressure
@@ -10376,6 +10463,71 @@ def test_pressure_relief_exploded_renderer_certifies_complete_mechanism():
     assert anchors == {"24", "26", "28", "30", "32", "34", "36", "46"}
 
 
+def _pressure_relief_triggered_section_specification():
+    return """
+    ---
+    figure_num: 5
+    reference_numerals:
+      - 20
+      - 22
+      - 24
+      - 26
+      - 34
+      - 36
+      - 38
+      - 50
+    ---
+    A longitudinal sectional view of the cartridge in an open and triggered state.
+
+    The poppet 26 is shown lifted upward from the valve seat 24. This creates a flow path from
+    the inlet passage 20 to the outlet passage 22 and out through radial outlet windows 50.
+
+    The trip shoulder 34 on the poppet 26 has engaged and released the indicator pin 36.
+
+    The indicator pin 36 has moved upward to its projected position, extending through an
+    indicator aperture 38.
+    """
+
+
+def test_pressure_relief_triggered_section_certifies_open_flow_without_invented_parts():
+    specification = _pressure_relief_triggered_section_specification()
+    numerals = [
+        "20 = inlet passage", "22 = outlet passage", "24 = valve seat",
+        "26 = poppet", "34 = trip shoulder", "36 = indicator pin",
+        "38 = indicator aperture", "50 = radial outlet windows",
+    ]
+
+    png = draft_figures._deterministic_pressure_relief_triggered_section_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    assert certificate["renderer"] == "pressure_relief_triggered_section"
+    constraints = certificate["certified_constraints"]
+    assert constraints["triggered_relief_inventory"]["ok"] is True
+    assert constraints["triggered_relief_inventory"]["invented_ball_or_spring"] is False
+    assert constraints["open_valve_state"]["ok"] is True
+    assert constraints["triggered_relief_flow_path"]["ok"] is True
+    assert constraints["projected_indicator_pin"]["ok"] is True
+    assert constraints["certified_numeral_inventory"]["numerals"] == [
+        "20", "22", "24", "26", "34", "36", "38", "50",
+    ]
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+    anchors = semantic["deterministic_anchor_certificate"]
+    assert anchors["ok"] is True
+    assert anchors["renderer"] == "pressure_relief_triggered_section"
+    assert {item["numeral"] for item in anchors["anchors"]} == {
+        "20", "22", "24", "26", "34", "36", "38", "50",
+    }
+
+
 def test_current_live_renderer_findings_map_only_to_measured_constraints():
     assert draft_figures._certified_geometry_dissent_category(
         "The branch current sensor loop encircles both heavy horizontal lines.") == \
@@ -10404,6 +10556,20 @@ def test_current_live_renderer_findings_map_only_to_measured_constraints():
         "valve seat (24)") == "exploded_valve_inventory"
     assert draft_figures._certified_geometry_dissent_category(
         "membrane cage (required to hold 46)") == "membrane_and_cage"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The thermally resistive spacer 30 is missing.") == "thermal_stack_inventory"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The latch pin appears to press the bimetal snap disc rather than leaving a gap.") == \
+        "unloaded_bimetal_disc"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The inlet passage 20 and outlet passage 22 do not form a visible flow path.") == \
+        "triggered_relief_flow_path"
+    assert draft_figures._certified_geometry_dissent_category(
+        "A small ball and spring are shown but are not required.") == \
+        "triggered_relief_inventory"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The indicator pin does not project through the indicator aperture.") == \
+        "projected_indicator_pin"
 
 
 def test_tripped_indicator_certificate_resolves_only_exact_state_dissent():
@@ -10444,3 +10610,51 @@ def test_pressure_relief_certificate_resolves_exact_inventory_dissent_and_missin
     assert categories == [
         "certified_numeral_inventory", "exploded_valve_inventory", "membrane_and_cage",
     ]
+
+
+def test_armed_indicator_certificate_resolves_only_measured_state_dissent():
+    specification = _armed_temperature_indicator_specification()
+    png = draft_figures._deterministic_armed_temperature_indicator_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    categories = draft_figures._certified_geometry_dissent_categories(
+        errors=[
+            "The thermally resistive spacer 30 is missing.",
+            "The latch pin appears to press the bimetal snap disc rather than leaving a gap.",
+        ],
+        missing_geometry=[], missing=["30"], unexpected=[], duplicates=[],
+        certificate=certificate,
+    )
+
+    assert categories == [
+        "certified_numeral_inventory", "thermal_stack_inventory",
+        "unloaded_bimetal_disc",
+    ]
+
+
+def test_triggered_relief_certificate_resolves_only_measured_flow_dissent():
+    specification = _pressure_relief_triggered_section_specification()
+    png = draft_figures._deterministic_pressure_relief_triggered_section_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    categories = draft_figures._certified_geometry_dissent_categories(
+        errors=[
+            "The inlet passage 20 and outlet passage 22 do not form a visible flow path.",
+            "The indicator pin does not project through the indicator aperture.",
+        ],
+        missing_geometry=[], missing=["20", "50"],
+        unexpected=["A small ball and spring are shown but are not required."],
+        duplicates=[], certificate=certificate,
+    )
+
+    assert categories == [
+        "certified_numeral_inventory", "projected_indicator_pin",
+        "triggered_relief_flow_path", "triggered_relief_inventory",
+    ]
+
+    unresolved = draft_figures._certified_geometry_dissent_categories(
+        errors=["The cartridge silhouette is generally confusing."],
+        missing_geometry=[], missing=[], unexpected=[], duplicates=[],
+        certificate=certificate,
+    )
+    assert unresolved is None
