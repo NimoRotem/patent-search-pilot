@@ -8563,7 +8563,16 @@ def test_endpoint_review_specs_strip_geometry_only_annotation_prohibitions(monke
     monkeypatch.setattr(
         draft_figures, "_review_specification",
         lambda *args, **kwargs: modes.append(kwargs["geometry_only"]) or "{}")
-    cached = iter([accepted_leader_audit(), accepted_marked_anchor_audit()])
+    spec_hash = draft_figures.specification_hash(
+        "FIG. 1", caption, ["10 = body"])
+    cached = iter([
+        accepted_leader_audit(),
+        accepted_marked_anchor_audit(
+            specification_hash=spec_hash,
+            coordinate_space="raw_pixels", coordinate_width=640, coordinate_height=420,
+            cross_provider_audit=accepted_cross_provider_audit(
+                specification_hash=spec_hash)),
+    ])
     monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *args: next(cached))
 
     draft_figures.inspect_leaders(
