@@ -10160,3 +10160,280 @@ def test_cold_chain_certificate_resolves_only_measured_live_dissent():
         "lid_gasket_shell_stack",
         "peripheral_outlet_opening",
     ]
+
+
+def _three_connector_charging_overview_specification():
+    return """
+    A system diagram of a charging control system 100.
+
+    An electrical branch 102 is shown as a pair of heavy horizontal lines. A branch current
+    sensor 104 is shown as a loop around one of the heavy horizontal lines of the electrical
+    branch 102.
+
+    Three electric vehicle connector assemblies 108 are shown below the electrical branch 102.
+    Each connector assembly 108 is connected to the electrical branch 102.
+
+    An edge controller 106 is shown as a rectangular box. The edge controller 106 is connected
+    to the branch current sensor 104. An isolated local bus 110 is shown as a horizontal line
+    connecting the edge controller 106 to each of the three electric vehicle connector
+    assemblies 108.
+    """
+
+
+def test_three_connector_charging_overview_has_one_conductor_sensor_loop():
+    specification = _three_connector_charging_overview_specification()
+    numerals = [
+        "100 = Charging Control System", "102 = Electrical Branch",
+        "104 = Branch Current Sensor", "106 = Edge Controller",
+        "108 = Electric Vehicle Connector Assembly", "110 = Isolated Local Bus",
+    ]
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    assert draft_figures._control_diagram_kind(specification) == \
+        "charging_control_three_connectors"
+    constraint = certificate["certified_constraints"][
+        "branch_current_sensor_single_conductor"]
+    assert constraint["ok"] is True
+    assert constraint["enclosed_conductor_count"] == 1
+    assert constraint["connector_assembly_count"] == 3
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+    assert semantic["deterministic_anchor_certificate"]["ok"] is True
+    assert {
+        item["numeral"]
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    } == {"100", "102", "104", "106", "108", "110"}
+
+
+def _four_face_cam_ring_specification():
+    return """
+    View: A face-on view of the segmented cam ring. Patent line drawing, black on white, no
+    shading or color. All line work lies well inside the drawing area, clear of the margins.
+
+    Geometry to draw:
+    - An annular cam ring is centered in the drawing area.
+    - The cam ring is composed of two separate arcuate segments (an upper and a lower segment).
+      The segments meet at a hinge-end junction (left) and a latch-end junction (right).
+    - At the hinge-end junction, the upper segment has a first hinge-end drive face 44 and the
+      lower segment has a second hinge-end drive face 46.
+    - At the latch-end junction, the upper segment has a first latch-end drive face 48 and the
+      lower segment has a second latch-end drive face 50.
+    - The drive faces at each junction are complementary and engage each other.
+    - The cam ring has three elongated slots through its band, shown without numerals,
+      distributed between the segments.
+    - All components are shown schematically.
+
+    Numeral placement targets:
+    - 44: upper segment drive face, left junction.
+    - 46: lower segment drive face, left junction.
+    - 48: upper segment drive face, right junction.
+    - 50: lower segment drive face, right junction.
+    """
+
+
+def test_face_on_cam_ring_has_four_drive_faces_and_exactly_three_slots():
+    specification = _four_face_cam_ring_specification()
+    numerals = [
+        "44 = first hinge-end drive face", "46 = second hinge-end drive face",
+        "48 = first latch-end drive face", "50 = second latch-end drive face",
+    ]
+
+    png = draft_figures._deterministic_segmented_cam_ring_plan_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    constraints = certificate["certified_constraints"]
+    assert constraints["cam_ring_slot_pattern"]["slot_count"] == 3
+    assert constraints["cam_ring_drive_face_pairs"] == {
+        "ok": True,
+        "face_count": 4,
+        "junction_count": 2,
+        "faces": {
+            "first hinge-end drive face": [430, 440],
+            "second hinge-end drive face": [430, 460],
+            "first latch-end drive face": [970, 440],
+            "second latch-end drive face": [970, 460],
+        },
+    }
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+    anchors = {
+        item["numeral"]: (item["raw_x"], item["raw_y"])
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    }
+    assert anchors == {
+        "44": (430, 440), "46": (430, 460),
+        "48": (970, 440), "50": (970, 460),
+    }
+
+
+def _tripped_temperature_indicator_specification():
+    return """
+    A cross-sectional view of the indicator 10 of FIG. 1, in its tripped state.
+
+    The view is a vertical cross-section through the center of the indicator 10.
+    The bimetal snap disc 16 has inverted its curvature to a second shape, having been heated
+    past its activation temperature. This has pushed the latch pin 18 upwards, disengaging it
+    from the flag 20. The spring 22 has expanded, moving the flag 20 into its visible position.
+    In this visible position, a colored portion of the flag 20 is aligned with the window 24.
+    A ratchet tooth 26, which is a feature of the housing 12, is now engaged with a corresponding
+    feature on the flag 20.
+    """
+
+
+def test_tripped_indicator_renderer_certifies_irreversible_visible_state():
+    specification = _tripped_temperature_indicator_specification()
+    numerals = [
+        "10 = indicator", "12 = housing", "16 = bimetal snap disc",
+        "18 = latch pin", "20 = flag", "22 = spring", "24 = window",
+        "26 = ratchet tooth",
+    ]
+
+    png = draft_figures._deterministic_tripped_temperature_indicator_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    assert certificate["renderer"] == "tripped_temperature_indicator"
+    constraints = certificate["certified_constraints"]
+    assert constraints["tripped_indicator_state"]["ok"] is True
+    assert constraints["unified_visible_flag"]["ok"] is True
+    assert constraints["housing_window_opening"]["ok"] is True
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+    assert semantic["deterministic_anchor_certificate"]["ok"] is True
+    assert {
+        item["numeral"]
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    } == {"10", "12", "16", "18", "20", "22", "24", "26"}
+
+
+def _pressure_relief_exploded_specification():
+    return """
+    An exploded perspective view of the internal valve and indicator mechanism of the pressure
+    relief cartridge. The components are shown aligned along a central axis. The view shows the
+    relationship between the poppet 26, the compression spring 28, the spring carrier 30, and the
+    locking collar 32. The poppet 26 is shaped to seal against a valve seat 24 (shown
+    schematically). The poppet 26 includes an integral trip shoulder 34 that acts on the indicator
+    pin 36. A hydrophobic porous membrane 46 is held by a membrane cage at the inlet.
+    """
+
+
+def test_pressure_relief_exploded_renderer_certifies_complete_mechanism():
+    specification = _pressure_relief_exploded_specification()
+    numerals = [
+        "24 = valve seat", "26 = poppet", "28 = compression spring",
+        "30 = spring carrier", "32 = locking collar", "34 = trip shoulder",
+        "36 = indicator pin", "46 = hydrophobic porous membrane",
+    ]
+
+    png = draft_figures._deterministic_pressure_relief_exploded_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    assert certificate["renderer"] == "pressure_relief_exploded"
+    constraints = certificate["certified_constraints"]
+    assert constraints["exploded_valve_inventory"]["ok"] is True
+    assert constraints["integral_trip_shoulder"]["ok"] is True
+    assert constraints["membrane_and_cage"]["ok"] is True
+    assert constraints["axial_sequence"]["ok"] is True
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+    anchors = {
+        item["numeral"]
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    }
+    assert anchors == {"24", "26", "28", "30", "32", "34", "36", "46"}
+
+
+def test_current_live_renderer_findings_map_only_to_measured_constraints():
+    assert draft_figures._certified_geometry_dissent_category(
+        "The branch current sensor loop encircles both heavy horizontal lines.") == \
+        "branch_current_sensor_single_conductor"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The four elongated slots shown do not match the required three slots.") == \
+        "cam_ring_slot_pattern"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The visible geometry for the flag is distributed across multiple elements and is "
+        "not a unified component.") == "unified_visible_flag"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The colored portion of the flag is not aligned with the window opening.") == \
+        "housing_window_opening"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The spring is compressed rather than expanded in the tripped state.") == \
+        "tripped_indicator_state"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The hydrophobic porous membrane and its membrane cage are missing.") == \
+        "membrane_and_cage"
+    assert draft_figures._certified_geometry_dissent_category(
+        "The valve seat is required but not visible.") == "exploded_valve_inventory"
+
+
+def test_tripped_indicator_certificate_resolves_only_exact_state_dissent():
+    specification = _tripped_temperature_indicator_specification()
+    png = draft_figures._deterministic_tripped_temperature_indicator_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    categories = draft_figures._certified_geometry_dissent_categories(
+        errors=[
+            "The flag is distributed across multiple elements instead of one unified part.",
+            "The flag is not aligned with the window opening.",
+            "The spring is compressed rather than expanded in the tripped state.",
+        ],
+        missing_geometry=[], missing=[], unexpected=[], duplicates=[],
+        certificate=certificate,
+    )
+
+    assert categories == [
+        "housing_window_opening", "tripped_indicator_state", "unified_visible_flag",
+    ]
+
+
+def test_pressure_relief_certificate_resolves_exact_inventory_dissent_and_missing_numerals():
+    specification = _pressure_relief_exploded_specification()
+    png = draft_figures._deterministic_pressure_relief_exploded_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    categories = draft_figures._certified_geometry_dissent_categories(
+        errors=[
+            "The valve seat is required but not visible.",
+            "The hydrophobic porous membrane and its membrane cage are missing.",
+        ],
+        missing_geometry=[], missing=["24", "46"],
+        unexpected=["A cap-shaped component is unexpected and not required."],
+        duplicates=[], certificate=certificate,
+    )
+
+    assert categories == [
+        "certified_numeral_inventory", "exploded_valve_inventory", "membrane_and_cage",
+    ]
