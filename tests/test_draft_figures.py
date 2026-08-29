@@ -8584,6 +8584,23 @@ def test_marked_endpoint_spec_does_not_borrow_another_numerals_explicit_target()
     assert parts["94"]["target"].startswith("A leader for numeral 94 targets")
 
 
+def test_marked_endpoint_spec_does_not_treat_section_arrows_as_part_targets():
+    caption = (
+        "A first guide carriage 50 and a second guide carriage 70 rest on the rail 10. "
+        "A broken cutting-plane line, designated A-A, is drawn vertically through the first "
+        "guide carriage 50, with its viewing arrows pointing to the right. A second broken "
+        "cutting-plane line, designated B-B, is drawn vertically through the second guide "
+        "carriage 70, with its viewing arrows pointing to the right.")
+
+    specification = json.loads(draft_figures._marked_endpoint_specification(
+        "FIG. 2", caption,
+        ["10 = rail", "50 = first guide carriage", "70 = second guide carriage"]))
+    parts = {item["numeral"]: item for item in specification["parts"]}
+
+    assert parts["50"]["target"] == "On the visible first guide carriage geometry."
+    assert parts["70"]["target"] == "On the visible second guide carriage geometry."
+
+
 def test_marked_endpoint_spec_keeps_a_following_target_sentence_in_the_same_bullet():
     caption = (
         "- The vibration device 10 is the whole rectangular assembly. "
