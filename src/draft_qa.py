@@ -1654,6 +1654,11 @@ WHAT TO CHECK, in this order of importance:
    preserved in the Detailed Description. Report silently omitted substantive technical matter as
    a major disclosure_coverage finding, or as critical when the omission removes a core or safety
    relationship or leaves a problem asserted by the application without its disclosed solution.
+   Treat each conditional, temporal, negative, exception, threshold, actor, and verification
+   relationship as an indivisible source constraint. Preserve qualifiers such as only, until,
+   unless, after, before, remains, corresponding, independent, and expired in substance. Never
+   replace sensor-confirmed agreement with human confirmation, a named sensed channel with a
+   generic response, or an unexpired-token condition with generic authorization.
    Inspect the claim set for useful supported dependent coverage of each commercially distinct
    embodiment and safety or recovery mode, and report a material omission as claim_scope only when
    a filing-clean claim can be made from the existing source. Do not require every optional feature
@@ -1777,7 +1782,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v18-drawing-numeral-limit"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v19-condition-verifier-fidelity"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1866,6 +1871,11 @@ description-only only by naming it and giving a concrete reason that it is redun
 inseparable from an existing limitation, or would exceed the standard claim count. Do not demand
 coverage of filing formalities, motivations, background observations, rejected or corrective
 passages, or wording that is merely redundant.
+Treat each conditional, temporal, negative, exception, threshold, actor, and verification
+relationship as an indivisible source constraint. Preserve qualifiers such as only, until, unless,
+after, before, remains, corresponding, independent, and expired in substance. Never replace
+sensor-confirmed agreement with human confirmation, a named sensed channel with a generic
+response, or an unexpired-token condition with generic authorization.
 No automatic fix may leave more than 20 total claims or more than three independent claims.
 At either limit, recommend consolidating redundant coverage or amending an existing claim, not
 adding a claim that would exceed the limit.
