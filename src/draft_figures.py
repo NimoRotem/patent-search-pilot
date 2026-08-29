@@ -9073,8 +9073,11 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
                     re.search(r"(?<![A-Za-z0-9])" + re.escape(value) +
                               r"(?![A-Za-z0-9])", following)
                     for value in all_numerals if value != numeral)
-                if target_marker.search(following) and target_belongs_to_part(following) and (
-                        block_begins_with_declaration or not mentions_other):
+                if (
+                        not _ANNOTATION_ONLY.search(following) and
+                        target_marker.search(following) and
+                        target_belongs_to_part(following) and
+                        (block_begins_with_declaration or not mentions_other)):
                     target = following
                     break
         parts.append({
