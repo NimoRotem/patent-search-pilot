@@ -728,6 +728,12 @@ _FIGURE_PLAN_CHECKS = frozenset({
     "Every drawing sheet is described",
     "Each described figure has a drawing sheet",
 })
+_DRAWING_EVIDENCE_CHECKS = frozenset({
+    "Drawing pixels were inspected",
+    "Section views have matching source-view cutting lines",
+    "Drawing content matches its specification",
+    "Drawing leaders identify the named features",
+})
 
 
 def _report_item_category(item: Mapping[str, Any]) -> str:
@@ -735,7 +741,8 @@ def _report_item_category(item: Mapping[str, Any]) -> str:
     if category:
         return category
     name = str(item.get("name") or "")
-    if name == _DRAWING_INSPECTION_CHECK or name in _FIGURE_PLAN_CHECKS:
+    if (name == _DRAWING_INSPECTION_CHECK or name in _FIGURE_PLAN_CHECKS or
+            name in _DRAWING_EVIDENCE_CHECKS):
         return "figures_and_numerals"
     return ""
 
