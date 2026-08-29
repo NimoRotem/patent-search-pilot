@@ -337,6 +337,53 @@ def test_a_figure_numeral_cannot_target_a_different_grouping_shape():
         "Drawing briefs are concise and renderable"]["status"] == "pass"
 
 
+def test_a_remote_part_numeral_cannot_label_its_offsheet_connection_stub():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A large rectangle is the body 12. A short vertical line extends upward from the "
+            "body 12, representing a connection to the pump 14."
+        ),
+        "numerals": [
+            "10 vacuum lifting tool",
+            "12 body: leader ends inside the large rectangle.",
+            "14 pump: leader ends on the short vertical line extending upward from the body 12.",
+        ],
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "numeral 14" in check["items"][0]
+    assert "off-sheet connection" in check["items"][0]
+    drawing_problems = []
+    draft_studio.validate_snapshot(
+        {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED,
+        drawing_problems)
+    assert any("off-sheet connection" in problem for problem in drawing_problems)
+
+    actual_bus = draft_qa._offsheet_connection_target(
+        "108 isolated local bus: leader ends on the bus line between the controller and branch.",
+        "A solid horizontal line, the isolated local bus, extends below the controller. A "
+        "vertical line connects the controller to the left end of the isolated local bus.")
+    assert actual_bus is None
+
+    corrected = [{
+        **figures[0],
+        "caption": (
+            "A large rectangle is the body 12. A smaller rectangle above it is the pump 14. "
+            "A short vertical line connects the body 12 to the pump 14."
+        ),
+        "numerals": [
+            "10 vacuum lifting tool",
+            "12 body: leader ends inside the large rectangle.",
+            "14 pump: leader ends inside the smaller rectangle.",
+        ],
+    }, FIGURES[1]]
+    assert checks_for(figures=corrected)[
+        "Drawing briefs are concise and renderable"]["status"] == "pass"
+
+
 def test_a_drawn_tile_cannot_coexist_with_a_no_other_panel_constraint():
     figures = [{
         **FIGURES[0],

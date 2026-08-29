@@ -370,6 +370,32 @@ def _drawing_numeral(value: Any) -> str:
     return match.group(1).upper() if match else ""
 
 
+def _offsheet_connection_target(value: Any, caption: str) -> tuple[str, str] | None:
+    """Return a numeral and part when its leader targets only a connection to that part."""
+    raw = str(value or "")
+    if ":" not in raw:
+        return None
+    head, target = raw.split(":", 1)
+    numeral = _drawing_numeral(head)
+    part = re.sub(
+        rf"^\s*{re.escape(numeral)}\b\s*", "", head,
+        count=1, flags=re.IGNORECASE).strip(" -")
+    if not numeral or not part or not re.search(r"\b(?:line|segment|stub|lead)\b", target,
+                                                re.IGNORECASE):
+        return None
+    tokens = re.findall(r"[A-Za-z0-9]+", part)
+    if not tokens:
+        return None
+    if re.search(rf"\b{re.escape(tokens[-1])}\b", target, re.IGNORECASE):
+        return None
+    part_pattern = r"[\s-]+".join(re.escape(token) for token in tokens)
+    remote = re.compile(
+        r"\b(?:connection|line|segment|stub|lead)\b[^.\n]{0,100}"
+        r"\b(?:to|for)\s+(?:(?:a|an|the)\s+)?" + part_pattern + r"\b",
+        re.IGNORECASE)
+    return (numeral, part) if remote.search(caption) else None
+
+
 def _numeral_checks(spec_text: str, claims_text: str,
                     numerals: Sequence[Mapping[str, str]],
                     figures: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -727,6 +753,13 @@ def _figure_checks(sections: Mapping[str, str],
             numeral = _drawing_numeral(entry)
             if not numeral or ":" not in str(entry):
                 continue
+            if remote_target := _offsheet_connection_target(entry, caption):
+                remote_numeral, remote_part = remote_target
+                brief_issues.append(
+                    f"{label}: numeral {remote_numeral} names {remote_part} but its leader "
+                    "targets only an off-sheet connection line. Depict and target the supported "
+                    "part itself, or remove that numeral from this sheet; a connection is not "
+                    "the remote part.")
             anchor_text = str(entry).split(":", 1)[1]
             anchor_shapes = {
                 re.sub(r"\s+", " ", match.group(0).lower())
