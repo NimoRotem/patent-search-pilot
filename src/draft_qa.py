@@ -660,6 +660,36 @@ def figures_mentioned(text: str) -> set[str]:
     return found
 
 
+def _axial_hollow_cylinder_annulus_contradiction(caption: str) -> bool:
+    """Detect a transverse annulus requested inside an expressly axial section."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip()
+    return bool(
+        re.search(r"\bcross-sectional view taken on line\b", text, re.IGNORECASE) and
+        re.search(
+            r"\b(?:cylindrical drill bushing|drill bushing(?:\s+\d+)?\b"
+            r"[^.]{0,100}\bis cylindrical)\b",
+            text,
+            re.IGNORECASE,
+        ) and
+        re.search(
+            r"\b(?:central,?\s+)?vertical(?:,?\s+cylindrical)?\s+bore\b"
+            r"[^.]{0,120}\bpassing completely through\b",
+            text,
+            re.IGNORECASE,
+        ) and
+        re.search(
+            r"\b(?:cross-section|cross-sectional view)\b[^.]{0,220}\bannulus\b",
+            text,
+            re.IGNORECASE,
+        ) and
+        re.search(
+            r"\bthreaded shank\b[^.]{0,120}"
+            r"\b(?:descends|extends(?: vertically)? downward)\b",
+            text,
+            re.IGNORECASE,
+        ))
+
+
 def _figure_checks(sections: Mapping[str, str],
                    figures: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     described = figures_mentioned(sections.get("drawing_descriptions", ""))
@@ -711,13 +741,7 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: contradictory sheet exclusivity requires a drawn tile or floor "
                 "while also saying no other slab, plate, or panel is drawn")
-        if (re.search(r"\bcross-sectional view taken on line\b", caption, re.IGNORECASE) and
-                re.search(r"\bvertical,?\s+cylindrical bore\b[^.]{0,100}"
-                          r"\bpassing completely through\b", caption, re.IGNORECASE) and
-                re.search(r"\bcylindrical\b[^.]{0,100}\bcross-section\b[^.]{0,80}"
-                          r"\bannulus\b", caption, re.IGNORECASE) and
-                re.search(r"\bthreaded shank\b[^.]{0,100}"
-                          r"\b(?:descends|extends downward)\b", caption, re.IGNORECASE)):
+        if _axial_hollow_cylinder_annulus_contradiction(caption):
             brief_issues.append(
                 f"{label}: an axial section through a hollow cylindrical part cannot be "
                 "specified as an annulus; show two opposed sectioned walls separated by the "
