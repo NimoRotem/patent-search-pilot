@@ -353,6 +353,36 @@ def test_verbose_visual_evidence_does_not_abort_an_otherwise_valid_review():
     assert leaders.labels[0].evidence == evidence
 
 
+def test_out_of_range_leader_suggestion_rejects_only_that_route():
+    payload = draft_figures._normalize_leader_payload({
+        "matches_spec": True,
+        "summary": "all routes traced",
+        "errors": [],
+        "labels": [
+            {
+                "numeral": "10", "correct": True, "evidence": "first route",
+                "suggested_x": 400, "suggested_y": 1067,
+            },
+            {
+                "numeral": "12", "correct": True, "evidence": "second route",
+                "suggested_x": 600, "suggested_y": 500,
+            },
+        ],
+    })
+
+    inspection = draft_figures._LeaderInspection.model_validate(payload)
+    audit = draft_figures.leader_audit(
+        ["10 = first component", "12 = second component"], inspection.model_dump())
+
+    assert inspection.matches_spec is False
+    assert inspection.labels[0].correct is False
+    assert inspection.labels[0].suggested_y == 1000
+    assert inspection.labels[1].correct is True
+    assert audit["inspected"] is True
+    assert audit["missing"] == []
+    assert audit["incorrect"] == ["10"]
+
+
 def test_figure_identity_uses_the_figure_number_not_a_truncated_caption():
     long = "FIG. 2 - Side elevation in vertical section showing the chamber and every air path"
     assert draft_figures.figure_key(long) == draft_figures.figure_key(long[:80]) == "fig-2"

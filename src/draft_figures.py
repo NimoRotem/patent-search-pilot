@@ -177,6 +177,42 @@ class _LeaderInspection(BaseModel):
     labels: list[_LeaderLabel] = Field(default_factory=list, max_length=120)
 
 
+def _normalize_leader_payload(payload):
+    """Preserve valid route votes when one reviewer returns an impossible coordinate."""
+    if not isinstance(payload, dict):
+        return payload
+    normalized = dict(payload)
+    labels = []
+    invalid_numerals = []
+    for raw_label in payload.get("labels") or []:
+        if not isinstance(raw_label, dict):
+            labels.append(raw_label)
+            continue
+        label = dict(raw_label)
+        invalid = False
+        for key in ("suggested_x", "suggested_y"):
+            try:
+                coordinate = int(label.get(key))
+            except (TypeError, ValueError):
+                continue
+            if coordinate < 0 or coordinate > 1000:
+                label[key] = max(0, min(coordinate, 1000))
+                invalid = True
+        if invalid:
+            label["correct"] = False
+            invalid_numerals.append(str(label.get("numeral") or "unknown"))
+        labels.append(label)
+    normalized["labels"] = labels
+    if invalid_numerals:
+        normalized["matches_spec"] = False
+        errors = list(payload.get("errors") or [])
+        errors.append(
+            "Out-of-range terminal coordinates were returned for numeral(s) " +
+            ", ".join(invalid_numerals) + "; those routes were treated as incorrect.")
+        normalized["errors"] = errors[:30]
+    return normalized
+
+
 class _MarkedAnchorLabel(BaseModel):
     numeral: str
     correct: bool
@@ -10914,10 +10950,12 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
                 if isinstance(parsed, _LeaderInspection):
                     payload = parsed.model_dump()
                 elif isinstance(parsed, dict):
-                    payload = _LeaderInspection.model_validate(parsed).model_dump()
+                    payload = _LeaderInspection.model_validate(
+                        _normalize_leader_payload(parsed)).model_dump()
                 else:
-                    payload = _LeaderInspection.model_validate_json(
-                        str(getattr(response, "text", "") or "{}")).model_dump()
+                    raw_payload = json.loads(str(getattr(response, "text", "") or "{}"))
+                    payload = _LeaderInspection.model_validate(
+                        _normalize_leader_payload(raw_payload)).model_dump()
                 single = leader_audit(numerals, payload)
                 payloads.append(payload)
                 _audit_log(request_id=request_id, provider="vertex", model=model, stage=stage,
