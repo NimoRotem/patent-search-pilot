@@ -341,6 +341,26 @@ def test_live_axial_bushing_word_order_cannot_bypass_annulus_preflight():
     assert "two opposed sectioned walls" in check["items"][0]
 
 
+def test_vertical_bore_axis_cannot_be_aligned_with_longitudinal_slot_axis():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A cross-sectional view taken on line A-A of FIG. 2. A longitudinal slot 16 "
+            "extends along the rail 10. A drill bushing 54 has a central vertical bore that "
+            "passes completely through the bushing. The central axis of the bore of the drill "
+            "bushing 54 is vertically aligned with the central axis of the longitudinal slot "
+            "16 of the rail 10."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "vertical bore axis" in check["items"][0]
+    assert "longitudinal slot axis" in check["items"][0]
+    assert "intersects the open slot" in check["items"][0]
+
+
 def test_a_figure_numeral_cannot_target_a_different_grouping_shape():
     figures = [{
         **FIGURES[0],
@@ -2944,6 +2964,9 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "axial section through a hollow cylindrical part" in normalized
     assert "two opposed sectioned walls" in normalized
     assert "transverse section" in normalized
+    assert "vertical bore axis" in normalized
+    assert "longitudinal slot axis" in normalized
+    assert "actual intersection or center-plane relationship" in normalized
     assert "broad interior target" in draft_studio.FINALIZE_PROMPT
     assert "generic negative linework controls" in draft_studio.FINALIZE_PROMPT
     assert "generic face-linework controls" in draft_studio.FINALIZE_PROMPT

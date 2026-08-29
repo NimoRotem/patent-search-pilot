@@ -690,6 +690,24 @@ def _axial_hollow_cylinder_annulus_contradiction(caption: str) -> bool:
         ))
 
 
+def _perpendicular_bore_slot_axes_contradiction(caption: str) -> bool:
+    """Reject wording that makes a vertical bore axis collinear with a slot's long axis."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip()
+    return bool(
+        re.search(
+            r"\b(?:central,?\s+)?vertical(?:,?\s+cylindrical)?\s+bore\b",
+            text,
+            re.IGNORECASE,
+        ) and
+        re.search(
+            r"\bcentral axis of the bore\b[^.]{0,220}"
+            r"\bvertically aligned with\b[^.]{0,160}"
+            r"\bcentral axis of the longitudinal slot\b",
+            text,
+            re.IGNORECASE,
+        ))
+
+
 def _figure_checks(sections: Mapping[str, str],
                    figures: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     described = figures_mentioned(sections.get("drawing_descriptions", ""))
@@ -746,6 +764,11 @@ def _figure_checks(sections: Mapping[str, str],
                 f"{label}: an axial section through a hollow cylindrical part cannot be "
                 "specified as an annulus; show two opposed sectioned walls separated by the "
                 "open through-bore, and reserve an annulus for a transverse section")
+        if _perpendicular_bore_slot_axes_contradiction(caption):
+            brief_issues.append(
+                f"{label}: a vertical bore axis cannot be aligned with a longitudinal slot "
+                "axis; state that the bore intersects the open slot or lies in its center "
+                "plane, according to the disclosure")
         if match := _ARBITRARY_GLOBAL_SHAPE_EXCLUSION_RE.search(caption):
             brief_issues.append(
                 f"{label}: blanket shape exclusion {match.group(0)[:180]!r}; describe only "

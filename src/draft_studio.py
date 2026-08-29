@@ -440,6 +440,10 @@ An axial section through a hollow cylindrical part shows two opposed sectioned w
 the open bore. An annulus is the appearance in a transverse section. Keep the view orientation,
 the sectioned walls, and the through-bore consistent instead of changing one to excuse rendered
 pixels.
+A longitudinal slot's axis runs along the slot. A vertical bore axis can intersect the open slot
+or lie in its center plane, but it cannot be collinear with the longitudinal slot axis. State the
+actual intersection or center-plane relationship instead of saying those perpendicular axes are
+aligned.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 leader lines, cutting lines, arrows, and section designations deterministically. Describe the
