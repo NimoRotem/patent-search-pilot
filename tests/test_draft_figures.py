@@ -5256,6 +5256,43 @@ def _iterative_overcurrent_protection_flow_specification():
     """
 
 
+def _iterative_overcurrent_protection_flow_without_fault_specification():
+    return """
+    A process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center. A rectangle, the
+    shedding step 304, is directly below the branch current check step 302.
+
+    An input line enters the top vertex of the branch current check step 302. A line representing
+    an overcurrent condition leaves the bottom vertex of the branch current check step 302 and
+    enters the top of the shedding step 304. A line leaves the bottom of the shedding step 304
+    and loops back to enter the top of the branch current check step 302, representing the
+    iterative nature of the load shedding process. A line representing a normal current condition
+    leaves the right vertex of the branch current check step 302 and terminates.
+
+    A single large rectangle, representing the overcurrent protection method 300, encloses all
+    other shapes on the drawing, which are steps 302 and 304.
+    """
+
+
+def _iterative_overcurrent_protection_flow_with_isolated_fault_specification():
+    return """
+    A process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center. A rectangle, the
+    shedding step 304, is directly below it. A rectangle, the fault indication step 308, is to
+    the right of the shedding step and represents a separate controller capability.
+
+    An input line enters the top vertex of the branch current check step 302. An overcurrent line
+    leaves the bottom vertex and enters the top of the shedding step 304. A line leaves the bottom
+    of the shedding step 304 and loops back to enter the top of the branch current check step 302,
+    representing the iterative nature of load shedding. A normal-current line leaves the right
+    vertex of the branch current check step and terminates. No line connects the shedding step 304
+    to the separate fault indication step 308.
+
+    A single large rectangle, representing the overcurrent protection method 300, encloses the
+    three shapes.
+    """
+
+
 def _split_allocation_flow_first_specification():
     return """
     A flat process flow diagram in plain black line work on white. A column of five empty shapes
@@ -6214,6 +6251,58 @@ def test_current_live_iterative_overcurrent_wording_uses_exact_renderer():
     assert feedback["entry_vertex"] == "top"
     assert feedback["entry_arrow"] == "down_right"
     assert feedback["entry_arrow_samples"] == [[607, 70], [616, 66]]
+
+
+def test_source_faithful_iterative_overcurrent_flow_omits_unsupported_fault_branch():
+    specification = _iterative_overcurrent_protection_flow_without_fault_specification()
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert draft_figures._control_diagram_kind(specification) == \
+        "overcurrent_protection_iterative_flow_no_fault"
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "overcurrent_protection_iterative_flow_no_fault"
+    constraints = certificate["certified_constraints"]
+    assert constraints["branch_safety_shape_sequence"]["ok"] is True
+    assert constraints["branch_safety_shape_sequence"]["shape_count"] == 2
+    assert constraints["branch_safety_fault_path"]["ok"] is True
+    assert constraints["branch_safety_fault_path"]["required"] is False
+    assert constraints["branch_safety_fault_path"]["mode"] == "absent"
+    assert constraints["branch_safety_feedback"]["ok"] is True
+    assert constraints["branch_safety_feedback"]["required"] is True
+    assert constraints["branch_safety_feedback"]["entry_vertex"] == "top"
+    renderer, anchors = draft_figures._deterministic_control_diagram_anchors(specification)
+    assert renderer == "overcurrent_protection_iterative_flow_no_fault"
+    assert set(anchors) == {
+        "overcurrent protection method", "branch current check step", "shedding step",
+    }
+
+
+def test_source_faithful_iterative_overcurrent_flow_can_isolate_fault_capability():
+    specification = _iterative_overcurrent_protection_flow_with_isolated_fault_specification()
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert draft_figures._control_diagram_kind(specification) == \
+        "overcurrent_protection_iterative_flow_isolated_fault"
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["ok"] is True
+    constraints = certificate["certified_constraints"]
+    assert constraints["branch_safety_shape_sequence"]["shape_count"] == 3
+    assert constraints["branch_safety_fault_path"]["ok"] is True
+    assert constraints["branch_safety_fault_path"]["required"] is False
+    assert constraints["branch_safety_fault_path"]["mode"] == "absent"
+    assert constraints["branch_safety_fault_path"]["clear_samples"] == [[865, 415]]
+    assert constraints["branch_safety_feedback"]["ok"] is True
+    renderer, anchors = draft_figures._deterministic_control_diagram_anchors(specification)
+    assert renderer == "overcurrent_protection_iterative_flow_isolated_fault"
+    assert set(anchors) == {
+        "overcurrent protection method", "branch current check step", "shedding step",
+        "fault indication step",
+    }
 
 
 @pytest.mark.parametrize("specification", [
