@@ -10004,3 +10004,101 @@ def test_drilling_jig_carriage_section_accepts_current_autonomous_repair_wording
     assert bore["bore_mode"] == "empty_unmarked"
     assert bore["bore_center_clear"] is True
     assert bore["axial_center_marks"] is False
+
+
+@pytest.mark.parametrize(("finding", "category"), [
+    (
+        "The rail and the second guide carriage are shown with identical hatching "
+        "directions.",
+        "section_hatching",
+    ),
+    (
+        "The image shows a blind longitudinal slot that does not pass through the rail.",
+        "slot_and_key",
+    ),
+    (
+        "The key and threaded shank pass through separate openings instead of one "
+        "longitudinal slot.",
+        "slot_and_key",
+    ),
+    (
+        "The drill bushing is depicted as two separate components instead of one hollow "
+        "cylindrical bushing with a central bore.",
+        "carried_bushing_and_coaxial_bore",
+    ),
+    (
+        "The threaded shank stops above the clamping shoe instead of extending into it.",
+        "threaded_shank_path",
+    ),
+    (
+        "The clamping shoe is in direct contact with the rail and has no visible gap.",
+        "shoe_clearance",
+    ),
+    (
+        "The compressible lid gasket is between the lid and rigid spacer frame rather "
+        "than between the lid and shell upper edge.",
+        "lid_gasket_shell_stack",
+    ),
+    (
+        "The peripheral outlet opening is missing because the frame is solid at its "
+        "periphery.",
+        "peripheral_outlet_opening",
+    ),
+    (
+        "The resilient foot is detached from the rigid spacer frame and does not contact "
+        "the ledge.",
+        "frame_foot_ledge_contact",
+    ),
+])
+def test_mechanical_section_dissent_categories_use_exact_pixel_constraints(
+        finding, category):
+    assert draft_figures._certified_geometry_dissent_category(finding) == category
+
+
+def test_drilling_jig_certificate_resolves_only_measured_live_dissent():
+    specification = _drilling_jig_carriage_section_specification()
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    categories = draft_figures._certified_geometry_dissent_categories(
+        errors=[
+            "The rail and guide carriage use the same hatching direction.",
+            "The drill bushing appears as two separate components rather than a single "
+            "hollow bushing with a central bore.",
+            "The threaded shank terminates before reaching the clamping shoe.",
+            "The clamping shoe touches the rail instead of having a visible gap.",
+        ],
+        missing_geometry=[], missing=[], unexpected=[], duplicates=[],
+        certificate=certificate,
+    )
+
+    assert categories == [
+        "carried_bushing_and_coaxial_bore",
+        "section_hatching",
+        "shoe_clearance",
+        "threaded_shank_path",
+    ]
+
+
+def test_cold_chain_certificate_resolves_only_measured_live_dissent():
+    specification = _cold_chain_lid_section_specification()
+    png = draft_figures._deterministic_cold_chain_lid_section_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    categories = draft_figures._certified_geometry_dissent_categories(
+        errors=[
+            "The compressible lid gasket lies between the lid and frame rather than "
+            "between the lid and shell upper edge.",
+            "The peripheral outlet opening is absent because the frame is solid at its "
+            "periphery.",
+            "The resilient foot is not attached to the frame and does not bear on the ledge.",
+        ],
+        missing_geometry=[], missing=[], unexpected=[], duplicates=[],
+        certificate=certificate,
+    )
+
+    assert categories == [
+        "frame_foot_ledge_contact",
+        "lid_gasket_shell_stack",
+        "peripheral_outlet_opening",
+    ]
