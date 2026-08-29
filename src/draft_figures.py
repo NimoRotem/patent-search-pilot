@@ -2242,6 +2242,18 @@ def _control_diagram_kind(caption: str) -> str:
             "electric vehicle",
             "isolated local bus",
         ),
+        "edge_controller_flat_full_ports": (
+            "flat block diagram of the edge controller",
+            "one large rectangle",
+            "nonvolatile memory",
+            "network interface",
+            "service input",
+            "local fault indicator",
+            "rectangular block for the branch current sensor",
+            "rectangular block for the isolated local bus",
+            "shown above the edge controller",
+            "shown below the edge controller",
+        ),
         "edge_controller_flat": (
             "flat block diagram of the edge controller",
             "one large rectangle",
@@ -2547,6 +2559,23 @@ def _deterministic_control_diagram_anchors(
             "control-pilot interface": (685, 620, "well inside the control-pilot rectangle"),
             "vehicle connector": (910, 375, "well inside the vehicle-connector rectangle"),
             "electric vehicle": (1200, 375, "well inside the electric-vehicle rectangle"),
+        }
+    if kind == "edge_controller_flat_full_ports":
+        return kind, {
+            "branch current sensor": (
+                700, 70, "well inside the branch-current-sensor rectangle"),
+            "edge controller": (
+                350, 450, "on the left outline of the edge-controller rectangle"),
+            "isolated local bus": (
+                700, 825, "well inside the isolated-local-bus rectangle"),
+            "network interface": (
+                180, 310, "well inside the network-interface rectangle"),
+            "service input": (
+                180, 540, "well inside the service-input rectangle"),
+            "local fault indicator": (
+                1230, 420, "well inside the fault-indicator rectangle"),
+            "nonvolatile memory": (
+                700, 380, "well inside the nonvolatile-memory rectangle"),
         }
     if kind == "edge_controller_flat":
         return kind, {
@@ -3358,6 +3387,19 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         draw.line((170, 220, 230, 220), **line)
         draw.line((470, 380, 470, 500), **line)
         draw.line((470, 500, 100, 500), **line)
+    elif kind == "edge_controller_flat_full_ports":
+        box((350, 180, 1050, 720))
+        box((600, 330, 800, 430))
+        box((80, 260, 280, 360))
+        box((80, 490, 280, 590))
+        box((1120, 365, 1340, 475))
+        box((575, 20, 825, 120))
+        box((575, 780, 825, 870))
+        draw.line((280, 310, 350, 310), **line)
+        draw.line((280, 540, 350, 540), **line)
+        draw.line((1050, 420, 1120, 420), **line)
+        draw.line((700, 120, 700, 180), **line)
+        draw.line((700, 720, 700, 780), **line)
     elif kind == "edge_controller_flat":
         box((250, 120, 1050, 760))
         box((560, 200, 760, 300))
@@ -5117,6 +5159,7 @@ def _deterministic_control_diagram_constraint_certificate(
     kind = _control_diagram_kind(caption)
     if kind not in {
             "charging_installation_flat", "edge_controller_flat",
+            "edge_controller_flat_full_ports",
             "allocation_flow_split_first", "allocation_flow_split_second",
             "allocation_flow_vertical", "branch_current_safety_flow",
             "branch_current_safety_flow_serial_fault_right",
@@ -5190,6 +5233,43 @@ def _deterministic_control_diagram_constraint_certificate(
                     "controller_top_endpoint": [390, 580],
                     "clear_left_of_first_turn": [270, 270],
                     "clear_right_of_second_turn": [430, 270],
+                },
+            }
+
+        if kind == "edge_controller_flat_full_ports":
+            outline_samples = [
+                (350, 450), (1050, 450), (700, 180), (700, 720),
+                (600, 380), (800, 380), (700, 330), (700, 430),
+                (80, 310), (280, 310), (180, 260), (180, 360),
+                (80, 540), (280, 540), (180, 490), (180, 590),
+                (1120, 420), (1340, 420), (1230, 365), (1230, 475),
+                (575, 70), (825, 70), (700, 20), (700, 120),
+                (575, 825), (825, 825), (700, 780), (700, 870),
+            ]
+            interior_samples = [
+                (450, 300), (700, 380), (180, 310), (180, 540),
+                (1230, 420), (700, 70), (700, 825),
+            ]
+            connection_samples = [
+                (280, 310), (315, 310), (350, 310),
+                (280, 540), (315, 540), (350, 540),
+                (1050, 420), (1085, 420), (1120, 420),
+                (700, 120), (700, 150), (700, 180),
+                (700, 720), (700, 750), (700, 780),
+            ]
+            return {
+                "controller_full_port_blocks": {
+                    "ok": (all(ink(point) for point in outline_samples) and
+                           all(clear(point, 6) for point in interior_samples)),
+                    "shape_count": 7,
+                    "outline_samples": [list(point) for point in outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in interior_samples],
+                },
+                "controller_full_connections": {
+                    "ok": all(ink(point) for point in connection_samples),
+                    "connection_count": 5,
+                    "line_samples": [list(point) for point in connection_samples],
                 },
             }
 
@@ -5839,6 +5919,11 @@ def _deterministic_control_diagram_constraint_certificate(
                     "ok": kind == "allocation_flow_vertical",
                     "required": kind == "allocation_flow_vertical",
                 },
+            }
+        if kind == "edge_controller_flat_full_ports":
+            return {
+                "controller_full_port_blocks": {"ok": False},
+                "controller_full_connections": {"ok": False},
             }
         if kind == "edge_controller_flat":
             return {

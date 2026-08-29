@@ -4937,6 +4937,25 @@ def test_deterministic_stirring_scene_accepts_current_filing_brief_wording():
     ),
     (
         """
+        A flat block diagram of the edge controller. One large rectangle, the edge controller 106,
+        occupies the central portion. A smaller rectangle, the nonvolatile memory 218, is inside
+        the edge controller 106. A network interface 110 block and a service input 112 block are
+        to its left. A local fault indicator 116 block is to its right. A rectangular block for
+        the branch current sensor 104 is shown above the edge controller 106 and connected to its
+        top side. A rectangular block for the isolated local bus 108 is shown below the edge
+        controller 106 and connected to its bottom side. Each of the three side blocks is joined
+        to the edge controller by one short solid line. The drawing contains no text.
+        """,
+        [
+            "104 = branch current sensor", "106 = edge controller",
+            "108 = isolated local bus", "110 = network interface",
+            "112 = service input", "116 = local fault indicator",
+            "218 = nonvolatile memory",
+        ],
+        "edge_controller_flat_full_ports",
+    ),
+    (
+        """
         A flat process flow diagram. Eight empty shapes with blank interiors stand in one vertical
         column. In order they are four rectangles, a diamond, a rectangle, a diamond, and a
         rectangle. The upper diamond has a left return path to the topmost rectangle. The lower
@@ -4976,8 +4995,12 @@ def test_deterministic_control_diagrams_are_text_free_and_anchor_every_part(
     positions = {(item["x"], item["y"]) for item in grounded["anchors"]}
     assert len(positions) == len(numerals)
     assert grounded["pixel_anchor_audit"]["ok"] is True, grounded["pixel_anchor_audit"]
-    assert draft_figures._deterministic_geometry_certificate(
-        png, specification)["ok"] is True
+    geometry = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert geometry["ok"] is True
+    if renderer == "edge_controller_flat_full_ports":
+        constraints = geometry["certified_constraints"]
+        assert constraints["controller_full_port_blocks"]["ok"] is True
+        assert constraints["controller_full_connections"]["ok"] is True
 
 
 def test_flat_charging_installation_template_tracks_reviewed_endpoint_geometry():
