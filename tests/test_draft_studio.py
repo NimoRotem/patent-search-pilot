@@ -1128,6 +1128,34 @@ def test_sections_survive_a_write_and_read_round_trip(tmp_path):
     assert draft_workspace.read_sections(tmp_path) == GOOD
 
 
+def test_workspace_refresh_removes_noncanonical_section_aliases(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft = tmp_path / "draft"
+    (draft / "08-claims.md").write_text("Wrong claim file", encoding="utf-8")
+    (draft / "10-end.md").write_text("Wrong terminal file", encoding="utf-8")
+
+    draft_workspace.write_sections(tmp_path, GOOD)
+
+    assert not (draft / "08-claims.md").exists()
+    assert not (draft / "10-end.md").exists()
+    assert (draft / "09-claims.md").read_text(encoding="utf-8").strip() == GOOD["claims"]
+    assert (draft / "numerals.md").exists()
+
+
+def test_snapshot_rejects_a_noncanonical_section_file_created_during_the_turn(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    alias = tmp_path / "draft" / "08-claims.md"
+    alias.write_text(
+        "Claims written under the wrong filename", encoding="utf-8")
+
+    with pytest.raises(drafting.DraftingValidationError, match="08-claims.md.*09-claims.md"):
+        draft_workspace.snapshot(tmp_path)
+    assert not alias.exists()
+
+
 def test_government_support_has_a_standalone_workspace_file_in_filing_order(tmp_path):
     draft_workspace.write_sections(tmp_path, GOOD)
 

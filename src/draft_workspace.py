@@ -70,6 +70,8 @@ LEGACY_SECTION_FILES = (
 )
 SECTION_BY_KEY = {key: (name, heading) for key, name, heading in SECTION_FILES}
 NUMERALS_FILE = "numerals.md"
+CANONICAL_DRAFT_FILES = frozenset(
+    {name for _key, name, _heading in SECTION_FILES} | {NUMERALS_FILE})
 
 MAX_REFERENCE_CHARS = 24_000
 MAX_TOTAL_REFERENCE_CHARS = 900_000
@@ -116,6 +118,7 @@ def _clean(text: Any, limit: int = 400_000) -> str:
 def write_sections(workspace: Path, sections: Mapping[str, str]) -> None:
     draft = Path(workspace) / "draft"
     draft.mkdir(parents=True, exist_ok=True)
+    _remove_noncanonical_draft_entries(draft)
     for key, name, heading in SECTION_FILES:
         body = _clean(sections.get(key), 400_000)
         _write(draft / name, body)
@@ -130,6 +133,42 @@ def _remove_legacy_section_files(draft: Path) -> None:
                 (draft / name).unlink()
             except FileNotFoundError:
                 pass
+
+
+def _noncanonical_draft_entries(draft: Path) -> list[Path]:
+    if not draft.is_dir():
+        return []
+    return sorted(
+        (entry for entry in draft.iterdir() if entry.name not in CANONICAL_DRAFT_FILES),
+        key=lambda entry: entry.name,
+    )
+
+
+def _remove_noncanonical_draft_entries(draft: Path) -> list[str]:
+    removed = []
+    for entry in _noncanonical_draft_entries(draft):
+        removed.append(entry.name)
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink(missing_ok=True)
+    return removed
+
+
+def _reject_noncanonical_draft_entries(draft: Path) -> None:
+    removed = _remove_noncanonical_draft_entries(draft)
+    if not removed:
+        return
+    allowed = ", ".join(sorted(CANONICAL_DRAFT_FILES))
+    detail = (
+        "Removed noncanonical application files created during the drafting turn: "
+        + ", ".join(removed)
+        + ". Use 09-claims.md for claims and only these canonical draft files: "
+        + allowed
+        + "."
+    )
+    error_type = drafting.DraftingValidationError if drafting is not None else ValueError
+    raise error_type(detail)
 
 
 def _migrate_legacy_section_files(workspace: Path) -> bool:
@@ -162,6 +201,7 @@ def read_sections(workspace: Path) -> dict[str, str]:
     """
     _migrate_legacy_section_files(workspace)
     draft = Path(workspace) / "draft"
+    _reject_noncanonical_draft_entries(draft)
     out: dict[str, str] = {}
     for key, name, heading in SECTION_FILES:
         path = draft / name
@@ -310,6 +350,7 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
     install_tools(workspace, src_dir)
 
     _migrate_legacy_section_files(workspace)
+    _remove_noncanonical_draft_entries(workspace / "draft")
 
     if sections is not None:
         write_sections(workspace, sections)
