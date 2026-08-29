@@ -5306,6 +5306,47 @@ def _source_clean_separate_branch_current_safety_flow_specification():
     """
 
 
+def _serial_fault_right_branch_current_safety_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center of the drawing area.
+    A rectangle, the shedding step 304, is located directly below the branch current check step
+    302. A diamond shape, the welded-contactor check step 306, is located directly below the
+    shedding step 304. A rectangle, the fault indication step 308, is located to the right of the
+    welded-contactor check step 306.
+
+    A line leaves the bottom vertex of the branch current check step 302 and enters the top of the
+    shedding step 304. A line leaves the bottom of the shedding step 304 and enters the top of the
+    welded-contactor check step 306. A line leaves the right vertex of the welded-contactor check
+    step 306 and enters the left side of the fault indication step 308. A line leaves the left
+    vertex of the welded-contactor check step 306, runs left, turns up, and then turns right to
+    enter the top of the branch current check step 302.
+
+    A large rectangle, the branch current safety process 300, encloses all other shapes on the
+    drawing.
+    """
+
+
+def test_serial_fault_right_branch_current_flow_has_exact_renderer_and_certificate():
+    specification = _serial_fault_right_branch_current_safety_flow_specification()
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert draft_figures._control_diagram_kind(specification) == (
+        "branch_current_safety_flow_serial_fault_right")
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "branch_current_safety_flow_serial_fault_right"
+    assert all(item["ok"] is True for item in certificate["certified_constraints"].values())
+    _, anchors = draft_figures._deterministic_control_diagram_anchors(specification)
+    assert set(anchors) == {
+        "branch current safety process", "branch current check step", "shedding step",
+        "welded contactor check step", "fault indication step",
+    }
+    assert draft_figures._deterministic_geometry_png(specification) == png
+
+
 def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
     specification = _branch_current_safety_flow_specification()
     numerals = [
