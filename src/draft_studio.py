@@ -1104,7 +1104,7 @@ def validate_snapshot(snapshot: Mapping[str, Any],
     #  Classified ONE BY ONE. The old rule labelled a mixed set "internal_logic" and refused the
     #  lot, so a single drawing-plan failure alongside a text one hid both behind a text error.
     drawing_side = [item for item in failures
-                    if str(item.get("name") or "") in _FIGURE_PLAN_CHECKS]
+                    if _report_item_category(item) == "figures_and_numerals"]
     text_side = [item for item in failures if item not in drawing_side]
     for group, category in ((text_side, "internal_logic"),
                             (drawing_side, "figures_and_numerals")):
