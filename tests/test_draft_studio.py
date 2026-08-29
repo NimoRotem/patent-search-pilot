@@ -3187,6 +3187,23 @@ def test_filing_gate_requires_every_check_and_independent_review_to_be_clean():
     assert "review" in draft_studio.filing_blockers({**clean, "status": "failed"})[0].lower()
 
 
+@pytest.mark.parametrize("check_name", [
+    "Drawing pixels were inspected",
+    "Section views have matching source-view cutting lines",
+    "Drawing content matches its specification",
+    "Drawing leaders identify the named features",
+])
+def test_drawing_evidence_failures_stay_out_of_the_text_repair_lane(check_name):
+    report = {
+        "status": "complete",
+        "checks": [{"name": check_name, "status": "fail"}],
+        "findings": [],
+    }
+
+    assert draft_studio.text_blockers(report) == []
+    assert check_name in draft_studio.drawing_blockers(report)[0]
+
+
 def test_default_finalization_budget_allows_drawing_and_text_repair_rounds():
     assert draft_studio.MAX_FINALIZATION_ROUNDS == 6
 
