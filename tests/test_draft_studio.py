@@ -3670,6 +3670,28 @@ def test_default_drawing_window_covers_a_full_multi_sheet_review():
     assert draft_studio.DRAWING_BUDGET_SECONDS >= 3600
 
 
+@pytest.mark.parametrize(("limits", "spent"), [
+    ({"max_agent_runs": 14}, {
+        "agent_runs": 14, "spend_usd": 0, "tokens_total": 2_414_288,
+    }),
+    ({"max_spend_usd": 12}, {
+        "agent_runs": 8, "spend_usd": 12, "tokens_total": 800_000,
+    }),
+])
+def test_turn_ceiling_message_never_asks_for_manual_intervention(limits, spent):
+    runner = draft_studio.TurnRunner(Mock(), object(), qa=Mock(), workspace=Mock())
+    runner._budget = limits
+
+    with pytest.raises(draft_studio.TurnBudgetSpent) as failure:
+        runner._check_budget(3, spent)
+
+    message = str(failure.value)
+    assert "continue automatically" in message
+    assert "No manual ceiling change is required" in message
+    assert "Raise the ceiling" not in message
+    assert "smaller change" not in message
+
+
 def test_drawing_budget_exhaustion_never_becomes_a_publishable_fault_list(
         monkeypatch, tmp_path):
     runner = draft_studio.TurnRunner(Mock(), object(), qa=Mock(), workspace=Mock())
