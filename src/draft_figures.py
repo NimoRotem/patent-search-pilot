@@ -724,6 +724,11 @@ _SHEET_NUMBER_RE = re.compile(
 _SECTION_DESIGNATION_RE = re.compile(
     r"\bline\s*,?\s+([0-9]{1,3}[A-Za-z]?)\s*[-\u2012-\u2015]\s*\1\b",
     re.IGNORECASE)
+_REPEATED_SECTION_END_RE = re.compile(
+    r"\brepeated designation\s+[\"'\u2018\u2019\u201c\u201d]?"
+    r"([0-9]{1,3}[A-Za-z]?)[\"'\u2018\u2019\u201c\u201d]?\s+"
+    r"(?:is|appears?)\s+at\s+(?:each|both)\s+ends?\b",
+    re.IGNORECASE)
 _SOURCE_CUTTING_PLANE_RE = re.compile(
     r"\b(?:cutting[- ]plane\s+lines?|section[- ]lines?|cutting\s+lines?)\b",
     re.IGNORECASE)
@@ -755,6 +760,16 @@ def section_designations(caption) -> list[str]:
     for match in _SECTION_DESIGNATION_RE.finditer(text):
         value = match.group(1).upper()
         if value not in out:
+            out.append(value)
+    for match in _REPEATED_SECTION_END_RE.finditer(text):
+        window = text[max(0, match.start() - 180):match.end() + 220]
+        has_both_arrows = bool(
+            re.search(r"\barrows?\s+at\s+(?:each|both)\s+ends?\b", window,
+                      re.IGNORECASE) or
+            re.search(r"\bboth\s+ends?\b[^.]{0,100}\bviewing arrows?\b", window,
+                      re.IGNORECASE))
+        value = match.group(1).upper()
+        if has_both_arrows and value not in out:
             out.append(value)
     return out
 
@@ -2222,6 +2237,28 @@ def _control_diagram_kind(caption: str) -> str:
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     text = re.sub(r"\bsmall\s+empty\s+circle\b", "small circle", text)
     text = re.sub(r"\bwelded[- ]contactor\b", "welded contactor", text)
+    iterative_overcurrent = bool(
+        all(value in text for value in (
+            "process flow diagram", "branch current check step", "shedding step",
+            "fault indication step", "overcurrent protection method",
+        )) and
+        re.search(
+            r"(?:feedback )?line leaves? (?:the )?(?:bottom|left side) of (?:the )?"
+            r"shedding step(?:\s+\d+)?[^.]{0,260}"
+            r"(?:re-?enters?|returns? to|loops? back to (?:re-?enter|enter))\s+"
+            r"(?:the )?(?:(?:top|left vertex) of (?:the )?)?"
+            r"branch current check step",
+            text,
+        ) and
+        (re.search(r"\bopens? one contactor\b", text) or
+         re.search(r"\bone contactor at a time\b", text) or
+         "iterative nature" in text) and
+        (re.search(r"\b(?:measured|measure|checks?|rechecks?) again\b", text) or
+         re.search(r"\bafter each (?:opened )?contactor\b", text) or
+         "iterative nature" in text)
+    )
+    if iterative_overcurrent:
+        return "overcurrent_protection_iterative_flow"
     cases = {
         "charging_installation_flat": (
             "flat schematic system diagram",
@@ -2556,6 +2593,17 @@ def _edge_controller_flat_port_terminations(caption: str) -> tuple[bool, bool]:
     )
 
 
+def _overcurrent_feedback_entry(caption: str) -> str:
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    if re.search(
+            r"(?:loops? back to|returns? to|re-?enters?)\s+(?:enter\s+)?"
+            r"(?:the\s+)?top(?:\s+vertex)?\s+of\s+(?:the\s+)?"
+            r"branch current check step",
+            text):
+        return "top"
+    return "left"
+
+
 def _deterministic_control_diagram_anchors(
         caption: str) -> tuple[str, dict[str, tuple[int, int, str]]]:
     """Return exact raw-pixel targets for each supported control-diagram template."""
@@ -2621,7 +2669,7 @@ def _deterministic_control_diagram_anchors(
             "branch current measurement step": (
                 700, 685, "well inside the fifth process rectangle"),
         }
-    if kind == "overcurrent_protection_flow":
+    if kind in {"overcurrent_protection_flow", "overcurrent_protection_iterative_flow"}:
         return kind, {
             "overcurrent protection method": (
                 120, 420, "on the left outline of the enclosing method rectangle"),
@@ -3401,6 +3449,8 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
             points = [(x, y), (x - 21, y - 13), (x - 21, y + 13)]
         elif direction == "left":
             points = [(x, y), (x + 21, y - 13), (x + 21, y + 13)]
+        elif direction == "down_right":
+            points = [(x, y), (x - 24, y - 1), (x - 12, y - 21)]
         else:
             raise ValueError(f"unsupported arrow direction: {direction}")
         draw.polygon(points, fill="black")
@@ -3506,7 +3556,7 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         draw.line(feedback_path, fill="black", width=4, joint="curve")
         arrow((700, 80), "down")
         draw.rectangle((120, 20, 1280, 820), outline="black", width=4)
-    elif kind == "overcurrent_protection_flow":
+    elif kind in {"overcurrent_protection_flow", "overcurrent_protection_iterative_flow"}:
         check = ((650, 90), (780, 170), (650, 250), (520, 170))
         draw.polygon(check, fill="white", outline="black")
         draw.line(check + (check[0],), fill="black", width=4)
@@ -3520,6 +3570,18 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         arrow((1050, 170), "right")
         draw.line((800, 415, 930, 415), **line)
         arrow((930, 415), "right")
+        if kind == "overcurrent_protection_iterative_flow":
+            feedback_entry = _overcurrent_feedback_entry(caption)
+            feedback_path = (
+                [(650, 470), (650, 560), (350, 560), (350, 60),
+                 (600, 60), (650, 90)]
+                if feedback_entry == "top" else
+                [(650, 470), (650, 560), (350, 560), (350, 170), (520, 170)])
+            draw.line(feedback_path, fill="black", width=4, joint="curve")
+            if feedback_entry == "top":
+                arrow((625, 75), "down_right")
+            else:
+                arrow((520, 170), "right")
         draw.rectangle((120, 20, 1280, 820), outline="black", width=4)
     elif kind == "allocation_flow_split_first":
         rectangles = (
@@ -5642,6 +5704,7 @@ def _deterministic_control_diagram_constraint_certificate(
             "allocation_flow_split_first", "allocation_flow_split_second",
             "allocation_flow_vertical", "branch_current_safety_flow",
             "current_allocation_cycle", "overcurrent_protection_flow",
+            "overcurrent_protection_iterative_flow",
             "branch_current_safety_flow_serial_fault_right",
             "branch_current_safety_flow_serial",
             "branch_current_safety_flow_welded_decision",
@@ -5797,7 +5860,7 @@ def _deterministic_control_diagram_constraint_certificate(
                 },
             }
 
-        if kind == "overcurrent_protection_flow":
+        if kind in {"overcurrent_protection_flow", "overcurrent_protection_iterative_flow"}:
             shape_outline_samples = [
                 (520, 170), (780, 170), (500, 415), (800, 415),
                 (930, 415), (1200, 415),
@@ -5810,6 +5873,17 @@ def _deterministic_control_diagram_constraint_certificate(
             ]
             shedding_path_samples = [(650, 250), (650, 300), (650, 360)]
             fault_path_samples = [(800, 415), (865, 415), (930, 415)]
+            feedback_entry = _overcurrent_feedback_entry(caption)
+            feedback_samples = (
+                [(650, 470), (650, 520), (650, 560), (500, 560), (350, 560),
+                 (350, 400), (350, 60), (500, 60), (600, 60), (625, 75),
+                 (650, 90)]
+                if feedback_entry == "top" else
+                [(650, 470), (650, 520), (650, 560), (500, 560), (350, 560),
+                 (350, 400), (350, 170), (450, 170), (520, 170)])
+            feedback_arrow_samples = (
+                [(607, 70), (616, 66)] if feedback_entry == "top" else
+                [(505, 162), (505, 178)])
             feedback_clear_samples = [
                 (400, 415), (350, 415), (350, 250), (350, 70), (500, 70),
             ]
@@ -5835,16 +5909,38 @@ def _deterministic_control_diagram_constraint_certificate(
                     "line_samples": [list(point) for point in fault_path_samples],
                 },
                 "branch_safety_feedback": {
-                    "ok": all(clear(point, 6) for point in feedback_clear_samples),
-                    "required": False,
-                    "clear_samples": [list(point) for point in feedback_clear_samples],
+                    "ok": (all(ink(point) for point in
+                               feedback_samples + feedback_arrow_samples)
+                           if kind == "overcurrent_protection_iterative_flow"
+                           else all(clear(point, 6) for point in feedback_clear_samples)),
+                    "required": kind == "overcurrent_protection_iterative_flow",
+                    "mode": ("one_contactor_then_remeasure"
+                             if kind == "overcurrent_protection_iterative_flow"
+                             else "absent"),
+                    "entry_vertex": (
+                        feedback_entry
+                        if kind == "overcurrent_protection_iterative_flow" else None),
+                    "entry_arrow": (
+                        ("down_right" if feedback_entry == "top" else "right")
+                        if kind == "overcurrent_protection_iterative_flow" else None),
+                    "entry_arrow_samples": (
+                        [list(point) for point in feedback_arrow_samples]
+                        if kind == "overcurrent_protection_iterative_flow" else []),
+                    "line_samples": (
+                        [list(point) for point in feedback_samples]
+                        if kind == "overcurrent_protection_iterative_flow" else []),
+                    "clear_samples": (
+                        [] if kind == "overcurrent_protection_iterative_flow"
+                        else [list(point) for point in feedback_clear_samples]),
                 },
-                "branch_safety_implicit_exit": {
-                    "ok": all(clear(point, 6) for point in implicit_exit_clear_samples),
-                    "mode": "no_drawn_line",
-                    "clear_samples": [
-                        list(point) for point in implicit_exit_clear_samples],
-                },
+                **({
+                    "branch_safety_implicit_exit": {
+                        "ok": all(clear(point, 6) for point in implicit_exit_clear_samples),
+                        "mode": "no_drawn_line",
+                        "clear_samples": [
+                            list(point) for point in implicit_exit_clear_samples],
+                    },
+                } if kind == "overcurrent_protection_flow" else {}),
             }
 
         if kind == "allocation_flow_split_first":
@@ -6488,13 +6584,17 @@ def _deterministic_control_diagram_constraint_certificate(
                 "allocation_flow_vertical_connections": {"ok": False},
                 "allocation_flow_right_return": {"ok": False},
             }
-        if kind == "overcurrent_protection_flow":
+        if kind in {"overcurrent_protection_flow", "overcurrent_protection_iterative_flow"}:
             return {
                 "branch_safety_shape_sequence": {"ok": False},
                 "branch_safety_shedding_path": {"ok": False},
                 "branch_safety_fault_path": {"ok": False},
-                "branch_safety_feedback": {"ok": False, "required": False},
-                "branch_safety_implicit_exit": {"ok": False},
+                "branch_safety_feedback": {
+                    "ok": False,
+                    "required": kind == "overcurrent_protection_iterative_flow",
+                },
+                **({"branch_safety_implicit_exit": {"ok": False}}
+                   if kind == "overcurrent_protection_flow" else {}),
             }
         if kind.startswith("allocation_flow_"):
             return {
@@ -8402,7 +8502,8 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
         return audit
     if (str(certificate.get("renderer") or "").startswith("allocation_flow_") or
             certificate.get("renderer") in {
-                "current_allocation_cycle", "overcurrent_protection_flow"}):
+                "current_allocation_cycle", "overcurrent_protection_flow",
+                "overcurrent_protection_iterative_flow"}):
         certificate["expected_numerals"] = sorted({
             entry["numeral"] for entry in numeral_entries(numerals)})
 
