@@ -9863,6 +9863,45 @@ def test_drilling_jig_carriage_section_accepts_current_live_separate_bushing_bri
         specification) is not None
 
 
+def test_drilling_jig_carriage_section_accepts_compact_live_through_slot_brief():
+    specification = """
+    A cross-sectional view taken on line 8-8 of FIG. 2.
+
+    The view shows four separate components in cross-section: the rail 10, the second guide
+    carriage 70, the drill bushing 74, and the clamping shoe 80. All four sectioned components
+    are shown with hatching in different directions to distinguish them from one another.
+
+    The rail 10 is shown in cross-section. It has a flat upper face 12 and an opposite flat lower
+    face. A rectangular longitudinal slot 16 passes vertically through the rail 10.
+
+    The second guide carriage 70 is a solid body shown in cross-section, resting on the upper
+    face 12 of the rail 10. A key 72 projects downward from the carriage 70 into the longitudinal
+    slot 16. The body of the carriage 70 has a cylindrical bore passing through it.
+
+    The drill bushing 74 is shown in cross-section, seated within the cylindrical bore in the
+    second guide carriage 70. The drill bushing 74 is a separate part from the carriage 70. The
+    sectioned view of the bushing shows its hatched walls as two separate rectangular regions.
+    These two hatched regions are separated by a central, un-hatched vertical bore that passes
+    completely through the bushing.
+
+    The clamp knob 78 is shown in elevation above the second guide carriage 70. A threaded shank
+    extends downward from the clamp knob 78, through the carriage 70 and the longitudinal slot
+    16, and into the clamping shoe 80.
+
+    The clamping shoe 80 is a solid body shown in cross-section, located below the rail 10. A
+    visible gap is present between the top surface of the clamping shoe 80 and the lower face of
+    the rail 10.
+    """
+
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["renderer"] == "drilling_jig_carriage_section"
+    assert all(item["ok"] is True
+               for item in certificate["certified_constraints"].values())
+
+
 def test_drilling_jig_carriage_section_accepts_current_autonomous_repair_wording():
     specification = """
     A cross-sectional view taken on line 8-8 of FIG. 2.
