@@ -555,6 +555,127 @@ def test_ocr_audit_accounts_for_exact_duplicate_section_designations_separately(
     assert duplicate["ok"] is False and duplicate["correct_section_designations"] is False
 
 
+def test_zero_like_geometry_ocr_false_positive_requires_a_clean_probe_and_two_reviews():
+    full = accepted_ocr_audit("2/8", expected=("10", "16"))
+    full.update({
+        "ok": False,
+        "detected": ["10", "16", "00"],
+        "unexpected": ["00"],
+        "duplicates": [],
+        "missing": [],
+    })
+    probe = accepted_ocr_audit(
+        "2/8", expected=("10", "16"), detected=["10", "16"])
+    clean_review = {
+        "ok": True,
+        "inspected": True,
+        "review_count": 2,
+        "contains_text_votes": 0,
+        "summary": "Both independent reviews identify the OCR token as circular geometry.",
+        "prompt_version": "test",
+    }
+
+    resolved = draft_figures.resolve_geometry_ocr_false_positive(
+        full, probe, clean_review)
+    rejected = draft_figures.resolve_geometry_ocr_false_positive(
+        full, probe, {**clean_review, "ok": False, "contains_text_votes": 1})
+
+    assert resolved["ok"] is True
+    assert resolved["detected"] == ["10", "16"]
+    assert resolved["geometry_ocr_resolution"]["full_sheet_unexpected"] == ["00"]
+    assert resolved["geometry_ocr_resolution"]["review_count"] == 2
+    assert rejected["ok"] is False
+
+
+def test_geometry_ocr_resolution_never_waives_nonzero_or_text_anomalies():
+    probe = accepted_ocr_audit("1/1")
+    clean_review = {
+        "ok": True, "inspected": True, "review_count": 2,
+        "contains_text_votes": 0, "summary": "no text", "prompt_version": "test",
+    }
+    nonzero = {**probe, "ok": False, "unexpected": ["12"], "detected": ["10", "12"]}
+    writing = {**probe, "ok": False, "unexpected": ["00"], "other_text": ["NOTE"]}
+
+    assert draft_figures.resolve_geometry_ocr_false_positive(
+        nonzero, probe, clean_review)["ok"] is False
+    assert draft_figures.resolve_geometry_ocr_false_positive(
+        writing, probe, clean_review)["ok"] is False
+
+
+def test_geometry_ocr_anomaly_runs_two_focused_text_reviews(monkeypatch):
+    calls = []
+
+    class Response:
+        usage_metadata = None
+        parsed = {
+            "contains_printed_text": False,
+            "observed_text": [],
+            "summary": "The reported zero is a circular opening.",
+            "evidence": "The raw sheet contains rings and outlines but no glyph strokes.",
+        }
+
+    class Models:
+        def generate_content(self, **values):
+            calls.append(values)
+            return Response()
+
+    class Client:
+        models = Models()
+
+    monkeypatch.setattr(draft_figures.llm, "_client", lambda: Client())
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", lambda *args, **kwargs: None)
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **kwargs: None)
+
+    audit = draft_figures.inspect_ocr_geometry_anomaly(
+        blank_png(), unexpected=["00"])
+
+    assert audit["ok"] is True
+    assert audit["review_count"] == 2 and audit["contains_text_votes"] == 0
+    assert len(calls) == 2
+    assert all("00" in call["contents"][-1] for call in calls)
+    assert all("raw, unlabeled" in call["contents"][-1].lower() for call in calls)
+
+
+def test_geometry_ocr_anomaly_fails_closed_when_one_review_sees_text(monkeypatch):
+    payloads = iter([
+        {
+            "contains_printed_text": False, "observed_text": [],
+            "summary": "circular geometry", "evidence": "two circular openings",
+        },
+        {
+            "contains_printed_text": True, "observed_text": ["00"],
+            "summary": "printed zeroes are visible", "evidence": "two closed glyphs",
+        },
+    ])
+
+    class Response:
+        usage_metadata = None
+
+        @property
+        def parsed(self):
+            return next(payloads)
+
+    class Models:
+        def generate_content(self, **_values):
+            return Response()
+
+    class Client:
+        models = Models()
+
+    monkeypatch.setattr(draft_figures.llm, "_client", lambda: Client())
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", lambda *args, **kwargs: None)
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **kwargs: None)
+
+    audit = draft_figures.inspect_ocr_geometry_anomaly(
+        blank_png(), unexpected=["00"])
+
+    assert audit["ok"] is False
+    assert audit["contains_text_votes"] == 1
+    assert audit["observed_text"] == ["00"]
+
+
 def test_current_ocr_audit_rejects_an_old_gate_or_different_sheet_total():
     current = accepted_ocr_audit("2/5")
 
