@@ -5199,6 +5199,28 @@ def _live_overcurrent_protection_flow_specification():
     """
 
 
+def _current_live_allocation_cycle_specification():
+    return _live_current_allocation_cycle_specification().replace(
+        "A feedback path leaves",
+        "A feedback path is shown as a line that leaves",
+    )
+
+
+def _current_live_overcurrent_protection_flow_specification():
+    return (
+        _live_overcurrent_protection_flow_specification()
+        .replace(
+            "An input line enters the top vertex",
+            "An input line representing the start of the process enters the top vertex",
+        )
+        .replace(
+            "represents successful current reduction, so no line is drawn there.",
+            "represents the successful reduction of branch current, at which point the process "
+            "terminates.",
+        )
+    )
+
+
 def _split_allocation_flow_first_specification():
     return """
     A flat process flow diagram in plain black line work on white. A column of five empty shapes
@@ -6076,6 +6098,18 @@ def test_live_simple_control_flows_use_exact_text_free_renderers():
             specification)
         assert anchor_renderer == renderer
         assert set(anchors) == expected_parts
+
+
+@pytest.mark.parametrize("specification", [
+    _current_live_allocation_cycle_specification(),
+    _current_live_overcurrent_protection_flow_specification(),
+])
+def test_current_live_control_flow_wording_uses_exact_renderer(specification):
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_certificate(
+        png, specification)["ok"] is True
 
 
 def test_exact_allocation_flow_resolves_unassignable_blank_step_shapes(monkeypatch):
@@ -9558,6 +9592,42 @@ def test_drilling_jig_carriage_section_accepts_live_axial_two_wall_brief():
     The clamping shoe 80 is a separate, solid body shown in cross-section below the rail 10. Its
     cut surface is hatched in a different direction from the hatching of the rail 10. A visible
     gap separates the top of the clamping shoe 80 from the bottom of the rail 10.
+    """
+
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is not None
+
+
+def test_drilling_jig_carriage_section_accepts_current_live_separate_bushing_brief():
+    specification = """
+    A cross-sectional view taken on line 8-8 of FIG. 2.
+
+    The view shows four separate components in cross-section: the rail 10, the second guide
+    carriage 70, the drill bushing 74, and the clamping shoe 80. All four sectioned components
+    are shown with hatching. The hatching direction for each of the four components is different
+    from the other three, to clearly distinguish them as separate parts.
+
+    The rail 10 is shown in cross-section. It has a flat upper face 12 and an opposite flat lower
+    face. A rectangular longitudinal slot 16 passes vertically through the rail 10 from the
+    upper face 12 to the lower face.
+
+    The second guide carriage 70 is a solid body shown in cross-section. It rests on the upper
+    face 12 of the rail 10. A key 72 projects downward from the second guide carriage 70 into the
+    longitudinal slot 16.
+
+    A cylindrical drill bushing 74 is shown in cross-section, seated within a cylindrical bore
+    in the body of the second guide carriage 70. The drill bushing 74 is a separate part from the
+    carriage 70. The drill bushing 74 has a central, un-hatched vertical bore that passes
+    completely through it, aligned with the longitudinal slot 16.
+
+    The clamp knob 78 is shown in elevation above the second guide carriage 70. A threaded shank
+    extends downward from the clamp knob 78, passing through a separate hole in the body of the
+    carriage 70, through the longitudinal slot 16, and into the clamping shoe 80. The shank does
+    not pass through the drill bushing 74.
+
+    The clamping shoe 80 is a solid body shown in cross-section, located below the rail 10. A
+    clear and visible gap is present between the top surface of the clamping shoe 80 and the
+    lower face of the rail 10, showing that the carriage is in a loosened, slidable state.
     """
 
     assert draft_figures._deterministic_drilling_jig_carriage_section_png(
