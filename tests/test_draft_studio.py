@@ -935,6 +935,34 @@ def test_claims_must_be_numbered_consecutively_from_one():
     assert checks_for(broken)["Claims are numbered consecutively"]["status"] == "fail"
 
 
+def test_claims_stay_within_the_standard_uspto_count_before_excess_fees():
+    broken = dict(GOOD)
+    claims = [f"{number}. A distinct apparatus comprising a body and a pump."
+              for number in range(1, 5)]
+    claims.extend(
+        f"{number}. The apparatus of claim 1, wherein the body includes a groove."
+        for number in range(5, 22))
+    broken["claims"] = "\n\n".join(claims)
+
+    check = checks_for(broken)["Standard USPTO claim count"]
+
+    assert check["status"] == "fail"
+    assert any("21 total claims" in item for item in check["items"])
+    assert any("4 independent claims" in item for item in check["items"])
+
+
+def test_twenty_total_and_three_independent_claims_need_no_excess_claim_fee():
+    clean = dict(GOOD)
+    claims = [f"{number}. A distinct apparatus comprising a body and a pump."
+              for number in range(1, 4)]
+    claims.extend(
+        f"{number}. The apparatus of claim 1, wherein the body includes a groove."
+        for number in range(4, 21))
+    clean["claims"] = "\n\n".join(claims)
+
+    assert checks_for(clean)["Standard USPTO claim count"]["status"] == "pass"
+
+
 def test_method_claim_rejects_a_gerund_mixed_into_coordinated_base_verbs():
     broken = dict(GOOD)
     broken["claims"] = """
