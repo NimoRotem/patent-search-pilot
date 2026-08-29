@@ -10070,11 +10070,12 @@ def _current_clamped_first_carriage_section_specification():
     in a clamped position on the rail 10.
 
     The whole view lies well inside the drawing area, clear of the borders on every side. The
-    surfaces cut by the section plane are shown with regular, evenly spaced section hatching.
-    To make the parts visually distinct, the rail 10 is hatched with lines angled in a first
-    direction, the first guide carriage 50 is hatched with lines angled in a second, different
-    direction, and the drill bushing 54 is hatched with lines angled in a third direction,
-    different from the first and second directions.
+    image contains no text, dimensions, or annotations other than the reference numerals listed
+    below. The surfaces cut by the section plane, which are the rail 10, the first guide carriage
+    50, and the drill bushing 54, are shown with regular, evenly spaced section hatching. To make
+    the parts visually distinct, the hatching lines for the rail 10, the first guide carriage 50,
+    and the drill bushing 54 are angled in three different, mutually distinct directions. The
+    drill bushing 54 is a sectioned part and must be shown with hatching.
 
     The view shows the rail 10 in cross-section, with the longitudinal slot 16 passing
     completely through it. The rail 10 has a flat upper face 12 and an opposite lower face 14.
@@ -10122,12 +10123,23 @@ def test_current_clamped_first_carriage_section_has_contact_and_clear_drill_pass
     constraints = certificate["certified_constraints"]
     assert constraints["slot_and_key"]["shape"] == "generic_through_slot_section"
     assert constraints["slot_and_key"]["bottom_opening_x"] == [400, 1000]
-    assert constraints["carried_bushing_and_coaxial_bore"]["rail_passage_clear"] is True
+    bore = constraints["carried_bushing_and_coaxial_bore"]
+    assert bore["carriage_opening_clear"] is True
+    assert bore["rail_passage_clear"] is True
+    assert bore["continuous_drill_passage"] is True
+    assert bore["passage_x"] == [898, 922]
+    assert bore["passage_y"] == [395, 610]
+    assert bore["alignment_centerline_visible"] is True
     assert constraints["shoe_contact"]["ok"] is True
     assert constraints["shoe_contact"]["contact_y"] == 620
     assert constraints["shoe_clearance"]["required"] is False
     section = draft_figures._deterministic_section_hatch_certificate(png, specification)
     assert len({item["angle_degrees"] for item in section["components"]}) == 4
+    bushing_hatch = next(
+        item for item in section["components"]
+        if item["component"] == "drill bushing")
+    assert bushing_hatch["angle_degrees"] == 70
+    assert bushing_hatch["direction"] == "falls_to_right"
     semantic = draft_figures._apply_deterministic_anchor_certificate(
         png, specification, numerals, {
             "ok": True,
