@@ -2913,6 +2913,15 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         }
     else:
         return [dict(item) for item in anchors or ()], None
+
+    def canonical_component_part(value: str) -> str:
+        value = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+        return re.sub(r"\bwelded[- ]contactor\b", "welded contactor", value)
+
+    component_centers = {
+        canonical_component_part(key): value
+        for key, value in component_centers.items()
+    }
     part_by_numeral = {
         item["numeral"]: re.sub(r"\s+", " ", item["part"]).strip().lower()
         for item in numeral_entries(numerals)
@@ -2923,10 +2932,11 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         item = dict(value)
         numeral = _clean_numeral(item.get("numeral"))
         part = part_by_numeral.get(numeral, "")
-        component_part = part
+        component_part = canonical_component_part(part)
         center = component_centers.get(component_part)
         if center is None:
-            component_part = re.split(r"\s*[;:|]\s*", part, maxsplit=1)[0].strip()
+            component_part = canonical_component_part(
+                re.split(r"\s*[;:|]\s*", part, maxsplit=1)[0])
             center = component_centers.get(component_part)
         if center:
             raw_x, raw_y, target = center
@@ -5925,6 +5935,43 @@ def current_geometry_binding(figure, user_id, version, caption: str) -> bool:
     certificate = _deterministic_geometry_certificate(stored, caption)
     if not (certificate.get("ok") and certificate.get("exact_renderer_match")):
         return False
+    control_renderer = _control_diagram_kind(caption)
+    if control_renderer:
+        numeral_audit = (version or {}).get("numeral_audit") or {}
+        semantic_audit = (version or {}).get("semantic_audit") or {}
+        if isinstance(numeral_audit, str):
+            try:
+                numeral_audit = json.loads(numeral_audit)
+            except json.JSONDecodeError:
+                return False
+        if isinstance(semantic_audit, str):
+            try:
+                semantic_audit = json.loads(semantic_audit)
+            except json.JSONDecodeError:
+                return False
+        anchor_certificate = (
+            semantic_audit.get("deterministic_anchor_certificate") or {}
+            if isinstance(semantic_audit, dict) else {})
+        expected_numerals = {
+            _clean_numeral(value)
+            for value in (numeral_audit.get("expected") or [])
+            if _clean_numeral(value)
+        } if isinstance(numeral_audit, dict) else set()
+        certified_numerals = {
+            _clean_numeral(item.get("numeral"))
+            for item in (anchor_certificate.get("anchors") or [])
+            if isinstance(item, dict) and _clean_numeral(item.get("numeral"))
+        }
+        if not (
+                expected_numerals and certified_numerals == expected_numerals and
+                anchor_certificate.get("ok") is True and
+                anchor_certificate.get("exact_renderer_match") is True and
+                anchor_certificate.get("version") ==
+                DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION and
+                anchor_certificate.get("renderer") == control_renderer and
+                anchor_certificate.get("png_sha256") ==
+                hashlib.sha256(stored).hexdigest()):
+            return False
     for constraint in (certificate.get("certified_constraints") or {}).values():
         if not isinstance(constraint, dict):
             return False

@@ -5329,6 +5329,11 @@ def _serial_fault_right_branch_current_safety_flow_specification():
 
 def test_serial_fault_right_branch_current_flow_has_exact_renderer_and_certificate():
     specification = _serial_fault_right_branch_current_safety_flow_specification()
+    numerals = [
+        "300: branch current safety process", "302: branch current check step",
+        "304: shedding step", "306: welded-contactor check step",
+        "308: fault indication step",
+    ]
 
     png = draft_figures._deterministic_control_diagram_png(specification)
 
@@ -5345,6 +5350,26 @@ def test_serial_fault_right_branch_current_flow_has_exact_renderer_and_certifica
         "welded contactor check step", "fault indication step",
     }
     assert draft_figures._deterministic_geometry_png(specification) == png
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": value.split(":", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for value in numerals
+            ],
+        })
+    certificate_anchors = {
+        item["numeral"]: item
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    }
+    assert set(certificate_anchors) == {"300", "302", "304", "306", "308"}
+    assert certificate_anchors["306"]["part"] == "welded contactor check step"
+    assert certificate_anchors["306"]["raw_x"] == 600
+    assert certificate_anchors["306"]["raw_y"] == 490
+    assert all(
+        item.get("anchor_source") == draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+        for item in semantic["anchors"])
 
 
 def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
@@ -6062,12 +6087,40 @@ def test_current_geometry_binding_rejects_generated_pixels_for_an_exact_controll
         draft_figures, "png_bytes",
         lambda *_args, **_kwargs: ("image/png", exact))
 
+    numerals = [
+        "106 = edge controller", "110 = network interface",
+        "112 = nonvolatile memory", "114 = service input",
+        "116 = local fault indicator",
+    ]
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        exact, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": value.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for value in numerals
+            ],
+        })
     figure = {"id": 77, "active_version": 1}
     generated = {"version_no": 1, "source_kind": "generated"}
-    deterministic = {"version_no": 1, "source_kind": "deterministic"}
+    deterministic = {
+        "version_no": 1, "source_kind": "deterministic",
+        "numeral_audit": {"expected": [value.split(" = ", 1)[0] for value in numerals]},
+        "semantic_audit": semantic,
+    }
+    incomplete_semantic = {
+        **semantic,
+        "deterministic_anchor_certificate": {
+            **semantic["deterministic_anchor_certificate"],
+            "anchors": semantic["deterministic_anchor_certificate"]["anchors"][:-1],
+        },
+    }
+    incomplete = {**deterministic, "semantic_audit": incomplete_semantic}
 
     assert not draft_figures.current_geometry_binding(
         figure, 4, generated, specification)
+    assert not draft_figures.current_geometry_binding(
+        figure, 4, incomplete, specification)
     assert draft_figures.current_geometry_binding(
         figure, 4, deterministic, specification)
 
