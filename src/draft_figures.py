@@ -2638,7 +2638,8 @@ def _deterministic_control_diagram_anchors(
     if kind == "branch_current_safety_flow_serial_fault_right":
         return kind, {
             "branch current safety process": (
-                120, 700, "on the left side of the enclosing rectangle"),
+                1050, 150,
+                "well inside the upper-right area of the enclosing rectangle"),
             "branch current check step": (
                 600, 150, "well inside the upper diamond"),
             "shedding step": (600, 325, "well inside the shedding rectangle"),

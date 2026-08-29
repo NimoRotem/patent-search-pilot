@@ -5394,6 +5394,11 @@ def test_serial_fault_right_branch_current_flow_has_exact_renderer_and_certifica
         for item in semantic["deterministic_anchor_certificate"]["anchors"]
     }
     assert set(certificate_anchors) == {"300", "302", "304", "306", "308"}
+    assert certificate_anchors["300"]["raw_x"] == 1050
+    assert certificate_anchors["300"]["raw_y"] == 150
+    semantic_anchors = {item["numeral"]: item for item in semantic["anchors"]}
+    assert semantic_anchors["300"]["target_evidence"] == (
+        "well inside the upper-right area of the enclosing rectangle")
     assert certificate_anchors["306"]["part"] == "welded contactor check step"
     assert certificate_anchors["306"]["raw_x"] == 600
     assert certificate_anchors["306"]["raw_y"] == 490
