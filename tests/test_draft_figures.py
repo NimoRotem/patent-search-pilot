@@ -9530,6 +9530,57 @@ def test_old_leader_reviews_are_not_materialized_for_independent_review(monkeypa
     assert draft_figures.materialize_review_images(7, 91, tmp_path) == 0
 
 
+def _cold_chain_lid_section_specification():
+    return """
+    Enlarged schematic vertical section of the region of the closed carrier where the insulated
+    lid meets the top of the outer wall and the right end of the rigid spacer frame is held down.
+    Sectioned solids carry uniform diagonal hatching; open spaces are blank.
+
+    Shell side walls 14: an upright hatched slab of substantial thickness at the outboard side of
+    the view, its upper end being upper edge 16 of the insulated outer shell. Insulated lid 60: a
+    horizontal hatched slab of substantial thickness spanning the top of the view above upper edge
+    16. Compressible lid gasket 64: a band shown compressed between the underside of insulated lid
+    60 and upper edge 16, hatched distinctly from both slabs. Ledges 18: a ledge on the inward-facing
+    surface of shell side walls 14. Rigid spacer frame 42: a hatched frame body inboard of shell side
+    wall 14 and below insulated lid 60. Peripheral outlet openings 50: an opening at the periphery
+    of rigid spacer frame 42. Resilient feet 54: a resilient foot 54 of rigid spacer frame 42, in
+    contact with and bearing down on ledge 18.
+    """
+
+
+def test_cold_chain_lid_section_has_certified_gasket_opening_and_foot_geometry():
+    specification = _cold_chain_lid_section_specification()
+    numerals = [
+        "14: shell side walls", "16: upper edge of the insulated outer shell",
+        "18: ledges", "42: rigid spacer frame", "50: peripheral outlet openings",
+        "54: resilient feet", "60: insulated lid", "64: compressible lid gasket",
+    ]
+
+    png = draft_figures._deterministic_geometry_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["renderer"] == "cold_chain_lid_section"
+    assert all(item["ok"] is True
+               for item in certificate["certified_constraints"].values())
+    hatching = draft_figures._deterministic_section_hatch_certificate(png, specification)
+    assert hatching["renderer"] == "cold_chain_lid_section"
+    assert len({item["angle_degrees"] for item in hatching["components"]}) == 5
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(":", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+    anchors = semantic["deterministic_anchor_certificate"]["anchors"]
+    assert {item["numeral"] for item in anchors} == {
+        "14", "16", "18", "42", "50", "54", "60", "64",
+    }
+
+
 def _drilling_jig_carriage_section_specification():
     return """
     A cross-sectional view taken on line 8-8 of FIG. 2.

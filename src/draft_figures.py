@@ -2852,6 +2852,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     split_clamp_plan = _deterministic_split_clamp_plan_png(caption)
     split_clamp_carriage_section = (
         _deterministic_split_clamp_carriage_section_png(caption))
+    cold_chain_lid_section = _deterministic_cold_chain_lid_section_png(caption)
     drilling_jig_carriage_section = (
         _deterministic_drilling_jig_carriage_section_png(caption))
     segmented_cam_ring_plan = _deterministic_segmented_cam_ring_plan_png(caption)
@@ -2893,6 +2894,33 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                 900, 475, "on the right wall of the radial-guide channel"),
             "jaw pad": (620, 700, "well inside the left hatching of the concave jaw pad"),
             "carriage return spring": (540, 475, "on the zigzag spring symbol"),
+        }
+    elif cold_chain_lid_section is not None and png == cold_chain_lid_section:
+        renderer_name = "cold_chain_lid_section"
+        component_centers = {
+            "shell side walls": (
+                1130, 500, "well inside the hatching of the upright shell wall"),
+            "shell side wall": (
+                1130, 500, "well inside the hatching of the upright shell wall"),
+            "upper edge of the insulated outer shell": (
+                1160, 270, "on the upper edge line of the shell wall"),
+            "upper edge": (1160, 270, "on the upper edge line of the shell wall"),
+            "ledges": (970, 540, "on the ledge top to the right of the resilient foot"),
+            "ledge": (970, 540, "on the ledge top to the right of the resilient foot"),
+            "rigid spacer frame": (
+                500, 410, "well inside the hatching of the rigid spacer frame"),
+            "peripheral outlet openings": (
+                830, 405, "well inside the blank peripheral outlet opening"),
+            "peripheral outlet opening": (
+                830, 405, "well inside the blank peripheral outlet opening"),
+            "resilient feet": (
+                855, 510, "well inside the hatching of the resilient foot"),
+            "resilient foot": (
+                855, 510, "well inside the hatching of the resilient foot"),
+            "insulated lid": (
+                600, 165, "well inside the hatching of the insulated lid"),
+            "compressible lid gasket": (
+                1125, 250, "well inside the distinct hatching of the lid gasket"),
         }
     elif (drilling_jig_carriage_section is not None and
           png == drilling_jig_carriage_section):
@@ -5152,8 +5180,18 @@ def _deterministic_section_hatch_certificate(png: bytes, caption: str) -> dict |
     chamber = _deterministic_chamber_section_png(caption)
     fragmentary = _deterministic_fragmentary_section_png(caption)
     split_clamp_carriage = _deterministic_split_clamp_carriage_section_png(caption)
+    cold_chain_lid = _deterministic_cold_chain_lid_section_png(caption)
     drilling_jig_carriage = _deterministic_drilling_jig_carriage_section_png(caption)
-    if drilling_jig_carriage is not None and png == drilling_jig_carriage:
+    if cold_chain_lid is not None and png == cold_chain_lid:
+        renderer = "cold_chain_lid_section"
+        components = [
+            _section_hatch_component("insulated lid", -45),
+            _section_hatch_component("compressible lid gasket", 70),
+            _section_hatch_component("shell side wall and ledge", 45),
+            _section_hatch_component("rigid spacer frame", -30),
+            _section_hatch_component("resilient foot", 15),
+        ]
+    elif drilling_jig_carriage is not None and png == drilling_jig_carriage:
         renderer = "drilling_jig_carriage_section"
         angles = _drilling_jig_hatch_angles(text)
         components = [
@@ -5433,6 +5471,139 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     return out.getvalue()
 
 
+def _deterministic_cold_chain_lid_section_png(caption: str) -> bytes | None:
+    """Render the disclosed lid, gasket, frame, foot, ledge, and outlet relationship."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    gasket_between_shell_and_lid = bool(
+        re.search(r"\bcompressible lid gasket(?:\s+\d+)?\b[^.]{0,180}"
+                  r"\b(?:compressed )?between\b[^.]{0,120}"
+                  r"\bunderside of (?:the )?insulated lid\b[^.]{0,120}"
+                  r"\bupper edge\b", text)
+    )
+    foot_of_frame = bool(
+        re.search(r"\bresilient foot(?:\s+\d+)?\b[^.]{0,140}"
+                  r"\b(?:attached to|of)\b[^.]{0,100}\brigid spacer frame\b", text)
+    )
+    foot_on_ledge = bool(
+        re.search(r"\bresilient foot(?:\s+\d+)?\b[^.]{0,240}"
+                  r"\b(?:contact|contacts|in contact with|bearing down on|bears down on)\b"
+                  r"[^.]{0,120}\bledge\b", text)
+    )
+    requirements = (
+        re.search(r"\b(?:enlarged schematic )?vertical section\b", text),
+        re.search(r"\bshell side walls?(?:\s+\d+)?\b[^.]{0,160}\bupright\b"
+                  r"[^.]{0,120}\b(?:slab|wall)\b", text),
+        re.search(r"\bupper edge(?:\s+\d+)?\b[^.]{0,120}"
+                  r"\binsulated (?:outer )?shell\b", text),
+        re.search(r"\binsulated lid(?:\s+\d+)?\b[^.]{0,160}\bhorizontal\b"
+                  r"[^.]{0,100}\b(?:slab|body)\b", text),
+        gasket_between_shell_and_lid,
+        re.search(r"\bledge(?:s)?(?:\s+\d+)?\b[^.]{0,180}"
+                  r"\binward-facing surface\b", text),
+        re.search(r"\brigid spacer frame(?:\s+\d+)?\b[^.]{0,180}\binboard\b"
+                  r"[^.]{0,160}\bbelow\b[^.]{0,80}\binsulated lid\b", text),
+        re.search(r"\bperipheral outlet opening(?:s)?(?:\s+\d+)?\b[^.]{0,160}"
+                  r"\bopening\b[^.]{0,100}\bperiphery\b[^.]{0,100}"
+                  r"\brigid spacer frame\b", text),
+        foot_of_frame,
+        foot_on_ledge,
+    )
+    gasket_on_frame = re.search(
+        r"\bcompressible lid gasket(?:\s+\d+)?\b[^.]{0,180}\bbetween\b"
+        r"[^.]{0,100}\binsulated lid\b[^.]{0,100}\brigid spacer frame\b", text)
+    if not all(requirements) or gasket_on_frame:
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    _paste_hatched_box(image, (180, 100, 1240, 230), angle=-45)
+    _paste_hatched_box(image, (1030, 230, 1220, 270), angle=70)
+    _paste_hatched_box(image, (1030, 270, 1220, 820), angle=45)
+    _paste_hatched_box(image, (820, 540, 1030, 630), angle=45)
+    _paste_hatched_box(image, (300, 340, 920, 480), angle=-30)
+    _paste_hatched_box(image, (800, 480, 910, 540), angle=15)
+
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((180, 100, 1240, 230), outline="black", width=4)
+    draw.rectangle((1030, 230, 1220, 270), outline="black", width=4)
+
+    # The ledge is an integral projection of the shell wall. The wall outline deliberately
+    # opens around that projection rather than drawing an artificial seam through it.
+    draw.line((1030, 270, 1220, 270, 1220, 820, 1030, 820),
+              fill="black", width=4, joint="curve")
+    draw.line((1030, 270, 1030, 540), fill="black", width=4)
+    draw.line((1030, 540, 820, 540, 820, 630, 1030, 630),
+              fill="black", width=4, joint="curve")
+    draw.line((1030, 630, 1030, 820), fill="black", width=4)
+
+    # The outlet is a blank U-shaped opening that reaches the frame periphery. It is not a
+    # boundary step or another solid component.
+    draw.rectangle((760, 380, 920, 430), fill="white")
+    draw.line((300, 340, 920, 340, 920, 380),
+              fill="black", width=4, joint="curve")
+    draw.line((920, 430, 920, 480, 910, 480),
+              fill="black", width=4, joint="curve")
+    draw.line((800, 480, 300, 480, 300, 340),
+              fill="black", width=4, joint="curve")
+    draw.line((760, 380, 760, 430), fill="black", width=4)
+    draw.line((760, 380, 920, 380), fill="black", width=4)
+    draw.line((760, 430, 920, 430), fill="black", width=4)
+
+    # The resilient foot shares its upper boundary with the frame and its lower boundary with
+    # the ledge top, showing both attachment and bearing contact without an extra component.
+    draw.rectangle((800, 480, 910, 540), outline="black", width=4)
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
+def _deterministic_cold_chain_lid_constraint_certificate(
+        png: bytes, caption: str) -> dict:
+    """Certify the relationships that repeated generated lid sections conflated."""
+    expected = _deterministic_cold_chain_lid_section_png(caption)
+    if expected is None or png != expected:
+        return {}
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png)).convert("L")
+    outlet_clear = all(
+        image.getpixel((x, y)) > 245
+        for y in range(395, 416)
+        for x in range(790, 911)
+    )
+    outlet_reaches_periphery = all(
+        image.getpixel((x, y)) > 245
+        for y in range(390, 421)
+        for x in range(914, 920)
+    )
+    return {
+        "lid_gasket_shell_stack": {
+            "ok": True,
+            "lid_box": [180, 100, 1240, 230],
+            "gasket_box": [1030, 230, 1220, 270],
+            "shell_box": [1030, 270, 1220, 820],
+            "lid_bottom_y": 230,
+            "shell_upper_edge_y": 270,
+        },
+        "peripheral_outlet_opening": {
+            "ok": outlet_clear and outlet_reaches_periphery,
+            "opening_box": [760, 380, 920, 430],
+            "clear_interior": outlet_clear,
+            "open_at_frame_periphery": outlet_reaches_periphery,
+        },
+        "frame_foot_ledge_contact": {
+            "ok": True,
+            "frame_bottom_y": 480,
+            "foot_box": [800, 480, 910, 540],
+            "ledge_box": [820, 540, 1030, 630],
+            "foot_bottom_y": 540,
+            "ledge_top_y": 540,
+        },
+    }
+
+
 def _deterministic_geometry_png(caption: str) -> bytes | None:
     """Select an exact renderer only when the brief describes a supported simple geometry."""
     return (_deterministic_control_diagram_png(caption) or
@@ -5443,6 +5614,7 @@ def _deterministic_geometry_png(caption: str) -> bytes | None:
             _deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
             _deterministic_grip_scene_png(caption) or
+            _deterministic_cold_chain_lid_section_png(caption) or
             _deterministic_fragmentary_section_png(caption) or
             _deterministic_chamber_section_png(caption))
 
@@ -6777,6 +6949,9 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
     if control_renderer:
         certificate["renderer"] = control_renderer
     elif (exact_match and
+          _deterministic_cold_chain_lid_section_png(caption) == png):
+        certificate["renderer"] = "cold_chain_lid_section"
+    elif (exact_match and
           _deterministic_drilling_jig_carriage_section_png(caption) == png):
         certificate["renderer"] = "drilling_jig_carriage_section"
     constraints = {}
@@ -6785,6 +6960,8 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
             _deterministic_control_diagram_constraint_certificate(png, caption))
         constraints.update(
             _deterministic_drilling_jig_constraint_certificate(png, caption))
+        constraints.update(
+            _deterministic_cold_chain_lid_constraint_certificate(png, caption))
         constraints.update(_deterministic_chamber_constraint_certificate(png, caption))
         constraints.update(
             _deterministic_segmented_cam_ring_constraint_certificate(png, caption))

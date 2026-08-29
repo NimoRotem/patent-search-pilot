@@ -2802,14 +2802,16 @@ class TurnRunner:
             raise TurnBudgetSpent(
                 f"This turn reached its ceiling of {max_runs} agent runs "
                 f"(${usd:.2f} spent, {int(spent.get('tokens_total') or 0):,} tokens). The draft it "
-                "had reached is saved; nothing was published. Raise the ceiling in Settings, or "
-                "ask for a smaller change.")
+                "had reached is saved; nothing was published. A complete saved candidate will "
+                "continue automatically in a fresh bounded turn. No manual ceiling change is "
+                "required.")
         if max_usd and usd >= max_usd:
             raise TurnBudgetSpent(
                 f"This turn reached its ceiling of ${max_usd:.2f} "
                 f"({runs} agent runs, {int(spent.get('tokens_total') or 0):,} tokens). The draft "
-                "it had reached is saved; nothing was published. Raise the ceiling in Settings, or "
-                "ask for a smaller change.")
+                "it had reached is saved; nothing was published. A complete saved candidate will "
+                "continue automatically in a fresh bounded turn. No manual ceiling change is "
+                "required.")
 
     @staticmethod
     def _settings_for(project: Mapping[str, Any]) -> dict[str, Any]:
