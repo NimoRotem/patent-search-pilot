@@ -431,6 +431,28 @@ def test_cloud_vision_ocr_separates_the_sheet_number_from_reference_numerals():
     assert found["other_text"] == []
 
 
+def test_cloud_vision_ocr_tracks_lettered_section_designations_separately():
+    response = {"responses": [{
+        "fullTextAnnotation": {
+            "text": "2 / 8\n50 18 A A B B\nFIG. 2\n",
+            "pages": [{"blocks": [{"paragraphs": [{"words": [
+                {"confidence": 0.99} for _ in range(9)
+            ]}]}]}],
+        }
+    }]}
+
+    found = draft_figures.parse_ocr_response(response)
+    audit = draft_figures.ocr_audit(
+        ["50", "18"], found, "FIG. 2", sheet_number="2/8",
+        section_designations=["A", "B"])
+
+    assert found["numerals"] == ["50", "18"]
+    assert found["section_designations"] == ["A", "A", "B", "B"]
+    assert found["other_text"] == []
+    assert audit["ok"] is True
+    assert audit["detected_section_designations"] == ["A", "A", "B", "B"]
+
+
 def test_section_designations_are_required_only_on_the_source_view_with_a_cutting_plane():
     source_view = (
         "A broken cutting-plane line crosses the upper carriage. A short arrow at each end "
@@ -451,6 +473,17 @@ def test_section_designations_accept_a_comma_between_line_and_repeated_mark():
         "pointing left and the repeated designation 8 at each end.")
 
     assert draft_figures.section_designations(source_view) == ["5", "8"]
+
+
+def test_section_designations_accept_lettered_cutting_plane_lines():
+    source_view = (
+        "A broken cutting-plane line A-A passes transversely through the first guide "
+        "carriage 50. Arrows at each end of the line point toward the fixed fence 30. "
+        "A broken cutting-plane line B-B passes transversely through the second guide "
+        "carriage 70. Arrows at each end of the line point toward the fixed fence 30."
+    )
+
+    assert draft_figures.section_designations(source_view) == ["A", "B"]
 
 
 def test_section_designations_accept_explicit_repeated_marks_without_line_shorthand():
