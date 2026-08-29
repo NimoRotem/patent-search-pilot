@@ -4710,8 +4710,8 @@ def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
     return {
         "rail": angle(r"rail(?:\s+\d+)?", -30),
         "guide carriage": angle(r"(?:second\s+)?guide carriage(?:\s+\d+)?", 35),
-        "drill bushing": angle(r"drill bushing(?:\s+\d+)?", -70),
-        "clamping shoe": angle(r"clamping shoe(?:\s+\d+)?", 70),
+        "drill bushing": angle(r"drill bushing(?:\s+\d+)?", 0),
+        "clamping shoe": angle(r"clamping shoe(?:\s+\d+)?", 90),
     }
 
 
@@ -5010,13 +5010,16 @@ def _requested_section_hatch_angle(text: str, subject_pattern: str, default: int
 
 
 def _section_hatch_component(component: str, angle: int) -> dict:
+    numeric_angle = int(angle)
+    axial_angle = numeric_angle % 180
     direction = (
-        "rises_to_right" if int(angle) < 0 else
-        "falls_to_right" if int(angle) > 0 else
-        "horizontal")
+        "horizontal" if axial_angle == 0 else
+        "vertical" if axial_angle == 90 else
+        "rises_to_right" if numeric_angle < 0 else
+        "falls_to_right")
     return {
         "component": component,
-        "angle_degrees": int(angle),
+        "angle_degrees": numeric_angle,
         "direction": direction,
     }
 

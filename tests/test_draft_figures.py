@@ -9371,6 +9371,30 @@ def _drilling_jig_carriage_section_specification():
     """
 
 
+def test_drilling_jig_default_hatching_uses_four_visually_distinct_orientations():
+    angles = draft_figures._drilling_jig_hatch_angles(
+        "The rail, guide carriage, drill bushing, and clamping shoe are shown in section. "
+        "The hatching direction for each component is different from the other three."
+    )
+    components = [
+        draft_figures._section_hatch_component(component, angles[component])
+        for component in ("rail", "guide carriage", "drill bushing", "clamping shoe")
+    ]
+
+    assert angles == {
+        "rail": -30,
+        "guide carriage": 35,
+        "drill bushing": 0,
+        "clamping shoe": 90,
+    }
+    assert {item["direction"] for item in components} == {
+        "rises_to_right",
+        "falls_to_right",
+        "horizontal",
+        "vertical",
+    }
+
+
 def test_drilling_jig_carriage_section_has_exact_geometry_hatching_and_anchors():
     specification = _drilling_jig_carriage_section_specification()
     numerals = [
