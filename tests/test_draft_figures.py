@@ -10064,7 +10064,7 @@ def test_drilling_jig_carriage_section_accepts_current_autonomous_repair_wording
     assert bore["axial_center_marks"] is False
 
 
-def _current_clamped_first_carriage_section_specification():
+def _previous_clamped_first_carriage_section_specification():
     return """
     A cross-sectional view taken on line A-A of FIG. 2, showing the first guide carriage 50
     in a clamped position on the rail 10.
@@ -10106,7 +10106,7 @@ def _current_clamped_first_carriage_section_specification():
 
 
 def test_current_clamped_first_carriage_section_has_contact_and_clear_drill_passage():
-    specification = _current_clamped_first_carriage_section_specification()
+    specification = _previous_clamped_first_carriage_section_specification()
     numerals = [
         "10 = rail", "12 = upper face", "16 = longitudinal slot",
         "50 = first guide carriage", "52 = key of the first guide carriage",
@@ -10163,6 +10163,66 @@ def test_current_clamped_first_carriage_section_has_contact_and_clear_drill_pass
         errors=[finding], missing_geometry=[], missing=[], unexpected=[], duplicates=[],
         certificate=certificate,
     ) == ["shoe_contact"]
+
+
+def _current_unhatched_clamped_first_carriage_section_specification():
+    return """
+    A cross-sectional view taken on line A-A of FIG. 2, showing the first guide carriage 50 in a
+    clamped position on the rail 10.
+
+    The whole view lies well inside the drawing area. The image contains no text, dimensions, or
+    annotations other than the reference numerals listed below.
+
+    The surfaces cut by the section plane are the rail 10, the first guide carriage 50, and the
+    drill bushing 54. These three parts are shown with regular, evenly spaced section hatching. To
+    make the parts visually distinct, the hatching lines for the rail 10, the first guide carriage
+    50, and the drill bushing 54 are angled in three different, mutually distinct directions. The
+    clamping shoe 60 is visible but is not cut by the section plane and is not hatched.
+
+    The view shows the rail 10 in cross-section. The rail 10 has a flat upper face 12 and an
+    opposite lower face. A vertical longitudinal slot 16 passes completely through the center of
+    the rail 10.
+
+    The first guide carriage 50 is shown in cross-section, resting on the upper face 12 of the rail
+    10. A key 52, integral with the carriage 50, projects downward into the longitudinal slot 16.
+    The key 52 has a width that closely fits the slot 16.
+
+    A single, cylindrical drill bushing 54 is seated in a vertical bore within the first guide
+    carriage 50. In this cross-sectional view, the drill bushing 54 appears as a hollow annulus,
+    with its solid wall shown in section with hatching. The drill bushing 54 has a central, vertical
+    bore passing completely through it. The central axis of the bore of the drill bushing 54 is
+    vertically aligned with the central axis of the longitudinal slot 16 of the rail 10. This
+    alignment creates a continuous, straight passage.
+
+    The clamp knob 58 is shown in elevation above the first guide carriage 50. A threaded shank,
+    which is part of the clamp knob 58, extends vertically downward from the knob. The shank passes
+    through the body of the first guide carriage 50 and through the longitudinal slot 16.
+
+    A separate clamping shoe 60 is located below the rail 10. The clamping shoe 60 is shown in
+    elevation and is not hatched. The threaded shank of the clamp knob 58 engages a threaded hole
+    in the clamping shoe 60. The clamping shoe 60 is drawn upward against the lower face of the rail
+    10, clamping the rail between the shoe 60 and the first guide carriage 50.
+    """
+
+
+def test_current_unhatched_clamped_section_has_one_continuous_drill_passage():
+    specification = _current_unhatched_clamped_first_carriage_section_specification()
+
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    constraints = certificate["certified_constraints"]
+    bore = constraints["carried_bushing_and_coaxial_bore"]
+    assert bore["continuous_drill_passage"] is True
+    assert bore["alignment_centerline_visible"] is True
+    assert constraints["shoe_contact"]["ok"] is True
+    assert constraints["shoe_contact"]["hatched"] is False
+    assert constraints["shoe_contact"]["unhatched_interior"] is True
+    section = constraints["section_hatching"]
+    assert [item["component"] for item in section["components"]] == [
+        "rail", "guide carriage", "drill bushing"]
+    assert len({item["angle_degrees"] for item in section["components"]}) == 3
 
 
 @pytest.mark.parametrize(("finding", "category"), [
