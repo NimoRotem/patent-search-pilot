@@ -320,6 +320,27 @@ def test_an_axial_hollow_cylinder_cannot_be_specified_as_an_annulus():
     assert "two opposed sectioned walls" in check["items"][0]
 
 
+def test_live_axial_bushing_word_order_cannot_bypass_annulus_preflight():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A cross-sectional view taken on line A-A of FIG. 2. The first guide carriage 50 "
+            "is shown in cross-section. A single, cylindrical drill bushing 54 is seated in a "
+            "vertical bore within the first guide carriage 50. In this cross-sectional view, "
+            "the drill bushing 54 appears as a hollow annulus, with its solid wall shown in "
+            "section with hatching. The drill bushing 54 has a central, vertical bore passing "
+            "completely through it. A threaded shank extends vertically downward from a clamp "
+            "knob and passes through the first guide carriage 50."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "axial section" in check["items"][0]
+    assert "two opposed sectioned walls" in check["items"][0]
+
+
 def test_a_figure_numeral_cannot_target_a_different_grouping_shape():
     figures = [{
         **FIGURES[0],
