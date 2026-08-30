@@ -186,3 +186,49 @@ def test_the_generated_paper_trips_no_leak_term():
     assert submission.filing_leaks(_text(_build())) == []
     assert submission.filing_leaks(_text(_build(exemption=True, docs=DOCS[:1]))) == []
     assert submission.filing_leaks(_text(_build(identity=NO_CONSENT))) == []
+
+
+# --------------------------------------------------- the backstop has to survive its own build
+def test_story_text_is_read_before_the_build_consumes_it():
+    """`BaseDocTemplate.build` pops every flowable, so a check that runs after it sees nothing."""
+    from reportlab.platypus import Paragraph
+    st = submission._styles()
+    story = [Paragraph("It is paid in Patent Center; check the rate has not moved.", st["body"])]
+    before = submission.story_text(story)
+    buf = io.BytesIO()
+    submission._template(buf, SUBJECT, "x").build(story)
+    assert story == [], "reportlab no longer consumes the story; the note in _sanitised is stale"
+    assert submission.filing_leaks(before), "the text must be captured before the build"
+
+
+def test_a_leak_is_recorded_when_one_is_injected():
+    """Defect injection: put the removed fee sentence back and prove the backstop fires."""
+    import failclosed
+    from reportlab.platypus import Paragraph
+    real = submission.signature_block
+
+    def leaky(story, st, identity):
+        real(story, st, identity)
+        story.append(Paragraph(
+            "It is paid in Patent Center; check the rate has not moved.", st["note"]))
+
+    failclosed.reset()
+    submission.signature_block = leaky
+    try:
+        _build()
+        kinds = [r for r in failclosed.used() if r["kind"] == "filing_leak"]
+        assert kinds, "an internal sentence on a filing paper must be recorded"
+        assert "check the rate" in kinds[0]["reason"]
+    finally:
+        submission.signature_block = real
+        failclosed.reset()
+
+
+def test_the_clean_paper_records_nothing():
+    import failclosed
+    failclosed.reset()
+    try:
+        _build()
+        assert [r for r in failclosed.used() if r["kind"] == "filing_leak"] == []
+    finally:
+        failclosed.reset()

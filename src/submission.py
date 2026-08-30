@@ -1486,14 +1486,20 @@ def story_text(story) -> str:
     return " ".join(out)
 
 
-def _sanitised(blob, story, name):
+def _sanitised(blob, text, name):
     """Return the built PDF, having recorded any internal-workflow language left on it.
+
+    TAKES THE TEXT, NOT THE STORY, and the caller must read it off the story BEFORE building.
+    `BaseDocTemplate.build` pops every flowable off the list it is given, so a check that reads
+    the story afterwards reads an empty list and passes whatever it is shown. Caught by defect
+    injection: a paragraph reading "It is paid in Patent Center; check the rate has not moved"
+    went through this function without a word.
 
     It does NOT rewrite the paper. A silent edit to a document about to be filed is worse than the
     phrase it removes: the fix belongs in the generator, and this is how the generator is told.
     In benchmark mode `failclosed.fallback` raises, so a test can assert the packet is clean.
     """
-    hits = filing_leaks(story_text(story))
+    hits = filing_leaks(text)
     if hits:
         try:
             import failclosed
@@ -1658,8 +1664,10 @@ def document_list_and_statements(docs, subject, copies, translations, win,
                 "privity with that party.", st["body"])]))
 
     signature_block(story, st, identity)
+    #  BEFORE the build: see `_sanitised`. `build` consumes the story.
+    leak_text = story_text(story)
     tmpl.build(story)
-    return _sanitised(buf.getvalue(), story, "01_DocumentList_and_Statements.pdf")
+    return _sanitised(buf.getvalue(), leak_text, "01_DocumentList_and_Statements.pdf")
 
 
 def audit_pdf(findings, docs, subject, win) -> bytes:
