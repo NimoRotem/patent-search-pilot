@@ -58,6 +58,8 @@ import retrieval                                  # search_doc_chunks (parallel 
 import img_search                                 # patent-drawing image-similarity channel
 import rerank_listwise                            # listwise agentic reranker (in-context, several at a time)
 from search_modes import require_available, ModeNotAvailable, available_modes
+import billing                                     # card on file, balance, usage ledger
+import entitlements                                # who may do what, in one place
 import search_mode                                 # the two pipelines: fast, and the attack
 import search_profile                              # concept search vs claim attack: kind + budget
 from retrieval import Retriever
@@ -1745,6 +1747,21 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             {"report_path": str(final_path), "sha256": report_sha,
              "partial": bool(rep.get("partial"))},
             n_out=len(rep.get("ranked_families") or []))
+        #  THE BILL, ONCE, WHERE THE RECEIPT IS WRITTEN. `spend.total_usd` on the receipt is
+        #  what this run cost US in model time, computed from the same per-model prices the app
+        #  charges itself against; billing.charge_run applies the margin and debits the balance.
+        #  Idempotent by (user, slug), so a retry or a second worker bills nothing.
+        try:
+            if owner_user_id:
+                _owner = accounts.get_user(owner_user_id) if hasattr(accounts, "get_user") else None
+                _cost = _spend_usd(slug)
+                if _owner and _cost:
+                    _bill = billing.charge_run(_owner, slug, _cost)
+                    if _bill.get("charged"):
+                        print(f"[billing {slug}] ${_bill['usd']:.4f} charged to user "
+                              f"{owner_user_id}; balance ${_bill.get('balance', 0):.2f}", flush=True)
+        except Exception:
+            traceback.print_exc()
         _set_job(slug, kind="done", status="done", msg="done")
         #  The receipt, written before the notification so a user who opens the mail and clicks
         #  straight through finds the cost already on the page.
@@ -2667,9 +2684,111 @@ def index():
         signed_out = auth.accounts_enabled(app) and not auth.current_user() and not auth.is_admin()
     except Exception:
         signed_out = False
-    if signed_out:
-        return render_template("landing.html", corpus=facts)
-    return render_template("index.html", corpus=facts)
+    #  A SIGNED-OUT VISITOR GETS THE SEARCH BOX, not a brochure. The prior-art search is 16
+    #  seconds of our own corpus and no model reading, so it costs almost nothing to give away
+    #  and it is the thing somebody has to be able to try before deciding whether to sign up.
+    #  Everything that spends real money is gated in `entitlements`, in the route AND on the
+    #  form, so an anonymous visitor cannot start a build, read anything in full, reach the
+    #  drafting studio or call the outside APIs. The landing copy is still at /about.
+    return render_template("index.html", corpus=facts,
+                           ent=entitlements.describe(auth.current_user()))
+
+
+# ---------------------------------------------------------------------------------------------
+#  BILLING. Pro is a card on file and a balance, not a plan column: see entitlements.tier_of.
+#  The card itself never reaches this server. Stripe Elements collects it in the browser, a
+#  SetupIntent confirms it for OFF-SESSION use, and all we store is the payment_method id and the
+#  last four digits, because every later charge is made with nobody at the keyboard.
+# ---------------------------------------------------------------------------------------------
+@app.route("/billing")
+def billing_page():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    return render_template("billing.html", user=user,
+                           ent=entitlements.describe(user, billing.balance(user["id"])),
+                           rows=billing.ledger(user["id"]),
+                           pk=billing.STRIPE_PUBLISHABLE,
+                           auto_at=entitlements.AUTO_TOPUP_AT_USD,
+                           msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+@app.route("/billing/setup-intent", methods=["POST"])
+def billing_setup_intent():
+    user = auth.current_user()
+    if not user:
+        return jsonify({"error": "sign in first"}), 401
+    try:
+        return jsonify(billing.setup_intent(user))
+    except Exception as exc:                                              # noqa: BLE001
+        traceback.print_exc()
+        return jsonify({"error": str(exc)[:200]}), 502
+
+
+@app.route("/billing/card", methods=["POST"])
+def billing_card():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    auth.require_csrf()
+    pm = (request.form.get("payment_method") or "").strip()
+    if not pm:
+        return redirect(request.script_root + "/billing?err=No+card+was+returned.")
+    try:
+        billing.attach_payment_method(user, pm)
+    except Exception as exc:                                              # noqa: BLE001
+        traceback.print_exc()
+        return redirect(request.script_root + "/billing?err=" + str(exc)[:160])
+    #  THE FIRST TOP-UP IS PART OF ADDING THE CARD. A card on file with no balance is a Pro
+    #  account that cannot pay for its first run, which fails at the least useful moment.
+    fresh = auth.load_user(user["id"]) if hasattr(auth, "load_user") else dict(
+        user, stripe_payment_method=pm)
+    got = billing.topup(fresh, entitlements.MIN_TOPUP_USD, note="first top-up with the card")
+    if not got.get("ok"):
+        return redirect(request.script_root + "/billing?err=Card+saved,+but+the+charge+failed:+"
+                        + str(got.get("error"))[:140])
+    return redirect(request.script_root + "/billing?msg=Card+saved+and+$%.2f+added."
+                    % got.get("usd", 0))
+
+
+@app.route("/billing/card/remove", methods=["POST"])
+def billing_card_remove():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    auth.require_csrf()
+    billing.remove_payment_method(user)
+    return redirect(request.script_root + "/billing?msg=Card+removed.")
+
+
+@app.route("/billing/topup", methods=["POST"])
+def billing_topup():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    auth.require_csrf()
+    got = billing.topup(user, request.form.get("usd"))
+    if got.get("ok"):
+        return redirect(request.script_root + "/billing?msg=$%.2f+added." % got["usd"])
+    return redirect(request.script_root + "/billing?err=" + str(got.get("error"))[:160])
+
+
+@app.route("/billing/autotopup", methods=["POST"])
+def billing_autotopup():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    auth.require_csrf()
+    on = request.form.get("on") == "1"
+    try:
+        usd = float(request.form.get("usd") or entitlements.MIN_TOPUP_USD)
+    except (TypeError, ValueError):
+        usd = entitlements.MIN_TOPUP_USD
+    with db.connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE app_users SET auto_topup_usd=%s WHERE id=%s",
+                    (usd if on else 0, user["id"]))
+        conn.commit()
+    return redirect(request.script_root + "/billing?msg=Saved.")
 
 
 @app.route("/about")
@@ -3362,6 +3481,13 @@ def run():
     #  search_mode: they are separate pipelines, not two depths of one, because the attack's
     #  queries are derived from claim language the fast search never reads.
     smode = search_mode.normalise(request.form.get("search_mode"))
+    #  THE TIER GATES, IN THE ROUTE. A limit enforced on the form and not here is not a limit: the
+    #  form is a suggestion and this is the thing that spends the money.
+    _ent = entitlements.check(user, entitlements.SEARCH_ATTACK) if smode == search_mode.ATTACK \
+        else entitlements.OK
+    if not _ent:
+        return _error_response({"error": "account_required", "need": _ent.need,
+                                "detail": _ent.reason}, 402, _ent.reason)
     _claims_in = (_load_doc_materials(doc_token) or {}).get("claims") or []
     _refuse = search_mode.refusal(smode, _claims_in)
     if _refuse:
@@ -3426,6 +3552,10 @@ def run():
     #  it is not, so an entry point that never heard of this behaves exactly as it did.
     if "third_party" in request.form:
         local_only = str(request.form.get("third_party") or "") not in ("1", "true", "on", "yes")
+        #  PRO ONLY, and enforced here rather than only on the checkbox. The outside APIs are
+        #  billed per call, so a form post that says otherwise must not be able to spend.
+        if not local_only and not entitlements.check(user, entitlements.THIRD_PARTY):
+            local_only = True
     else:
         try:
             import search_settings
@@ -3453,6 +3583,15 @@ def run():
     if smode == search_mode.ATTACK:
         read_top = search_mode.normalise_read_top(
             request.form.get("read_top") or search_mode.READ_TOP_DEFAULT)
+        #  CLAMPED, NOT REFUSED. Somebody who asks for 400 on a free account gets 20 and is told
+        #  so on the report, which is a run they can use; a 402 in front of a claim attack they
+        #  were entitled to start is not.
+        _rv = entitlements.check(user, entitlements.READ_IN_FULL, read_top=read_top)
+        if not _rv:
+            read_top = int(_rv.limit or entitlements.FREE_READ_TOP)
+            _read_clamped = _rv.reason
+        else:
+            _read_clamped = ""
     else:
         #  FAST reads nothing, so a read budget is not a smaller number, it is a category error.
         read_top, batched, then = None, False, "list"
@@ -7814,6 +7953,13 @@ def _structured_drafting_notes(values) -> str:
 
 @app.route("/drafts", strict_slashes=False)
 def drafts_list():
+    #  THE STUDIO IS PRO. It writes and revises a specification with a model, turn by turn, so it
+    #  is billed by what it uses. The gate is on the list because that is the door: every other
+    #  /drafts route is reached through a project this refuses to show.
+    _dv = entitlements.check(auth.current_user(), entitlements.DRAFTING)
+    if not _dv:
+        return render_template("upgrade.html", reason=_dv.reason, need=_dv.need,
+                               ent=entitlements.describe(auth.current_user())), 402
     try:
         user, principal = _draft_identity()
         include_all = bool(principal.is_admin and request.args.get("all") == "1")

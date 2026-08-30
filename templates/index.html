@@ -72,7 +72,8 @@ with claims has been read. A description alone can always run a prior-art search
       <label class="lab" for="searchModeSel">Search</label>
       <select id="searchModeSel" name="search_mode" class="input">
         <option value="fast" selected>Prior-art search</option>
-        <option value="attack" id="modeAttackOpt">Third-party build</option>
+        <option value="attack" id="modeAttackOpt"
+                data-needs-account="{{ '0' if ent.can_attack else '1' }}">Third-party build{% if not ent.can_attack %} &middot; account needed{% endif %}</option>
       </select>
       {{ qhelp("the two searches", "PRIOR-ART SEARCH. Any input: a description, a draft, a
 published patent. It reduces what you gave it to a handful of short queries, searches every
@@ -237,7 +238,7 @@ never looks at.") }}
           for signed-in accounts only: the outside APIs are metered and an email needs somebody to
           send it to. Ticking either while signed out opens the registration prompt instead. #}
       <label class="toggle tpsrc"><input type="checkbox" name="third_party" value="1"
-               data-needs-account="1">
+               {% if not ent.can_third_party %}data-needs="{{ 'free' if ent.tier == 'anon' else 'pro' }}"{% endif %}>
         Use additional sources</label>
       {{ qhelp("third-party sources", "ON asks seven outside patent APIs as well as our own
 corpus: PQAI, Google Patents through BigQuery, SerpApi, the USPTO keyword search and the rest. OFF
@@ -253,7 +254,7 @@ A local-only search cannot see art that is not in the 354,986 publications we ho
 recover the full text of a reference the corpus has only an abstract for. Use it when the answer
 is expected to be in our niche, and turn it back on before anything is filed.") }}
       <label class="toggle notifyopt"><input type="checkbox" name="notify_email" value="1"
-               data-needs-account="1">
+               {% if ent.tier == 'anon' %}data-needs="free"{% endif %}>
         Email me when done</label>
       {{ qhelp("email when done", "A third-party build can run for an hour, and you do not have to
 sit with it: the search keeps going whether or not the tab is open, and this sends one message to
@@ -292,10 +293,17 @@ Signed-in accounts only, because there has to be somewhere to send it.") }}
     <details class="advopts attackonly" id="attackAdv" hidden>
       <summary>Advanced</summary>
       <div class="advline">
+        {#  THE LADDER STOPS WHERE THE TIER STOPS. A free account reads 20 in full, which is
+            a real trial of the claim attack; past that the run is billed for what it spends, so
+            the options are shown and disabled rather than hidden. Somebody has to be able to see
+            what they would be buying. The route clamps too: a form is a suggestion. #}
         <label>Read
           <select name="read_top" id="advReadTop">
             {% for n in [20, 45, 100, 200, 400] %}
-            <option value="{{ n }}"{{ ' selected' if n == 45 }}>top {{ n }}</option>
+            <option value="{{ n }}"
+              {{ ' selected' if n == (20 if (ent.read_limit == 20) else 45) }}
+              {% if ent.read_limit is not none and n > ent.read_limit %}disabled{% endif %}
+              >top {{ n }}{% if ent.read_limit is not none and n > ent.read_limit %} &middot; Pro{% endif %}</option>
             {% endfor %}
           </select>
         </label>
@@ -346,14 +354,7 @@ each cell is held to exactly the same grounding bar either way.") }}
     <div class="qhelphead"><b>This one needs an account</b>
       <form method="dialog" style="margin-left:auto">
         <button class="btn ghost sm" value="close">Close</button></form></div>
-    <div class="qhelpbody">
-      <p>Searching the outside patent APIs and emailing you when a run finishes both need an
-        account: the first is metered per search, and the second needs somewhere to send it.</p>
-      <p>Registration is free and takes a moment. Everything else on this page works without one,
-        including the whole prior-art search.</p>
-      <p><a class="btn sm" href="{{ request.script_root }}/register">Create a free account</a>
-        <a class="btn ghost sm" href="{{ request.script_root }}/login">Sign in</a></p>
-    </div>
+    <div class="qhelpbody" id="needAccountBody"></div>
   </dialog>
 </div>
 {% endblock %}
@@ -428,16 +429,45 @@ const searchForm = document.getElementById('searchform');
     a signed-out visitor who ticks either gets told once, plainly, with the way to fix it, rather
     than a checkbox that silently does nothing on submit. */
 (function accountGate(){
-  const signedIn = {{ 'true' if current_user else 'false' }};
-  if (signedIn) return;
+  /*  ONE DIALOG, TWO REASONS. A control can be out of reach because there is no account at all
+      or because the account is not Pro, and those want different words and different links, so
+      the control carries which one it needs. The route enforces the same thing either way: this
+      is what stops somebody submitting a form that would be refused. */
   const dlg = document.getElementById('needAccountDlg');
-  document.querySelectorAll('input[data-needs-account]').forEach(function (box){
+  const body = document.getElementById('needAccountBody');
+  const COPY = {
+    free: {t: 'This one needs an account',
+           b: 'Reading references in full, building a third-party submission and emailing you ' +
+              'when a run finishes all cost model time, so they run against an account. ' +
+              'Registration is free, and the prior-art search never needs one.',
+           a: '{{ request.script_root }}/register', al: 'Create a free account'},
+    pro:  {t: 'This one is Pro',
+           b: 'Searching the outside patent APIs is billed per call, and reading more than ' +
+              '{{ ent.read_limit or 20 }} references in one run is billed for the model time it ' +
+              'spends. Pro is a card on file and a $10 minimum of credit, charged for what a run ' +
+              'actually uses. It is not a subscription.',
+           a: '{{ request.script_root }}/billing', al: 'Add a card'}
+  };
+  function open(need){
+    const c = COPY[need] || COPY.free;
+    if (!dlg || !dlg.showModal){ window.location.href = c.a; return; }
+    dlg.querySelector('.qhelphead b').textContent = c.t;
+    body.innerHTML = '<p>' + c.b + '</p><p><a class="btn sm" href="' + c.a + '">' + c.al +
+                     '</a> <a class="btn ghost sm" href="{{ request.script_root }}/login">Sign in</a></p>';
+    dlg.showModal();
+  }
+  document.querySelectorAll('input[data-needs]').forEach(function (box){
     box.addEventListener('change', function (){
       if (!box.checked) return;
       box.checked = false;
-      if (dlg && dlg.showModal) dlg.showModal();
-      else window.location.href = '{{ request.script_root }}/register';
+      open(box.getAttribute('data-needs'));
     });
+  });
+  const sel = document.getElementById('searchModeSel');
+  if (sel) sel.addEventListener('change', function (){
+    const o = sel.options[sel.selectedIndex];
+    if (o && o.getAttribute('data-needs-account') === '1'){ sel.value = 'fast'; open('free');
+      if (window.__modeRepaint) window.__modeRepaint(); }
   });
 })();
 const searchButton = document.getElementById('gobtn');
