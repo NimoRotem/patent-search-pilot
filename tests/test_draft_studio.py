@@ -900,6 +900,32 @@ def test_section_view_requires_the_same_cutting_line_designation_on_its_source_v
     assert caught.value.category == "figures_and_numerals"
 
 
+def test_section_view_accepts_lettered_cutting_lines_from_the_live_draft_wording():
+    sections = {
+        **GOOD,
+        "drawing_descriptions": (
+            "FIG. 5 is a cross-sectional view taken on cutting line A-A of FIG. 2.\n\n"
+            "FIG. 8 is a cross-sectional view taken on cutting line B-B of FIG. 2."
+        ),
+    }
+    figures = [
+        {"label": f"FIG. {number}", "caption": f"View {number}.", "numerals": []}
+        for number in range(1, 9)
+    ]
+    figures[1]["caption"] = (
+        "A broken cutting line A-A is drawn vertically through the first carriage, with viewing "
+        "arrows pointing to the right, indicating the sectional view shown in FIG. 5. A second "
+        "broken cutting line B-B is drawn vertically through the second carriage, with viewing "
+        "arrows pointing to the right, indicating the sectional view shown in FIG. 8."
+    )
+
+    check = checks_for(sections, figures=figures)[
+        "Section views have matching source-view cutting lines"
+    ]
+
+    assert check["status"] == "pass", check["items"]
+
+
 def test_an_orphaned_drawing_remains_in_bidirectional_qa(monkeypatch):
     import draft_figures
     monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{

@@ -58,8 +58,9 @@ _FIG_RANGE_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)\s*(?:-|–|\u2014|to
                            r"([0-9]+[A-Za-z]?)", re.IGNORECASE)
 _SECTION_VIEW_LINE_RE = re.compile(
     r"(?:^|[.!?]\s+)\s*FIGS?\.?\s*(?P<view>[0-9]+[A-Za-z]?)\b"
-    r"[^.\n]{0,500}\btaken\s+on\s+line\s+"
-    r"(?P<designation>[0-9]+[A-Za-z]?)\s*[-\u2012-\u2015]\s*"
+    r"[^.\n]{0,500}\btaken\s+(?:on|along)\s+"
+    r"(?:(?:cutting|section)(?:[- ]plane)?\s+)?line\s+"
+    r"(?P<designation>[0-9]+[A-Za-z]?|[A-Z]{1,3})\s*[-\u2012-\u2015]\s*"
     r"(?P=designation)\s+of\s+FIGS?\.?\s*(?P<source>[0-9]+[A-Za-z]?)\b",
     re.IGNORECASE | re.MULTILINE)
 _FIGURE_NUMERAL_DECLARATION_RE = re.compile(
@@ -930,7 +931,7 @@ def _figure_checks(sections: Mapping[str, str],
     expected_by_source: dict[str, set[str]] = defaultdict(set)
     for view, designation, source in sorted(section_references):
         expected_by_source[source].add(designation)
-        if view != designation:
+        if designation[:1].isdigit() and view != designation:
             section_issues.append(
                 f"FIG. {view}: line {designation}-{designation} must carry the same "
                 "designation as the resulting section view")
