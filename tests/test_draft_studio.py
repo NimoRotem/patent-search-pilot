@@ -5568,202 +5568,34 @@ def test_a_failed_or_superseded_turn_restores_the_published_drawing_set(monkeypa
     assert runner.restored == [31]
 
 
-def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_user_input():
+def test_a_failed_turn_never_queues_itself_another_one():
+    """The autonomous filing-repair chain is off, and this is what keeps it off.
+
+    It used to answer a failed turn by queueing itself up to six more, so a difficult application
+    could clear its drawing and filing gates with nobody watching. Both halves of that are gone:
+    there is no drawing gate, and the drafting agent is a person's interactive session rather than
+    a queue. Measured on the day it was switched off, it had just re-queued FIVE drawing turns
+    across five projects, minutes after the last five were cancelled, each one spending model time
+    redrawing sheets for a feature the product no longer has.
+
+    Every trigger it used to fire on, at once, because the failure that matters is one of them
+    quietly coming back.
+    """
     import draft_studio_service as service
 
     repository = Mock()
-    repository.fail_turn.return_value = {
-        "id": 31,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": None,
-        "status": "failed",
-    }
-    repository.enqueue_turn_safely.return_value = {"id": 32, "status": "queued"}
-    runner = Mock(repository=repository)
-    claimed = {
-        "id": 31,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": None,
-        "lease_token": "lease",
-    }
-
-    result = service._fail(
-        runner, claimed,
-        "The automatic filing gate could not clear: FIG. 2 endpoint inspection failed",
-        retryable=True)
-
-    assert result["status"] == "failed"
-    queued = repository.enqueue_turn_safely.call_args
-    assert queued.args == (7, 91)
-    assert queued.kwargs["kind"] == "qa_fix"
-    assert queued.kwargs["project_revision"] == 4
-    assert queued.kwargs["idempotency_key"] == "auto-filing-repair-31-1"
-    assert "not new invention disclosure" in queued.kwargs["user_message"]
-    message = repository.add_message.call_args.args[2]
-    assert "No action is required" in message
-    assert "Try again" not in message
-
-
-@pytest.mark.parametrize("error", [
-    "StudioError: API Error: Connection lost mid-response. The response may be incomplete.",
-    "StudioError: No conversation found with session ID: stopped-review-session",
-    ("StudioError: The Vertex drafting fallback finished without returning the required "
-     "structured answer."),
-    "SourceReviewUnavailable: The drafting agent produced no result (exit code 143).",
-    "SourceReviewUnavailable: Failed to provide valid structured output after 5 attempts",
-    ("FigureTransientError: Cross-provider geometry inspection failed: Anthropic geometry "
-     "audit did not return complete JSON."),
-    ("FigureTransientError: the image model could not draw this figure: the image model "
-     "returned no response parts (IMAGE_RECITATION)"),
-    "DrawingBudgetSpent: the bounded drawing caller stopped before every sheet passed",
-    ("This turn reached its ceiling of $12.00 (14 agent runs, 4,451,679 tokens). "
-     "The draft it had reached is saved; nothing was published."),
-])
-def test_terminal_provider_disconnect_continues_a_saved_candidate_without_user_input(error):
-    import draft_studio_service as service
-
-    repository = Mock()
-    repository.fail_turn.return_value = {
-        "id": 31,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": None,
-        "status": "failed",
-    }
-    repository.retry_candidate.return_value = {
-        "turn_id": 31,
-        "snapshot": {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES},
-        "qa_report": {"verdict": "fail"},
-    }
-    repository.enqueue_turn_safely.return_value = {"id": 32, "status": "queued"}
-    runner = Mock(repository=repository)
-    claimed = {
-        "id": 31,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": None,
-        "lease_token": "lease",
-    }
-
-    result = service._fail(
-        runner, claimed, error, retryable=True)
-
-    assert result["status"] == "failed"
-    queued = repository.enqueue_turn_safely.call_args
-    assert queued.args == (7, 91)
-    assert queued.kwargs["kind"] == "gate_resume"
-    assert queued.kwargs["idempotency_key"] == "auto-filing-repair-31-1"
-    assert "No action is required" in repository.add_message.call_args.args[2]
-
-
-def test_automatic_filing_repair_chain_continues_past_three_bounded_drawing_turns():
-    import draft_studio_service as service
-
-    repository = Mock()
-    repository.fail_turn.return_value = {
-        "id": 35,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": "auto-filing-repair-31-3",
-        "status": "failed",
-    }
-    runner = Mock(repository=repository)
-    claimed = {
-        "id": 35,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": "auto-filing-repair-31-3",
-        "lease_token": "lease",
-    }
-
-    service._fail(
-        runner, claimed,
-        "The automatic filing gate could not clear: source fidelity review failed",
-        retryable=True)
-
-    queued = repository.enqueue_turn_safely.call_args
-    assert queued.kwargs["idempotency_key"] == "auto-filing-repair-31-4"
-    assert "No action is required" in repository.add_message.call_args.args[2]
-
-
-def test_automatic_filing_repair_chain_stops_at_its_durable_safety_limit():
-    import draft_studio_service as service
-
-    repository = Mock()
-    repository.fail_turn.return_value = {
-        "id": 38,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": "auto-filing-repair-31-6",
-        "status": "failed",
-    }
-    runner = Mock(repository=repository)
-    claimed = {
-        "id": 38,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": "auto-filing-repair-31-6",
-        "lease_token": "lease",
-    }
-
-    service._fail(
-        runner, claimed,
-        "The automatic filing gate could not clear: source fidelity review failed",
-        retryable=True)
-
+    claimed = {"id": 31, "project_id": 7, "requested_by_user_id": 91, "project_revision": 3,
+               "idempotency_key": "auto-filing-repair-30-2"}
+    for error in (
+            service._FILING_GATE_EXHAUSTED + " one blocker remains",
+            "DrawingBudgetSpent: the drawing pass reached its time budget.",
+            "FigureTransientError: the image model returned no response parts",
+            "SourceReviewUnavailable: the reviewer produced no result (exit code 143)",
+            "StudioError: API Error: Connection lost mid-response.",
+            "This turn reached its ceiling of $12.00.",
+    ):
+        assert service._continue_terminal_filing_repair(repository, claimed, {}, error) == ""
     repository.enqueue_turn_safely.assert_not_called()
-    assert "safety limit" in repository.add_message.call_args.args[2]
-
-
-@pytest.mark.parametrize("error", [
-    "DrawingBudgetSpent: the drawing pass reached its time budget.",
-    ("This turn reached its ceiling of 14 agent runs ($7.06 spent, 559,213 tokens). "
-     "The draft it had reached is saved; nothing was published."),
-])
-def test_technical_candidate_continuation_starts_a_new_chain_at_the_repair_limit(error):
-    import draft_studio_service as service
-
-    repository = Mock()
-    repository.fail_turn.return_value = {
-        "id": 38,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": "auto-filing-repair-31-6",
-        "status": "failed",
-    }
-    repository.retry_candidate.return_value = {
-        "turn_id": 38,
-        "snapshot": {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES},
-        "qa_report": {"verdict": "fail"},
-    }
-    repository.enqueue_turn_safely.return_value = {"id": 39, "status": "queued"}
-    runner = Mock(repository=repository)
-    claimed = {
-        "id": 38,
-        "project_id": 7,
-        "requested_by_user_id": 91,
-        "project_revision": 4,
-        "idempotency_key": "auto-filing-repair-31-6",
-        "lease_token": "lease",
-    }
-
-    service._fail(runner, claimed, error, retryable=False)
-
-    queued = repository.enqueue_turn_safely.call_args
-    assert queued.kwargs["kind"] == "gate_resume"
-    assert queued.kwargs["idempotency_key"] == "auto-filing-repair-38-1"
-    assert "No action is required" in repository.add_message.call_args.args[2]
 
 
 def test_a_publication_number_in_prose_is_not_three_reference_numerals():

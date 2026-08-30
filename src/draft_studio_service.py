@@ -1204,88 +1204,22 @@ def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: st
 
 def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any],
                                      result: Mapping[str, Any], error: str) -> str:
-    """Continue a blocked filing gate or a valid candidate interrupted by its provider."""
-    filing_gate_stopped = str(error).startswith(_FILING_GATE_EXHAUSTED)
-    interrupted_candidate = False
-    # A graceful worker restart terminates its drafting or review subprocess with SIGTERM. The
-    # shell reports that signal as exit code 143. Treat that like a provider disconnect only when
-    # a complete candidate was checkpointed, so a deployment cannot strand filing-ready work.
-    # A resumed provider session can disappear while that same graceful stop is propagating. The
-    # candidate check below is still mandatory, so this cannot manufacture a continuation from an
-    # incomplete drafting response.
-    lost_resume_session = "No conversation found with session ID:" in str(error)
-    interrupted_run = bool(
-        draft_agent._transient_provider_error(error) or
-        re.search(r"\bexit code (?:130|143)\b", str(error), re.IGNORECASE) or
-        lost_resume_session)
-    # The independent reviewer is fail-closed: this exception means no source verdict was
-    # accepted, not that the candidate failed source fidelity. Its formatting, timeout, or
-    # availability problem can only be repaired by rerunning the mandatory review. No user input
-    # can resolve it, so preserve and continue any complete checkpoint automatically.
-    source_review_unavailable = str(error).startswith("SourceReviewUnavailable:")
-    # FigureTransientError is raised only when a provider or inspection transport failed to
-    # return a usable verdict. It is not a visual rejection, and repeating the exact saved
-    # candidate is the repair regardless of the provider's particular error wording.
-    figure_transient = str(error).startswith("FigureTransientError:")
-    # A bounded maintenance caller may stop between sheets. Its exact checkpoint is durable, so
-    # continue that candidate without spending a drafting-agent repair on unchanged filing text.
-    drawing_budget_spent = str(error).startswith("DrawingBudgetSpent:")
-    # The exact charged turn must not retry, but a complete checkpoint may continue in a new
-    # bounded turn. The repair-chain sequence prevents unbounded autonomous spend while allowing
-    # a difficult application to finish without user intervention.
-    turn_budget_spent = "reached its ceiling" in str(error)
-    if not filing_gate_stopped and (
-            interrupted_run or source_review_unavailable or figure_transient or
-            drawing_budget_spent or turn_budget_spent):
-        try:
-            candidate = repository.retry_candidate(int(result.get("id") or claimed["id"]))
-            interrupted_candidate = bool(
-                isinstance(candidate, Mapping) and
-                isinstance(candidate.get("snapshot"), Mapping) and
-                candidate.get("snapshot"))
-        except Exception:                                      # noqa: BLE001
-            interrupted_candidate = False
-    if not filing_gate_stopped and not interrupted_candidate:
-        return ""
-    current_turn_id = int(result.get("id") or claimed["id"])
-    if interrupted_candidate:
-        # Provider failures and bounded time or spend slices did not consume a semantic repair
-        # attempt. Start a fresh bounded chain from this durable checkpoint so infrastructure
-        # timing cannot strand a mechanically repairable application at the filing-repair limit.
-        origin_turn_id = current_turn_id
-        sequence = 1
-    else:
-        prior_key = str(result.get("idempotency_key") or claimed.get("idempotency_key") or "")
-        matched = _AUTOMATIC_FILING_REPAIR_KEY.fullmatch(prior_key)
-        if matched:
-            origin_turn_id = int(matched.group(1))
-            sequence = int(matched.group(2)) + 1
-        else:
-            origin_turn_id = current_turn_id
-            sequence = 1
-    if sequence > MAX_AUTOMATIC_FILING_REPAIR_TURNS:
-        return "limit"
+    """Never. There is nothing left for an autonomous repair chain to repair.
 
-    project_id = int(result.get("project_id") or claimed["project_id"])
-    user_id = int(result.get("requested_by_user_id") or claimed["requested_by_user_id"])
-    revision = int(result.get("project_revision") or claimed["project_revision"])
-    try:
-        repository.enqueue_turn_safely(
-            project_id, user_id,
-            kind="gate_resume" if interrupted_candidate else "qa_fix",
-            user_message=(
-                "Continue automatic filing repair from the saved candidate and its previous QA "
-                "report. Resolve every blocker, regenerate any rejected drawing geometry, rerun "
-                "all text, source-fidelity, OCR, numeral, leader, and visual checks, and publish "
-                "only after every gate passes. This is corrective QA, not new invention "
-                "disclosure."),
-            project_revision=revision,
-            idempotency_key=f"auto-filing-repair-{origin_turn_id}-{sequence}")
-        kick()
-    except Exception:                                          # noqa: BLE001
-        traceback.print_exc()
-        return ""
-    return "queued"
+    This used to queue itself another `gate_resume` turn whenever one failed - up to six - so a
+    difficult application could finish its drawing and filing gates without anybody watching. Two
+    things ended that. The drawing gate is gone with the image generation it drove, and the
+    drafting agent is now a person's interactive session rather than a queue: there is somebody at
+    the terminal, and the Review tab tells them what is still wrong.
+
+    Left as a chain of one-line facts rather than deleted, because the shape of what it did is the
+    reason it must not run: it was measured on 2026-08-30 re-queuing FIVE drawing turns across five
+    projects, minutes after the last five were cancelled, each one spending model time redrawing
+    sheets for a feature the product no longer has. An autonomous loop that nobody is watching and
+    that spends money is exactly the thing to switch off deliberately, once, rather than to leave
+    running because its trigger looks unreachable.
+    """
+    return ""
 
 
 def _loop() -> None:
