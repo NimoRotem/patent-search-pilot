@@ -2713,6 +2713,26 @@ def billing_page():
                            msg=request.args.get("msg"), err=request.args.get("err"))
 
 
+@app.route("/billing/webhook", methods=["POST"])
+def billing_webhook():
+    """Stripe's own account of what happened, applied to the ledger.
+
+    NO SESSION, NO CSRF, AND THAT IS DELIBERATE: Stripe has neither. The SIGNATURE is the
+    authentication, checked against STRIPE_WEBHOOK_SECRET over the RAW body, which is why this
+    reads request.get_data() and never request.json: any reserialisation changes the bytes the
+    signature was computed over and every delivery would fail.
+
+    ALWAYS 200 ONCE VERIFIED. Stripe retries a non-2xx for three days, so returning 500 on an
+    event we cannot process turns one bad event into a storm. Failures are recorded on the event
+    row instead. A BAD SIGNATURE is the one thing that gets a 400: that is not a retry, it is a
+    stranger.
+    """
+    ev = billing.verify(request.get_data(), request.headers.get("Stripe-Signature", ""))
+    if ev is None:
+        return jsonify({"error": "signature"}), 400
+    return jsonify(billing.handle_event(ev)), 200
+
+
 @app.route("/billing/setup-intent", methods=["POST"])
 def billing_setup_intent():
     user = auth.current_user()

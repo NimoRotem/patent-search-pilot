@@ -77,7 +77,11 @@ _OPEN_ENDPOINTS = {"healthz", "index", "about", "how_it_works",
                    "public_report_page", "public_report_unlock", "public_report_beacon",
                    # An invitee has no account yet; a verification link may be opened from a mail
                    # client with no session. Both are single-use, expiring, hashed tokens.
-                   "auth.accept_invitation", "auth.verify_email"}
+                   "auth.accept_invitation", "auth.verify_email",
+                   #  Stripe posts here with no session and no CSRF token, because it has
+                   #  neither. The signature over the raw body is the authentication and it is
+                   #  checked inside the view; an unsigned delivery is refused there, not here.
+                   "billing_webhook"}
 
 
 # ---------------------------------------------------------------------------------------------
