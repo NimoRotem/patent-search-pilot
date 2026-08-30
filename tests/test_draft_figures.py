@@ -25,6 +25,14 @@ def accepted_leader_audit(**values):
         "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
         "review_count": draft_figures.LEADER_REVIEW_COUNT,
         "section_mark_anchor_audit": draft_figures._section_mark_anchor_audit([], []),
+        "flowchart_topology_audit": {
+            "ok": True, "inspected": False, "required": False,
+            "model_name": "deterministic-parser",
+            "specification_hash": str(values.get("specification_hash") or ""),
+            "prompt_version": draft_figures.FLOWCHART_TOPOLOGY_PROMPT_VERSION,
+            "review_count": 0, "expected": [], "observed": [],
+            "missing": [], "unexpected": [], "duplicates": [], "errors": [],
+        },
         **values,
     }
 
@@ -1919,6 +1927,209 @@ def test_cross_provider_geometry_audit_rejects_an_unrequested_power_cable():
     assert audit["ok"] is False and audit["inspected"] is True
     assert audit["missing"] == [] and audit["unexpected"]
     assert "power cable" in " ".join(audit["unexpected"]).lower()
+
+
+def test_flowchart_topology_spec_parses_exact_directed_edges():
+    caption = """
+    A process flow diagram with five numbered shapes and one terminator.
+    Flowchart nodes: 500=process, 502=decision, 504=process, 506=decision,
+    508=process, END=terminator.
+    Flowchart directed edges: 500->502, 502->500, 502->504, 504->506,
+    506->END, 506->508, 508->506.
+    """
+
+    spec = draft_figures.flowchart_topology_spec(
+        caption,
+        [
+            "500 = monitor step", "502 = first decision", "504 = shedding step",
+            "506 = second decision", "508 = next shedding step",
+        ],
+    )
+
+    assert spec["ok"] is True and spec["required"] is True
+    assert spec["nodes"] == {
+        "500": "process", "502": "decision", "504": "process",
+        "506": "decision", "508": "process", "END": "terminator",
+    }
+    assert spec["expected"] == [
+        "500->502", "502->500", "502->504", "504->506",
+        "506->END", "506->508", "508->506",
+    ]
+
+
+def test_flowchart_topology_allows_a_closed_cycle_without_inventing_a_terminator():
+    caption = """
+    A process flow diagram that repeats continuously.
+    Flowchart nodes: 400=process, 402=process.
+    Flowchart directed edges: 400->402, 402->400.
+    """
+
+    spec = draft_figures.flowchart_topology_spec(
+        caption, ["400 = first step", "402 = second step"])
+
+    assert spec["ok"] is True
+    assert spec["nodes"] == {"400": "process", "402": "process"}
+    assert spec["expected"] == ["400->402", "402->400"]
+
+
+def test_flowchart_topology_rejects_disconnected_closed_components():
+    caption = """
+    A process flow diagram with two disconnected cycles.
+    Flowchart nodes: 400=process, 402=process, 404=process, 406=process.
+    Flowchart directed edges: 400->402, 402->400, 404->406, 406->404.
+    """
+
+    spec = draft_figures.flowchart_topology_spec(
+        caption,
+        [
+            "400 = first step", "402 = second step",
+            "404 = third step", "406 = fourth step",
+        ],
+    )
+
+    assert spec["ok"] is False
+    assert "disconnected" in " ".join(spec["errors"]).lower()
+
+
+def test_flowchart_topology_audit_rejects_extra_connection_even_if_model_approves():
+    caption = """
+    A process flow diagram with numbered shapes.
+    Flowchart nodes: 500=process, 502=decision, 504=process, 506=decision,
+    508=process, END=terminator.
+    Flowchart directed edges: 500->502, 502->500, 502->504, 504->506,
+    506->END, 506->508, 508->506.
+    """
+    connections = [
+        {"source": source, "target": target, "arrowhead_visible": True,
+         "evidence": f"A thick arrow runs from {source} to {target}."}
+        for source, target in (
+            ("500", "502"), ("502", "500"), ("502", "504"),
+            ("504", "506"), ("506", "END"), ("506", "508"),
+            ("508", "506"), ("508", "END"),
+        )
+    ]
+
+    audit = draft_figures.flowchart_topology_audit(
+        caption,
+        [
+            "500 = monitor step", "502 = first decision", "504 = shedding step",
+            "506 = second decision", "508 = next shedding step",
+        ],
+        {
+            "matches_spec": True,
+            "summary": "The requested graph is present.",
+            "errors": [],
+            "connections": connections,
+        },
+    )
+
+    assert audit["ok"] is False and audit["inspected"] is True
+    assert audit["missing"] == []
+    assert audit["unexpected"] == ["508->END"]
+
+
+def test_current_leader_audit_rejects_missing_flowchart_topology_certificate():
+    current = accepted_leader_audit()
+    current.pop("flowchart_topology_audit")
+
+    assert draft_figures.current_leader_audit(current) is False
+
+
+def test_current_flowchart_topology_audit_rejects_malformed_review_count():
+    audit = accepted_leader_audit()["flowchart_topology_audit"]
+    audit["review_count"] = {"invalid": True}
+
+    assert draft_figures.current_flowchart_topology_audit(audit) is False
+
+
+def test_current_leader_audit_rejects_nonflow_certificate_for_another_specification():
+    current = accepted_leader_audit(specification_hash="current-sheet")
+    current["flowchart_topology_audit"].update({
+        "model_name": "deterministic-parser",
+        "specification_hash": "different-sheet",
+    })
+
+    assert draft_figures.current_leader_audit(current) is False
+
+
+def test_flowchart_topology_inspection_traces_three_ways_and_vetoes_one_extra_path(
+        monkeypatch):
+    caption = """
+    A process flow diagram. The process shape 500 leads to decision 502. Decision 502 has
+    one path back to process 500 and another path to process 504. Process 504 leads to
+    decision 506. Decision 506 has one path to END and another to process 508. Process 508
+    loops back to decision 506.
+    Flowchart nodes: 500=process, 502=decision, 504=process, 506=decision,
+    508=process, END=terminator.
+    Flowchart directed edges: 500->502, 502->500, 502->504, 504->506,
+    506->END, 506->508, 508->506.
+    """
+    expected_pairs = [
+        ("500", "502"), ("502", "500"), ("502", "504"),
+        ("504", "506"), ("506", "END"), ("506", "508"), ("508", "506"),
+    ]
+
+    def payload(pairs, *, matches=True, errors=()):
+        return {
+            "matches_spec": matches,
+            "summary": "Every thick arrow was traced from source to target.",
+            "errors": list(errors),
+            "connections": [
+                {
+                    "source": source, "target": target, "arrowhead_visible": True,
+                    "evidence": f"The route exits {source}, bends once, and enters {target}.",
+                }
+                for source, target in pairs
+            ],
+        }
+
+    responses = [
+        payload(expected_pairs),
+        payload(expected_pairs),
+        payload(
+            expected_pairs + [("508", "END")],
+            matches=False,
+            errors=["A second thick path from 508 enters the terminator."],
+        ),
+    ]
+    calls = []
+
+    class Response:
+        usage_metadata = None
+
+        def __init__(self, parsed):
+            self.parsed = parsed
+
+    class Models:
+        def generate_content(self, **values):
+            calls.append(values)
+            return Response(responses.pop(0))
+
+    class Client:
+        models = Models()
+
+    monkeypatch.setattr(draft_figures.llm, "_client", lambda: Client())
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **_kwargs: None)
+
+    audit = draft_figures.inspect_flowchart_topology(
+        blank_png(), label="FIG. 5", caption=caption,
+        numerals=[
+            "500 = monitor step", "502 = first decision", "504 = shedding step",
+            "506 = second decision", "508 = next shedding step",
+        ],
+    )
+
+    assert audit["ok"] is False and audit["unexpected"] == ["508->END"]
+    assert audit["review_count"] == draft_figures.FLOWCHART_TOPOLOGY_REVIEW_COUNT
+    assert len(calls) == draft_figures.FLOWCHART_TOPOLOGY_REVIEW_COUNT
+    prompts = [call["contents"][-1].lower() for call in calls]
+    assert any("forward trace" in prompt for prompt in prompts)
+    assert any("reverse trace" in prompt for prompt in prompts)
+    assert any("second route into the terminator" in prompt for prompt in prompts)
+    assert all(call["config"].response_json_schema ==
+               draft_figures.FLOWCHART_TOPOLOGY_RESPONSE_SCHEMA for call in calls)
 
 
 def test_cross_provider_geometry_audit_ignores_parts_list_only_metadata_complaint():
@@ -8208,13 +8419,7 @@ def test_leader_consensus_fails_when_the_adversarial_trace_disagrees():
 
 
 def test_only_the_current_two_trace_leader_review_is_accepted():
-    current = {
-        "ok": True, "inspected": True,
-        "model_name": draft_figures.vision_model(),
-        "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
-        "review_count": 2,
-        "section_mark_anchor_audit": draft_figures._section_mark_anchor_audit([], []),
-    }
+    current = accepted_leader_audit()
     assert draft_figures.current_leader_audit(current) is True
     assert draft_figures.current_leader_audit({
         key: value for key, value in current.items()
@@ -8472,6 +8677,21 @@ def test_geometry_prompt_removes_section_marks_and_spells_geometric_numbers():
     assert not re.search(r"\d", prompt)
     assert "thirty degrees" in prompt.lower()
     assert "section line" not in prompt.lower()
+
+
+def test_geometry_prompt_strips_inline_flowchart_metadata():
+    cleaned = draft_figures._geometry_text(
+        "A process flow diagram has a first rectangle above a second rectangle. "
+        "Flowchart nodes: 400=process, 402=process. "
+        "Flowchart directed edges: 400->402, 402->400.",
+        ["400 = first step", "402 = second step"],
+    )
+
+    assert "first rectangle above a second rectangle" in cleaned
+    assert "flowchart nodes" not in cleaned.lower()
+    assert "directed edges" not in cleaned.lower()
+    assert "=process" not in cleaned.lower()
+    assert "->" not in cleaned
 
 
 def test_geometry_prompt_strips_a_complete_hyphenated_cutting_plane_paragraph():

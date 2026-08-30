@@ -189,13 +189,32 @@ def test_flowchart_briefs_with_numbered_steps_remain_renderable():
         **FIGURES[0],
         "caption": (
             "A process flow diagram with a monitoring step 10 and a response step 12. "
+            "A downward flow arrow connects the monitoring step 10 to the response step 12. "
+            "Flowchart nodes: 10=process, 12=process, END=terminator. "
+            "Flowchart directed edges: 10->12, 12->END."
+        ),
+        "numerals": ["10 vacuum lifting tool", "12 body"],
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    assert check["status"] == "pass", check["items"]
+
+
+def test_flowchart_briefs_require_an_exact_machine_readable_topology():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A process flow diagram with a monitoring step 10 and a response step 12. "
             "A downward flow arrow connects the monitoring step 10 to the response step 12."
         ),
         "numerals": ["10 vacuum lifting tool", "12 body"],
     }, FIGURES[1]]
 
-    assert checks_for(figures=figures)[
-        "Drawing briefs are concise and renderable"]["status"] == "pass"
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    text = " ".join(check["items"]).lower()
+    assert "flowchart nodes" in text and "flowchart directed edges" in text
 
 
 def test_an_empty_figure_brief_is_refused_before_drawing():
@@ -1918,6 +1937,14 @@ def checked_figures(*labels):
                 "review_count": draft_figures.LEADER_REVIEW_COUNT,
                 "section_mark_anchor_audit":
                     draft_figures._section_mark_anchor_audit([], []),
+                "flowchart_topology_audit": {
+                    "ok": True, "inspected": False, "required": False,
+                    "model_name": "deterministic-parser",
+                    "specification_hash": digest,
+                    "prompt_version": draft_figures.FLOWCHART_TOPOLOGY_PROMPT_VERSION,
+                    "review_count": 0, "expected": [], "observed": [],
+                    "missing": [], "unexpected": [], "duplicates": [], "errors": [],
+                },
             },
             "semantic_audit": {
                 "ok": True, "inspected": True, "specification_hash": digest,
