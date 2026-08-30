@@ -566,7 +566,7 @@ class StudioService:
         return draft_terminal.tail(project_id, known_lines=known_lines, last_hash=last_hash)
 
     def send_to_agent(self, principal: drafting.Principal, project_id: int,
-                      message: str) -> dict[str, Any]:
+                      message: str, *, section_key: str = "") -> dict[str, Any]:
         """Type a message into the drafting agent, starting it first if it is not running."""
         project = self._require_terminal(principal, project_id)
         if project.get("status") == "archived":
@@ -574,6 +574,7 @@ class StudioService:
         body = str(message or "").replace("\x00", "").strip()
         if not body:
             raise drafting.DraftingValidationError("Say what you would like changed.")
+        body = frame_section_request(body, section_key)
         if not draft_terminal.exists(project_id):
             self.start_terminal(principal, project_id)
             #  The CLI needs a moment to reach its composer. Typing into the shell that is still
@@ -1119,6 +1120,29 @@ class StudioService:
             _REVIEWING.discard(int(project_id))
 
 
+def frame_section_request(message: str, section_key: str) -> str:
+    """Say which section a request is about, when the person asked from inside one.
+
+    THE BUG THIS FIXES. The Draft tab lets you open one section and ask for a change to it. That
+    request went to the agent as bare text, with nothing saying where it came from: somebody
+    opened Field of the Disclosure, asked for it to be longer and more detailed, and the agent -
+    which had last been talking about the title - lengthened the title. It was not wrong to; it
+    was never told. The page knew, and threw the knowledge away between the click and the send.
+
+    Written as a sentence rather than a tag, because it is typed into a conversation and the
+    agent reads it as one. The file name is included because that is what the agent edits.
+    """
+    body = str(message or "").strip()
+    entry = draft_workspace.SECTION_BY_KEY.get(str(section_key or ""))
+    if not entry:
+        return body
+    filename, heading = entry
+    return (f"This is about one section of the application: {heading}, which is "
+            f"draft/{filename}. Change that section. Leave the other sections alone unless a "
+            f"change there is needed to stay consistent with this one, and say so if you make "
+            f"one.\n\n{body}")
+
+
 def _opening_note(has_report_art: bool, slug: str, uploads: int) -> str:
     parts = []
     if has_report_art:
@@ -1359,6 +1383,10 @@ def init_app(app, runner_factory: Callable[[], draft_studio.TurnRunner]):
         #  QUEUE, and the drafting agents are not on it. A copy of this app with the worker off
         #  still opens terminals and still has to close the ones nobody came back to.
         draft_terminal.start_reaper()
+        #  And the auto-push, for the same reason: the agent is told never to ask, and when one
+        #  asks anyway the page it asked may already be closed. A question nobody answers costs
+        #  the whole turn.
+        draft_terminal.start_auto_answer()
         if os.environ.get("DRAFT_TURN_WORKER", "1").lower() not in ("0", "false", "no"):
             start_worker()
     return app

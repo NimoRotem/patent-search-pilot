@@ -214,16 +214,28 @@
   // prose/tool bullets. `·` doubles as a spinner frame, so a match also has to
   // carry evidence: a clock, a token tally, or the interrupt hint.
   const _LIVE_HEAD_RE=/^ {0,6}([✻✽✢✳✴✱✲✵✶✷✸✹✺✧✦·⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒▌▐])[ \t]+(\S.*)$/;
+  // AND THE PLAIN ASTERISK. Measured on Claude Code 2.1.250 by capturing a live pane
+  // frame by frame: the spinner cycles · ✻ ✽ ✢ ✶ and, one frame in five, a bare
+  // ASCII `*`. That one frame did not match, so the status row survived into the
+  // transcript on every fifth poll and the whole view jumped a row down and back,
+  // twice a second, which is exactly what a reader sees as "the text is bouncing".
+  // It gets its own pattern rather than a place in the class above, because `*` also
+  // opens a markdown bullet: this one additionally requires the spinner's own shape,
+  // a single capitalised word ending in an ellipsis.
+  const _LIVE_ASCII_HEAD_RE=/^ {0,6}([*∗])[ \t]+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]*…\s*\(.*)$/;
   const _LIVE_EVID_RE=/\(\s*\d+\s*[hms]\b|\bfor\s+\d+\s*[hms]\b|\besc to interrupt\b|\btokens?\b|\bthought for\b|…\s*\(/i;
   const _LIVE_VERB_RE=/^([A-Za-z][A-Za-zÀ-ÿ'’-]{1,24})/;   // accents count: "Sautéing…" is one word
   const _LIVE_TIME_RE=/(?:^|[\s(·•])(?:(\d+)\s*h\s*)?(?:(\d+)\s*m\s*)?(\d+)\s*s\b/;
   const _LIVE_TOK_RE=/([↑↓⇡⇣])?\s*([\d.]+\s*[kKmM]?)\s*tokens?/;
+  function _liveStatusParts(line){
+    const m=_LIVE_HEAD_RE.exec(line||'')||_LIVE_ASCII_HEAD_RE.exec(line||'');
+    return m&&_LIVE_EVID_RE.test(m[2])?m:null;
+  }
   function _isLiveStatusLine(line){
-    const m=_LIVE_HEAD_RE.exec(line||'');
-    return !!m&&_LIVE_EVID_RE.test(m[2]);
+    return !!_liveStatusParts(line);
   }
   function _readLiveStatus(line,live){
-    const m=_LIVE_HEAD_RE.exec(line||'');
+    const m=_liveStatusParts(line);
     if(!m)return;
     const rest=m[2];
     const v=_LIVE_VERB_RE.exec(rest);
@@ -894,8 +906,16 @@
     set('termTok',live.tok?((live.dir?live.dir+' ':'')+live.tok+' tokens'):'');
     const note=$('termNote');
     if(note){
-      const txt=busy&&live.esc?'Stop to interrupt':'';
+      /*  The agent is told never to ask a question, and when one asks anyway the auto-push
+          takes the option the CLI recommends. Say so: an agent that answers itself and moves
+          on looks, from the outside, like an agent that ignored you. */
+      const pushed=TERM.lastAutoAnswer;
+      const txt=pushed&&(_nowMs()-pushed.at*1000)<180000
+        ?(pushed.answered?'Answered a question for you: '+pushed.selected.slice(0,60)
+                         :'A question needs you: '+pushed.selected.slice(0,60))
+        :(busy&&live.esc?'Stop to interrupt':'');
       if(note.textContent!==txt)note.textContent=txt;
+      note.classList.toggle('tl-pushed',!!(pushed&&txt&&txt[0]!=='S'));
     }
   }
 
@@ -941,6 +961,9 @@
         { credentials: 'same-origin', cache: 'no-store' });
       const data = await response.json();
       if (data.usage) paintUsage(data.usage);
+      if (Array.isArray(data.auto_answers) && data.auto_answers.length) {
+        TERM.lastAutoAnswer = data.auto_answers[data.auto_answers.length - 1];
+      }
       if (typeof data.visible_hash === 'string') TERM.visibleHash = data.visible_hash;
       if (typeof data.pane_width === 'number' && data.pane_width > 0) TERM.paneWidth = data.pane_width;
       if (data.exists === false) {

@@ -6959,7 +6959,8 @@ def draft_studio_message(project_id):
         _user, principal = _draft_identity()
         body = request.get_json(silent=True) or request.form
         return jsonify({"ok": True, **_studio().send_to_agent(
-            principal, project_id, str(body.get("message") or ""))})
+            principal, project_id, str(body.get("message") or ""),
+            section_key=str(body.get("section_key") or ""))})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
 

@@ -545,3 +545,130 @@ def test_the_reaper_forgets_a_session_that_has_gone(monkeypatch):
 def test_the_reap_window_is_never_shorter_than_ten_minutes(monkeypatch):
     """A knob nobody should be able to set to "kill it while I am reading"."""
     assert draft_terminal.IDLE_REAP_SECONDS >= 600
+
+
+# =============================================================================================
+# Auto-push: the question the agent was told not to ask
+# =============================================================================================
+CHOICE_SCREEN = """  Which exhaust-path treatments should I add to the handle description?
+
+❯ 1. [ ] Micro-perforated panel liner (Recommended)
+  Form the handle's inner wall as a thin plate with ~0.3 mm holes.
+  2. [ ] Coiled quarter-wave side branches
+  Folded side channels opening off the exhaust passage.
+  3. [ ] Neither
+
+⏵⏵ bypass permissions on (shift+tab to cycle)"""
+
+
+def test_a_numbered_choice_with_the_cursor_on_an_option_is_answered():
+    choice = draft_terminal.pending_choice(CHOICE_SCREEN)
+    assert choice is not None
+    assert choice["selected"].startswith("❯ 1.")
+    assert len(choice["options"]) == 3
+    assert not choice["destructive"]
+
+
+def test_a_list_the_agent_merely_printed_is_not_a_prompt():
+    """Prose numbered like a list is not a live choice. The cursor has to be ON an option."""
+    prose = """  I considered three treatments:
+  1. Micro-perforated panel liner
+  2. Coiled quarter-wave side branches
+  3. Neither
+
+❯ """
+    assert draft_terminal.pending_choice(prose) is None
+
+
+def test_a_composer_holding_somebody_s_half_typed_message_is_never_touched():
+    """This is the phantom-message bug: Enter here sends what they were still writing."""
+    screen = CHOICE_SCREEN.replace("\u276f 1. [ ]", "  1. [ ]") + \
+        "\n\u276f make the field section longer"
+    assert draft_terminal.pending_choice(screen) is None
+
+
+def test_one_option_is_not_a_choice():
+    assert draft_terminal.pending_choice("\u276f 1. Yes\n\n\u23f5\u23f5 bypass") is None
+
+
+def test_a_destructive_choice_is_flagged_and_left_for_a_person():
+    screen = CHOICE_SCREEN.replace("Neither", "Delete the project and start again")
+    choice = draft_terminal.pending_choice(screen)
+    assert choice["destructive"] is True
+
+
+def test_the_sweep_records_what_it_did_and_why(monkeypatch):
+    sent = []
+    monkeypatch.setattr(draft_terminal, "exists", lambda pid: True)
+    monkeypatch.setattr(draft_terminal, "activity", lambda pid: {"status": "idle"})
+    monkeypatch.setattr(draft_terminal, "capture_recent",
+                        lambda pid, rows=30: CHOICE_SCREEN)
+    monkeypatch.setattr(draft_terminal, "_tmux", lambda *a, **k: sent.append(a))
+    monkeypatch.setattr(draft_terminal, "_target", lambda pid: "draft-p1:")
+    draft_terminal._AUTO_COOLDOWN.pop(4242, None)
+    draft_terminal._AUTO_ANSWERED.pop(4242, None)
+    record = draft_terminal.auto_answer(4242)
+    assert record and record["answered"] is True
+    assert any("Enter" in tuple(call) for call in sent)
+    assert draft_terminal.auto_answers(4242)[-1]["selected"].startswith("\u276f 1.")
+
+
+def test_a_busy_agent_is_left_alone(monkeypatch):
+    monkeypatch.setattr(draft_terminal, "exists", lambda pid: True)
+    monkeypatch.setattr(draft_terminal, "activity", lambda pid: {"status": "busy"})
+    monkeypatch.setattr(draft_terminal, "capture_recent", lambda pid, rows=30: CHOICE_SCREEN)
+    draft_terminal._AUTO_COOLDOWN.pop(4243, None)
+    assert draft_terminal.auto_answer(4243) is None
+
+
+def test_the_instructions_forbid_the_question_before_the_auto_push_has_to_answer_it():
+    text = draft_terminal._CLAUDE_MD
+    assert "Never ask the person a question" in text
+    assert "Never offer a menu" in text
+    assert "Keep your replies short" in text
+
+
+# =============================================================================================
+# A request made from inside one section says so
+# =============================================================================================
+def test_a_section_request_names_the_section_and_its_file():
+    import draft_studio_service
+    framed = draft_studio_service.frame_section_request(
+        "Make it longer and more detailed", "field")
+    assert "Field of the Disclosure" in framed
+    assert "draft/04-field.md" in framed
+    assert framed.endswith("Make it longer and more detailed")
+    #  The bug this fixes: the agent had been talking about the title, so an unframed request
+    #  landed there instead.
+    assert "Change that section" in framed
+
+
+def test_a_request_from_the_composer_is_left_exactly_as_typed():
+    import draft_studio_service
+    for key in ("", "not_a_section", None):
+        assert draft_studio_service.frame_section_request("Make it longer", key) == \
+            "Make it longer"
+
+
+def test_the_section_framing_actually_reaches_the_agent(monkeypatch):
+    """Through `send_to_agent`, not past it.
+
+    A test that calls the framing helper directly passes just as happily when nothing calls the
+    helper, which is exactly the state this bug was in: the page knew the section, the service
+    could have said it, and the route dropped it between them.
+    """
+    import draft_studio_service
+    typed = []
+    service = draft_studio_service.StudioService.__new__(draft_studio_service.StudioService)
+    monkeypatch.setattr(draft_studio_service.StudioService, "_require_terminal",
+                        lambda self, principal, pid: {"status": "ready"}, raising=False)
+    monkeypatch.setattr(draft_terminal, "exists", lambda pid: True)
+    monkeypatch.setattr(draft_terminal, "send",
+                        lambda pid, text: typed.append(text) or True)
+
+    service.send_to_agent(None, 1, "Make it longer and more detailed", section_key="field")
+    assert "Field of the Disclosure" in typed[-1]
+    assert typed[-1].endswith("Make it longer and more detailed")
+
+    service.send_to_agent(None, 1, "Make it longer and more detailed")
+    assert typed[-1] == "Make it longer and more detailed"

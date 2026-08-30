@@ -347,6 +347,26 @@ This directory **is** the application. Everything in it was put here by the draf
 person you are talking to is the inventor or their attorney, reading your work on a web page while
 you type.
 
+## Decide, and do it
+
+**Never ask the person a question. Never offer a menu.** Not "which of these three approaches
+would you like", not a numbered list to pick from, not "shall I also update the claims". You are
+the drafting attorney here: work out the best answer from the disclosure and the prior art, write
+it, and say what you did. If two options are genuinely close, take the better one and write one
+sentence saying you took it and why. A question costs the person a round trip and gets an answer
+no better than the one you already had.
+
+The one exception is a fact only the inventor has: a dimension, a material, a date, a name.
+Nothing about drafting is that.
+
+**Do the whole thing.** If a change to one section makes another inconsistent, fix that one too
+and say so. Do not stop half way to check in.
+
+**Keep your replies short.** Three or four sentences: what you changed, anything you decided on
+the person's behalf, anything genuinely blocked. No summaries of the application back at them, no
+bulleted rundowns of your own reasoning, no restating what they asked for. They can read the
+draft; the Draft tab is right beside this terminal.
+
 ## The one rule that matters
 
 **Editing `draft/` changes nothing anyone can see. Running `python3 tools/publish.py` is what puts
@@ -1022,6 +1042,123 @@ def _confirm_if_prompted(project_id: int, *, attempts: int = 4) -> bool:
     return False
 
 
+# =============================================================================================
+# Auto-push: a question nobody is there to answer
+# =============================================================================================
+#  THE INSTRUCTIONS COME FIRST AND ARE NOT ENOUGH. The workspace CLAUDE.md tells the agent never
+#  to ask and never to offer a menu, which is the fix that matters, because a question that is
+#  never asked costs nothing. Models still ask. When one does, the drafting studio is not a
+#  terminal somebody is sitting in front of: it is a page that may be closed, and the agent sits
+#  on its own question until the six-hour reaper closes it and the work is lost.
+#
+#  So: if a numbered choice is on the screen, take the option the CLI has already highlighted,
+#  which is the one it recommends. That is the same trade the operators' dashboard settled on.
+#
+#  WHAT IT WILL NOT DO. Press Enter on a composer holding text, which would send somebody's
+#  half-typed message; answer anything whose text names a destructive or irreversible action;
+#  or touch a session that is busy rather than waiting.
+_CHOICE_OPTION_RE = re.compile(r"^\s*[❯›>]?\s*\d{1,2}\.\s+\S")
+_CHOICE_SELECTED_RE = re.compile(r"^\s*[❯›]\s*\d{1,2}\.\s+\S")
+_COMPOSER_WITH_TEXT_RE = re.compile(r"^\s*[❯›]\s+(?!\d{1,2}\.)\S")
+_DESTRUCTIVE_RE = re.compile(
+    r"\b(?:rm\s+-rf|drop\s+(?:table|database)|force[- ]push|git\s+push\s+--force|"
+    r"delete\s+(?:the\s+)?(?:project|account|database|repository)|revoke|"
+    r"deploy\s+to\s+production|send\s+(?:the\s+)?email|charge|payment|wire\s+transfer)\b",
+    re.IGNORECASE)
+AUTO_ANSWER_SWEEP_SECONDS = max(2, int(os.environ.get("DRAFT_TERMINAL_AUTOPUSH_SWEEP", "4")))
+AUTO_ANSWER_ENABLED = os.environ.get(
+    "DRAFT_TERMINAL_AUTOPUSH", "1").strip().lower() not in {"0", "false", "no", "off"}
+AUTO_ANSWER_COOLDOWN = max(5, int(os.environ.get("DRAFT_TERMINAL_AUTOPUSH_COOLDOWN", "20")))
+_AUTO_ANSWERED: dict[int, list[dict[str, Any]]] = {}
+_AUTO_COOLDOWN: dict[int, float] = {}
+_AUTO_SWEEPER: threading.Thread | None = None
+
+
+def pending_choice(text: str) -> dict[str, Any] | None:
+    """Is this screen a numbered choice waiting on somebody, and what is selected?"""
+    lines = [line.rstrip() for line in str(text or "").splitlines()][-30:]
+    options = [line.strip() for line in lines if _CHOICE_OPTION_RE.match(line)]
+    if len(options) < 2:
+        return None
+    selected = next((line.strip() for line in lines if _CHOICE_SELECTED_RE.match(line)), "")
+    if not selected:
+        #  No cursor on an option means the list is prose the agent printed, not a live prompt.
+        return None
+    if any(_COMPOSER_WITH_TEXT_RE.match(line) for line in lines
+           if not _CHOICE_OPTION_RE.match(line)):
+        return None
+    return {"options": options[:12], "selected": selected,
+            "destructive": bool(_DESTRUCTIVE_RE.search("\n".join(lines)))}
+
+
+def auto_answer(project_id: int) -> dict[str, Any] | None:
+    """Take the highlighted option on a choice the agent should never have offered."""
+    if not AUTO_ANSWER_ENABLED or not exists(project_id):
+        return None
+    now = time.time()
+    if now - _AUTO_COOLDOWN.get(int(project_id), 0.0) < AUTO_ANSWER_COOLDOWN:
+        return None
+    if activity(project_id).get("status") == "busy":
+        return None
+    choice = pending_choice(capture_recent(project_id, 30))
+    if not choice:
+        return None
+    _AUTO_COOLDOWN[int(project_id)] = now
+    if choice["destructive"]:
+        #  Left for a person, and recorded so the page can say why nothing happened.
+        record = {"at": now, "answered": False, "selected": choice["selected"][:160],
+                  "reason": "the choice names a destructive action"}
+    else:
+        _tmux("send-keys", "-t", _target(project_id), "Enter")
+        record = {"at": now, "answered": True, "selected": choice["selected"][:160],
+                  "reason": "the agent asked a question; the recommended option was taken"}
+    log = _AUTO_ANSWERED.setdefault(int(project_id), [])
+    log.append(record)
+    del log[:-8]
+    return record
+
+
+def auto_answers(project_id: int) -> list[dict[str, Any]]:
+    return list(_AUTO_ANSWERED.get(int(project_id), []))
+
+
+def sweep_auto_answer() -> list[int]:
+    """One pass over every live drafting agent. Returns the projects that were answered."""
+    out = []
+    for name in sessions():
+        try:
+            project_id = int(name[len(SESSION_PREFIX):])
+        except ValueError:
+            continue
+        try:
+            if (auto_answer(project_id) or {}).get("answered"):
+                out.append(project_id)
+        except Exception:                                      # noqa: BLE001 - never stop sweeping
+            pass
+    return out
+
+
+def start_auto_answer() -> None:
+    """One sweeper for the process. Never raises."""
+    global _AUTO_SWEEPER
+    if not AUTO_ANSWER_ENABLED:
+        return
+    with _LOCK:
+        if _AUTO_SWEEPER is not None and _AUTO_SWEEPER.is_alive():
+            return
+
+        def loop() -> None:
+            while True:
+                time.sleep(AUTO_ANSWER_SWEEP_SECONDS)
+                try:
+                    sweep_auto_answer()
+                except Exception:                              # noqa: BLE001
+                    pass
+
+        _AUTO_SWEEPER = threading.Thread(target=loop, name="draft-terminal-autopush", daemon=True)
+        _AUTO_SWEEPER.start()
+
+
 def set_model(project_id: int, model: str) -> str:
     name = normalize_model(model)
     if not name:
@@ -1145,7 +1282,10 @@ def tail(project_id: int, *, known_lines: int = 0, last_hash: str = "") -> dict[
     total = pane_position(project_id)
     digest = visible_hash(project_id)
     width = pane_width(project_id)
-    base = {"exists": True, "pane_total": total, "pane_width": width, "visible_hash": digest}
+    base = {"exists": True, "pane_total": total, "pane_width": width, "visible_hash": digest,
+            #  So the page can say a question was answered on the reader's behalf rather than
+            #  leaving them to work out why the agent moved on by itself.
+            "auto_answers": auto_answers(project_id)[-3:]}
 
     if known_lines <= 0 or known_lines > total:
         raw = capture_full(project_id)

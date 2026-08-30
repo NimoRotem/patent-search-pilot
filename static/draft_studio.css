@@ -1012,3 +1012,7 @@ label.fset input:focus, label.fset select:focus { outline: 1px solid var(--accen
 .usagetable tfoot td { border-top: 1px solid var(--line); color: var(--ink); padding-top: 6px; }
 .usagepanel p { margin: 0 0 6px; }
 .usagepanel p:last-child { margin-bottom: 0; }
+
+/*  The auto-push says what it did. An agent that answers its own question and moves on looks,
+    from the outside, exactly like an agent that ignored you. */
+.tl-note.tl-pushed { color: var(--warn, #d29922); }
