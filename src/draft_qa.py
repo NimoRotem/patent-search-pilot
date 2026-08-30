@@ -2300,6 +2300,51 @@ def _affirmative_inventor_text(workspace: Path) -> str:
     return "\n".join([disclosure, *user_passages])
 
 
+_UNSUPPORTED_SOURCE_FINDING_RE = re.compile(
+    r"\b(?:unsupported|not\s+(?:affirmatively\s+)?(?:disclosed|stated|supported)|"
+    r"absent\s+from\s+(?:the\s+)?(?:inventor|source|disclosure))\b",
+    re.IGNORECASE,
+)
+_SOURCE_FIX_SEARCH_RE = re.compile(r"<search>(.*?)</search>", re.IGNORECASE | re.DOTALL)
+
+
+def _normalized_source_phrase(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+
+def reconcile_explicit_source_support_findings(
+        workspace: Path, findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Reject a reviewer finding that is contradicted by exact inventor wording.
+
+    Source reviewers sometimes quote the disclosure incorrectly and then ask the repair agent to
+    remove a qualifier as unsupported. The requested search text is the narrowest reliable object
+    to compare: it must occur verbatim in the affirmative source. A broader paraphrase or inferred
+    relationship does not pass this reconciliation and remains a blocking finding.
+    """
+    source = _normalized_source_phrase(_affirmative_inventor_text(Path(workspace)))
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for original in findings:
+        finding = dict(original)
+        review_text = " ".join(str(finding.get(field) or "")
+                               for field in ("title", "detail", "evidence"))
+        searches = [
+            _normalized_source_phrase(value)
+            for value in _SOURCE_FIX_SEARCH_RE.findall(str(finding.get("fix") or ""))
+        ]
+        supported = any(len(value) >= 12 and value in source for value in searches)
+        if not (_UNSUPPORTED_SOURCE_FINDING_RE.search(review_text) and supported):
+            kept.append(finding)
+            continue
+        finding["reconciliation"] = (
+            "The exact wording this finding asked to remove appears verbatim in the affirmative "
+            "inventor source. The finding's contrary source quotation is not authoritative."
+        )
+        reconciled.append(finding)
+    return kept, reconciled
+
+
 def deterministic_source_fidelity_findings(workspace: Path) -> list[dict[str, Any]]:
     """Catch narrow precision limitations that a probabilistic source review can miss."""
     root = Path(workspace)
@@ -2367,10 +2412,11 @@ def enforce_deterministic_source_fidelity(
         report: Mapping[str, Any], workspace: Path) -> dict[str, Any]:
     """Apply deterministic source constraints to both fresh and cached model reviews."""
     out = dict(report or {})
+    existing, reconciled = reconcile_explicit_source_support_findings(
+        workspace, [dict(item) for item in out.get("findings") or []])
     extra = deterministic_source_fidelity_findings(workspace)
-    if not extra:
+    if not extra and not reconciled:
         return out
-    existing = [dict(item) for item in out.get("findings") or []]
     fingerprints = {
         (str(item.get("title") or ""), str(item.get("where") or ""),
          str(item.get("evidence") or ""))
@@ -2386,25 +2432,36 @@ def enforce_deterministic_source_fidelity(
     checks = [dict(item) for item in out.get("checks") or []]
     source_check = next((item for item in checks
                          if item.get("name") == "Source fidelity is clean before rendering"), None)
-    detail = (
-        "Deterministic source constraints found an unsupported technical precision qualifier "
-        "that the model review did not reject."
-    )
     if source_check is None:
         source_check = {"name": "Source fidelity is clean before rendering"}
         checks.append(source_check)
+    if findings:
+        detail = (
+            "Deterministic source constraints or unresolved independent-review findings still "
+            "require source-supported repair."
+        )
+    else:
+        detail = (
+            "Deterministic source comparison confirmed that the challenged wording appears "
+            "verbatim in the affirmative inventor source."
+        )
     source_check.update({
-        "status": "fail", "severity": "error", "category": "disclosure_fidelity",
+        "status": "fail" if findings else "pass",
+        "severity": "error" if findings else "info",
+        "category": "disclosure_fidelity",
         "detail": detail,
         "items": [str(item.get("title") or "Source-fidelity finding")[:600]
                   for item in findings],
     })
-    summary = str(out.get("summary") or "").strip()
-    if detail not in summary:
+    summary = (str(out.get("summary") or "").strip() if findings else detail)
+    if findings and detail not in summary:
         summary = (summary + " " + detail).strip()
+    prior_reconciled = [dict(item) for item in out.get("reconciled_findings") or []]
     out.update({
-        "status": "complete", "verdict": "fail", "summary": summary[:8000],
+        "status": "complete", "verdict": "fail" if findings else "pass",
+        "summary": summary[:8000],
         "checks": checks, "findings": findings, "counts": counts_for(checks, findings),
+        "reconciled_findings": [*prior_reconciled, *reconciled],
     })
     return out
 
@@ -2483,25 +2540,26 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
                     "Unread exact paths: " + ", ".join(unread)
                 )
         if not quality_error:
+            findings, source_quote_reconciled = reconcile_explicit_source_support_findings(
+                workspace, findings)
             findings, omission_reconciled = reconcile_source_drawing_omission_findings(findings)
             findings, notation_reconciled = reconcile_source_depiction_convention_findings(
                 findings)
             findings = normalize_findings([
                 *findings, *deterministic_source_fidelity_findings(workspace)])
-            reconciled = [*omission_reconciled, *notation_reconciled]
+            reconciled = [
+                *source_quote_reconciled, *omission_reconciled, *notation_reconciled]
             if reconciled and not findings:
                 summary = (
                     "Every claim limitation, numeral, numbered part, figure brief, drawing "
                     "description, and affirmative inventor source was checked and traced. No "
-                    "unresolved source-fidelity findings remain after deterministic "
-                    "reconciliation of figure findings that confused drawing notation with "
-                    "invention substance or would have introduced an unpromised relationship."
+                    "unresolved source-fidelity findings remain after deterministic comparison "
+                    "with the exact inventor text and reconciliation of figure findings."
                 )
             elif reconciled:
                 summary += (
-                    " The filing gate reconciled figure findings that confused drawing notation "
-                    "with invention substance or would have introduced an unpromised technical "
-                    "relationship."
+                    " The filing gate reconciled findings contradicted by exact inventor text or "
+                    "by the application's explicit figure conventions."
                 )
             return {
                 "ok": True,
