@@ -21,6 +21,33 @@
 {% from "_qhelp.html" import qhelp with context %}
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {#  WHICH OF THE TWO SEARCHES, and it is the first question because it is the only one that
+        changes what the run is. They are separate pipelines: the attack derives its queries from
+        claim language the prior-art search never reads, so it is not a deeper version of it.
+
+        Measured, and this is why the choice exists rather than a depth knob: a prior-art search
+        used to wait 161 s before anything was read, of which ~85 s was the claim ledger, the file
+        wrapper, concept expansion, claim reach and enrichment, none of which it consumes. #}
+    <div class="modepick" role="radiogroup" aria-label="What kind of search">
+      <label class="modeopt">
+        <input type="radio" name="search_mode" value="fast" checked>
+        <span class="mt">Prior-art search</span>
+        <span class="mb small muted">Any description, draft or published patent. The closest art,
+          ranked, in about half a minute. Nothing is read in full.</span>
+      </label>
+      <label class="modeopt" id="modeAttackOpt">
+        <input type="radio" name="search_mode" value="attack" id="modeAttack">
+        <span class="mt">Third-party build</span>
+        <span class="mb small muted">Needs claims. Finds the art that attacks each claim, reads
+          the strongest references end to end, and builds the 37 CFR 1.290 papers.</span>
+      </label>
+    </div>
+    {#  The attack cannot start without claims, and saying so here is cheaper than a 400 after
+        the click. `setKind` already knows whether the extract found any; this reads its result. #}
+    <p class="small warn attackgate" id="attackGate" hidden style="margin:.4em 0 0;padding:.5em .7em">
+      A third-party build works from the claims of a specific application. Paste a patent number
+      or upload the document and wait for its claims to be extracted.</p>
     <div class="field">
       <label for="qbox">What is the invention?</label>
       {#  Set by the extract step: points at the stashed full-text chunk vectors + drawing images so
@@ -224,6 +251,55 @@ is expected to be in our niche, and turn it back on before anything is filed.") 
     {#  ADVANCED, COLLAPSED. Only options this form genuinely posts and `/run` genuinely reads:
         anything else here would be a control that looks like it does something. The rest of the
         knobs live on the settings page, which is linked rather than duplicated. #}
+    {#  THE ATTACK'S SETTINGS, ASKED BEFORE IT STARTS. Every one of these governs work that
+        begins in the first minute of a run that can last hours, and every one of them used to be
+        asked afterwards, on the results page, or not at all. Hidden for the fast search, where
+        none of them means anything. #}
+    <details class="advopts attackonly" id="attackAdv" hidden>
+      <summary>Advanced &mdash; third-party build</summary>
+      <div class="advgrid">
+        <label>Read in full
+          <select name="read_top">
+            {% for n in [20, 45, 100, 200, 400] %}
+            <option value="{{ n }}"{{ ' selected' if n == 45 }}>the strongest {{ n }} references</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Prior art counts under
+          <select name="jurisdiction">
+            <option value="US" selected>United States &mdash; 35 U.S.C. 102</option>
+            <option value="EP">European &mdash; EPC Art. 54</option>
+          </select>
+        </label>
+        {{ qhelp("which law decides", "This is not a filter on where documents come from. It
+decides which documents are PRIOR ART at all.
+
+UNITED STATES. 35 U.S.C. 102(a)(2) reaches an application that was filed before the priority date
+and published after it, whatever office it was filed at, as long as it later names the United
+States. Secret prior art is broad here.
+
+EUROPEAN. EPC Art. 54(3) is strict: an unpublished earlier filing only counts against a European
+application if it is itself a European filing. Fewer documents qualify, and a document that would
+be citable in a US submission may not be citable in an EP one.
+
+Published art (102(a)(1) / Art. 54(2)) is the same either way.") }}
+        <label class="toggle"><input type="checkbox" name="concept_expansions" value="1">
+          Concept expansion</label>
+        {{ qhelp("concept expansion", "Before reading, the tool asks a model for other ways each
+claim requirement could be worded, and searches those too. It finds art that describes the same
+thing in different words, and it costs one model call per requirement plus the searches.
+
+OFF is the default because it is measured at 43 to 60 seconds on a claim set of the size this
+tool usually sees, in front of a reader who has not seen a result yet. Turn it on when the
+vocabulary of the field is unusually varied.") }}
+        <label class="toggle"><input type="checkbox" name="batched" value="1">
+          Batched reader</label>
+        {{ qhelp("batched reader", "Reads several references against one requirement in a single
+call instead of one reference against every requirement. Cheaper and faster on a large read set;
+each cell is held to exactly the same grounding bar either way.") }}
+      </div>
+    </details>
+
     <details class="advopts">
       <summary>Advanced</summary>
       <div class="advgrid">
@@ -235,12 +311,6 @@ is expected to be in our niche, and turn it back on before anything is filed.") 
           <select id="search-focus-adv" onchange="document.getElementById('search-focus').value=this.value">
             <option value="all_text" selected>all patent text</option>
             <option value="claims">claims only</option>
-          </select>
-        </label>
-        <label>Read in full
-          <select name="depth">
-            <option value="quick" selected>nothing yet &mdash; find first</option>
-            <option value="submission">the strongest 45 as part of this run</option>
           </select>
         </label>
         <span class="advmore small muted">Retrieval knobs, the external deadline and the
@@ -257,6 +327,36 @@ is expected to be in our niche, and turn it back on before anything is filed.") 
 {% block scripts %}
 <script>
 const searchForm = document.getElementById('searchform');
+
+/*  THE MODE DRIVES THE FORM. The attack's settings only exist for the attack, and the attack
+    only exists once the extract has produced claims. `window.__hasClaims` is set by setKind
+    when a document comes back with them; until then the option is disabled and says why. */
+(function modePicker(){
+  const adv = document.getElementById('attackAdv');
+  const gate = document.getElementById('attackGate');
+  const attack = document.getElementById('modeAttack');
+  const opt = document.getElementById('modeAttackOpt');
+  if (!attack || !adv) return;
+  function paint(){
+    const on = attack.checked;
+    adv.hidden = !on;
+    const ok = !!window.__hasClaims;
+    if (opt) opt.classList.toggle('disabled', !ok);
+    attack.disabled = !ok;
+    if (gate) gate.hidden = !(on || !ok) || ok;
+    if (!ok && attack.checked){
+      const fast = document.querySelector('input[name="search_mode"][value="fast"]');
+      if (fast) { fast.checked = true; adv.hidden = true; }
+    }
+    const go = document.getElementById('gobtn');
+    if (go) go.textContent = attack.checked ? 'Build the third-party attack' : 'Search prior art';
+  }
+  document.querySelectorAll('input[name="search_mode"]').forEach(function (r){
+    r.addEventListener('change', paint);
+  });
+  window.__modeRepaint = paint;
+  paint();
+})();
 const searchButton = document.getElementById('gobtn');
 searchForm.addEventListener('submit', e => {
   const q = document.getElementById('qbox');
@@ -331,7 +431,13 @@ window.addEventListener('pageshow', () => {
   //  three call sites still invoke it, and a no-op is a smaller change than proving none of them
   //  matters. Which search is about to run is still decided by `currentKind`, which the form
   //  reads; it is simply no longer announced above the button.
-  function setKind(kind){ /* the tier badge was removed from this page */ }
+  function setKind(kind){
+    //  THE ONE PLACE THAT KNOWS. Three call sites invoke this whenever the extract lands or the
+    //  reviewer edits a claim, so it is where the mode picker learns whether a third-party build
+    //  is even possible. The tier badge it used to write is gone; this is not the badge.
+    window.__hasClaims = (kind === 'claims');
+    if (window.__modeRepaint) window.__modeRepaint();
+  }
 
   function claimRow(c, i){
     const row = document.createElement('div');

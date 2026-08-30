@@ -9,6 +9,7 @@ Per-card drawings/PDF/sections/rationale are enriched lazily via /api/ref.
 """
 from __future__ import annotations
 from config import EMBED_DIM  # noqa: E402
+import dataclasses
 import difflib, json, os, re, queue, secrets, sys, threading, hashlib, time, traceback
 from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
@@ -57,6 +58,7 @@ import retrieval                                  # search_doc_chunks (parallel 
 import img_search                                 # patent-drawing image-similarity channel
 import rerank_listwise                            # listwise agentic reranker (in-context, several at a time)
 from search_modes import require_available, ModeNotAvailable, available_modes
+import search_mode                                 # the two pipelines: fast, and the attack
 import search_profile                              # concept search vs claim attack: kind + budget
 from retrieval import Retriever
 from agent import CoverageAgent, AgentConfig
@@ -761,7 +763,8 @@ def _write_report(slug, rep):
 
 def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
              search_focus="all_text", depth="deep", read_top=None, batched=False,
-             then="list", local_only=False):
+             then="list", local_only=False, search_mode_name=None, jurisdiction="US",
+             concept_expansions=False):
     """Thread entrypoint: run the generation, then always release the reserved budget slot.
     Kept separate from _generate so _generate's signature stays purely about doing the work."""
     try:
@@ -769,6 +772,11 @@ def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
         # stub _generate with the pre-existing (slug, query, subject, mode, wide) signature keep
         # working for typed deep queries.
         extra = {} if depth == "deep" else {"depth": depth}
+        #  WHICH PIPELINE. Sent only when it is set, so the historical call shapes the tests stub
+        #  against keep working unchanged.
+        if search_mode_name:
+            extra.update({"search_mode_name": search_mode_name, "jurisdiction": jurisdiction,
+                          "concept_expansions": concept_expansions})
         #  How many references this run was ASKED to read, from the depth chooser on a finished
         #  find. Only ever passed when it is set, so the historical call shapes above stay intact.
         if read_top:
@@ -1123,7 +1131,8 @@ def _drop_self_family(rep):
 
 def _generate(slug, query, subject, mode, wide=False, doc_token=None,
               search_focus="all_text", depth="deep", read_top=None, batched=False,
-              then="list", local_only=False):
+              then="list", local_only=False, search_mode_name=None, jurisdiction="US",
+              concept_expansions=False):
     """Run one report. Runs fully concurrently with other generations , the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool).
 
@@ -1294,8 +1303,22 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 try:
                     subject = external.subject_from_doc(doc["publication_number"])
                     if subject is not None:
+                        #  WHICH LAW DECIDES WHAT COUNTS AS PRIOR ART. 35 U.S.C. 102(a)(2)
+                        #  reaches any application that later published and names the United
+                        #  States, whatever office it was filed at; EPC Art. 54(3) is strict and
+                        #  only counts an earlier EUROPEAN filing against a European application.
+                        #  Asked before the search because it changes which documents are prior
+                        #  art at all, not merely how they rank.
+                        if str(jurisdiction or "US").upper() == "EP":
+                            try:
+                                subject = dataclasses.replace(
+                                    subject, jurisdiction="EP",
+                                    strict_secret_jurisdiction=True)
+                            except Exception:                             # noqa: BLE001
+                                traceback.print_exc()
                         print(f"[subject] recovered from the ingested document: "
-                              f"{subject.number or doc['publication_number']} efd={subject.efd}",
+                              f"{subject.number or doc['publication_number']} "
+                              f"efd={subject.efd} forum={jurisdiction}",
                               flush=True)
                 except Exception:
                     traceback.print_exc()
@@ -1339,14 +1362,18 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                     #  first round left thin, which is what a claim ledger asks for; 8-12 concept
                     #  phrases have no ledger asking, and the round was measured at half the local
                     #  channel's 958 s. Quick is one round whatever the kind.
-                    cfg=AgentConfig(mode=mode,
+                    cfg=AgentConfig(**search_mode.agent_kwargs(search_mode_name),
+                                    mode=mode,
                                     #  Quick is the FIND phase: seed + query set + element
                                     #  passes, no agentic round and no cross-encoder head ,
                                     #  both re-added by the phases that render their output.
-                                    max_rounds=(0 if depth == "quick" else profile.rounds),
-                                    final_rerank=(depth != "quick"),
+                                    **({} if search_mode.normalise(search_mode_name)
+                                        == search_mode.FAST else {
+                                            "max_rounds": (0 if depth == "quick"
+                                                           else profile.rounds),
+                                            "final_rerank": (depth != "quick"),
+                                            "elements_per_round": 3, "ground": True}),
                                     find_mode=(depth == "quick"),
-                                    elements_per_round=3, ground=True,
                                     search_config=("claim_agentic" if search_focus == "claims"
                                                    else "agentic"),
                                     input_claims=list((doc or {}).get("claims") or []),
@@ -1386,6 +1413,13 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 #  report is built and is where I first put it: every search failed with
                 #  "cannot access local variable 'rep'".
                 rep["local_only"] = bool(local_only)
+                #  WHICH PIPELINE PRODUCED THIS PAGE. The results page reads it to decide whether a
+                #  claim grid and a submission button belong on it at all.
+                rep["search_mode"] = search_mode.normalise(search_mode_name)
+                rep["jurisdiction"] = str(jurisdiction or "US").upper()
+                rep["search_mode_detail"] = search_mode.describe(
+                    search_mode_name, read_top=read_top, jurisdiction=jurisdiction,
+                    third_party=(not local_only), concept_expansions=concept_expansions)
                 # The cross-encoder is complete once the local future resolves. Stop its heartbeat
                 # immediately; otherwise a slower external API fan-out leaves the page claiming it is
                 # still reranking. Name that wait explicitly so the operator can see the real hold-up.
@@ -1467,7 +1501,10 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
                                         "n": len(img_res.get("families") or [])}
             _attach_query_document(rep, doc)
-            _attach_disclosures(rep, doc, subject, slug=slug)
+            #  THE DISCLOSURE LEDGER IS THE ATTACK'S. It splits the claims into the things a
+            #  reference has to be read against, and a prior-art search reads nothing.
+            if search_mode.runs_deep(search_mode_name):
+                _attach_disclosures(rep, doc, subject, slug=slug)
             if _ORACLE_PLAN:
                 rep["_oracle"] = dict(_ORACLE_PLAN)
             _drop_self_family(rep)
@@ -1513,7 +1550,11 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         # US 2025/0033224 A1 that is US 11,413,727 applied under 102(a)(2) to thirteen claims,
         # plus every one of the five references counsel independently filed. Fail-soft and off
         # without a key: an unreachable USPTO costs its own findings and nothing else.
-        _attach_prosecution(rep, slug=slug)
+        #  AND SO IS THE FILE WRAPPER. It is fetched to change what gets READ; measured at 45
+        #  to 143 wrapper documents over the USPTO ODP API, with 429s and retries, in front of a
+        #  reader who asked for a ranked list.
+        if search_mode.runs_deep(search_mode_name):
+            _attach_prosecution(rep, slug=slug)
 
         # ---- SCREEN WIDE, READ DEEP, RANK ON THE EVIDENCE (deep_rank) ----------------------
         # This is the stage that decides the order of the report. Retrieval hands over a couple of
@@ -1582,33 +1623,51 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 _set_job(slug, kind="rescuing", detail=data,
                          msg=f"Reading rescued references: {data.get('done')} of "
                              f"{data.get('total')}…")
-        try:
+        #  ---- FAST STOPS HERE, and this guard is the whole difference between the two
+        #  products. Everything below is the reading stage and the machinery that exists to feed
+        #  it: the screen, the enrichment of references the corpus holds no full text for, the
+        #  concept expansion per feature, the claim reach, the charting, the orphan-claim rescue.
+        #  Measured, that is 95 s of the 161 s a reader waits before the first document is read,
+        #  and a prior-art search consumes none of its output.
+        #
+        #  A GUARD, NOT A ZEROED BUDGET. `search_profile.FAST_BUDGET` zeroes the read knobs as
+        #  well, but a budget of zero still walks the screen: measured on two runs, "Reading the
+        #  0 strongest references IN FULL" after 35 s of screening. The stage has to not run.
+        if not search_mode.runs_deep(search_mode_name):
             rep["depth"] = depth
-            dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event,
-                               depth=depth, budget=run_budget)
-            if dr:
-                print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['n_candidates']} in "
-                      f"{dr['screen_seconds']}s, read {dr['read_in_full']} in full "
-                      f"({dr['chars_read']:,} chars) in {dr['chart_seconds']}s", flush=True)
-            #  THE READING AND THE COVERAGE LEDGER, checkpointed. Screening and each individual
-            #  reference analysis are checkpointed inside deep_rank, where they happen; these two
-            #  rows close the phase off so a resumed attempt does not re-enter it.
-            runctx.checkpoint(slug, "read", {"summary": dr or {}},
-                              n_out=(dr or {}).get("read_in_full"))
-            _ledger = rep.get("coverage") or rep.get("ledger") or {}
-            runctx.checkpoint(slug, "ledger",
-                              {"n_entries": len(_ledger) if hasattr(_ledger, "__len__") else 0,
-                               "disclosures": rep.get("disclosures_summary")},
-                              n_out=len(rep.get("disclosures") or []))
-            _rescue = (dr or {}).get("rescue") or rep.get("rescue") or {}
-            _rounds = _rescue.get("rounds") if isinstance(_rescue, dict) else None
-            runctx.checkpoint(slug, "rescue", {"summary": _rescue},
-                              n_out=len(_rounds or []))
-            runctx.note_candidates(slug, _final_candidate_rows(dr))
-        except (runctx.DurabilityError, runstore.LeaseLost):
-            raise
-        except Exception:
-            traceback.print_exc()
+            rep["read_in_full"] = 0
+            _set_job(slug, kind="reranking", detail={},
+                     msg="Ranking the strongest references…")
+            print(f"[fast {slug}] {len(rep.get('ranked_families') or [])} families ranked; "
+                  f"nothing read in full, by design", flush=True)
+        else:
+            try:
+                rep["depth"] = depth
+                dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event,
+                                   depth=depth, budget=run_budget)
+                if dr:
+                    print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['n_candidates']} in "
+                          f"{dr['screen_seconds']}s, read {dr['read_in_full']} in full "
+                          f"({dr['chars_read']:,} chars) in {dr['chart_seconds']}s", flush=True)
+                #  THE READING AND THE COVERAGE LEDGER, checkpointed. Screening and each individual
+                #  reference analysis are checkpointed inside deep_rank, where they happen; these two
+                #  rows close the phase off so a resumed attempt does not re-enter it.
+                runctx.checkpoint(slug, "read", {"summary": dr or {}},
+                                  n_out=(dr or {}).get("read_in_full"))
+                _ledger = rep.get("coverage") or rep.get("ledger") or {}
+                runctx.checkpoint(slug, "ledger",
+                                  {"n_entries": len(_ledger) if hasattr(_ledger, "__len__") else 0,
+                                   "disclosures": rep.get("disclosures_summary")},
+                                  n_out=len(rep.get("disclosures") or []))
+                _rescue = (dr or {}).get("rescue") or rep.get("rescue") or {}
+                _rounds = _rescue.get("rounds") if isinstance(_rescue, dict) else None
+                runctx.checkpoint(slug, "rescue", {"summary": _rescue},
+                                  n_out=len(_rounds or []))
+                runctx.note_candidates(slug, _final_candidate_rows(dr))
+            except (runctx.DurabilityError, runstore.LeaseLost):
+                raise
+            except Exception:
+                traceback.print_exc()
 
         rep["run_id"] = run_id
         rep["manifest"] = {"run_id": run_id,
@@ -1915,7 +1974,8 @@ def _espacenet_safe(pub, family_id=None):
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
                   doc_token=None, search_focus="all_text", from_queue=False, depth="deep",
                   restart_partial=False, owner_user_id=None, read_top=None, batched=False,
-                  then="list", local_only=False):
+                  then="list", local_only=False, search_mode_name=None, jurisdiction="US",
+                  concept_expansions=False):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. A search that arrives while the gate is full is QUEUED (run_queue) and
     reported as running; 'busy' is only returned to the dispatcher itself (`from_queue=True`),
@@ -1999,7 +2059,9 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
                     "query": query, "subject": subject, "mode": mode, "wide": wide,
                     "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
                     "read_top": read_top, "batched": batched, "then": then,
-                    "local_only": local_only, "owner_user_id": owner_user_id})
+                    "local_only": local_only, "owner_user_id": owner_user_id,
+                    "search_mode_name": search_mode_name, "jurisdiction": jurisdiction,
+                    "concept_expansions": concept_expansions})
                 with _JOB_LOCK:
                     _JOBS[slug] = {"status": "running", "queued": True,
                                    "msg": (f"Queued behind {max(pos - 1, 0)} search(es) , "
@@ -2022,7 +2084,9 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
         "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
         #  Same reason as the dispatcher: this row is what a requeue after a restart replays from.
         "read_top": read_top, "batched": batched, "then": then,
-        "local_only": local_only, "owner_user_id": owner_user_id})
+        "local_only": local_only, "owner_user_id": owner_user_id,
+        "search_mode_name": search_mode_name, "jurisdiction": jurisdiction,
+        "concept_expansions": concept_expansions})
     _QROW_CACHE.pop(slug, None)
     try:
         subj_obj = _subject_obj(subject)
@@ -2032,7 +2096,8 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
         threading.Thread(target=_run_job,
                          args=(slug, query, subj_obj, mode, gated, wide, doc_token, search_focus,
-                               depth, read_top, batched, then, local_only),
+                               depth, read_top, batched, then, local_only,
+                               search_mode_name, jurisdiction, concept_expansions),
                          daemon=True).start()
     except Exception:
         # Never leak the reserved slot or leave a phantom "running" claim if we fail to launch.
@@ -3293,8 +3358,17 @@ def run():
     #  find phase, which is minutes, and the report page offers the heavier phases as named,
     #  separate purchases. Before this, every upload with claims bought the full attack: measured
     #  at 3,097 to 7,243 seconds, one at 36,042, whether or not anybody wanted the chart.
-    depth = request.form.get("depth", "").strip() or "quick"
-    if depth not in ("quick", "ledger", "submission", "deep"):
+    #  WHICH OF THE TWO SEARCHES THIS IS, and it is the first question the form asks. See
+    #  search_mode: they are separate pipelines, not two depths of one, because the attack's
+    #  queries are derived from claim language the fast search never reads.
+    smode = search_mode.normalise(request.form.get("search_mode"))
+    _claims_in = (_load_doc_materials(doc_token) or {}).get("claims") or []
+    _refuse = search_mode.refusal(smode, _claims_in)
+    if _refuse:
+        return _error_response({"error": "claims_required", "search_mode": smode,
+                                "detail": _refuse}, 400, _refuse)
+    depth = search_mode.depth_for(smode)
+    if depth not in ("fast", "quick", "ledger", "submission", "deep"):
         return _error_response({"error": "unknown_depth", "depth": depth}, 400,
                                f"Unknown search depth: {depth}")
     #  `submission` reads documents in full, so it is a paid depth in every sense `deep` is and
@@ -3302,11 +3376,10 @@ def run():
     #  by asking for the cheaper name.
     if depth in ("deep", "submission") and not user \
             and os.environ.get("DEEP_REQUIRES_LOGIN", "0") != "0":
-        #  Public visitors get the quick tier; the multi-hour attack is for accounts. Forcing
-        #  quick (rather than a login wall) keeps the public flow alive and makes the escalate
-        #  button the login prompt.
-        depth = "quick"
-    if depth in ("quick", "ledger"):
+        #  Public visitors get the fast search; the multi-hour attack is for accounts. Falling
+        #  back (rather than a login wall) keeps the public flow alive.
+        smode, depth = search_mode.FAST, "fast"
+    if depth in ("fast", "quick", "ledger"):
         wide = False                       # local corpus only: no external APIs before phase 3
     #  A submission run DOES fan out: the packet is only as good as the art it can reach, and the
     #  external channels measured 60-105 s in parallel with the local ones, so they cost no wall
@@ -3368,10 +3441,27 @@ def run():
     then = (request.form.get("then") or "").strip().lower()
     if then not in ("list", "grid", "packet"):
         then = "list"
-    if request.form.get("then"):
+    #  `then` was the old two-button escalation and only ATTACK still has anything to escalate to.
+    if request.form.get("then") and smode == search_mode.ATTACK:
         depth = "deep" if then == "grid" else "submission"
+    #  ---- ATTACK's advanced settings, decided BEFORE the search rather than on the results page.
+    #  Every one of these governs work that starts in the first minute, and every one of them used
+    #  to be asked afterwards or not at all.
+    jurisdiction = search_mode.normalise_jurisdiction(request.form.get("jurisdiction"))
+    concept_expansions = str(request.form.get("concept_expansions") or "") in ("1", "true", "on",
+                                                                              "yes")
+    if smode == search_mode.ATTACK:
+        read_top = search_mode.normalise_read_top(
+            request.form.get("read_top") or search_mode.READ_TOP_DEFAULT)
+    else:
+        #  FAST reads nothing, so a read budget is not a smaller number, it is a category error.
+        read_top, batched, then = None, False, "list"
+    #  THE MODE AND THE FORUM ARE PART OF THE CACHE IDENTITY. A fast search and an attack over
+    #  the same input are different reports, and so are a US and an EP reading of the same claims:
+    #  the second decides which documents count as prior art at all.
     slug = search_slug(query, mode, wide=wide, search_focus=search_focus,
-                       subject=subject, doc_token=doc_token, depth=depth, read_top=read_top,
+                       subject=subject, doc_token=doc_token,
+                       depth="%s|%s|%s" % (depth, smode, jurisdiction), read_top=read_top,
                        batched=batched, local_only=local_only)
     #  restart_partial=True: this is a POST to /run, an explicit request to RUN this search. If
     #  all that is on disk is a partial left by an interrupted run, the honest answer is to start
@@ -3380,7 +3470,8 @@ def run():
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
                             doc_token=doc_token, search_focus=search_focus, depth=depth,
                             restart_partial=True, read_top=read_top, batched=batched, then=then,
-                            local_only=local_only,
+                            local_only=local_only, search_mode_name=smode, jurisdiction=jurisdiction,
+                            concept_expansions=concept_expansions,
                             owner_user_id=(user or {}).get("id"))
     if st == "busy":
         return _error_response({"error": "server busy", "detail": why}, 429,
@@ -3404,6 +3495,10 @@ def run():
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood,
          "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
+         "search_mode": smode, "jurisdiction": jurisdiction,
+         "search_mode_detail": search_mode.describe(
+             smode, read_top=read_top, jurisdiction=jurisdiction, third_party=(not local_only),
+             concept_expansions=concept_expansions),
          "search_profile": search_profile.describe(_profile, depth=depth)}))
     if user:
         notify = request.form.get("notify_email") == "1"
@@ -3775,6 +3870,13 @@ def report(slug):
     #  `depth` is part of the slug hash, so the Restart control on an interrupted run has to post
     #  it back or the restart mints a NEW slug and the user's url still never finishes.
     view["depth"] = depth
+    #  WHICH PIPELINE PRODUCED THIS PAGE. A prior-art search reads nothing and charts nothing, so
+    #  a claim grid and a submission button on its report are not disabled controls waiting for
+    #  something, they are controls for a search that was never run. `attack` for anything written
+    #  before the split, because that is what those reports actually are.
+    view["search_mode"] = rep.get("search_mode") or "attack"
+    view["jurisdiction"] = rep.get("jurisdiction") or "US"
+    view["search_mode_detail"] = rep.get("search_mode_detail") or {}
     try:
         _write_detail_preview(slug, view)
     except Exception:
@@ -8797,6 +8899,16 @@ def _queue_launch(slug, payload):
             read_top=payload.get("read_top"), batched=bool(payload.get("batched")),
             then=payload.get("then") or "list",
             local_only=bool(payload.get("local_only")),
+            #  AND SO DOES THE PIPELINE, which is exactly the defect the comment above records,
+            #  one axis later. A third-party build that waited in the queue was replayed with no
+            #  mode at all, so the worker read the default, decided it was a prior-art search and
+            #  skipped the reading entirely. Caught end to end on adhoc-77c580d848d1, whose meta
+            #  says attack and EP and whose report came back saying fast and US. The forum is here
+            #  for the same reason: it decides which documents are prior art, so replaying without
+            #  it silently answers a different legal question.
+            search_mode_name=payload.get("search_mode_name"),
+            jurisdiction=payload.get("jurisdiction") or "US",
+            concept_expansions=bool(payload.get("concept_expansions")),
             owner_user_id=payload.get("owner_user_id"))
     except Exception:
         traceback.print_exc()

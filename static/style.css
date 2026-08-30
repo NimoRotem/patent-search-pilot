@@ -2225,6 +2225,20 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .stagenow .st-note{margin:0 0 .5rem;color:var(--muted)}
 /*  The live feed of references being read. Newest first, so the eye lands on the one that just
     arrived; monospace on the publication number because that is the part being scanned. */
+/*  The two searches, chosen before anything runs. Two cards, not a dropdown: the difference
+    between them is a paragraph each, and a dropdown cannot carry one. */
+.modepick{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin:0 0 .9rem}
+.modeopt{display:grid;grid-template-columns:auto 1fr;grid-template-areas:"r t" "r b";
+  gap:.15rem .55rem;align-items:start;padding:.6rem .75rem;border:1px solid var(--line);
+  border-radius:8px;cursor:pointer;background:var(--card)}
+.modeopt input{grid-area:r;margin-top:.2rem}
+.modeopt .mt{grid-area:t;font-weight:600}
+.modeopt .mb{grid-area:b;line-height:1.35}
+.modeopt:has(input:checked){border-color:var(--accent,#2b6cb0);box-shadow:0 0 0 1px var(--accent,#2b6cb0) inset}
+.modeopt.disabled{opacity:.55;cursor:not-allowed}
+.advopts.attackonly summary{font-weight:600}
+@media (max-width:640px){.modepick{grid-template-columns:1fr}}
+
 .stagenow .st-feed{margin:0 0 .6rem;padding-left:1.1rem;max-height:15rem;overflow:auto}
 .stagenow .st-feed li{margin:.2rem 0;line-height:1.35}
 .stagenow .st-feed li b{font-family:var(--mono,ui-monospace,SFMono-Regular,Menlo,monospace);

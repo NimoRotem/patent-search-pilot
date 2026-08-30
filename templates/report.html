@@ -399,13 +399,27 @@
         out, above the results. The progress banner is already higher up the page, so removing
         this row while partial is what actually lifts the first result above the fold. It comes
         back whole the moment the run finishes. #}
+    {#  WHAT THIS REPORT IS, once, at the top of the actions. A prior-art search and a
+        third-party build produce pages that look alike and mean different things: one is ranked
+        by resemblance and has read nothing, the other is ranked by what each reference kills and
+        has read every one of them end to end. #}
+    {% if not v.partial and v.search_mode == 'fast' %}
+    <p class="small muted modeline" style="margin:.2em 0 .6em">
+      <b>Prior-art search.</b> Ranked by relevance across all channels; nothing here was read in
+      full and no claim was charted. For art selected against specific claims, and the 37 CFR
+      1.290 papers, start a <a href="{{ request.script_root }}/">third-party build</a> from this
+      application.</p>
+    {% endif %}
     {% if not v.partial %}
     <div class="actions">
       {#  THIRD-PARTY SUBMISSION. The evidence this search already produced is the substance of a
           preissuance submission under 37 CFR 1.290, so this is a primary action on every finished
           report, not a link buried in the run line — which is where it lived until 2026-08-19 and
           why nobody found it. Owner only: it spends a model call per document. #}
-      {% if current_user and not read_only %}
+      {#  NOT ON A PRIOR-ART SEARCH. It reads nothing and charts nothing, so the papers have
+          no substance to be built from; offering the button greyed would say "not yet" about
+          something that is never going to happen on this report. Start a third-party build. #}
+      {% if current_user and not read_only and v.search_mode != 'fast' %}
         {% if v.has_reading %}
         <a class="btn sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise"
            title="Build a concise description of relevance for each reference, ready to file as a third-party preissuance submission">Generate third-party submission{% if v.concise_built %} ({{ v.concise_built }}) ✓{% endif %}</a>
@@ -621,7 +635,7 @@
     {#  Not rendered until it holds evidence: an empty grid under "available when
         final ranking completes" reads as a finding about the art rather than as a
         table nobody has filled in yet. #}
-    {% if v.claim_chart.rows and not v.partial %}
+    {% if v.claim_chart.rows and not v.partial and v.search_mode != 'fast' %}
     <details class="tail{% if v.partial %} pending{% endif %}">
       <summary><span class="th">{{ 'Claim × prior-art grid' if claimaxis else 'Element × reference grid' }}</span>
         <span class="ts">{% if v.partial %}available when final ranking completes{% else %}{{ v.claim_chart.rows|length }} {{ rowword }} × {{ v.claim_chart.columns|length }} references{% if reading %} · read in full · {{ 'in claim order' if claimaxis else 'most disclosed first' }}{% if v.claim_chart.n_uncovered %} · <b class="gridwarnt">{{ v.claim_chart.n_uncovered }} with no prior art</b>{% endif %}{% elif v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}{% endif %}</span></summary>
