@@ -902,10 +902,13 @@ def _figure_checks(sections: Mapping[str, str],
         expected = list(range(1, len(figures) + 1))
         if sorted(valid) != expected:
             issues.append(f"expected sheet numbers {expected}; found {valid}")
+        elif valid != expected:
+            issues.append(f"expected numeric filing order {expected}; found {valid}")
         if issues:
             out.append(_check(
                 "Figure-sheet numbering is unique and contiguous", "fail",
-                "Each filing sheet must have one number in an unbroken sequence beginning at 1.",
+                "Each filing sheet must have one number in an unbroken sequence beginning at 1 "
+                "and must appear in numeric filing order.",
                 severity="error", items=issues))
         else:
             out.append(_check(

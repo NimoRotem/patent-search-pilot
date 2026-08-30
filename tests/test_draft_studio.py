@@ -5162,6 +5162,19 @@ def test_figure_specifications_must_have_unique_contiguous_numbers():
     assert any("expected" in item for item in check["items"])
 
 
+def test_figure_specifications_must_be_in_numeric_filing_order():
+    labels = ["FIG. 1", "FIG. 10"] + [f"FIG. {number}" for number in range(2, 10)]
+    figures = [
+        {"label": label, "caption": "view", "numerals": []}
+        for label in labels
+    ]
+
+    check = checks_for(figures=figures)["Figure-sheet numbering is unique and contiguous"]
+
+    assert check["status"] == "fail"
+    assert any("filing order" in item for item in check["items"])
+
+
 def test_a_participle_after_the_noun_does_not_break_antecedent_basis():
     """"an evacuable chamber" … "the evacuable chamber displaces" is the same chamber."""
     broken = dict(GOOD)
