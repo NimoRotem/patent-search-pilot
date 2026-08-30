@@ -271,11 +271,16 @@ def verify(payload: bytes, signature: str):
     the same answer: refuse.
     """
     if not STRIPE_WEBHOOK_SECRET:
+        print("[billing] webhook refused: no STRIPE_WEBHOOK_SECRET configured", flush=True)
         return None
     try:
         return _stripe().Webhook.construct_event(payload, signature, STRIPE_WEBHOOK_SECRET)
-    except Exception:                                                     # noqa: BLE001
-        traceback.print_exc()
+    except Exception as exc:                                              # noqa: BLE001
+        #  ONE LINE, NOT A STACK TRACE. This is a public endpoint and a refusal is the ordinary
+        #  outcome of anybody at all posting to it, so printing a traceback per attempt hands a
+        #  stranger a way to fill the log. The reason is enough to tell a mis-set secret from a
+        #  scanner.
+        print("[billing] webhook signature refused: %s" % str(exc)[:120], flush=True)
         return None
 
 
