@@ -435,6 +435,14 @@ def local_only_budget(budget) -> dict:
     return out
 
 
+#  FAST's budget. Every knob whose only consumer is the reading stage is zero, so a caller
+#  that ignores `search_mode` and looks only at the budget still cannot start a read.
+FAST_BUDGET = {"SCREEN_TOP": 0, "CHART_TOP": 0, "CHART_TOP_MAX": 0, "ENRICH_TOP": 0,
+               "PRESCREEN_ENRICH_TOP": 0, "ALWAYS_CHART_RETRIEVAL_HEAD": 0, "BLIND_RESCUE_MAX": 0,
+               "CONCEPT_PASS_TOP": 0, "RESCUE_CLAIMS": 0, "CLAIM_REACH_CAP": 0,
+               "BATCH_PER_LIM": 0, "BATCH_TAIL_MAX": -1}
+
+
 def lane_for(depth: str) -> str:
     """Which durable lane a depth runs on. Only `quick` and `deep` have workers.
 
@@ -445,6 +453,8 @@ def lane_for(depth: str) -> str:
 
 
 def budget_for(profile, depth="deep", read_top=None, batched=False, local_only=False) -> dict:
+    if depth == "fast":
+        return dict(FAST_BUDGET)
     """The knob overrides this run gets, or {} when the split is off.
 
     FIND BUYS RETRIEVAL AND RANKING ONLY. The per-requirement sweep the tail runs is the ledger
