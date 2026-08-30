@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Report not found | Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap">
+  <div class="panel gen">
+    <h2>Report not found</h2>
+    <p class="muted" style="margin-top:8px">There is no cached report for “{{ slug }}”, and no query
+      on file to generate one from.</p>
+    <p style="margin-top:18px"><a class="btn" href="{{ request.script_root }}/">Start a new search</a></p>
+  </div>
+</div>
+{% endblock %}

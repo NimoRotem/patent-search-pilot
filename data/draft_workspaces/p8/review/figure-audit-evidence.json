@@ -1,0 +1,675 @@
+{
+  "schema_version": 1,
+  "purpose": "Exact-image OCR, geometry, section-mark, leader, and native-pixel endpoint evidence for independent review. This is audit evidence, not inventor source material.",
+  "figures": [
+    {
+      "figure_label": "FIG. 1",
+      "rendered_file": "rendered-FIG-1.png",
+      "rendered_sha256": "6a8e046f7d2bea6ddf5e175582f38574df071f6d1f9a3dcaa0214b411a60ef4f",
+      "specification_hash": "16cf79728675c64e46d042b5e8e638633498f4095f4ebdb145ce8785434e8ebb",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "10",
+          "12",
+          "18",
+          "20",
+          "24",
+          "36",
+          "44"
+        ],
+        "detected_numerals": [
+          "44",
+          "18",
+          "20",
+          "10",
+          "12",
+          "24",
+          "36"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "1/6",
+        "detected_sheet_number": "1/6",
+        "detected_figure_label": "FIG. 1"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "Two semantic reviews and a byte-exact deterministic renderer certificate resolved a raw-geometry dissent. Cross-provider review: The drawing largely matches the specification, depicting a machine with a slab, band, and three blocks on a tile. However, the lines connecting the three blocks on the slab are not specified and are therefore unexpected geometry.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {},
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "claude-opus-5",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "The byte-exact component certificate resolves the endpoint provider concern for numeral 20. The final endpoint is certified on its designated rendered component.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400,
+        "coordinate_height": 900,
+        "labels": [
+          {
+            "numeral": "10",
+            "correct": true,
+            "evidence": "Terminal dot at raw (185, 365) sits exactly on the left-hand outer vertical boundary of the machine silhouette where the slab's left edge meets the band line; the crop shows the ring centered on that outer edge line, clear of the block fronts and of the slab's interior face."
+          },
+          {
+            "numeral": "12",
+            "correct": true,
+            "evidence": "Terminal dot at raw (435, 365) lies in the open front face of the slab, between the heavy top edge near y=340 and the heavy horizontal band line near y=405, well clear of both."
+          },
+          {
+            "numeral": "18",
+            "correct": true,
+            "evidence": "Terminal dot at raw (280, 312) is centered inside the left-hand block's front face, whose outline runs roughly x=238-330 and y=283-350; no edge or corner is touched."
+          },
+          {
+            "numeral": "20",
+            "correct": true,
+            "evidence": "The byte-exact component certificate verifies numeral 20 at raw pixel (585, 312); the certified point is clear inside the exact component designated by the renderer.",
+            "resolution_version": "deterministic-endpoint-resolution-v4-sub-dot-component-interior-or-linework",
+            "resolution_basis": "certified_clear_interior",
+            "certified_x": 585,
+            "certified_y": 312
+          },
+          {
+            "numeral": "24",
+            "correct": true,
+            "evidence": "Terminal dot at raw (435, 435) lies inside the narrow front strip of the perimeter band, between the heavy band line near y=405 and the lower slab boundary near y=462, clear of both edges."
+          },
+          {
+            "numeral": "36",
+            "correct": true,
+            "evidence": "Terminal dot at raw (900, 600) lies well inside the open quadrilateral tile bounded by the upper edge descending from about (690,455) to (1320,500) and the lower edges meeting at (780,815); no boundary is near the ring."
+          },
+          {
+            "numeral": "44",
+            "correct": true,
+            "evidence": "Terminal dot at raw (435, 305) is centered within the middle block's front face outlined approximately x=397-497, y=283-350, away from every edge."
+          }
+        ]
+      }
+    },
+    {
+      "figure_label": "FIG. 2",
+      "rendered_file": "rendered-FIG-2.png",
+      "rendered_sha256": "b52077e802ce3fa695b84a0bbab5d74cfe1c8e72fd2af1dc3e29805c98c7aaef",
+      "specification_hash": "b0f1860a8d241ab72a179357a53e074c04ff37a3a02514ab5025e2d1db3a45a8",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "12",
+          "14",
+          "20",
+          "22",
+          "24",
+          "36"
+        ],
+        "detected_numerals": [
+          "14",
+          "20",
+          "12",
+          "22",
+          "24",
+          "36"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "2/6",
+        "detected_sheet_number": "2/6",
+        "detected_figure_label": "FIG. 2"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "The drawing accurately depicts all required geometric elements and relationships as specified. All four schematic bodies (base, two legs of the perimeter member, covering element, and air-extraction mechanism) are present with correct hatching/unhatching. The gap, chamber, and join lines are also correctly rendered. No unexpected geometry is found, and no required geometry is missing.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {
+        "ok": true,
+        "version": "deterministic-section-hatching-v1-byte-exact-raw-pixel-angles",
+        "renderer": "chamber_section",
+        "components": [
+          {
+            "component": "base slab",
+            "direction": "falls_to_right",
+            "angle_degrees": 45
+          },
+          {
+            "component": "left perimeter leg",
+            "direction": "rises_to_right",
+            "angle_degrees": -45
+          },
+          {
+            "component": "right perimeter leg",
+            "direction": "rises_to_right",
+            "angle_degrees": -45
+          },
+          {
+            "component": "covering-element band",
+            "direction": "falls_to_right",
+            "angle_degrees": 60
+          }
+        ],
+        "raw_png_sha256": "a1feb82fac05ff41f4415b26faddc7d14f861aebd100b02fd67f74470b2e3e4a",
+        "coordinate_space": "raw_pixels_origin_upper_left_y_down",
+        "exact_renderer_match": true
+      },
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All 6 reference numeral endpoints correctly match their specified targets.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400,
+        "coordinate_height": 900,
+        "labels": [
+          {
+            "numeral": "12",
+            "correct": true,
+            "evidence": "Dot is well inside the hatching of the base slab."
+          },
+          {
+            "numeral": "14",
+            "correct": true,
+            "evidence": "Dot is on the upper edge line of the base slab, clear of the housing."
+          },
+          {
+            "numeral": "20",
+            "correct": true,
+            "evidence": "Dot is well inside the unhatched housing."
+          },
+          {
+            "numeral": "22",
+            "correct": true,
+            "evidence": "Dot is well inside the open chamber space."
+          },
+          {
+            "numeral": "24",
+            "correct": true,
+            "evidence": "Dot is well inside the hatching of the right-hand leg."
+          },
+          {
+            "numeral": "36",
+            "correct": true,
+            "evidence": "Dot is well inside the hatching of the bottom band."
+          }
+        ]
+      }
+    },
+    {
+      "figure_label": "FIG. 3",
+      "rendered_file": "rendered-FIG-3.png",
+      "rendered_sha256": "3f51494ce76313b10805c60f5bde5d0ddde0d65f4b5ea83ec486510151a3977b",
+      "specification_hash": "d0cffdc53eecc1c7d3da246522dffa9464d1c488e3ddbdc078ee0005f3f3d9bd",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "16",
+          "24"
+        ],
+        "detected_numerals": [
+          "24",
+          "16"
+        ],
+        "expected_section_designations": [
+          "2",
+          "2",
+          "4",
+          "4"
+        ],
+        "detected_section_designations": [
+          "2",
+          "2",
+          "4",
+          "4"
+        ],
+        "expected_sheet_number": "3/6",
+        "detected_sheet_number": "3/6",
+        "detected_figure_label": "FIG. 3"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "The drawing perfectly matches the schematic description provided in the specification. It depicts a rectangular ring (perimeter member) and an inner face (second side) as described, with no extraneous or missing geometry.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {},
+      "section_marks": {
+        "ok": true,
+        "required": true,
+        "reviewer": "gemini-2.5-pro",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 2,
+        "summary": "Located two cutting-plane lines as described in the specification. A horizontal line for section 2, viewing downwards, and a vertical line for section 4, viewing leftwards. Both lines are placed centrally and extend beyond the object boundaries as required. | The specification requires two cutting-plane lines, one horizontal (2-2) and one vertical (4-4). Both lines were located crossing through the center of the provided geometry, extending into the background area as described. The viewing direction for section 2-2 is downwards, and for section 4-4 is to the left, matching the specification.",
+        "marks": [
+          {
+            "end_x": 950,
+            "end_y": 500,
+            "start_x": 50,
+            "start_y": 500,
+            "view_dx": 0,
+            "view_dy": 1,
+            "evidence": "The horizontal line carries a short arrow at each end, both pointing toward the lower part of the drawing area, and the numeral 2 at each end, so it reads as section line 2-2 and leads to the sectional view of FIG. 2.",
+            "designation": "2"
+          },
+          {
+            "end_x": 500,
+            "end_y": 950,
+            "start_x": 500,
+            "start_y": 50,
+            "view_dx": -1,
+            "view_dy": 0,
+            "evidence": "The vertical line carries a short arrow at each end, both pointing toward the left-hand part of the drawing area, and the numeral 4 at each end, so it reads as section line 4-4 and leads to the sectional view of FIG. 4.",
+            "designation": "4"
+          }
+        ]
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": true,
+          "clearance": 20,
+          "inspected": true,
+          "collisions": [],
+          "mark_count": 2,
+          "adjusted_numerals": [
+            "16",
+            "24"
+          ],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All reference numeral endpoints correctly placed according to the specification.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400,
+        "coordinate_height": 900,
+        "labels": [
+          {
+            "numeral": "16",
+            "correct": true,
+            "evidence": "The terminal dot for numeral 16 is at (825, 369). The inner rectangle (second side) spans approximately x=[350, 1050] and y=[180, 720]. The dot is well within these bounds. The horizontal section line is at y=450 and the vertical section line is at x=700. The dot (825, 369) is clear of both section lines (825 > 700 and 369 < 450). This matches the target 'Identified well inside it, clear of the inner edge and of both section lines.'"
+          },
+          {
+            "numeral": "24",
+            "correct": true,
+            "evidence": "The terminal dot for numeral 24 is at (190, 369). The perimeter member is the ring surface between the outer rectangle (approx. x=[100, 1300], y=[90, 810]) and the inner rectangle (approx. x=[350, 1050], y=[180, 720]). The dot (190, 369) is within the outer rectangle and outside the inner rectangle, placing it within the ring surface. Its x-coordinate (190) places it clearly on the left-hand side of the ring. The horizontal section line is at y=450 and the vertical section line is at x=700. The dot (190, 369) is clear of both section lines (190 < 700 and 369 < 450). This matches the target 'Identified well inside it along the left-hand side of the ring, clear of both section lines.'"
+          }
+        ]
+      }
+    },
+    {
+      "figure_label": "FIG. 4",
+      "rendered_file": "rendered-FIG-4.png",
+      "rendered_sha256": "08503a11895bf0e4510049d5f7b7daf68e76b0aae7bb15e9a89041fb530ee68b",
+      "specification_hash": "b651a6e54e76abbb50db42fd0b27e7acea39ecf948246d5d60072a52b894695c",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "24",
+          "26",
+          "34",
+          "36",
+          "38",
+          "40",
+          "42"
+        ],
+        "detected_numerals": [
+          "26",
+          "34",
+          "38",
+          "40",
+          "24",
+          "42",
+          "36"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "4/6",
+        "detected_sheet_number": "4/6",
+        "detected_figure_label": "FIG. 4"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "The drawing accurately depicts all required geometry according to the specification. It shows one upright hatched column, three stacked horizontal hatched bands below it, and an unhatched clearance space between the column and the uppermost band. All elements are rectangular and hatched as specified, with correct relative positioning and boundary lines.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {
+        "ok": true,
+        "version": "deterministic-section-hatching-v1-byte-exact-raw-pixel-angles",
+        "renderer": "fragmentary_section",
+        "components": [
+          {
+            "component": "perimeter-member column",
+            "direction": "falls_to_right",
+            "angle_degrees": 45
+          },
+          {
+            "component": "uppermost covering-element band",
+            "direction": "rises_to_right",
+            "angle_degrees": -45
+          },
+          {
+            "component": "middle bonding-material band",
+            "direction": "falls_to_right",
+            "angle_degrees": 60
+          },
+          {
+            "component": "lowest substrate band",
+            "direction": "rises_to_right",
+            "angle_degrees": -60
+          }
+        ],
+        "raw_png_sha256": "b95a817532e10c8c0bbaf093fb80d42eeb517add37c32db66c02f2ad70fca7aa",
+        "coordinate_space": "raw_pixels_origin_upper_left_y_down",
+        "exact_renderer_match": true
+      },
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All 7 reference numeral endpoints are correctly placed according to the specification.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400,
+        "coordinate_height": 900,
+        "labels": [
+          {
+            "numeral": "24",
+            "correct": true,
+            "evidence": "Dot is correctly placed well inside the hatched column."
+          },
+          {
+            "numeral": "26",
+            "correct": true,
+            "evidence": "Dot is correctly placed on the lower end face (line) of the column."
+          },
+          {
+            "numeral": "34",
+            "correct": true,
+            "evidence": "Dot is correctly placed well inside the open unhatched clearance space."
+          },
+          {
+            "numeral": "36",
+            "correct": true,
+            "evidence": "Dot is correctly placed well inside the hatching of the uppermost band."
+          },
+          {
+            "numeral": "38",
+            "correct": true,
+            "evidence": "Dot is correctly placed on the top boundary line of the uppermost band, clear of the column."
+          },
+          {
+            "numeral": "40",
+            "correct": true,
+            "evidence": "Dot is correctly placed well inside the hatching of the middle band."
+          },
+          {
+            "numeral": "42",
+            "correct": true,
+            "evidence": "Dot is correctly placed well inside the hatching of the lowest band."
+          }
+        ]
+      }
+    },
+    {
+      "figure_label": "FIG. 5",
+      "rendered_file": "rendered-FIG-5.png",
+      "rendered_sha256": "ab686c65508706f370df76ae4424717dca4c473cd17cb7c7c4c7b602632b9560",
+      "specification_hash": "8c295393185270b20992f0ce35eb3b78f653ec8e5d2776df36253f22138f4345",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "10",
+          "36",
+          "46"
+        ],
+        "detected_numerals": [
+          "46",
+          "36",
+          "10"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "5/6",
+        "detected_sheet_number": "5/6",
+        "detected_figure_label": "FIG. 5"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "The drawing accurately depicts all specified geometric elements and relationships, including the perspective view, the tile, the machine body and band, and the flexible pulling element (cord). No unexpected geometry is present, and all required elements are visible and correctly rendered according to the specification.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {},
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "figure-anchor-v15-native-pixel-actionable-coordinate-certificate-majority",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All reference numeral endpoints are correctly placed according to the specification.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1408,
+        "coordinate_height": 768,
+        "labels": [
+          {
+            "numeral": "10",
+            "correct": true,
+            "evidence": "The terminal dot is on the outer boundary line at the right-hand end of the vibration device, clear of the cord, as specified."
+          },
+          {
+            "numeral": "36",
+            "correct": true,
+            "evidence": "The terminal dot is well inside the covering element (tile), below the straight middle stretch of the cord and to the left of the machine, clear of all edges and the cord, as specified."
+          },
+          {
+            "numeral": "46",
+            "correct": true,
+            "evidence": "The terminal dot is on the straight middle stretch of the flexible pulling element (cord), clear of the curving end stretches, as specified."
+          }
+        ]
+      }
+    },
+    {
+      "figure_label": "FIG. 6",
+      "rendered_file": "rendered-FIG-6.png",
+      "rendered_sha256": "040ed4064c1a055a0a499fc6ca73ce770311e8361f7120070d2faba4b2d2ac08",
+      "specification_hash": "260eff0357fe4d3123ca751cb84b9590f3afc428bb1d99cb114802278837d278",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "10",
+          "48"
+        ],
+        "detected_numerals": [
+          "48",
+          "10"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "6/6",
+        "detected_sheet_number": "6/6",
+        "detected_figure_label": "FIG. 6"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "The drawing accurately depicts one large rectangular block and two small rectangular blocks on top, matching the specification for a vibration device and two stirring elements, with no extraneous geometry.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {},
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "figure-anchor-v15-native-pixel-actionable-coordinate-certificate-majority",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All reference numeral endpoints correctly match the specification.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1408,
+        "coordinate_height": 768,
+        "labels": [
+          {
+            "numeral": "10",
+            "correct": true,
+            "evidence": "The terminal dot for numeral 10 is located at (704, 479), which is well inside the front face of the large rectangular block, clear of the small blocks, as specified for the 'vibration device'."
+          },
+          {
+            "numeral": "48",
+            "correct": true,
+            "evidence": "The terminal dot for numeral 48 is located at (422, 182), which is well inside the front face of the left small block, as specified for the 'stirring element'."
+          }
+        ]
+      }
+    }
+  ]
+}

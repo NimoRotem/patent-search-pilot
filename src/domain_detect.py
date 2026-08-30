@@ -33,6 +33,7 @@ An LLM tiebreak (gemini-2.5-flash) arbitrates only the narrow uncertain band, so
 case costs one embedding + two SQL queries and no LLM call.
 """
 from __future__ import annotations
+from config import EMBED_DIM  # noqa: E402
 
 import os
 import statistics
@@ -128,7 +129,7 @@ def probe_signals(query: str, conn=None, retriever=None) -> dict:
         conn.autocommit = True
         own = True
     try:
-        qv = embed.embed_query(query[:8000], 768)
+        qv = embed.embed_query(query[:8000], EMBED_DIM)
         v = _vec(qv)
         with conn.cursor() as c:
             c.execute(

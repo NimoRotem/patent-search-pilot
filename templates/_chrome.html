@@ -1,0 +1,63 @@
+{#  THE MASTHEAD, ON ITS OWN, because two apps serve it.
+
+    The register lookup is a separate process behind the same domain and it used to render a page
+    with no shared header: clicking Lookup felt like leaving the product. It now fetches this
+    partial from /api/chrome and puts it at the top of its own page, so there is one nav and it
+    cannot drift. Everything here must therefore work with NO page context beyond the request,
+    which is what these two lines are for: base.html sets them too, and setting them again here
+    is what lets the partial render on its own.
+#}
+{% set endpoint = endpoint if endpoint is defined else (request.endpoint or '') %}
+{% set signed_in = signed_in if signed_in is defined else (current_user or current_is_admin) %}
+<header class="top">
+  <div class="wrap navshell">
+    <a class="brand" href="{{ request.script_root }}/" aria-label="IPtorch home">
+      <svg class="brandmark" viewBox="0 0 36 36" aria-hidden="true">
+        <rect x="1" y="1" width="34" height="34" rx="8"></rect>
+        <path d="M10.5 8.5h10l5 5v14h-15z"></path>
+        <path d="M20.5 8.5v5h5M14 19h8M14 23h6"></path>
+      </svg>
+      <span class="brandname">IPtorch</span>
+    </a>
+    {# A visitor needs product context. An authenticated person needs the work areas first. #}
+    {% if signed_in or not account_mode %}
+      <nav class="primarynav appnav" aria-label="Primary navigation">
+        <a href="{{ request.script_root }}/" class="navitem{% if endpoint == 'index' %} active{% endif %}"{% if endpoint == 'index' %} aria-current="page"{% endif %}>Search</a>
+        <a href="{{ request.script_root }}/history" class="navitem{% if endpoint == 'history' %} active{% endif %}"{% if endpoint == 'history' %} aria-current="page"{% endif %}>History</a>
+        {#  Designs is not its own destination any more: an EU registered design is one more thing
+            you look up, so it is a tab on Lookup. #}
+        <a href="{{ request.script_root }}/patentlookup/" class="navitem{% if endpoint == 'patent_lookup' %} active{% endif %}"{% if endpoint == 'patent_lookup' %} aria-current="page"{% endif %}>Lookup</a>
+        {% if current_user %}
+          <a href="{{ request.script_root }}/library" class="navitem{% if endpoint == 'library' %} active{% endif %}"{% if endpoint == 'library' %} aria-current="page"{% endif %}>Library</a>
+        {% endif %}
+        {#  ADMIN ONLY, both of them. Corpus is an engineering view of what the database holds and
+            Drafting is unfinished; neither is something to hand a customer yet. #}
+        {% if current_is_admin %}
+          <a href="{{ request.script_root }}/corpus" class="navitem navadmin{% if endpoint == 'corpus_page' %} active{% endif %}"{% if endpoint == 'corpus_page' %} aria-current="page"{% endif %}>Coverage</a>
+          <a href="{{ request.script_root }}/drafts" class="navitem navadmin navdraft{% if endpoint.startswith('draft') %} active{% endif %}"{% if endpoint.startswith('draft') %} aria-current="page"{% endif %}>Drafting</a>
+        {% endif %}
+      </nav>
+    {% else %}
+      <nav class="primarynav publicnav" aria-label="Primary navigation">
+        <a href="{{ request.script_root }}/about" class="navitem{% if endpoint == 'about' %} active{% endif %}"{% if endpoint == 'about' %} aria-current="page"{% endif %}>How it works</a>
+      </nav>
+    {% endif %}
+
+    <nav class="utilitynav" aria-label="Account and help">
+      {% if signed_in or not account_mode %}
+        <a class="helpnav{% if endpoint == 'about' %} active{% endif %}" href="{{ request.script_root }}/about"{% if endpoint == 'about' %} aria-current="page"{% endif %}>How it works</a>
+      {% endif %}
+      {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users"{% if endpoint.startswith('auth.admin_') %} class="active" aria-current="page"{% endif %}>Admin</a>{% endif %}
+      {% if current_user %}
+        <a href="{{ request.script_root }}/account" class="accountnav{% if endpoint == 'auth.account' %} active{% endif %}" aria-label="Signed in as {{ current_user.full_name }}, {{ current_user.email }}"{% if endpoint == 'auth.account' %} aria-current="page"{% endif %}>
+          <span class="accountname">{{ current_user.full_name }}</span>
+          <span class="accountemail">{{ current_user.email }}</span>
+        </a>
+        <a class="signout" href="{{ request.script_root }}/logout">Sign out</a>
+      {% elif account_mode %}
+        <a href="{{ request.script_root }}/login">Sign in</a>
+        <a class="navcta" href="{{ request.script_root }}/register">Create account</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>

@@ -1,0 +1,1263 @@
+{
+ "rank_level": {
+  "deepened_NEW": {
+   "n": 34,
+   "recall@100": 0.0294,
+   "recall@500": 0.2941,
+   "recall@1000": 0.3529,
+   "median_rank_when_found": 245,
+   "found_at_all": 0.3529
+  },
+  "deepened_pre": {
+   "n": 30,
+   "recall@100": 0.2,
+   "recall@500": 0.2,
+   "recall@1000": 0.3,
+   "median_rank_when_found": 64,
+   "found_at_all": 0.3
+  },
+  "bq_deep": {
+   "n": 65,
+   "recall@100": 0.1231,
+   "recall@500": 0.2615,
+   "recall@1000": 0.4,
+   "median_rank_when_found": 350,
+   "found_at_all": 0.4
+  },
+  "thin": {
+   "n": 34,
+   "recall@100": 0.0882,
+   "recall@500": 0.2059,
+   "recall@1000": 0.2353,
+   "median_rank_when_found": 142,
+   "found_at_all": 0.2353
+  },
+  "absent": {
+   "n": 21,
+   "recall@100": 0.0,
+   "recall@500": 0.0,
+   "recall@1000": 0.0,
+   "median_rank_when_found": null,
+   "found_at_all": 0.0
+  }
+ },
+ "per_family": [
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "54067591",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "56830674",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "7961965",
+   "stratum": "deepened_NEW",
+   "rank": 204
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "24664421",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "41380067",
+   "stratum": "bq_deep",
+   "rank": 598
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "22883737",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "7865086",
+   "stratum": "deepened_pre",
+   "rank": 64
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "56814857",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "29740151",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "32054112",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "55234658",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "34201690",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "24840037",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "42115107",
+   "stratum": "deepened_NEW",
+   "rank": 160
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "42629144",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "6480115",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "23205091",
+   "stratum": "bq_deep",
+   "rank": 18
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "34810482",
+   "stratum": "bq_deep",
+   "rank": 456
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "24430975",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "7782789",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "45554511",
+   "stratum": "deepened_NEW",
+   "rank": 455
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "6918853",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "39244538",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "7889498",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "61375111",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "63449883",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "61880391",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "23289430",
+   "stratum": "bq_deep",
+   "rank": 343
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "70050062",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "8790101",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "25644276",
+   "stratum": "bq_deep",
+   "rank": 95
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "24262135",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "40115693",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "25084279",
+   "stratum": "bq_deep",
+   "rank": 621
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "36920701",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "36974391",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "59125095",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "6495403",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "22498676",
+   "stratum": "bq_deep",
+   "rank": 149
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "45508079",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "27177351",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "6332344",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "23516263",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_novelty",
+   "family": "25421211",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "54067591",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "56830674",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "7961965",
+   "stratum": "deepened_NEW",
+   "rank": 167
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "24664421",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "41380067",
+   "stratum": "bq_deep",
+   "rank": 481
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "22883737",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "7865086",
+   "stratum": "deepened_pre",
+   "rank": 48
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "56814857",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "29740151",
+   "stratum": "bq_deep",
+   "rank": 635
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "32054112",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "55234658",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "34201690",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "24840037",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "42115107",
+   "stratum": "deepened_NEW",
+   "rank": 118
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "42629144",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "6480115",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "23205091",
+   "stratum": "bq_deep",
+   "rank": 14
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "34810482",
+   "stratum": "bq_deep",
+   "rank": 357
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "24430975",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "7782789",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "45554511",
+   "stratum": "deepened_NEW",
+   "rank": 371
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "6918853",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "39244538",
+   "stratum": "deepened_NEW",
+   "rank": 858
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "7889498",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "61375111",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "63449883",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "61880391",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "23289430",
+   "stratum": "bq_deep",
+   "rank": 272
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "70050062",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "8790101",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "25644276",
+   "stratum": "bq_deep",
+   "rank": 73
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "24262135",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "40115693",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "25084279",
+   "stratum": "bq_deep",
+   "rank": 504
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "36920701",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "36974391",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "59125095",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "6495403",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "22498676",
+   "stratum": "bq_deep",
+   "rank": 141
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "45508079",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "27177351",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "6332344",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "23516263",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_gripper_inventive",
+   "family": "25421211",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "54067591",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "56830674",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "7715998",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "7961965",
+   "stratum": "deepened_NEW",
+   "rank": 214
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "24664421",
+   "stratum": "bq_deep",
+   "rank": 543
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "41380067",
+   "stratum": "bq_deep",
+   "rank": 572
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "4405320",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "22883737",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "7865086",
+   "stratum": "deepened_pre",
+   "rank": 555
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "56814857",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "31947993",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "19852272",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "22577009",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "29740151",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "3104865",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "32054112",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "55234658",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "66624664",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "24635901",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "34201690",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "24840037",
+   "stratum": "thin",
+   "rank": 175
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "3193909",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "23158645",
+   "stratum": "thin",
+   "rank": 663
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "35940933",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "42115107",
+   "stratum": "deepened_NEW",
+   "rank": 277
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "23205091",
+   "stratum": "bq_deep",
+   "rank": 81
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "25479119",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "34810482",
+   "stratum": "bq_deep",
+   "rank": 654
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "24430975",
+   "stratum": "bq_deep",
+   "rank": 553
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "45554511",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "6918853",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "22950774",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "39244538",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "63449883",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "23289430",
+   "stratum": "bq_deep",
+   "rank": 27
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "70050062",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "8790101",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "25644276",
+   "stratum": "bq_deep",
+   "rank": 378
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "24262135",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "40115693",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "25084279",
+   "stratum": "bq_deep",
+   "rank": 588
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "36974391",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "22498676",
+   "stratum": "bq_deep",
+   "rank": 344
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "45508079",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "27177351",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "6332344",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "23516263",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "25421211",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "grabo_extended_frame",
+   "family": "27070290",
+   "stratum": "thin",
+   "rank": 127
+  },
+  {
+   "query": "grabo_de_utility_xling",
+   "family": "7782789",
+   "stratum": "deepened_pre",
+   "rank": 586
+  },
+  {
+   "query": "grabo_de_utility_xling",
+   "family": "6495403",
+   "stratum": "deepened_pre",
+   "rank": 578
+  },
+  {
+   "query": "grabo_de_utility_xling",
+   "family": "7889498",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_de_utility_xling",
+   "family": "34201690",
+   "stratum": "thin",
+   "rank": 158
+  },
+  {
+   "query": "grabo_de_utility_xling",
+   "family": "63449883",
+   "stratum": "deepened_NEW",
+   "rank": 372
+  },
+  {
+   "query": "grabo_de_utility_xling",
+   "family": "6480115",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "grabo_de_utility_xling",
+   "family": "70050062",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "schmalz_sauggreifsystem",
+   "family": "32297463",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "schmalz_sauggreifsystem",
+   "family": "50556166",
+   "stratum": "thin",
+   "rank": 33
+  },
+  {
+   "query": "schmalz_sauggreifsystem",
+   "family": "83194486",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "schmalz_sauggreifsystem",
+   "family": "66624664",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "schmalz_vacuum_clamp",
+   "family": "36011303",
+   "stratum": "deepened_NEW",
+   "rank": 13
+  },
+  {
+   "query": "schmalz_vacuum_clamp",
+   "family": "26040986",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "schmalz_vacuum_clamp",
+   "family": "7917022",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "schmalz_vacuum_clamp",
+   "family": "43736808",
+   "stratum": "thin",
+   "rank": 22
+  },
+  {
+   "query": "schmalz_vacuum_clamp",
+   "family": "31984472",
+   "stratum": "thin",
+   "rank": 59
+  },
+  {
+   "query": "schmalz_vacuum_clamp",
+   "family": "7790219",
+   "stratum": "thin",
+   "rank": 494
+  },
+  {
+   "query": "schmalz_vacuum_clamp",
+   "family": "32981160",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "probst_stone_lifter_xling",
+   "family": "83194486",
+   "stratum": "bq_deep",
+   "rank": null
+  },
+  {
+   "query": "probst_stone_lifter_xling",
+   "family": "6026446",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "probst_stone_lifter_xling",
+   "family": "66624664",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "probst_stone_lifter_xling",
+   "family": "26224347",
+   "stratum": "deepened_NEW",
+   "rank": 858
+  },
+  {
+   "query": "probst_stone_lifter_xling",
+   "family": "6480115",
+   "stratum": "deepened_pre",
+   "rank": 67
+  },
+  {
+   "query": "probst_stone_lifter_xling",
+   "family": "6853263",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "7217340",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "8811546",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "6495403",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "6391811",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "5877774",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "5566733",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "8841954",
+   "stratum": "absent",
+   "rank": null
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "6259387",
+   "stratum": "deepened_pre",
+   "rank": 12
+  },
+  {
+   "query": "probst_kerb_lifter",
+   "family": "9340346",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "nl_handheld_vacuum_seal_sensor",
+   "family": "83194486",
+   "stratum": "bq_deep",
+   "rank": 10
+  },
+  {
+   "query": "nl_handheld_vacuum_seal_sensor",
+   "family": "66624664",
+   "stratum": "deepened_pre",
+   "rank": 12
+  },
+  {
+   "query": "nl_handheld_vacuum_seal_sensor",
+   "family": "34201690",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "nl_handheld_vacuum_seal_sensor",
+   "family": "63449883",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "nl_handheld_vacuum_seal_sensor",
+   "family": "70050062",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "nl_porous_surface_gripper",
+   "family": "7782789",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "nl_porous_surface_gripper",
+   "family": "6495403",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "nl_porous_surface_gripper",
+   "family": "83194486",
+   "stratum": "bq_deep",
+   "rank": 2
+  },
+  {
+   "query": "nl_porous_surface_gripper",
+   "family": "7889498",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "nl_porous_surface_gripper",
+   "family": "66624664",
+   "stratum": "deepened_pre",
+   "rank": 6
+  },
+  {
+   "query": "nl_porous_surface_gripper",
+   "family": "6480115",
+   "stratum": "deepened_pre",
+   "rank": null
+  },
+  {
+   "query": "nl_robot_eoat_vacuum",
+   "family": "70050062",
+   "stratum": "deepened_NEW",
+   "rank": null
+  },
+  {
+   "query": "nl_robot_eoat_vacuum",
+   "family": "34201690",
+   "stratum": "thin",
+   "rank": null
+  },
+  {
+   "query": "nl_robot_eoat_vacuum",
+   "family": "63449883",
+   "stratum": "deepened_NEW",
+   "rank": null
+  }
+ ],
+ "candidate_level": {
+  "vector": {
+   "deepened_NEW": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 12,
+    "never": 22,
+    "net": 0
+   },
+   "deepened_pre": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 7,
+    "never": 23,
+    "net": 0
+   },
+   "bq_deep": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 25,
+    "never": 40,
+    "net": 0
+   },
+   "thin": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 8,
+    "never": 26,
+    "net": 0
+   },
+   "absent": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 0,
+    "never": 21,
+    "net": 0
+   }
+  },
+  "hybrid": {
+   "deepened_NEW": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 14,
+    "never": 20,
+    "net": 0
+   },
+   "deepened_pre": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 10,
+    "never": 20,
+    "net": 0
+   },
+   "bq_deep": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 32,
+    "never": 33,
+    "net": 0
+   },
+   "thin": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 11,
+    "never": 23,
+    "net": 0
+   },
+   "absent": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 0,
+    "never": 21,
+    "net": 0
+   }
+  },
+  "agentic": {
+   "deepened_NEW": {
+    "gained": 2,
+    "lost": 0,
+    "kept": 12,
+    "never": 20,
+    "net": 2
+   },
+   "deepened_pre": {
+    "gained": 0,
+    "lost": 1,
+    "kept": 13,
+    "never": 16,
+    "net": -1
+   },
+   "bq_deep": {
+    "gained": 3,
+    "lost": 5,
+    "kept": 28,
+    "never": 29,
+    "net": -2
+   },
+   "thin": {
+    "gained": 1,
+    "lost": 1,
+    "kept": 13,
+    "never": 19,
+    "net": 0
+   },
+   "absent": {
+    "gained": 0,
+    "lost": 0,
+    "kept": 0,
+    "never": 21,
+    "net": 0
+   }
+  }
+ }
+}

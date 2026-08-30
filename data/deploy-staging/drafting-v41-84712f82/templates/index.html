@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+{% block title %}Search prior art | Rotem Patents{% endblock %}
+{% block body %}
+{#  THE SEARCH PAGE IS THE SEARCH FIELD.
+
+    This page used to open with roughly fifty lines of prose above the input: a headline
+    paragraph, the full "Search scope and measured reliability" panel, and the collapsible
+    indexed-CPC list. None of it was wrong — it is the disclosure that stops a thin result set
+    being read as a clear field — but a search tool that makes you scroll past an essay to reach
+    the box has mistaken itself for a brochure. All of that content moved INTACT to /about, and
+    what remains here is one factual line, rendered from corpus_facts.facts() so it cannot drift.
+
+    The same disclosure on the RESULTS page and in every exported PDF/DOCX is deliberately
+    untouched. That is the point where somebody decides what a result means, and it stays there.  #}
+<div class="wrap searchpage">
+  <header class="searchintro">
+    <p class="eyebrow">Prior art search</p>
+    <h1>Search prior art</h1>
+    <p>Describe the invention or begin with a patent, PDF, or document.</p>
+  </header>
+  <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="qbox">What is the invention?</label>
+      {#  Set by the extract step: points at the stashed full-text chunk vectors + drawing images so
+          the SAME "Search prior art" button also fans out over the document's own chunks and figures
+          (multi-chunk semantic + image channels). Empty for a plain typed query. #}
+      <input type="hidden" name="doc_token" id="doctoken" value="">
+      {#  ONE SMART BOX. It is the query, the drop target for a PDF, and the place a patent link or
+          number is recognised. Three separate controls (a textarea, a drop zone, a URL field with
+          its own button) asked the user to classify their own input before the page would take it;
+          the page can tell the difference perfectly well by itself.  #}
+      <textarea name="query" id="qbox" rows="5" required autofocus
+        placeholder="Describe the invention in plain language, drop a patent PDF here, or paste a patent link or number.&#10;&#10;e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
+      <p class="small muted qhint">
+        <label for="fileinput" class="vh">Upload a patent PDF, text or Word document</label>
+        <input type="file" id="fileinput" class="vh"
+               accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        Drop a PDF on the box above, <button type="button" class="linklike" id="browsebtn">browse to
+        upload</button>, or paste a patent link or number — PDF, .txt or .docx, up to 30&nbsp;MB.
+      </p>
+    </div>
+
+    {#  DOCUMENT / PATENT-LINK INPUT.
+        Three ways in besides typing: drop a file, browse to upload, or paste a patent link.
+        Any of them POSTs to {script_root}/extract, which pulls out the text AND the drawings,
+        runs a vision pass over the figures, and fuses everything into a search brief. The brief
+        drops straight into the textarea above, so the SAME "Search prior art" button runs the
+        SAME pipeline — this is just a better way to fill the query box, not a new search path. #}
+    <div class="field ingest">
+      {#  Real progress, not a spinner. Reading a 64-page grant takes the better part of a
+          minute — two model passes over the whole document plus drawing extraction — and the
+          bar below is driven by the phase the server reports, not by a timer.  #}
+      <div id="exProgress" class="exprog" hidden>
+        <div class="exprogbar"><div class="exprogfill" id="exProgFill"></div></div>
+        <div class="exprogrow">
+          <span id="exProgMsg">Reading the document</span>
+          <span class="grow"></span>
+          <span id="exProgTime" class="muted">0s</span>
+        </div>
+      </div>
+      <div id="extractstatus" class="ex-status small" role="status" aria-live="polite"></div>
+
+      {#  REVIEW PANEL — the text the search will actually run on, and it is EDITABLE.
+          A prior-art search is only as good as its query, and everything below is machine-read
+          out of a PDF that may be a two-column scan. So each of the three materials is shown
+          separately and can be corrected before a single credit is spent: the abstract, every
+          claim on its own, and the brief (which lives in the query box above, where the user is
+          already looking). Corrections are re-embedded by POST /extract/revise on submit —
+          each claim is its own query vector, so an edit that is not re-embedded would show a
+          corrected claim while the search still ran on the rejected text.  #}
+      <div id="extractpreview" class="ex-preview" hidden>
+        <div class="ex-head" id="exHead"></div>
+        <div class="ex-tags" id="exTags"></div>
+        <div id="exWarn" class="exwarn" hidden></div>
+        <div class="ex-figs" id="exFigs"></div>
+
+        <details class="exsec" id="exAbstractSec">
+          <summary><span class="exsum">Abstract</span>
+            <span class="exmeta" id="exAbstractMeta"></span></summary>
+          <textarea id="exAbstract" class="exta" rows="4"
+                    aria-label="Abstract extracted from the document — edit if it is wrong"></textarea>
+        </details>
+
+        <details class="exsec" id="exClaimsSec" open>
+          <summary><span class="exsum">Claims</span>
+            <span class="exmeta" id="exClaimsMeta"></span></summary>
+          <p class="small muted exhint">Each claim is searched on its own and drives the
+            claim&nbsp;&times;&nbsp;reference grid on the report. Fix anything the reader got wrong.</p>
+          <div id="exClaims" class="exclaims"></div>
+          <button type="button" class="btn ghost sm" id="exAddClaim">+ Add a claim</button>
+        </details>
+
+        <details class="exsec" id="exFigSec">
+          <summary><span class="exsum">Drawings, read by the model</span>
+            <span class="exmeta" id="exVisionMeta"></span></summary>
+          <p class="ex-snip" id="exVision"></p>
+        </details>
+
+        <details class="exsec" id="exTextSec">
+          <summary><span class="exsum">Extracted document text</span>
+            <span class="exmeta" id="exTextMeta"></span></summary>
+          <p class="ex-snip" id="exText"></p>
+        </details>
+
+        {#  The provenance of everything above — which pass produced the claims, how much of the
+            document the brief saw, what was rejected. Collapsed, because it belongs to the
+            question "why does it say that?" rather than to the question being answered.  #}
+        <details class="exsec" id="exNotesSec">
+          <summary><span class="exsum">How this document was read</span>
+            <span class="exmeta" id="exNotesMeta"></span></summary>
+          <ul class="exnotes" id="exNotes"></ul>
+        </details>
+
+        <p class="small muted exfoot">The <b>search brief</b> is in the box at the top of this
+          page — it is condensed from the whole document and is what the engine searches. Edit it
+          there.</p>
+      </div>
+    </div>
+
+    {#  ONE SEARCH TYPE. Mode, focus and the subject number were three controls asking the user to
+        make choices the pipeline can make better on its own:
+          * mode is always `novelty` — it is the broader of the two (it includes secret and
+            earlier-filed art), so it is the safe default for a prior-art search;
+          * `search_focus` still switches itself to `claims` when the ingested document brought
+            claims with it, which is a measured behaviour and not a preference — it stays, as a
+            hidden field the extract step sets;
+          * the subject number is recovered from the ingested document automatically
+            (`external.subject_from_doc`), which is what enables prior-art dating under EPC
+            Art. 54(2)/54(3) without anyone typing a number.  #}
+    <input type="hidden" name="mode" value="novelty">
+    <input type="hidden" name="search_focus" id="search-focus" value="all_text">
+
+    {#  WHICH SEARCH THIS WILL BE, before it is started.
+
+        Two very different searches leave from this one button. A description with no claims is a
+        CONCEPT search: the invention is broken into its distinct technical concepts and each one
+        is searched. A patent that arrives with its claims is a CLAIM ATTACK: every claim is split
+        into its separate requirements and each requirement is searched, read for and rescued.
+        Measured, the second takes an hour to two hours and the first takes minutes — and until
+        now the page described both as "several minutes", so somebody who typed a paragraph had no
+        way to know they had started the expensive one.
+
+        The badge is driven by the same fact the engine uses (does the input carry claims), so it
+        cannot disagree with what actually runs. Server-rendered default, flipped by the extract
+        step the moment a document turns out to have claims.  #}
+    <div class="kindbadge" id="kindBadge" data-kind="concept">
+      <span class="kindname" id="kindName">Concept search</span>
+      <span class="kindeta" id="kindEta">about 12-30 minutes</span>
+      <span class="kindwhat small muted" id="kindWhat">Breaks the description into its distinct
+        technical concepts and searches each one, then reads the strongest references in full.</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <button class="btn" type="submit" id="gobtn">Search prior art</button>
+      <span class="small muted">Searches the local corpus and external patent APIs. First matches
+        usually appear within a minute. Cached afterwards.</span>
+    </div>
+
+    {% if current_user %}
+    <div class="notifychoice">
+      <div><b>How should this finish?</b><span>You can keep watching live results or leave the search running in your account.</span></div>
+      <label class="notifyopt"><input type="checkbox" name="notify_email" value="1"
+        {% if current_user.email_on_completion %}checked{% endif %}>
+        Email {{ current_user.email }} when the final report is ready</label>
+    </div>
+    {% else %}
+    <p class="small muted notifyopt"><a href="{{ request.script_root }}/login">Sign in</a> to save the search, leave it running, and receive a report-ready email.</p>
+    {% endif %}
+
+    {#  The one line that replaces the wall. Every number is live from the DB via
+        corpus_facts.facts() — never hardcoded — so it cannot state a corpus size or a date
+        ceiling the tool no longer has. #}
+    <p class="scope-line small muted">{{ disc.one_line() }} ·
+      <a href="{{ request.script_root }}/about">about this tool and its limits</a></p>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const searchForm = document.getElementById('searchform');
+const searchButton = document.getElementById('gobtn');
+searchForm.addEventListener('submit', e => {
+  const q = document.getElementById('qbox');
+  if(!q.value.trim()){ e.preventDefault(); q.focus(); return; }
+  searchButton.textContent = 'Starting…'; searchButton.disabled = true;
+});
+
+// Back/forward cache restores the DOM exactly as it looked at navigation time. Without resetting
+// this state, returning from a report leaves “Starting…” disabled and makes another search
+// impossible until a hard refresh.
+window.addEventListener('pageshow', () => {
+  searchButton.textContent = 'Search prior art';
+  searchButton.disabled = false;
+});
+
+/*  DOCUMENT / PATENT-LINK INPUT — extract text + drawings, fuse into the query box.
+    Prefix-aware (never hardcode /patents): everything through B = window.APP_BASE || ''.   */
+(function(){
+  const B = window.APP_BASE || '';
+  const fileinput = document.getElementById('fileinput');
+  const browsebtn = document.getElementById('browsebtn');
+  const statusEl = document.getElementById('extractstatus');
+  const preview = document.getElementById('extractpreview');
+  const qbox = document.getElementById('qbox');
+  const gobtn = document.getElementById('gobtn');
+  if(!qbox) return;
+
+  let busy = false;
+  const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function setStatus(msg, kind){
+    statusEl.textContent = msg || '';
+    statusEl.className = 'ex-status small ' + (kind || 'muted');
+  }
+  function setBusy(on, msg){
+    busy = on;
+    qbox.setAttribute('aria-busy', on ? 'true' : 'false');
+    qbox.classList.toggle('is-busy', on);
+    browsebtn.disabled = on;
+    if(msg) setStatus(msg, 'muted');
+  }
+
+  /*  The extracted material, and the copy the user may have edited. `pristine` is what the
+      server produced; comparing against it is what decides whether a re-embed is needed at
+      submit time, so an untouched extraction costs no extra Vertex call.  */
+  let doc = null;
+  let pristine = null;
+
+  const $ = id => document.getElementById(id);
+
+  /*  THE SEARCH-KIND BADGE.
+      Fetched from /api/search-kinds rather than written into this file, so the label, the summary
+      and the quoted time come from the same module that sets the budget. If the fetch fails the
+      server-rendered default stands, which is the honest fallback: a typed description IS a
+      concept search.                                                                            */
+  let KINDS = null;
+  fetch(B + '/api/search-kinds', {credentials:'same-origin'})
+    .then(r => r.json()).then(d => { KINDS = d && d.kinds ? d.kinds : null; setKind(currentKind()); })
+    .catch(() => {});
+
+  //  The same rule the engine uses: claims present -> claim attack, otherwise concept search.
+  //  `currentClaims()` reads the review panel, so correcting or deleting the extracted claims
+  //  changes the badge before the search is started, exactly as it changes the search.
+  function currentKind(){
+    return (doc && currentClaims().length) ? 'claims' : 'concept';
+  }
+  function setKind(kind){
+    const badge = $('kindBadge');
+    if(!badge) return;
+    badge.dataset.kind = kind;
+    const k = (KINDS || []).find(x => x.kind === kind);
+    if(!k) return;
+    $('kindName').textContent = k.label;
+    $('kindEta').textContent = k.eta_text;
+    $('kindWhat').textContent = k.summary;
+  }
+
+  function claimRow(c, i){
+    const row = document.createElement('div');
+    row.className = 'exclaim' + (c.independent ? ' indep' : '');
+    row.innerHTML =
+      `<div class="exclaimno"><span class="exno">${i+1}</span>` +
+      `<span class="extag-ind" title="${c.independent?'Independent claim':'Dependent claim'}">` +
+      `${c.independent?'IND':'dep'}</span></div>` +
+      `<textarea class="exta exclaimta" rows="3" aria-label="Claim ${i+1}"></textarea>` +
+      `<button type="button" class="exdel" title="Remove this claim" aria-label="Remove claim ${i+1}">×</button>`;
+    row.querySelector('textarea').value = c.text || '';
+    row.querySelector('.exdel').addEventListener('click', () => {
+      row.remove(); renumberClaims();
+    });
+    row.querySelector('textarea').addEventListener('input', autoGrow);
+    return row;
+  }
+
+  function autoGrow(e){
+    const t = e.target || e;
+    t.style.height = 'auto';
+    t.style.height = Math.min(420, Math.max(58, t.scrollHeight + 2)) + 'px';
+  }
+
+  function renumberClaims(){
+    const rows = [...$('exClaims').querySelectorAll('.exclaim')];
+    rows.forEach((r,i) => {
+      r.querySelector('.exno').textContent = i+1;
+      r.querySelector('textarea').setAttribute('aria-label', 'Claim ' + (i+1));
+    });
+    const ind = rows.filter(r => r.classList.contains('indep')).length;
+    $('exClaimsMeta').textContent = rows.length
+      ? `${rows.length} claim${rows.length===1?'':'s'}, ${ind} independent`
+      : 'none found — add one if the document has claims';
+    //  Deleting the last claim turns a claim attack back into a concept search, and the badge
+    //  has to say so BEFORE the button is pressed, not an hour later on the report.
+    setKind(currentKind());
+  }
+
+  function currentClaims(){
+    return [...$('exClaims').querySelectorAll('.exclaim')].map(r => ({
+      text: r.querySelector('textarea').value.trim(),
+      independent: r.classList.contains('indep')
+    })).filter(c => c.text);
+  }
+
+  function renderPreview(d){
+    doc = d;
+    const label = d.source === 'link' ? (d.pub || d.label || 'patent') : (d.label || 'document');
+    $('exHead').innerHTML =
+      (d.source === 'link' ? `Publication <b>${esc(d.pub||d.label)}</b>` : `<b>${esc(d.label)}</b>`) +
+      (d.title ? ` — ${esc(d.title)}` : '') +
+      (d.publication_number && d.source !== 'link' ? ` <span class="muted">· ${esc(d.publication_number)}</span>` : '');
+
+    const tags = [];
+    if(d.text_present) tags.push(`<span class="ex-tag good">text ✓ ${Number(d.text_chars).toLocaleString()} chars</span>`);
+    else tags.push(`<span class="ex-tag warn">no text layer</span>`);
+    if(d.n_claims) tags.push(`<span class="ex-tag good">${d.n_claims} claim${d.n_claims===1?'':'s'} ✓</span>`);
+    else tags.push(`<span class="ex-tag warn">no claims found</span>`);
+    if(d.abstract) tags.push(`<span class="ex-tag good">abstract ✓</span>`);
+    else tags.push(`<span class="ex-tag warn">no abstract</span>`);
+    if(d.figures_present) tags.push(`<span class="ex-tag good">${d.n_figures} figure${d.n_figures===1?'':'s'} ✓</span>`);
+    if(d.drawings_source) tags.push(`<span class="ex-tag">drawings: ${esc(d.drawings_source)}</span>`);
+    $('exTags').innerHTML = tags.join('');
+
+    // A scan read by vision has no source text to check the transcription against; say so
+    // rather than presenting a machine reading as if it were extracted text.
+    const warn = $('exWarn');
+    if(d.verified === false){
+      warn.innerHTML = '<b>This PDF is a scanned image with no text layer.</b> It was read with ' +
+        'vision, so nothing could be checked against extracted text. Please read the claims below ' +
+        'before searching.';
+      warn.hidden = false;
+    } else { warn.hidden = true; warn.innerHTML = ''; }
+
+    // No loading="lazy" here: these are data URIs already in the payload, so deferring them
+    // saves nothing and a not-yet-decoded image has no intrinsic size — inside the flex row it
+    // collapses to a 5px slither, which is what the preview looked like.
+    $('exFigs').innerHTML = (d.thumbs||[]).map((t,i) =>
+      `<img src="${esc(t)}" alt="Figure ${i+1} extracted from ${esc(label)}">`).join('');
+
+    $('exAbstract').value = d.abstract || '';
+    $('exAbstractMeta').textContent = d.abstract
+      ? `${d.abstract.length} characters` + (d.abstract_source ? ` · from the ${esc(d.abstract_source)}` : '')
+      : 'not found — paste it here if the document has one';
+    // Open on arrival. The whole point of the panel is that these are READ, not filed away.
+    $('exAbstractSec').open = true;
+
+    const box = $('exClaims');
+    box.innerHTML = '';
+    (d.claims||[]).forEach((c,i) => box.appendChild(claimRow(c,i)));
+    renumberClaims();
+    if(d.claims_source && d.claims_source !== 'none' && (d.claims||[]).length)
+      $('exClaimsMeta').textContent += ` · read from the ${esc(d.claims_source)}`;
+
+    $('exVision').textContent = d.vision || '';
+    $('exFigSec').hidden = !d.vision;
+    $('exVisionMeta').textContent = d.vision ? 'folded into the query text' : '';
+
+    $('exText').textContent = (d.text_snippet||'') + (d.text_chars>600 ? '…' : '');
+    $('exTextSec').hidden = !d.text_snippet;
+    $('exTextMeta').textContent = d.text_chars
+      ? `${Number(d.text_chars).toLocaleString()} characters extracted` : '';
+
+    const notes = d.notes || [];
+    $('exNotes').innerHTML = notes.map(n => `<li>${esc(n)}</li>`).join('');
+    $('exNotesSec').hidden = !notes.length;
+    $('exNotesMeta').textContent = notes.length + ' step' + (notes.length===1?'':'s');
+
+    pristine = snapshot();
+    setKind(currentKind());
+    preview.hidden = false;
+    // AFTER unhiding: a hidden textarea reports scrollHeight 0, so sizing it while the panel is
+    // still hidden collapses every claim to two lines and hides the text the user is here to check.
+    box.querySelectorAll('textarea').forEach(autoGrow);
+    autoGrow($('exAbstract'));
+  }
+
+  function snapshot(){
+    return JSON.stringify({a: $('exAbstract').value.trim(),
+                           c: currentClaims().map(c => c.text)});
+  }
+  function edited(){ return pristine !== null && snapshot() !== pristine; }
+
+  /*  PROGRESS — driven by the server's real phase, with a slow creep between phases so a long
+      model call still shows movement without ever claiming to be further along than it is.  */
+  const prog = {t0:0, target:3, shown:3, timer:0};
+  function progStart(){
+    prog.t0 = Date.now(); prog.target = 3; prog.shown = 3;
+    $('exProgress').hidden = false;
+    $('exProgMsg').textContent = 'Reading the document';
+    clearInterval(prog.timer);
+    prog.timer = setInterval(() => {
+      // creep at most a fifth of the way to the next phase, so the bar never stalls dead
+      prog.shown = Math.min(prog.target, prog.shown + (prog.target - prog.shown) * 0.08 + 0.05);
+      $('exProgFill').style.width = prog.shown.toFixed(1) + '%';
+      const s = Math.round((Date.now() - prog.t0)/1000);
+      $('exProgTime').textContent = s < 60 ? s + 's' : Math.floor(s/60) + 'm ' + (s%60) + 's';
+    }, 250);
+  }
+  function progSet(pct, msg){
+    if(typeof pct === 'number') prog.target = Math.max(prog.target, pct);
+    if(msg) $('exProgMsg').textContent = msg;
+  }
+  function progStop(){
+    clearInterval(prog.timer); prog.timer = 0;
+    $('exProgFill').style.width = '100%';
+    setTimeout(() => { $('exProgress').hidden = true; $('exProgFill').style.width = '0%'; }, 400);
+  }
+
+  async function pollExtract(job){
+    // 1s while the fast phases run, backing off to 2s once we are into model time
+    for(let i = 0; i < 900; i++){
+      await new Promise(r => setTimeout(r, i < 20 ? 1000 : 2000));
+      let r, d;
+      try{
+        r = await fetch(B + '/extract/status/' + encodeURIComponent(job), {credentials:'same-origin'});
+        d = await r.json();
+      }catch(_){ continue; }                      // a dropped poll is not a failed extraction
+      if(r.status === 404) throw new Error(d && d.error ? d.error : 'the upload expired');
+      progSet(d.pct, d.msg);
+      if(d.state === 'done') return d.result;
+      if(d.state === 'error') throw new Error(d.error || 'extraction failed');
+    }
+    throw new Error('extraction is taking longer than expected — please try again');
+  }
+
+  async function send(fd){
+    if(busy) return;
+    setBusy(true, '');
+    preview.hidden = true;
+    progStart();
+    try{
+      fd.append('async', '1');
+      const r = await fetch(B + '/extract', {method:'POST', body:fd, credentials:'same-origin',
+        headers:{'X-Requested-With':'XMLHttpRequest','X-CSRF-Token':window.CSRF_TOKEN || ''}});
+      let d = {};
+      try { d = await r.json(); } catch(_) {}
+      if(!r.ok || !d.ok){
+        setStatus((d && d.error) ? d.error : `Extraction failed (HTTP ${r.status}).`, 'bad');
+        return;
+      }
+      if(d.job) d = await pollExtract(d.job);
+      if(!d || !d.ok){
+        setStatus((d && d.error) ? d.error : 'Extraction failed.', 'bad');
+        return;
+      }
+      qbox.value = d.brief;
+      qbox.dispatchEvent(new Event('input'));
+      // carry the doc token so /run also searches the document's own chunks + drawings
+      const dt = document.getElementById('doctoken');
+      if(dt) dt.value = d.doc_token || '';
+      const focus = document.getElementById('search-focus');
+      if(focus && d.source === 'upload' && d.n_claims) focus.value = 'claims';
+      renderPreview(d);
+      const bits = [];
+      if(d.n_claims) bits.push(`${d.n_claims} claim${d.n_claims===1?'':'s'}`);
+      if(d.abstract) bits.push('an abstract');
+      bits.push('a search brief');
+      setStatus(`Read ${bits.join(', ')}. Check them below, then press “Search prior art”.`, 'good');
+      gobtn.focus();
+    }catch(err){
+      setStatus('Could not read that document: ' + ((err && err.message) || 'network error') +
+                '. Please try again.', 'bad');
+    }finally{
+      progStop();
+      setBusy(false);
+    }
+  }
+
+  function sendFile(file){
+    if(!file) return;
+    if(file.size > 30*1024*1024){ setStatus('That file is larger than 30 MB.', 'bad'); return; }
+    const fd = new FormData(); fd.append('file', file, file.name);
+    send(fd);
+  }
+  function sendUrl(v){
+    v = (v||'').trim();
+    if(!v) return;
+    const fd = new FormData(); fd.append('url', v);
+    send(fd);
+  }
+
+  /*  RECOGNISING A PATENT IN THE BOX.
+      A Google Patents URL, an Espacenet URL, or a bare publication number. The bare-number case
+      only fires when the box contains NOTHING ELSE — a description that happens to mention
+      "US-11999030-B2" is a description, not a request to search that patent, and silently
+      replacing what somebody wrote would be the worst possible reading of an ambiguous input.
+      Either way it ASKS before it acts.                                                        */
+  const PAT_URL = /(?:https?:\/\/)?(?:www\.)?patents\.google\.com\/patent\/([A-Za-z]{2}[A-Za-z0-9]+)/i;
+  const PAT_ESP = /(?:https?:\/\/)?(?:www\.)?worldwide\.espacenet\.com\/[^\s]*?\b([A-Za-z]{2}\d{4,}[A-Za-z]\d?)\b/i;
+  const PAT_BARE = /^([A-Za-z]{2}[-\s]?[A-Za-z]?\d{4,}(?:[-\s]?[A-Za-z]\d?)?)$/;
+
+  function detectPatent(text){
+    const t = (text||'').trim();
+    if(!t) return '';
+    let m = t.match(PAT_URL) || t.match(PAT_ESP);
+    if(m) return m[1].toUpperCase();
+    //  Bare number ONLY when it is the entire contents of the box.
+    m = t.match(PAT_BARE);
+    return m ? m[1].toUpperCase().replace(/[\s]/g, '') : '';
+  }
+
+  let offered = '';                     // never ask twice about the same thing
+  function maybeOfferPatent(){
+    if(busy) return;
+    const pub = detectPatent(qbox.value);
+    if(!pub || pub === offered) return;
+    offered = pub;
+    if(window.confirm('Would you like to fetch patent ' + pub + ' as the search input?\n\n' +
+                      'We will read its text, claims and drawings and build the query from them.')){
+      sendUrl(qbox.value.trim());
+    }
+  }
+
+  $('exAddClaim').addEventListener('click', () => {
+    const box = $('exClaims');
+    const row = claimRow({text:'', independent: box.children.length === 0}, box.children.length);
+    box.appendChild(row); renumberClaims();
+    row.querySelector('textarea').focus();
+  });
+
+  /*  SUBMIT — if the extracted material was corrected, re-chunk and re-embed it FIRST and swap
+      in the token that points at the corrected vectors. Skipping this would run the search on
+      the text the user just rejected while showing them the text they typed.  */
+  searchForm.addEventListener('submit', async e => {
+    const dt = document.getElementById('doctoken');
+    if(!doc || !dt || !edited() || dt.dataset.applied === snapshot()) return;
+    e.preventDefault();
+    gobtn.disabled = true; gobtn.textContent = 'Applying your corrections…';
+    setStatus('Re-reading your corrected claims so the search uses them…', 'muted');
+    try{
+      const r = await fetch(B + '/extract/revise', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+        body: JSON.stringify({doc_token: dt.value, title: doc.title || '',
+                              abstract: $('exAbstract').value.trim(),
+                              claims: currentClaims(), brief: qbox.value.trim()})
+      });
+      const d = await r.json();
+      if(!r.ok || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+      dt.value = d.doc_token || dt.value;
+      dt.dataset.applied = snapshot();
+      pristine = snapshot();
+      setStatus(`Corrections applied — ${d.n_claims} claim${d.n_claims===1?'':'s'} re-read. Searching…`, 'good');
+      searchForm.submit();
+    }catch(err){
+      gobtn.disabled = false; gobtn.textContent = 'Search prior art';
+      setStatus('Could not apply your corrections: ' + (err.message||err) +
+                '. Fix it and try again, or reload to search the original extraction.', 'bad');
+    }
+  });
+
+  browsebtn.addEventListener('click', () => fileinput.click());
+  fileinput.addEventListener('change', () => { if(fileinput.files[0]) sendFile(fileinput.files[0]); });
+
+  /*  THE BOX IS THE DROP TARGET. `paste` fires before the value updates, so the check is deferred
+      a tick; `input` covers typing a number and any paste the browser routes differently. Both go
+      through the same one-shot guard.  */
+  qbox.addEventListener('paste', () => setTimeout(maybeOfferPatent, 0));
+  qbox.addEventListener('input', () => {
+    //  Reset the guard once the box no longer holds what we asked about, so correcting a typo in
+    //  a number gets a fresh offer rather than silence.
+    if(offered && detectPatent(qbox.value) !== offered) offered = '';
+  });
+  qbox.addEventListener('blur', maybeOfferPatent);
+
+  ['dragenter','dragover'].forEach(ev => qbox.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); qbox.classList.add('dragover');
+  }));
+  ['dragleave','dragend','drop'].forEach(ev => qbox.addEventListener(ev, e => {
+    if(ev === 'dragleave' && qbox.contains(e.relatedTarget)) return;
+    qbox.classList.remove('dragover');
+  }));
+  qbox.addEventListener('drop', e => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(!f) return;                      // a plain text drop keeps the browser's own behaviour
+    e.preventDefault(); e.stopPropagation();
+    sendFile(f);
+  });
+  // stop the page from navigating away if a file lands anywhere else
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => { if(e.target !== qbox) e.preventDefault(); });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+{
+ "n": 4,
+ "pub": "US-2019240847-A1",
+ "family_id": "59859035",
+ "biblio": {
+  "pub": "US-2019240847-A1",
+  "label": "U.S. Patent Application Publication No. US 2019/0240847 A1",
+  "kind": "publication",
+  "title": "Gripping device having a bernoulli gripping unit and a vacuum gripping unit",
+  "country": "US",
+  "inventor": "Sascha Quast",
+  "assignee": "Broetje Automation GmbH",
+  "publication_date": "2019-08-08",
+  "priority_date": "2016-09-28",
+  "filing_date": "2017-08-29",
+  "dates_source": "corpus",
+  "abstract": "The disclosure relates to a gripping device for an end effector of a manipulator for holding a workpiece via its workpiece surface, having a Bernoulli gripping unit, with an outflow unit for discharging a flow from the Bernoulli gripping unit between gripping device and workpiece surface in such a manner that in a region—Bernoulli-negative pressure region—a static negative pressure for holding the workpiece is generatable by the flow, and having a vacuum gripping unit with a suction chamber, wherein in a region delimited by the suction chamber—vacuum negative pressure region—a static negative pressure for holding the workpiece is generatable, wherein the Bernoulli negative pressure region and the vacuum negative pressure region intersect at least in part or wherein the Bernoulli negative pressure region and the vacuum negative pressure region surround one another.",
+  "issue_date_pretty": "August 8, 2019",
+  "priority_date_pretty": "September 28, 2016"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a gripping device for an end effector of a manipulator for holding a workpiece via its workpiece surface, having a Bernoulli gripping unit and a vacuum gripping unit, where the Bernoulli negative pressure region and the vacuum negative pressure region intersect at least in part or surround one another.",
+ "rows": [
+  {
+   "claim_no": 9,
+   "label": "claim 9[b]",
+   "quote_claim": false,
+   "claim_text": "said suction plate comprising a carrier plate and a seal, which is fastened to the carrier plate and extends around the carrier plate; and",
+   "claim_paraphrase": "said suction plate comprising a carrier plate and a seal, which is fastened to the carrier plate and extends around the carrier plate; and",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The vacuum gripping unit 9 comprises, as addressed above, the suction chamber 10 . The suction chamber 10 opens out into a suction opening 14 which is in contact with the surface 5 of the workpiece in the vacuum operating",
+   "note": "The reference describes a suction chamber and a suction opening that contacts the workpiece, which implies a seal",
+   "cites": [
+    "Paragraph [0020]"
+   ],
+   "confidence": 0.6,
+   "_id": 0,
+   "disclosure": "The vacuum gripping unit 9 comprises a suction chamber 10, which opens out into a suction opening 14 that is in contact with the surface 5 of the workpiece."
+  },
+  {
+   "claim_no": 11,
+   "label": "claim 11[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate in order to generate a vacuum between the suction plate and an object to be lifted",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The vacuum gripping unit 9 comprises, as addressed above, the suction chamber 10 . The suction chamber 10 opens out into a suction opening 14 which is in contact with the surface 5 of the workpiece in the vacuum operating",
+   "note": "The reference describes a suction chamber opening into a suction opening that delimits the vacuum negative pressure region, which is used to generate a static negative pressure for holding a workpiece.",
+   "cites": [
+    "Paragraph [0020]"
+   ],
+   "confidence": 0.9,
+   "_id": 1,
+   "disclosure": "The vacuum gripping unit 9 comprises a suction chamber 10, and the suction chamber 10 opens out into a suction opening 14 which is in contact with the surface 5 of the workpiece."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 2,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

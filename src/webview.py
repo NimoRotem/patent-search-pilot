@@ -5,6 +5,7 @@ structured sections; the SerpApi cache (enrich_display) provides drawings, PDF a
 The agent report provides elements, element evidence, the claim chart and the coverage ledger.
 """
 from __future__ import annotations
+from config import EMBED_DIM  # noqa: E402
 
 import os
 import json, re
@@ -586,6 +587,34 @@ def _clip(text, limit=None):
     return t if len(t) <= n else t[:n].rstrip() + " … [claim truncated for display]"
 
 
+def _unconfirmed_zeros(uncovered_rows, report):
+    """The uncovered rows whose zero is a statement about WORDS. -> [{...}]
+
+    "No reference discloses this limitation" is the strongest sentence a search produces, and a
+    vocabulary mismatch manufactures it. Counsel, 2026-08-26: claim 1[e] of the Schmalz application
+    is "the contact surface angle ranges in size from 170° to 190°", which the specification itself
+    defines one paragraph away as "at least substantially parallel to the displacement direction".
+    Zero of 232 references matched the number. GB 874,600, already selected as Document 6 of the
+    same packet, claims the geometry outright.
+    """
+    try:
+        import claim_construction
+    except Exception:                                                     # noqa: BLE001
+        return []
+    stored = ((report or {}).get("claim_construction") or {})
+    out = []
+    for r in uncovered_rows:
+        label = r.get("element")
+        con = stored.get(label) or claim_construction.construe(r.get("claim_text") or "")
+        if claim_construction.zero_is_confirmable(con):
+            continue
+        out.append({"element": label,
+                    "claim_text": r.get("claim_text") or "",
+                    "terms": (con.get("terms") or [])[:8],
+                    "caveat": claim_construction.zero_caveat(con)})
+    return out
+
+
 def build_reading_chart(report, deep, max_cols=None, axis="features"):
     """The element x reference grid built from WHAT WAS READ, not from what was retrieved.
 
@@ -841,6 +870,13 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
         #  asked about — "nothing discloses this" and "nobody looked" are opposite findings.
         "n_uncovered": sum(1 for r in rows if r["asked"] and not r["df"]),
         "uncovered": [r["element"] for r in rows if r["asked"] and not r["df"]][:40],
+        #  AND WHICH OF THOSE ZEROS IS A STATEMENT ABOUT VOCABULARY. A limitation written as a
+        #  number ("170° to 190°") whose construction is a geometry ("parallel") can come back at
+        #  zero while the art is full of it, and this page's zero is the strongest sentence in the
+        #  whole report. See claim_construction; the row names the construction so the reader can
+        #  see the two are different questions.
+        "uncovered_unconfirmed": _unconfirmed_zeros(
+            [r for r in rows if r["asked"] and not r["df"]], report),
         #  References that are in this grid because a claim had no art and the search went back for
         #  it (claim_rescue), rather than because the retrieval ranked them.
         "n_rescued": sum(1 for r in refs if r.get("rescue")),
@@ -944,6 +980,76 @@ def _reledger(led, stored_claims):
     for label, now in fresh.items():
         out.setdefault(label, now)
     return out, corrected
+
+
+def read_pool(report):
+    """How many candidates this search could actually read in full. -> int
+
+    THE DISPLAY CAP IS NOT THE READ POOL. This used to answer 60, because 60 is how many cards the
+    page shows, and the depth chooser was built from it: the deepest option a finished search
+    offered was "every one of the 60 found" when the screen had scored 601 of them. Sixty was a
+    fact about the page, not about the search.
+
+    `deep_rank["unread"]` is every candidate the screen scored and the reading did not reach, each
+    with its screen score, plus whatever has already been charted. That is the population a deeper
+    run reads from and it is what this has to be bounded by.
+    """
+    dr = (report or {}).get("deep_rank") or {}
+    n = len(dr.get("unread") or {}) + len(dr.get("by_pub") or {})
+    if n:
+        return n
+    #  A search that never reached the screen still surfaced its ranked families.
+    return len((report or {}).get("ranked_families") or [])
+
+
+def _read_choices_for(report, n_cards=0):
+    """Read depths for this report's next phase, bounded by what this search SCREENED."""
+    try:
+        import search_profile
+        return search_profile.read_choices(int(n_cards or 0) or read_pool(report))
+    except Exception:                                                     # noqa: BLE001
+        return []
+
+
+def _date_cutoff_suspect(report):
+    """Why this report's date bar may be wrong, or "". Shares one test with the 1.290 packet."""
+    try:
+        import submission
+        return submission.subject_dates_suspect(report or {})
+    except Exception:                                                     # noqa: BLE001
+        return ""
+
+
+def _parties_from_cache(card):
+    """Fill a card's assignee and inventor from the enrichment cache. Mutates `card`.
+
+    WHY IT WAS USUALLY BLANK. The card reads its parties from the corpus `parties` table, which is
+    sparse: measured on a finished report, 17 of 60 cards had an assignee and 16 an inventor. So
+    the line that identifies WHO a reference belongs to, which is the first thing a practitioner
+    looks at, was missing from two thirds of the results.
+
+    The data was already on disk. Every publication the display path has ever enriched is cached
+    under `data/enriched/<pub>.json`, and 498 of a sample of 500 of those carry both parties in
+    their `_display` record. Nothing read it back onto the card.
+
+    Cache only: no network, no fetch, no blocking. A publication that has never been enriched
+    stays blank rather than making a page load wait on Espacenet.
+    """
+    if card.get("assignees") and card.get("inventors"):
+        return card
+    pub = card.get("pub")
+    if not pub:
+        return card
+    try:
+        import enrich_display
+        disp = ((enrich_display.load_cached(pub) or {}).get("_display") or {})
+    except Exception:                                                     # noqa: BLE001
+        return card
+    if not card.get("assignees") and disp.get("assignees"):
+        card["assignees"] = [a for a in disp["assignees"] if a][:6]
+    if not card.get("inventors") and disp.get("inventors"):
+        card["inventors"] = [i for i in disp["inventors"] if i][:8]
+    return card
 
 
 def build_ledger_view(report):
@@ -1373,6 +1479,11 @@ def mongo_enrich_cards(cards):
     Bounded to the shown set (<=25). get_detail is cheap (bounded pool, short timeouts, on-disk
     cache, never raises) and returns remote-CDN figure URLs, so this adds no download and no OPS
     cost. Gaps only: a field the local corpus already populated is left untouched."""
+    #  EVERY card, not only the ones Mongo has a record for. This was inside the Mongo branch,
+    #  so a card that branch skipped never got its parties filled and the fix did nothing for the
+    #  two thirds of cards it was written for. The cache read is local and never raises.
+    for c in (cards or []):
+        _parties_from_cache(c)
     try:
         import mongo_corpus
     except Exception:
@@ -1563,7 +1674,7 @@ def _fed_card(h, qvec):
     score = 0.0
     if qvec is not None and (title or abstract):
         try:
-            score = _cosine(qvec, embed.embed_query((title + ". " + abstract)[:8000], 768))
+            score = _cosine(qvec, embed.embed_query((title + ". " + abstract)[:8000], EMBED_DIM))
         except Exception:
             score = 0.0
     # Best-effort legal status from the kind code carried in the publication number.
@@ -1666,6 +1777,11 @@ def _attach_deep_rank(report, card):
     """
     import deep_rank
     pub = card.get("pub")
+    #  WHO THE REFERENCE BELONGS TO, on the main render path. `mongo_enrich_cards` fills this too
+    #  but is only called by the print view and the card stream, so on the report page itself two
+    #  thirds of the cards showed no assignee and no inventor. This function is the one every card
+    #  goes through on every render, which is why the fill hangs off it.
+    _parties_from_cache(card)
     fields = deep_rank.card_fields(report, pub) if pub else None
     if fields:
         card.update(fields)
@@ -1730,6 +1846,24 @@ def search_params(report):
         "disclosures_summary": report.get("disclosures_summary") or {},
         "disclosure_list_source": report.get("disclosure_list_source") or "",
         "date_cutoff": report.get("date_cutoff") or "",
+        #  SURFACED, not screened. `deep_rank["unread"]` holds every candidate the screen scored,
+        #  which on a real run is a couple of thousand: offering to read those is offering a
+        #  different search, not a top-up. What the control means, and what the dashes on the page
+        #  count, is the references SHOWN as cards that nobody has read. Counted in the template
+        #  from the cards themselves, because that is the list the buttons are attached to.
+        "n_unread": 0,
+        #  The depths the next phase may be run at, with what each one costs in time. Capped at
+        #  what this search actually surfaced: offering to read 120 when 60 were found is a menu
+        #  item that quietly means the same as the one above it.
+        "read_choices": _read_choices_for(report),
+        "read_pool": read_pool(report),
+        #  A DATE BAR IS ONLY AS GOOD AS THE SUBJECT ROW IT CAME FROM. The bar is the subject's
+        #  effective filing date, which is the right rule; on the measured run of 2026-08-27 it
+        #  was a YEAR too permissive, because the corpus row carried the filing date in its
+        #  publication column and repeated it as the earliest priority. The bar is still shown,
+        #  because a bar is what a reader needs, and it is now shown with the reason it may be
+        #  wrong rather than alone and confident.
+        "date_cutoff_suspect": _date_cutoff_suspect(report),
         "search_focus": report.get("search_focus") or "all_text",
         "wide": bool(report.get("federation")),
         "figure_channel": bool((report.get("image_channel") or {}).get("n")),
@@ -1769,7 +1903,7 @@ def build_view(report, top_n=25, deep=None):
                                   filing_date=r["filing_date"], publication_date=r["publication_date"],
                                   jurisdiction=r["country"])
 
-    qvec = embed.embed_query(query[:8000], 768) if query else None
+    qvec = embed.embed_query(query[:8000], EMBED_DIM) if query else None
 
     # Pull a wider window than we show, then apply the display-layer substance filter (drop design,
     # demote title-only) and trim to top_n — so a demoted title-only hit is replaced by the next

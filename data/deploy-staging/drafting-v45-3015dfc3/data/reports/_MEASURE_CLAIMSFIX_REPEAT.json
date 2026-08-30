@@ -1,0 +1,28 @@
+{
+ "runs": [
+  {
+   "tally": {
+    "accurate": 40
+   },
+   "n": 40,
+   "bad": 0,
+   "rate": 0.0,
+   "avg_reads_on": 4.0
+  },
+  {
+   "tally": {
+    "accurate": 38,
+    "overclaims": 2
+   },
+   "n": 40,
+   "bad": 2,
+   "rate": 0.05,
+   "avg_reads_on": 4.1
+  }
+ ],
+ "rates": [
+  0.0,
+  0.05
+ ],
+ "spread": 0.05
+}

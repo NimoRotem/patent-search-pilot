@@ -1,0 +1,102 @@
+{
+  "_meta": {
+    "generated": "2026-08-16",
+    "source": "preissuance submission filed 2026-07-24 under 37 CFR 1.290 against U.S. App. 18/915,337 (US 2025/0033224 A1), receipt 79284421, filed by Ahmed Alhafidh",
+    "methodology": "The six documents a patent attorney actually filed, with the claims each was mapped against in its Concise Description of Relevance. Second frozen expert gold set in this repo; the first (attorney_gold.json) is against a Schmalz application and is a different invention entirely.",
+    "frozen": true,
+    "note": "Do not edit after tuning begins. The client here is GRABO, so Document 1 is the client's OWN patent and Document 6 is an Office action from the parent's file wrapper — see `findable_by_search` on each entry before treating a miss as a defect."
+  },
+  "subject": {
+    "id": "us20250033224",
+    "publication": "US-20250033224-A1",
+    "application": "18/915,337",
+    "url": "https://patents.google.com/patent/US20250033224A1/en",
+    "title": "Portable vacuum gripper",
+    "applicant": "Nhon Hoa Nguyen",
+    "n_claims": 20,
+    "independent_claims": [1, 20],
+    "mode": "novelty",
+    "parent": "17/724,791 (US 2022/0331993 A1), abandoned March 2026 after rejection over US 11,413,727"
+  },
+  "citations": [
+    {
+      "pub": "US-11413727-B2",
+      "corpus_pub": "US-11413727-B2",
+      "name": "Rotem / GRABO",
+      "title": "Vacuum gripper",
+      "inventor": "Nimrod Rotem",
+      "priority": "2018-05-09",
+      "claims_mapped": [1, 2, 3, 6, 7, 9, 10, 11, 15, 16, 17, 18, 19, 20],
+      "cited_for": "base element with peripheral openings; multi-layer elastically deformable vacuum seal element; gap/step conformity via a protruding portion pressed through an opening; air extraction in fluid communication with the cavity; pressure alarm and manual extraction mechanism; battery housed in the handle; hookable elements for a hoist",
+      "weight": "PRIMARY - the examiner applied this under 102(a)(2) to claims 1-3, 5-9, 11-12 and 14-15 of the parent",
+      "findable_by_search": true,
+      "note": "This is the CLIENT'S OWN patent. The attorney did not have to search for it."
+    },
+    {
+      "pub": "US-7690610-B2",
+      "corpus_pub": "US-7690610-B2",
+      "name": "Ristau / Schmalz",
+      "title": "Suction-type holding device",
+      "inventor": "Harald Ristau",
+      "priority": "2005-02-09",
+      "claims_mapped": [1, 3, 4, 5, 14, 20],
+      "cited_for": "suction base of soft material (Shore hardness below 18) beneath a cover of inherently non-elastic solid material - the harder-over-softer two-portion seal; contact pressure transmitters elastically deformable in height; pressing means",
+      "weight": "SECONDARY - the examiner applied this with Document 1 under 103 to parent claim 4",
+      "findable_by_search": true
+    },
+    {
+      "pub": "US-6419291-B1",
+      "corpus_pub": "US-6419291-B1",
+      "name": "Preta",
+      "title": "Adjustable flexible vacuum gripper and method of gripping",
+      "inventor": "John Preta",
+      "priority": "2001-02-26",
+      "claims_mapped": [8],
+      "cited_for": "two-walled inflatable structure with inner and outer walls defining a fluid-filled cavity, for conforming to irregular and non-symmetrical shapes",
+      "weight": "SINGLE LIMITATION - claim 8 only",
+      "findable_by_search": true
+    },
+    {
+      "pub": "US-7240935-B2",
+      "corpus_pub": "US-7240935-B2",
+      "name": "Schmierer / Schunk",
+      "title": "Suction grip arm",
+      "inventor": "Gernot Schmierer",
+      "priority": "2003-01-29",
+      "claims_mapped": [13, 14, 20],
+      "cited_for": "microstructure of rods or pins (element 28) removably coupled at the periphery for pressing on the flexible suction body through openings",
+      "weight": "SINGLE LIMITATION - the press-rod claims",
+      "findable_by_search": true
+    },
+    {
+      "pub": "US-10549405-B2",
+      "corpus_pub": "US-10549405-B2",
+      "name": "Meyer",
+      "title": "Vacuum gripping device and method for operating a vacuum gripping device",
+      "inventor": "Manuel Meyer",
+      "priority": "2015-07-13",
+      "claims_mapped": [10, 12, 19, 20],
+      "cited_for": "pressure measurement device detecting actual pressure plus an electronic control unit controlling a control valve device - the controller, the alarm and the pressure gauge",
+      "weight": "SINGLE LIMITATION GROUP - the pressure/control claims",
+      "findable_by_search": true
+    },
+    {
+      "pub": "NPL-OA-17724791",
+      "corpus_pub": null,
+      "name": "Office action 17/724,791",
+      "title": "Non-Final Office Action mailed 2025-09-16 in U.S. App. 17/724,791",
+      "inventor": "Stephen A. Vu, Primary Examiner, Art Unit 3651",
+      "priority": "2025-09-16",
+      "claims_mapped": [1, 2, 5, 6, 7, 9, 10, 11, 15, 17, 18],
+      "cited_for": "the examiner's own limitation-by-limitation findings in the PARENT application, applying Document 1 under 102(a)(2) and Document 1 + Document 2 under 103, plus a double-patenting rejection over US 12,115,659",
+      "weight": "STRATEGIC - not prior art in the ordinary sense; an office action from the parent's file wrapper",
+      "findable_by_search": false,
+      "note": "NOT REACHABLE BY ANY PATENT-CORPUS SEARCH. It is a file-wrapper document, it is NPL, and finding it requires knowing the parent application exists and pulling its image file wrapper. Scored separately; counting it as a miss measures the wrong thing."
+    }
+  ],
+  "scoring": {
+    "searchable": 5,
+    "total_filed": 6,
+    "note": "Score against `searchable` (the five patents). The office action is a capability gap of a different kind - see docket-watching in the handoff."
+  }
+}

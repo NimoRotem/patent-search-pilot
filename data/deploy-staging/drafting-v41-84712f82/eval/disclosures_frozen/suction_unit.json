@@ -1,0 +1,1206 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "suction_unit",
+ "subject_pub": "WO-2021048069-A1",
+ "n_claims_source": 15,
+ "claims_source": "corpus_claims",
+ "description_chars": 83639,
+ "description_source": "family_paragraphs:US-12441555-B2",
+ "summary": {
+  "n": 195,
+  "by_kind": {
+   "independent_limitation": 23,
+   "combination": 2,
+   "dependent_limitation": 76,
+   "potential_claim": 94
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "extraction_budget": {
+  "max_output_tokens": 24000,
+  "max_disclosures": 250,
+  "max_claim_chars": 22000,
+  "max_desc_chars": 26000
+ },
+ "disclosures": [
+  {
+   "text": "Suction unit operates according to the Bernoulli principle",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction unit comprises a suction body",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction unit comprises an adjoining suction plate",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction plate has a front side facing away from the suction body",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction unit comprises at least one inlet channel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Gaseous medium is introducible through the suction body to the front side of the suction plate",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Gaseous medium is introduced into a deflection channel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Deflection channel is delimited by the front side of the suction plate",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Deflection channel is delimited by a deflection head of a deflection unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Deflection channel is delimited by the object when sucking the object",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Gaseous medium is guidable to the outside through the deflection channel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction plate has a deflection chamber in the middle",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one inlet channel connects to the deflection chamber",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Multiple suction channels connect to the deflection chamber",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction channels are sunk into the suction plate",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction channels run towards the edge of the suction plate",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction device comprises at least one suction unit",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction device comprises a media pressure device",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "Media pressure device is a pressure pump",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "Media pressure device is a fan with a propeller",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "Media pressure device generates a flow of gaseous medium",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "Gaseous medium is passable through the suction unit",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "Gaseous medium is passable through the suction unit and returnable to the pressure device via a return channel",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "A suction unit operating according to the Bernoulli principle, comprising a suction body with an adjoining suction plate having a front side, at least one inlet channel for introducing a gaseous medium through the suction body to the front ",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A suction device with at least one suction unit according to claims 1-12, comprising a media pressure device, such as a pressure pump or a fan with a propeller, for generating a flow of a gaseous medium, which can be passed through the suct",
+   "kind": "combination",
+   "source": "claim 13",
+   "weight": 0.9
+  },
+  {
+   "text": "Channel cross-section of at least one suction channel increases from inside to outside",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Channel cross-section increase factor is 1.5 to 10",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels have constant width",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Channel cross-section of at least one suction channel is approximately constant between channel ends",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels are peripherally opened or closed after object coupling",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Only one deflection chamber with a deflection head is provided",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Multiple deflection chambers are provided",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one deflection head is assigned to one of the multiple deflection chambers",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels are assigned to one deflection chamber",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels are assigned individually to multiple deflection chambers",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels are sunk straight into the suction plate",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels are sunk along a curve into the suction plate",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction body is constructed in one piece",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction body is modular, comprising multiple suction body modules",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Each deflection chamber is assigned multiple inlet channels",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Inlet channels are arranged at regular distances",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Inlet channels are arranged at irregular distances",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Inlet channels run inclined outwards towards the suction plate within the suction body",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "One or more outlet channels run through the suction body to outlet openings",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Outlet openings are distributed within the suction channels",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Outlet openings are distributed outside the suction channels",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Outlet openings are distributed within and outside the suction channels",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Outlet openings are preferably regularly distributed",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Gaseous medium is guidable towards the suction plate through outlet openings",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Edge of the suction plate is lamellar and flexible",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction plate is made of an elastic material",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one part of the suction unit is made of a transparent material",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Transparent material is acrylic",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction body is connected to a suction basket",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Inside of the suction basket connects to the suction plate",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Inside of the suction basket is spaced from the suction plate",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction basket encloses a receiving channel",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Receiving channel has a channel opening",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Channel opening is dimensioned for isolated objects to be introduced into the receiving channel",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction body is connected to a suction bell",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction bell encloses the suction body, separated by a return channel",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Return channel opens into the suction basket provided with the suction bell on one side",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Return channel opens into at least one outlet opening on another side",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Outlet opening is provided in the wall of the suction bell",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Outlet opening is provided in a mounting plate",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Mounting plate is connected to the suction bell and the suction body",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction basket is provided with at least one wall opening",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Wall opening is always open",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Wall opening is completely or partially closable by a closure element",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Closure element is a threaded sleeve",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Channel opening of the suction basket is enclosed by a ring plate",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Ring plate is aligned perpendicularly to the suction basket",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Ring plate is aligned inclined to the suction basket",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Ring plate has suction channels on its underside facing away from the suction basket",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels are sunk into the ring plate",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels have a constant cross-sectional profile",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction channels have a changing cross-sectional profile",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Centering device is provided within the suction basket",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Centering device has conically aligned centering elements",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Centering device is connected to the deflection unit",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Centering device is connected to the suction body",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Centering device is connected to the suction basket",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Deflection head is axially symmetrical",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Deflection head has a circumferential groove-shaped recess on the side facing the suction plate",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Groove-shaped recess runs rounded towards the edge of the deflection head",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Deflection unit has a peg-shaped mounting element adjoining the deflection head",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Mounting element is held in a mounting channel",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Mounting element is held in an inlet channel from which inlet channels branch off",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Distribution device is provided",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Distribution device is shaped like a cuboid",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Distribution device is shaped like a cylinder",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Distribution device is shaped like a cylinder segment",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Distribution device holds multiple suction units",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction units are preferably uniformly distributed",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Compressed air is supplied jointly to suction units via at least one distribution channel",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Compressed air is supplied individually to suction units via at least one pressure line",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Distribution device has receiving chambers",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Each receiving chamber is opened to the distribution channel by at least one chamber opening",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "One suction unit is arranged in each receiving chamber",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit abuts tightly against the edge of the chamber opening via a sealing ring",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit is releasably held by a locking element against the sealing ring",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction basket openings are closable by a closure element",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction units with a suction basket can grasp and hold non-flat objects",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket height is dimensioned according to object size",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Multiple rows of superimposed wall openings are provided for lateral media flow",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Conventional suction units can be fitted with a suction basket",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction plate is lamellar and elastic",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction channels have an approximately constant cross-section over their entire length",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket encloses a downwardly open receiving channel",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Inlet channels are directed directly into the edge region of the receiving channel",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "No deflection unit is provided in some embodiments",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket optionally has one or more wall openings",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Centering device guides a sucked object against the central axis",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Centering device holds object in a centralized manner",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket encloses a receiving channel without wall openings",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Centering device has three evenly spaced rod-shaped centering elements",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Rod-shaped centering elements are aligned along a conical surface",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Centering elements are held by the deflector element",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Centering device has three evenly spaced wire-shaped or rope-shaped centering elements",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Wire/rope-shaped centering elements are held by the deflecting element and the outlet-side edge of the suction basket",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit picks up and releases isolated objects",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit prevents deformation, damage, or contamination of objects",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit allows for precise release of held objects",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit prevents lateral displacement of the sucked object",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit avoids disturbing effects on manipulated objects and surroundings",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit avoids contamination",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit is easy to clean and maintain",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit operates with high efficiency and minimum air pressure",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction channels ensure laminar flow of gaseous medium",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "High medium flow is ensured at relatively low pressure",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Conventional fan can be used as a conveying means for gaseous medium",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Deflection unit is optionally omitted when a thin fast-flowing media film is formed",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction plate is tightly sealed in the middle and only has openings for entry channels",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket is integrally connected to the suction body",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket dimensions are adapted to the objects",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket is hollow-cylindrical in shape",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket is peripherally conical in shape",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket can have an oval, rectangular, or polygonal cross-section",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction channels ensure lateral media flow when approaching an object",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Deflection unit is unnecessary if suction channels ensure high media flow",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Deflection unit is used only if vacuum is desired in the deflection chamber regardless of object approach",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Deflection unit can be integrally connected to the suction body",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Deflection unit can be inserted into the suction body",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Mounting channel is provided for anchoring a mounting element of a deflection unit",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Mounting element can be pressed or screwed in",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "User can optionally retrofit suction units with a deflection unit",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Mounting channel connects to an inlet channel for gaseous medium",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Inlet channel is closed off by the mounting element of the deflection unit",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Entry channels branch within the inlet channel above the mounting element",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Preferably six entry channels are provided",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Inlet channel can be divided into two parts by a part of the suction body",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Deflection head has an approximately anchor-shaped cross-section in longitudinal section",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Media flow is introduced into the deflection channel in a controlled manner through the deflection head",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Sucked object is reliably pulled along suction channels against the suction plate",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Object is fixed in place regardless of surface properties",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Further media flow outside suction channels develops effect after object is held",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Object is reliably suctioned over the entire surface",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Multiple suction channels are preferably evenly spaced",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction channels run radially, with the same inclination, or along a curve",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Optimum result achieved with three suction channels",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Object is reliably fixed by three suction channels",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "High suction force developed outside suction channels due to thin media film",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Channel height or depth can vary or be constant",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Channel height adjacent to deflection chamber corresponds to deflection chamber height",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Transition from deflection chamber to suction channels is stepless",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction channels have small cross-section near deflection chamber to prevent main media flow diversion",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Media flow and suction pressure can be adapted by changing channel cross-section and design",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "One entry channel faces each suction channel for easier flow establishment",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Entry channels are inclined outwards towards the suction plate, like pyramid edges",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Entry channels move steadily away from the central axis",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Media flow is already deflected inside the suction body",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Entry channels are relatively easy to clean",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Entry channels can run outward along a curve",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Straight or curved tubes can be embedded in the suction body for entry channels",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction unit operates at reduced pressure due to inclined entry channels",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Pressure requirement reduced by higher number of evenly distributed entry channels",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Media flow through entry channels is interrupted to release objects",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Media flow is delivered through outlet channels to push object away from suction plate",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Dispensing process shortened to milliseconds",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Delivery occurs in a controlled manner without deforming the object",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Even very flexible objects can be ejected aligned in one plane",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Controlled and rapid discharge increases cycle rate",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction plate deforms under negative pressure to adapt to object",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Unevenness of the object compensated by elastic suction plate",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction plate can be connected in one piece to the suction body",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction plate is connectable to the suction body, possibly screwable",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction plate is integrally connected to the suction body and separated by a circumferential groove",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Circumferential groove holds suction unit within a receiving chamber by a locking part",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket is provided downstream of the suction plate",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket is at a distance from the suction plate",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket is separated from the suction plate by individual openings",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket encloses a receiving channel into which an object can be sucked",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction basket causes gaseous medium to flow around a sucked-in object",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Gaseous medium flows through irregularly shaped body at high flow rate",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Vacuum created by high flow rate holds object securely",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  }
+ ],
+ "content_hash": "41c1848a5ec165bb"
+}

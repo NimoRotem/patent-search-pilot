@@ -1,0 +1,101 @@
+[
+ {
+  "id": "grabo_gripper_novelty",
+  "n_gold": 44,
+  "n_reach": 39,
+  "vector": 0.0455,
+  "vector_reach": 0.0513,
+  "hybrid": 0.0455,
+  "hybrid_reach": 0.0513
+ },
+ {
+  "id": "grabo_gripper_inventive",
+  "n_gold": 44,
+  "n_reach": 39,
+  "vector": 0.0682,
+  "vector_reach": 0.0769,
+  "hybrid": 0.0682,
+  "hybrid_reach": 0.0769
+ },
+ {
+  "id": "grabo_extended_frame",
+  "n_gold": 49,
+  "n_reach": 46,
+  "vector": 0.0204,
+  "vector_reach": 0.0217,
+  "hybrid": 0.0204,
+  "hybrid_reach": 0.0217
+ },
+ {
+  "id": "grabo_de_utility_xling",
+  "n_gold": 7,
+  "n_reach": 7,
+  "vector": 0.0,
+  "vector_reach": 0.0,
+  "hybrid": 0.0,
+  "hybrid_reach": 0.0
+ },
+ {
+  "id": "schmalz_sauggreifsystem",
+  "n_gold": 4,
+  "n_reach": 4,
+  "vector": 0.25,
+  "vector_reach": 0.25,
+  "hybrid": 0.25,
+  "hybrid_reach": 0.25
+ },
+ {
+  "id": "schmalz_vacuum_clamp",
+  "n_gold": 7,
+  "n_reach": 7,
+  "vector": 0.4286,
+  "vector_reach": 0.4286,
+  "hybrid": 0.4286,
+  "hybrid_reach": 0.4286
+ },
+ {
+  "id": "probst_stone_lifter_xling",
+  "n_gold": 6,
+  "n_reach": 6,
+  "vector": 0.1667,
+  "vector_reach": 0.1667,
+  "hybrid": 0.1667,
+  "hybrid_reach": 0.1667
+ },
+ {
+  "id": "probst_kerb_lifter",
+  "n_gold": 9,
+  "n_reach": 6,
+  "vector": 0.1111,
+  "vector_reach": 0.1667,
+  "hybrid": 0.1111,
+  "hybrid_reach": 0.1667
+ },
+ {
+  "id": "nl_handheld_vacuum_seal_sensor",
+  "n_gold": 5,
+  "n_reach": 5,
+  "vector": 0.4,
+  "vector_reach": 0.4,
+  "hybrid": 0.4,
+  "hybrid_reach": 0.4
+ },
+ {
+  "id": "nl_porous_surface_gripper",
+  "n_gold": 6,
+  "n_reach": 6,
+  "vector": 0.3333,
+  "vector_reach": 0.3333,
+  "hybrid": 0.3333,
+  "hybrid_reach": 0.3333
+ },
+ {
+  "id": "nl_robot_eoat_vacuum",
+  "n_gold": 3,
+  "n_reach": 3,
+  "vector": 0.0,
+  "vector_reach": 0.0,
+  "hybrid": 0.0,
+  "hybrid_reach": 0.0
+ }
+]

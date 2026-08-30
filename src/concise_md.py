@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import re
 
-H_MAIN = "# CONCISE DESCRIPTION OF RELEVANCE — THIRD-PARTY SUBMISSION UNDER 37 CFR § 1.290"
+H_MAIN = "# CONCISE DESCRIPTION OF RELEVANCE: THIRD-PARTY SUBMISSION UNDER 37 CFR § 1.290"
 
 
 class MarkdownShapeError(ValueError):
@@ -166,6 +166,10 @@ def from_markdown(md, base):
             "note": src.get("note", ""),
             "disclosure": " ".join(" ".join(prose).split()),
             "cites": cites,
+            #  WHICH PUBLICATION THIS ROW'S PINPOINTS BELONG TO survives a hand edit, because a
+            #  citation is (publication including kind code, location, text) and an edited row that
+            #  cannot say which publication is a row nothing can check. See citation.py.
+            "cite_pub": src.get("cite_pub", ""),
             "confidence": src.get("confidence", 0),
         })
     if not doc["rows"]:

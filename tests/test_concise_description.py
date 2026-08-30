@@ -216,8 +216,10 @@ def test_the_subject_line_reads_as_the_examples_do():
     """
     line = cr.subject_line({"app_no": "18/915,337", "pub_no": "US 2025/0033224 A1",
                             "title": "Portable vacuum gripper", "inventor": "Nhon Hoa Nguyen"})
-    assert line == ("U.S. Application No. 18/915,337 (Publication No. US 2025/0033224 A1) — "
-                    "“Portable vacuum gripper” — Nhon Hoa Nguyen")
+    #  Commas, not em dashes: this line prints on a paper filed at the Office.
+    assert line == ("U.S. Application No. 18/915,337 (Publication No. US 2025/0033224 A1), "
+                    "“Portable vacuum gripper”, Nhon Hoa Nguyen")
+    assert "—" not in line
     #  and with no application number it is never presented as one
     assert cr.subject_line({"pub_no": "US 2025/0033224 A1"}) == \
         "U.S. Publication No. US 2025/0033224 A1"

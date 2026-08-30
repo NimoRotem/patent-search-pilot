@@ -1,3 +1,4 @@
+{% from "_qhelp.html" import qhelp, qhelp_styles with context %}
 {#  The layout is a parameter so the SAME report body can render inside the application shell for
     its owner and inside the stripped public shell for somebody holding a link. One template, so a
     change to the evidence cannot render differently in the two places — which is the whole point of
@@ -8,7 +9,7 @@
     and the owner's page carries no reader-tracking code at all.  #}
 {% from "_srcicon.html" import srcicon %}
 {% from "_refcard.html" import refcard with context %}
-{% block title %}{{ v.title }} | Rotem Patents{% endblock %}
+{% block title %}{{ v.title }} | IPtorch{% endblock %}
 {% block body %}
 {% if public_visit_key %}<div id="publicVisit" hidden
      data-visit-key="{{ public_visit_key }}" data-slug="{{ v.slug }}"></div>{% endif %}
@@ -32,50 +33,24 @@
      data-listwise-reranked="{{ 'true' if v.listwise_reranked else 'false' }}"
      data-agent-rounds="{{ v.rounds or 0 }}">
 
-  {% if v.depth == 'quick' and not v.partial and not read_only %}
-  {#  THE ESCALATION. A quick report is the interactive tier: one retrieval round over the local
-      corpus, screening, and a per-limitation batch pass. The full attack (hundreds of documents
-      read in full, refuted, uncovered claims rescued) is a different spend class, so it is a
-      deliberate second click rather than the default. Same inputs, depth=deep, new report. #}
-  <div class="phasebar" id="escalateBanner">
-    <div class="phasenow">
-      <span class="pill pilllive">{{ 'Phase 1 · find' if v.depth == 'quick' else 'Phase 2 · claim ledger' }}</span>
-      <div class="rf-msg">{% if v.depth == 'quick' %}These are the references the search found,
-        with the passage that matched each requirement.
-        {% else %}Every requirement has been put to the retrieved passages and the ledger below is
-        the result.{% endif %}</div>
-    </div>
-    <div class="phasebuys">
-      
-      <form method="post" action="{{ request.script_root }}/run" class="phasebuy">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="mode" value="{{ v.escalate.mode }}">
-        <input type="hidden" name="search_focus" value="{{ v.escalate.search_focus or 'all_text' }}">
-        <input type="hidden" name="doc_token" value="{{ v.escalate.doc_token or '' }}">
-        <input type="hidden" name="query" value="{{ v.escalate.query }}">
-        <input type="hidden" name="depth" value="deep">
-        <button class="btn sm primary" type="submit">Build the claim ledger and prior-art
-          grid</button>
-        <span class="phasenote">Verifies every requirement against the retrieved passages, reads
-          the strongest references in full, challenges every cell, and builds the
-          claim-by-prior-art grid. About 10 minutes; it can email you when it is done.</span>
-      </form>
-      <div class="phasebuy">
-        <button class="btn sm ghost" type="button" disabled>Prepare third-party preissuance</button>
-        <span class="phasenote">About 5 more minutes once the grid exists: the ten strongest
-          documents by what they kill, as concise descriptions of relevance under
-          37 CFR 1.290, with the document list and statements.</span>
-      </div>
-    </div>
-  </div>
-  {% endif %}
+  
 
   {% if v.partial %}
   <div class="refining" id="refiningBanner">
     <span class="spin" id="refiningSpin" aria-hidden="true"></span>
     <div style="min-width:0;flex:1">
-      <b id="refiningTitle">Showing the first matches.</b>
-      <div class="rf-msg" id="refiningStage">The agent is still refining these results.</div>
+      {#  ONE LINE. The banner used to print a headline and a sentence, and the progress
+          component below printed the stage name and its two-sentence note under that: four lines
+          of moving text stacked above the results. The component now owns the line, so the live
+          message is fed to it and these two keep their ids for the interrupted case without
+          taking any height. #}
+      <b id="refiningTitle" class="rf-oneline" hidden></b>
+      <div class="rf-msg" id="refiningStage" hidden></div>
+      {#  THE PROGRESS LINE LIVES IN THE BOX. It was a SIBLING of this banner, which is why the
+          banner sat empty to the right of the spinner while the line rendered underneath it and
+          outside any constrained container, so a long stage sentence ran past the edge instead of
+          ellipsing. Inside, it inherits `min-width:0` from this column and clips properly. #}
+      <div id="refiningStages" hidden></div>
       <div class="vh" role="status" aria-live="polite" data-progress-live></div>
       {#  A run killed by a restart is not a slow run, and a spinner that never stops is the
           worst way to say so. Reported 2026-08-20 as a report sitting on its first phase for
@@ -95,7 +70,6 @@
       </form>
     </div>
   </div>
-  <div id="refiningStages" hidden></div>
   {% endif %}
 
   {#  The "Outside indexed field" banner was removed on request, 2026-08-23. Every search fans out
@@ -106,18 +80,28 @@
 
   <!-- ── compact header ──────────────────────────────────────────────────── -->
   <div class="rhead">
-    <h1 id="reportTitle">{{ (v.account_search.title if v.account_search and v.account_search.title else v.title) }}</h1>
+    {#  "Ad-hoc search" is not a title, it is the absence of one, and it was the largest thing on
+        the page. A report that has been NAMED still shows its name; one that has not shows the
+        query, which is directly underneath and is what the reader came for. The element stays in
+        the DOM either way so Rename still has something to write into and un-hide. #}
+    {% set _rtitle = (v.account_search.title if v.account_search and v.account_search.title else '') %}
+    <h1 id="reportTitle"{% if not _rtitle %} hidden{% endif %}>{{ _rtitle }}</h1>
     {#  WHICH SEARCH PRODUCED THIS REPORT.
 
         A concept search and a claim attack answer different questions and are read to different
         depths, on purpose. Somebody reading a thin result set has to be able to tell which one
         they are looking at, for the same reason the corpus scope is disclosed here and not only
         on /about: this is the page where a person decides what a result means.  #}
+    {#  WHAT THIS SEARCH COST, on the page that shows what it produced. Loaded on demand from the
+        receipt, and clickable, because a total nobody can take apart is a total nobody can check:
+        the models are billed per token and the external patent APIs per call, so a single figure
+        with no breakdown hides which half the money went to. A search whose receipt predates
+        pricing shows nothing rather than $0.00. #}
     {% if v.search_profile %}
-    <div class="kindbadge onreport" data-kind="{{ v.search_profile.kind }}">
-      <span class="kindname">{{ v.search_profile.label }}</span>
-      <span class="kindwhat small muted">{{ v.search_profile.summary }}</span>
-    </div>
+    {#  `kindwhat` is now behind the (?) beside the label. It is two sentences describing how
+        this tier of search works, printed at the very top of a results page, above the query and
+        above the results, every single time. It is worth reading once. #}
+
     {% endif %}
     {#  WHAT WAS SEARCHED, in full. The header used to hard-truncate at 280 characters with an
         ellipsis and no way back — for a document/patent-link search the query IS a multi-paragraph
@@ -133,15 +117,20 @@
           actually fired, the checklist it was argued against, the scope, the sources and how deep
           the reading went. Rendered always, not only for a long query, because the settings are
           the interesting half and a typed one-line search has settings too. #}
-      <button type="button" class="qmore" id="qmore" aria-expanded="false" aria-controls="qparams"
-              onclick="toggleQuery()">Show full search{% if v.query|length > 240 %} <span class="qn">{{ '{:,}'.format(v.query|length) }} chars</span>{% endif %}</button>
+      {#  ONE ROW. The tier badge was a bordered block of its own above the query, carrying two
+          words and a (?); it is a label for this search and belongs on the line that already
+          holds this search's other controls. Two rows of chrome become one. #}
+      <div class="qhead">
+      {#  Removed: the whole row of "Find (?) · Show full search · N chars · Refine and search
+          again". The tier name is on the run-facts line below, the query itself is two lines
+          above it, and re-running is under More options. Three restatements of what the reader
+          is already looking at, costing a row at the top of the page. #}
       {#  Re-running the SAME query was the only option here. Most of the time what the results
           show you is that the query was wrong — a missing feature, the wrong term for a part —
           and the useful action is to change it and search again. A changed query is a different
           search, so this starts a new report rather than overwriting this one.  #}
-      {% if current_user and not read_only %}
-      <button type="button" class="qmore" id="qeditbtn" aria-expanded="false" aria-controls="qeditbox">Refine and search again</button>
-      {% endif %}
+
+      </div><!-- /qhead -->
     </div>
 
     {#  EVERY SETTING THIS SEARCH RAN WITH. All of it was already on the report and none of it was
@@ -157,7 +146,8 @@
             <dt>Text searched</dt><dd>{{ 'Claims only' if v.search_focus == 'claims' else 'All patent text — claims, description, abstract, figure captions' }}</dd>
             <dt>Sources</dt><dd>{{ 'Local corpus and the external patent APIs' if sp.wide else 'Local corpus only' }}{% if sp.figure_channel %}, plus figure-image similarity{% endif %}</dd>
             <dt>Languages</dt><dd>{{ v.languages|join(', ')|upper or '—' }}</dd>
-            {% if sp.date_cutoff %}<dt>Date bar</dt><dd>Only art published or filed before {{ sp.date_cutoff }}</dd>{% endif %}
+            {% if sp.date_cutoff %}<dt>Date bar</dt><dd>Only art published or filed before {{ sp.date_cutoff }}{% if v.date_cutoff_suspect %}
+              <br><b class="gridwarnt">This bar may be wrong.</b> <span class="cc">{{ v.date_cutoff_suspect }}</span>{% endif %}</dd>{% endif %}
             {% if v.subject %}<dt>Subject application</dt><dd>{{ v.subject }}{% if v.self_family_excluded %} (its own family excluded){% endif %}</dd>{% endif %}
             {% if sp.query_document and sp.query_document.source %}
             <dt>Started from</dt><dd>{{ sp.query_document.label or sp.query_document.source }}{% if sp.query_document.publication_number %} · {{ sp.query_document.publication_number }}{% endif %}{% if sp.query_document.n_claims %} · {{ sp.query_document.n_claims }} claims read{% endif %}</dd>
@@ -296,6 +286,14 @@
       <summary>
         <span class="runline">
           <span class="runfacts">
+            {#  COST BELONGS ON THIS LINE. It was its own block above the query with its own
+                "Cost" label, which made a two-word fact into a row of its own; it is a fact
+                about the run exactly like the family count beside it. Still clickable, still
+                opening the per-model and per-API breakdown, and still absent rather than
+                "$0.00" on a search whose receipt predates pricing. #}
+            <span id="spendWrap" hidden><b><button type="button" class="spendfig" id="spendFig"
+              aria-expanded="false" aria-controls="spendBox"
+              title="Model and API charges for this search , click for the breakdown"></button></b> cost</span>
             <span><b>{{ v.cards|length }}</b> references</span>
             <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families{% if v.slug and not read_only %}
               · <a href="{{ url_for('ranked_tail', slug=v.slug) }}">full ranked list</a>{% endif %}</span>
@@ -306,6 +304,20 @@
                target="_blank" rel="noopener">{{ v.subject_flag }} {{ v.subject }}</a>{% endif %}
             <span>{{ v.languages|join(', ')|upper }}</span>
           </span>
+          {#  THE BREAKDOWN IS A DIALOG, not a panel inside the summary row. It was a <div> inside
+              `.runsummary > summary`, which is `height:39px` with `overflow:hidden`, so the table
+              was clipped after two lines: every search showed its first model and its first API
+              and hid the rest of its own bill. #}
+          <dialog id="spendDlg" class="dlg spenddlg">
+            <form method="dialog" class="stack">
+              <h3 class="h3" style="margin-top:0">What this search cost</h3>
+              <div class="spendbox" id="spendBox"></div>
+              <p class="cc" style="margin:.6rem 0 0">Model charges are per token and the patent
+                APIs are per call, so the two halves are counted separately and totalled here.</p>
+              <div style="display:flex;margin-top:.7rem"><span class="grow"></span>
+                <button class="btn ghost sm" value="close">Close</button></div>
+            </form>
+          </dialog>
           {#  A TALLY, not the roll-call. This was the full labelled chip row — "SerpApi Google
               Patents 41 fallback used…" — and on a wide search that is SIXTEEN sources on a line
               that is 39px tall and shares its width with the run facts, so it clipped mid-word
@@ -381,53 +393,122 @@
     </section>
     {% endif %}
 
-    <div class="actions{% if v.partial %} actions-pending{% endif %}"
-         {% if v.partial %}aria-disabled="true" title="Available when the search finishes ranking"{% endif %}>
+    {#  NOTHING TO ACT ON YET, SO NOTHING TAKES A ROW.
+        While the search runs this row held "Generate third-party submission", "Rename report",
+        "More options" and the ZIP block: five controls for a report that does not exist, greyed
+        out, above the results. The progress banner is already higher up the page, so removing
+        this row while partial is what actually lifts the first result above the fold. It comes
+        back whole the moment the run finishes. #}
+    {#  WHAT THIS REPORT IS, once, at the top of the actions. A prior-art search and a
+        third-party build produce pages that look alike and mean different things: one is ranked
+        by resemblance and has read nothing, the other is ranked by what each reference kills and
+        has read every one of them end to end. #}
+    {% if not v.partial and v.search_mode == 'fast' %}
+    <p class="small muted modeline" style="margin:.2em 0 .6em">
+      <b>Prior-art search.</b> Ranked by relevance across all channels; nothing here was read in
+      full and no claim was charted. For art selected against specific claims, and the 37 CFR
+      1.290 papers, start a <a href="{{ request.script_root }}/">third-party build</a> from this
+      application.</p>
+    {% endif %}
+    {% if not v.partial %}
+    <div class="actions">
       {#  THIRD-PARTY SUBMISSION. The evidence this search already produced is the substance of a
           preissuance submission under 37 CFR 1.290, so this is a primary action on every finished
           report, not a link buried in the run line — which is where it lived until 2026-08-19 and
           why nobody found it. Owner only: it spends a model call per document. #}
-      {% if current_user and not read_only and v.has_reading %}<a class="btn sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise"
-         title="Build a concise description of relevance for each reference, ready to file as a third-party preissuance submission">Generate third-party submission{% if v.concise_built %} ({{ v.concise_built }}) ✓{% endif %}</a>{% endif %}
-      {% if current_user and not read_only %}<form method="post" action="{{ request.script_root }}/drafts/start" class="inlineform directdraft">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="direct" value="1">
-        <input type="hidden" name="search_slug" value="{{ v.slug }}">
-        <button class="btn sm" type="submit">Draft US application</button>
-      </form>
-      {#  The letterhead, client details and narrative that head every export. Kept out of the
-          report page itself so the evidence stays the evidence.  #}
-      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/details"
-         title="Letterhead, client and matter details, purpose and key findings — printed at the head of every export">Report details</a>{% endif %}
-      {% if not read_only %}<a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank" rel="noopener">Print / PDF view</a>{% endif %}
+      {#  NOT ON A PRIOR-ART SEARCH. It reads nothing and charts nothing, so the papers have
+          no substance to be built from; offering the button greyed would say "not yet" about
+          something that is never going to happen on this report. Start a third-party build. #}
+      {% if current_user and not read_only and v.search_mode != 'fast' %}
+        {% if v.has_reading %}
+        <a class="btn sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise"
+           title="Build a concise description of relevance for each reference, ready to file as a third-party preissuance submission">Generate third-party submission{% if v.concise_built %} ({{ v.concise_built }}) ✓{% endif %}</a>
+        {% else %}
+        {#  SHOWN, NOT HIDDEN, AND IT SAYS WHY ON HOVER.
+            It used to appear only once something had been read, so a finished find offered no
+            sign that a submission was the point of the exercise; and the disabled variant only
+            rendered when at least one reference had been read by hand, which is the one case
+            nobody needed telling. Now it is always on the page after a find, greyed, and hovering
+            it explains what has to happen first.
+
+            The explanation is on a WRAPPER, not on the button: a disabled control receives no
+            pointer events, so its own title never fires and its own :hover never matches. #}
+        <span class="gatewrap">
+          <button type="button" class="btn sm" disabled aria-describedby="gate-sub">Generate third-party submission</button>
+          <span class="gatetip" role="tooltip" id="gate-sub">
+            <b>Read some references in full first.</b>
+            {% if v.n_readable %}Only {{ v.n_readable }} of the {{ v.min_readable }} needed
+            {{ 'has' if v.n_readable == 1 else 'have' }} been read end to end.{% else %}
+            Nothing in this search has been read end to end yet: the find ranked and screened, it
+            did not read.{% endif %}
+            A submission selects the strongest documents from what has been read, and 37 CFR
+            1.290(f) charges per ten of them, so there is nothing to select from until the reading
+            has run. Set <b>and build</b> to <b>+ the 37 CFR 1.290 submission</b> in the read
+            controls below and the papers build themselves when the reading lands. This button is
+            for deciding afterwards instead.
+          </span>
+        </span>
+        {% if v.n_readable %}<span class="small muted">{{ v.n_readable }} of {{ v.min_readable }} read in full</span>{% endif %}
+        {% endif %}
+      {% endif %}
+
+      {#  Print and Export moved into More options: both produce a FILE of a report that is
+          already on screen, which is a different errand from reading it. #}
       {#  PUBLISH. The one control that turns this page into something a client, an examiner or
           opposing counsel can open without an account. Owner only, obviously — and it is the only
           place a public link can be created, so an unpublished slug is not merely unlisted, it
           does not resolve.  #}
       {% if current_user and not read_only %}
-      <button type="button" class="btn ghost sm" id="publishBtn"
-              data-slug="{{ v.slug }}"
-              data-published="{{ 'true' if v.public and v.public.published else 'false' }}"
-              data-haspassword="{{ 'true' if v.public and v.public.has_password else 'false' }}"
-              data-visits="{{ (v.public.visits if v.public else 0) }}"
-              title="Publish this report at a public URL that needs no account">
-        {{ 'Public link ✓' if v.public and v.public.published else 'Export' }}
-      </button>
-      {% if v.public and v.public.published %}
-      <a class="btn ghost sm" id="visitorsLink"
-         href="{{ request.script_root }}/report/{{ v.slug }}/visitors"
-         title="Who has opened the public link">Viewers{% if v.public.visits %} ({{ v.public.visits }}){% endif %}</a>
-      {% endif %}
-      {% endif %}
-      {% if current_user and not read_only %}
-      <button type="button" class="btn ghost sm save-report{% if v.account_search and v.account_search.saved %} saved{% endif %}"
-              id="saveReportBtn" data-saved="{{ 'true' if v.account_search and v.account_search.saved else 'false' }}">
-        {{ '✓ Saved report' if v.account_search and v.account_search.saved else 'Save report' }}
-      </button>
+      {#  "Save report" removed: every search is written to the account's history the moment it
+          finishes and appears under History without being asked, so the button offered to do
+          something that had already happened. The flag it toggled still exists and still marks a
+          report as a favourite; it is set from the History page, where a list of reports is the
+          context in which picking one out means anything. #}
       <button type="button" class="btn ghost sm" id="renameReportBtn">Rename report</button>
       {% endif %}
-      {% if current_user and not read_only %}<a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
-         onclick="return confirm('Re-run the agent live? First matches usually appear within a minute; full refinement can take several minutes.')">Re-run</a>{% endif %}
+      {#  THE THREE THAT ARE NOT THIS PAGE'S JOB, behind one control. Drafting an application,
+          editing the letterhead and re-running the agent are each a different piece of work from
+          reading the results, and each was a button of equal weight beside the ones that are.
+          A <details> rather than a scripted menu: it needs no JavaScript, it is keyboard
+          reachable, and it closes on Escape for free. #}
+      {% if current_user and not read_only %}
+      <details class="moreops">
+        <summary class="btn ghost sm" role="button" aria-haspopup="menu">More options</summary>
+        <div class="moreopsmenu" role="menu">
+          <form method="post" action="{{ request.script_root }}/drafts/start" class="inlineform directdraft">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="direct" value="1">
+            <input type="hidden" name="search_slug" value="{{ v.slug }}">
+            <button class="mo" type="submit" role="menuitem">Draft US application</button>
+          </form>
+          {#  The letterhead, client details and narrative that head every export. Kept out of the
+              report page itself so the evidence stays the evidence.  #}
+          <a class="mo" role="menuitem" href="{{ request.script_root }}/report/{{ v.slug }}/details"
+             title="Letterhead, client and matter details, purpose and key findings, printed at the head of every export">Report details</a>
+          <a class="mo" role="menuitem" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
+             onclick="return confirm('Re-run the agent live? First matches usually appear within a minute; full refinement can take several minutes.')">Re-run the search</a>
+          {% if not read_only %}
+          <a class="mo" role="menuitem" target="_blank" rel="noopener"
+             href="{{ request.script_root }}/print/{{ v.slug }}">Print / PDF view</a>
+          {#  Export sits beside Print because they are the same errand: hand this report to
+              somebody who is not looking at this screen. Neither belongs on the toolbar, which is
+              for reading the results.  #}
+          <button type="button" class="mo publishghost" role="menuitem" id="publishBtn"
+                  data-slug="{{ v.slug }}"
+                  data-published="{{ 'true' if v.public and v.public.published else 'false' }}"
+                  data-haspassword="{{ 'true' if v.public and v.public.has_password else 'false' }}"
+                  data-visits="{{ (v.public.visits if v.public else 0) }}"
+                  title="Publish this report at a public URL that needs no account">
+            {{ 'Public link ✓' if v.public and v.public.published else 'Export' }}
+          </button>
+          {% if v.public and v.public.published %}
+          <a class="mo" role="menuitem" id="visitorsLink"
+             href="{{ request.script_root }}/report/{{ v.slug }}/visitors"
+             title="Who has opened the public link">Viewers{% if v.public.visits %} ({{ v.public.visits }}){% endif %}</a>
+          {% endif %}
+          {% endif %}
+        </div>
+      </details>{% endif %}
       {% if not read_only %}<span class="archivecompact" id="archiveCard" data-status="{{ v.archive.status or 'not_started' }}"
             title="Top-50 full-text patent archive">
         <span class="archiveicon" aria-hidden="true">ZIP</span>
@@ -437,6 +518,7 @@
         <button type="button" class="btn ghost sm" id="archiveRetry" {% if v.archive.status != 'error' %}hidden{% endif %}>Retry ZIP</button>
       </span>{% endif %}
     </div>
+    {% endif %}{#  /not v.partial: the whole action row #}
   </div>
 
   {#  ══ above the results ══════════════════════════════════════════════════════════════════
@@ -462,70 +544,16 @@
         disclosure-only search has. #}
     {#  Shut, like every other section here. Open, these two put the ledger and the Office history
         between the header and the first result, which is not what a reader came to the page for. #}
-    {% if v.prosecution and v.prosecution.available %}
-    <details class="tail ledgerblock">
-      <summary><span class="th">What the Office already decided</span>
-        <span class="ts">{% if v.prosecution.subject_app %}application {{ v.prosecution.subject_app }} · {% endif %}
-          {{ v.prosecution.family|length }} relative(s) ·
-          {{ v.prosecution.documents|length }} file-wrapper document(s) read
-          {% if v.prosecution.applied %} · <b class="antic">{{ v.prosecution.applied|length }} rejection(s) already on record</b>{% endif %}</span></summary>
-      <div class="tailin">
-        <p class="gridline">The USPTO file wrapper for this family, read directly. This is not a
-          search result and it ranks nothing: it is what an examiner has already done to
-          substantially these claims, which no prior-art search can produce because it lives in a
-          file history rather than in a patent corpus. An Office action here is itself a printed
-          publication that may be filed under 37 CFR 1.290, and the examiner's findings do the
-          arguing that 1.290(b) forbids a submitter from doing.</p>
-        {% if v.prosecution.applied %}
-        <div class="lclaim">
-          <div class="lchead"><b>Applied in a rejection</b></div>
-          {% for a in v.prosecution.applied %}
-          <div class="llim">
-            <div class="lltext"><button type="button" class="pnlink" onclick="jumpRef('{{ a.pub }}')">{{ a.pub }}</button>
-              <span class="lstatus ls-anticipated">{{ a.statute or 'rejection' }}</span>
-              {% if a.claims %}<span class="cc">claims {{ a.claims|join('; ') }}</span>{% endif %}
-              {% if a.sources %}<span class="cc">{{ a.sources[0] }}</span>{% endif %}</div>
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %}
-        {% if v.prosecution.family %}
-        <div class="lclaim">
-          <div class="lchead"><b>Family</b>
-            {% if v.prosecution.abandoned %}<span class="cc">{{ v.prosecution.abandoned|length }} abandoned after an office action</span>{% endif %}</div>
-          {% for f in v.prosecution.family %}
-          <div class="llim"><div class="lltext">{{ f.app }} <span class="cc">{{ f.relation or f.direction }}</span>
-            {% if f.patent %}<span class="cc">US {{ f.patent }}</span>{% endif %}
-            <span class="cc">{{ f.status }}</span></div></div>
-          {% endfor %}
-        </div>
-        {% endif %}
-        {% if v.prosecution.documents %}
-        <div class="lclaim">
-          <div class="lchead"><b>Documents read</b></div>
-          {% for d in v.prosecution.documents %}
-          <div class="llim"><div class="lltext"><b>{{ d.description }}</b>
-            <span class="cc">{{ d.app }} · {{ d.date }}</span>
-            {#  Through our own proxy, never ODP's `downloadUrl`. That URL needs an X-API-KEY
-                header, which a link cannot carry, so linking it directly made every PDF here a
-                403. `d.pdf_href` is built server-side; the raw `d.pdf` is kept on the record for
-                the fetcher and is not a link. #}
-            {% if d.pdf_href %}<a class="pnlink" href="{{ d.pdf_href }}" target="_blank" rel="noopener">PDF</a>{% endif %}</div>
-            {% if d.summary %}<div class="llq" style="margin-top:.2rem">{{ d.summary }}</div>{% endif %}</div>
-          {% endfor %}
-        </div>
-        {% endif %}
-        {% if v.prosecution.considered %}
-        <p class="gridline"><b>Cited or considered by the Office ({{ v.prosecution.considered|length }}):</b>
-          {% for p in v.prosecution.considered %}<button type="button" class="pnlink" onclick="jumpRef('{{ p }}')">{{ p }}</button> {% endfor %}
-          <br><span class="cc">All {{ v.prosecution.n_seeds }} were given a reading slot in this search whatever the screen scored them.</span></p>
-        {% endif %}
-        {% if v.prosecution.error %}<p class="gridline"><b>Partial:</b> {{ v.prosecution.error }}</p>{% endif %}
-      </div>
-    </details>
-    {% endif %}
+    
 
-    {% if v.ledger and v.ledger.available %}
+    {#  A LEDGER WITH NOTHING IN IT IS NOT A FINDING, IT IS AN UNRUN PASS. On a find-tier report
+        the requirements are split and nothing has been read against them yet, so the section
+        rendered "30 limitations across 16 claims, 0 covered, 0 partial, 30 with no art" and read
+        as thirty negative results. It is a heading over an empty table. Shown once something has
+        actually been charted against a requirement. #}
+    {% set _ledger_has = v.ledger and ((v.ledger.counts.get('covered', 0) or 0)
+                                       + (v.ledger.counts.get('partial', 0) or 0)) > 0 %}
+    {% if v.ledger and v.ledger.available and _ledger_has %}
     <details class="tail ledgerblock">
       <summary><span class="th">Claim ledger</span>
         <span class="ts">{{ v.ledger.n_limitations }} limitations across {{ v.ledger.n_claims }} claims ·
@@ -604,6 +632,10 @@
     {#  Collapsed, like its siblings. The grid is now the most substantial thing in the report and
         that is exactly why it stays shut: opened it is 40 rows of quotations sitting between the
         header and the first result, which is the layout this section was moved up here to end. #}
+    {#  Not rendered until it holds evidence: an empty grid under "available when
+        final ranking completes" reads as a finding about the art rather than as a
+        table nobody has filled in yet. #}
+    {% if v.claim_chart.rows and not v.partial and v.search_mode != 'fast' %}
     <details class="tail{% if v.partial %} pending{% endif %}">
       <summary><span class="th">{{ 'Claim × prior-art grid' if claimaxis else 'Element × reference grid' }}</span>
         <span class="ts">{% if v.partial %}available when final ranking completes{% else %}{{ v.claim_chart.rows|length }} {{ rowword }} × {{ v.claim_chart.columns|length }} references{% if reading %} · read in full · {{ 'in claim order' if claimaxis else 'most disclosed first' }}{% if v.claim_chart.n_uncovered %} · <b class="gridwarnt">{{ v.claim_chart.n_uncovered }} with no prior art</b>{% endif %}{% elif v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}{% endif %}</span></summary>
@@ -628,6 +660,21 @@
           was run for the claims that had nothing{% endif %}: {{ v.claim_chart.uncovered[:8]|join(', ') }}{% if v.claim_chart.n_uncovered > 8 %} and {{ v.claim_chart.n_uncovered - 8 }} more{% endif %}.
           They are at the bottom of the table. This is a finding, not a gap in the search — but it
           is the one worth checking by hand.</p>
+        {% endif %}
+        {# A zero that is a statement about vocabulary, not about the art. A numeric range or a
+           term the specification defines elsewhere can match nothing while the art is full of the
+           thing it requires. See claim_construction. #}
+        {% if v.claim_chart.uncovered_unconfirmed %}
+        <p class="gridline gridwarn"><b>{{ v.claim_chart.uncovered_unconfirmed|length }} of those
+          zeros cannot be read as “nothing discloses this” yet.</b> Each of these limitations means
+          something its own words do not say, so nothing matching the words is a result about the
+          vocabulary:</p>
+        <ul class="small muted" style="margin:.2em 0 .6em 1.1em;line-height:1.5">
+          {% for u in v.claim_chart.uncovered_unconfirmed %}
+          <li><b>{{ u.element }}</b>: “{{ u.claim_text|truncate(140) }}”<br>{{ u.caveat }}
+            {% if u.terms %}<br>Search it as: {{ u.terms|join(', ') }}.{% endif %}</li>
+          {% endfor %}
+        </ul>
         {% endif %}
         {% if v.claim_chart.n_rescued %}
         <p class="gridline"><b>{{ v.claim_chart.n_rescued }}</b> of these references are here
@@ -739,6 +786,7 @@
         {% endif %}
       </div>
     </details>
+    {% endif %}
 
     {% if v.query_claim_grid and v.query_claim_grid.available %}
     <details class="tail" id="queryClaimGrid">
@@ -753,7 +801,12 @@
 
     <details class="tail reportlimits"{% if v.partial %} data-state="pending"{% endif %}>
       <summary><span class="th">Coverage, text recovery and search scope</span>
-        <span class="ts">{% if v.partial %}available when agentic refinement completes{% else %}{% if v.deep_rank and v.deep_rank.not_readable %}{{ v.deep_rank.not_readable|length }} unresolved · {% endif %}{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels · {{ corpus.recall_pct }}% recall@100{% endif %}</span></summary>
+        {#  The round count, the CPC branch count, the channel count and the benchmark recall
+            figure were all in this one line. They are how the search was built, not what it
+            found, and the recall number in particular reads to a customer as a confidence score
+            for THEIR search, which it is not. What survives is the one fact here that changes
+            what a reader does: how many references could not be read in full. #}
+        <span class="ts">{% if v.partial %}{% elif v.deep_rank and v.deep_rank.not_readable %}{{ v.deep_rank.not_readable|length }} reference{{ '' if v.deep_rank.not_readable|length == 1 else 's' }} could not be read in full{% else %}every reference was read in full{% endif %}</span></summary>
       <div class="tailin">
         {% if v.deep_rank and v.deep_rank.not_readable %}
         <section class="overviewsection">
@@ -814,13 +867,326 @@
             The coverage facts that belong to THIS search are in "Coverage, text recovery and
             search scope" just above, and /coverage carries the corpus and the source list. #}
       </div>
+    
+    {#  THE OFFICE'S OWN FINDINGS, folded in here rather than standing as a second panel.
+        Both answer the same question, which is how far this search actually reached: one says
+        what was read and how much of it there was, the other says what the examiner had already
+        read before we started. Two collapsed panels in a row, each with its own heading and its
+        own line of counts, was two headings' worth of height for one idea.  #}
+{% if v.prosecution and v.prosecution.available %}
+    <div class="subsec">
+      <h4 class="subh"><span>What the Office already decided</span>
+        <span class="ts">{% if v.prosecution.subject_app %}application {{ v.prosecution.subject_app }} · {% endif %}
+          {{ v.prosecution.family|length }} relative(s) ·
+          {{ v.prosecution.documents|length }} file-wrapper document(s) read
+          {% if v.prosecution.applied %} · <b class="antic">{{ v.prosecution.applied|length }} rejection(s) already on record</b>{% endif %}</span></h4>
+      <div class="tailin">
+        <p class="gridline">The USPTO file wrapper for this family, read directly. This is not a
+          search result and it ranks nothing: it is what an examiner has already done to
+          substantially these claims, which no prior-art search can produce because it lives in a
+          file history rather than in a patent corpus. An Office action here is itself a printed
+          publication that may be filed under 37 CFR 1.290, and the examiner's findings do the
+          arguing that a submitter may not do: the concise description under
+          1.290(d)(2) as construed by MPEP 1134.01 may point at what a document says, never at
+          what it means for the pending claims.</p>
+        {% if v.prosecution.applied %}
+        <div class="lclaim">
+          <div class="lchead"><b>Applied in a rejection</b></div>
+          {% for a in v.prosecution.applied %}
+          <div class="llim">
+            <div class="lltext"><button type="button" class="pnlink" onclick="jumpRef('{{ a.pub }}')">{{ a.pub }}</button>
+              <span class="lstatus ls-anticipated">{{ a.statute or 'rejection' }}</span>
+              {% if a.claims %}<span class="cc">claims {{ a.claims|join('; ') }}</span>{% endif %}
+              {% if a.sources %}<span class="cc">{{ a.sources[0] }}</span>{% endif %}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if v.prosecution.family %}
+        <div class="lclaim">
+          <div class="lchead"><b>Family</b>
+            {% if v.prosecution.abandoned %}<span class="cc">{{ v.prosecution.abandoned|length }} abandoned after an office action</span>{% endif %}</div>
+          {% for f in v.prosecution.family %}
+          <div class="llim"><div class="lltext">{{ f.app }} <span class="cc">{{ f.relation or f.direction }}</span>
+            {% if f.patent %}<span class="cc">US {{ f.patent }}</span>{% endif %}
+            <span class="cc">{{ f.status }}</span></div></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if v.prosecution.documents %}
+        <div class="lclaim">
+          <div class="lchead"><b>Documents read</b></div>
+          {% for d in v.prosecution.documents %}
+          <div class="llim"><div class="lltext"><b>{{ d.description }}</b>
+            <span class="cc">{{ d.app }} · {{ d.date }}</span>
+            {#  Through our own proxy, never ODP's `downloadUrl`. That URL needs an X-API-KEY
+                header, which a link cannot carry, so linking it directly made every PDF here a
+                403. `d.pdf_href` is built server-side; the raw `d.pdf` is kept on the record for
+                the fetcher and is not a link. #}
+            {% if d.pdf_href %}<a class="pnlink" href="{{ d.pdf_href }}" target="_blank" rel="noopener">PDF</a>{% endif %}</div>
+            {% if d.summary %}<div class="llq" style="margin-top:.2rem">{{ d.summary }}</div>{% endif %}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if v.prosecution.considered %}
+        <p class="gridline"><b>Cited or considered by the Office ({{ v.prosecution.considered|length }}):</b>
+          {% for p in v.prosecution.considered %}<button type="button" class="pnlink" onclick="jumpRef('{{ p }}')">{{ p }}</button> {% endfor %}
+          <br><span class="cc">All {{ v.prosecution.n_seeds }} were given a reading slot in this search whatever the screen scored them.</span></p>
+        {% endif %}
+        {% if v.prosecution.error %}<p class="gridline"><b>Partial:</b> {{ v.prosecution.error }}</p>{% endif %}
+      </div>
+    </div>
+    {% endif %}
     </details>
+
+{# MERGED-OFFICE-OK #}
   </div>
   </details>
 
+{#  MOVED DOWN THE PAGE, 2026-08-27. This sat above the query and pushed the results below the
+    fold, which is the one thing a results page must not do. The next step belongs beside the
+    results it would replace, not in front of them.
+
+    The "Phase 1 . find" banner and its sentence went with it: a label naming the tier the reader
+    is already looking at, above a sentence describing the list immediately underneath.
+
+    And the two paragraphs that explained each button are behind the (?) they always sat next to.
+    They are worth reading once and were being read every time.  #}
+{#  EVERY FINISHED REPORT, not only a quick one. A submission-depth report that read 45 of 601
+    screened candidates has exactly the same next question as a find does, and gating this on
+    `depth == 'quick'` is why adhoc-f4e9c4e96449 offered no way to read more: it had already
+    escalated once, so the only control that could deepen it was hidden. The slider's `min` is
+    what has already been read, so on a report that has read nothing it starts at the bottom and
+    on one that has read 400 it can only go up. #}
+{#  A PARTIAL REPORT STILL HAS CANDIDATES, and reading more of them is the one thing its owner
+    most wants. Both reports that prompted this were partial: an interrupted run writes its ranked
+    families and its charts and never writes `deep_rank`, so the page showed 5,268 families, sixty
+    cards and a cost, and offered no way to go deeper because every control was behind
+    `not v.partial`. A run that stopped early is exactly the run you want to extend.
+
+    The banner above still says it is partial; this only stops that fact from removing the remedy. #}
+{% if not read_only %}
+  {#  THE ESCALATION. A quick report is the interactive tier: one retrieval round over the local
+      corpus, screening, and a per-limitation batch pass. The full attack (hundreds of documents
+      read in full, refuted, uncovered claims rescued) is a different spend class, so it is a
+      deliberate second click rather than the default. Same inputs, depth=deep, new report. #}
+  {{ qhelp_styles() }}
+  {#  No `phasenow` here any more: its closing tag was orphaned when the phasenow block was cut,
+      which closed `.phasebar` on its first line and left an empty panel above the buttons while
+      the buttons themselves fell outside it and back onto the old full-width grid. #}
+  <div class="phasebar" id="escalateBanner">
+    {#  ONE QUESTION, ASKED ONCE.
+
+        This was three controls and two buttons: a read-depth chooser with a Start button, and
+        beside it a "Full grid instead" button that posted a DIFFERENT depth and ignored the
+        chooser entirely. So picking "the strongest 300" and then pressing Full grid read 120,
+        because 120 is what the grid profile says, and nothing on the page admitted it.
+
+        They were never two operations. Measured, every knob in the two budgets is the same knob
+        at a different number: CHART_TOP 120 against 25, the retrieval head 24 against 8, the
+        per-limitation sweep 4 against 3. What actually differs is what you want OUT of the run,
+        and that is now the question: how much to read, and what to build from it.
+
+        The third button, "Generate third-party submission", was a deliverable you had to know to
+        press afterwards. It is still on the toolbar for the case where you decide later, but it
+        is also a destination here, and choosing it means the packet builds itself when the
+        reading lands rather than waiting for you to come back. #}
+    {#  The "interrupted" sentence was removed for space: the run-facts line already carries the
+        partial state, and this was a paragraph saying it again. #}
+    <div class="phasebuys">
+      {#  `v.escalate` is written by the quick tier and by nothing else, so on a deeper report,
+          and on any report whose run was interrupted before it got that far, reading
+          `v.escalate.mode` raised UndefinedError and took the whole block out of the page. That
+          is why two reports offered no way to read further and said nothing about why. Defaulted
+          to the report's own facts, which are the same facts the escalation block copied. #}
+      {% set _esc = v.escalate or {} %}
+      <form method="post" action="{{ request.script_root }}/run" class="phasebuy readdepth"
+            {% if v.partial %}data-running="1"{% endif %}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="mode" value="{{ _esc.mode or v.mode or 'novelty' }}">
+        <input type="hidden" name="search_focus" value="{{ _esc.search_focus or v.search_focus or 'all_text' }}">
+        <input type="hidden" name="doc_token" value="{{ _esc.doc_token or v.doc_token or '' }}">
+        <input type="hidden" name="query" value="{{ _esc.query or v.query_text or v.query or '' }}">
+        {#  No `depth` here: the destination decides it. See /run, which maps
+            grid -> deep and everything else -> submission. #}
+        {% set _rdc = (v.search_params or {}).get('read_choices') or [] %}
+        {% set _pool = (v.search_params or {}).get('read_pool') or 0 %}
+        {% set _done = v.n_readable or 0 %}
+        {#  A SLIDER, BECAUSE THE ANSWER IS A NUMBER ON A LINE.
+            A dropdown of seven rungs made the reader pick from our list; the real question is
+            "how deep", and depth is continuous. It also could not express the one thing that
+            matters on a second visit: this search has ALREADY read some, and the only move from
+            here is forward. `min` is what has been read, so the slider cannot ask for less than
+            already exists, and the label says what the difference will cost. #}
+        <label class="rdlab" for="readTop">Read</label>
+        <div class="rdslider">
+          <input type="range" name="read_top" id="readTop"
+                 min="{{ [_done, 10]|max }}"
+                 max="{{ [_pool if _pool else 400, v.read_top_max or 400]|min }}"
+                 step="5" value="{{ [[_done + 45, _pool if _pool else 400]|min, [_done, 10]|max]|max }}"
+                 data-done="{{ _done }}" data-pool="{{ _pool }}"
+                 aria-describedby="readEta">
+          <output class="rdcount" id="readCount" for="readTop"></output>
+        </div>
+        {{ qhelp("the read depth", "READING IS THE BILL. Retrieval, the external fan-out and the
+screen are close to fixed at about five minutes together; the reading is what scales, at roughly
+two and a half seconds a document. That is the whole reason this is a choice and not a setting.
+
+WHAT EACH DEPTH BUYS. Measured against the nine references the offices themselves cited against
+one family, they sat at positions 1, 2, 5, 14, 41 and 179 in the read block. Twenty-five reaches
+the first four. Forty-five reaches five of the six. Reading everything found reaches all of them
+and takes three times as long.
+
+WHAT IS READ FIRST is the screen order, so a smaller depth is not a random sample: it is the
+strongest candidates by title, abstract and first claims, plus a head taken straight from
+retrieval because the screen has been measured scoring a good reference zero off a wrong abstract.
+
+THE CEILING IS WHAT THIS SEARCH SCREENED, not what the page shows. A find screens and scores
+several hundred candidates and draws sixty cards; the depths here are bounded by the first number,
+which is why the last option names it.
+
+Every reference read is charted against every requirement, every cell carries a verbatim quote
+that must be found in the document, and every 'disclosed' is put to an independent refuter. That
+does not change with depth; only how many documents get it.") }}
+        <span class="rdeta" id="readEta">{{ ((_rdc|selectattr('n','equalto',45)|first)
+                                             or _rdc|first).eta_text if _rdc else '' }}</span>
+        {#  HOW, not just how many. The two readers already in this pipeline cost very different
+            amounts per document, and which one carries the bulk of the reading is the second half
+            of the same decision. The ETA beside the count is multiplied when this is Batched, so
+            the two controls cannot disagree. #}
+        <label class="rdlab">
+          <select name="batched" id="readBatched">
+            <option value="0" selected>now, on this page</option>
+            <option value="1">batched, cheaper and slower</option>
+          </select>
+        </label>
+        {{ qhelp("batched reading", "TWO READERS, NOT TWO SETTINGS. The expensive one carries a
+whole document through up to fourteen prompts with a grounding gate and an independent refuter
+between them. The cheap one asks ONE requirement of MANY documents in a single call, ordered so
+that every requirement asked of a batch shares one long prefix: 83% of prompt tokens came from
+cache on the run that was measured.
+
+Reading NOW puts about half the documents through the expensive reader. Reading BATCHED puts about
+a fifth through it and gives the rest to the cheap one, which this repo has measured at roughly one
+seventh the effective tokens per document covered.
+
+WHAT IT COSTS. Throughput measured at 6.7 pairs a second batched against 26.8 per-document, so the
+same coverage takes about four times the wall clock. That is why this choice turns the email on:
+nobody should hold a page open for it.
+
+WHAT IT COSTS IN QUALITY. A batched cell is charted against the claim limitations only and gets no
+refuter pass, so it is weaker per document. The head of the ranking is still read the expensive way
+either way, so the documents that would actually be cited keep the full treatment; batching buys
+breadth behind them, not depth in front.") }}
+        {#  THE DESTINATION. It decides the depth posted and what happens when the run lands. #}
+        <label class="rdlab">build
+          <select name="then" id="readThen">
+            <option value="list" selected>the ranked list only</option>
+            <option value="grid">+ the claim ledger and prior-art grid</option>
+            <option value="packet">+ the 37 CFR 1.290 submission</option>
+          </select>
+        </label>
+        {{ qhelp("what to build", "THE SAME READING, THREE DELIVERABLES. The run is identical up to
+this choice: retrieve, screen, then read the depth you picked. What differs is what is built out of
+the reading and, for the grid, how wide the per-requirement sweep runs.
+
+THE RANKED LIST ONLY. Every reference read end to end, charted, scored on rarity-weighted coverage
+and ordered for maximum claim coverage. This is the cheapest of the three and it is what you want
+when the question is 'what is out there'.
+
++ THE CLAIM LEDGER AND PRIOR-ART GRID. The same reading with the per-requirement sweep at full
+width, 12 documents a limitation against 3, so every limitation gets its own row of evidence
+rather than enough to order the documents by. The grid is the deliverable. Measured at 842 to 934
+seconds at the old fixed depth, of which 580 was the reading; 42 of the top 50 documents added
+nothing to disclosure coverage, which is what the depth control beside this exists to let you
+avoid paying for.
+
++ THE 37 CFR 1.290 SUBMISSION. The same reading, and then the filing papers build themselves when
+it lands: a concise description of relevance per document, the document list and statements, a
+legible copy and an English translation of every non-U.S. item, and an audit of every requirement
+of the rule against the papers actually produced. It spends one further model call per document.
+The fee is yours to pay and the statements are yours to sign; nothing here files anything.
+
+You can also choose it later: the button on the toolbar above does the same thing once enough has
+been read.") }}
+        {#  The same toggle as the search form's, because the escalation is a whole new run and
+            inherits nothing from the one on screen. Defaults to what this report actually did. #}
+        {#  OFF, ALWAYS. It opened ticked whenever the report it sits under had itself run
+            with third-party sources on, so the slow and expensive answer became the default for
+            anybody who had chosen it once. Asking seven outside APIs is a deliberate act. #}
+        <label class="toggle tpsrc"><input type="checkbox" name="third_party" value="1">
+          3rd-party</label>
+        {{ qhelp("third-party sources", "ON asks seven outside patent APIs as well as our own
+corpus: PQAI, Google Patents through BigQuery, SerpApi, the USPTO keyword search and the rest. OFF
+searches nothing but the corpus on this box, and nothing in the later stages calls out either: a
+reference we cannot read here stays unread rather than being fetched from a paid source.
+
+MEASURED on one real run. The outside sources produced 319 of 3,470 candidate families and cost
+58.5 of the 65 seconds retrieval took. Our own corpus produced the other 3,151 in about six
+seconds. So turning this off makes the finding stage roughly ten times faster.
+
+WHAT IT COSTS, and it is not nothing: 296 of those 319 families were found by NO other channel.
+A local-only search cannot see art that is not in the 354,986 publications we hold, and it cannot
+recover the full text of a reference the corpus has only an abstract for. Use it when the answer
+is expected to be in our niche, and turn it back on before anything is filed.") }}
+        {#  OFF, ALWAYS. `checked` was hard-coded here, so every escalation started by
+            promising an email nobody had asked for. The account preference still decides whether
+            one may be sent at all; this decides whether this run asks for one. #}
+        <label class="toggle rdbatch"><input type="checkbox" name="notify_email" value="1">
+          Email me</label>
+        {#  A RUN IN FLIGHT MUST NOT BE ABLE TO START ANOTHER. The controls were live while the
+            search that owns the page was still going, so the obvious thing to do while waiting
+            was to queue a second run over the same input. Disabled on a partial report, which is
+            what a running search renders as, and the button says why. #}
+        <button class="btn sm primary" type="submit" id="startReading"
+                {% if v.partial %}disabled title="This search is still running. It has to finish before another can start."{% endif %}>
+          {% if v.partial %}Search running…{% else %}Start reading{% endif %}</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ── results ─────────────────────────────────────────────────────────── -->
-  <details class="resultfilters">
-    <summary>Filter and sort results</summary>
+  {#  Collapsed by default. Sorting and filtering is something a reader does occasionally and
+      reads never, and open it cost a row above the first result on every page load. #}
+  {#  NOT WHILE THE SEARCH IS RUNNING. Half of what it offers is computed from the reading
+      (relevancy score, elements covered, "covers element"), and the other half sorts a list
+      that is still growing under it. A control that cannot do what it says is worse than no
+      control, and this one sat above the first result on every page load. #}
+  {% if not v.partial %}
+  {#  AND NOT BEFORE ANYTHING HAS BEEN READ. "Covers element" needs a per-element verdict,
+      "Relevancy score" needs the rarity weighting over the charted set, and both come from
+      reading references end to end. Until then the whole box is inert and carries the one
+      button that changes that. `needs_read` is the gate. #}
+  {#  THE CARDS ON THIS PAGE, not `n_readable`. That counts what is in <slug>.deep.json, which
+      survives a re-run and is written by other paths, so a fast search that read nothing reported
+      50 readable references and the gate never closed. What the filters consume is the per-card
+      evidence, so that is what decides whether they can work. #}
+  {% set n_read_here = v.cards|selectattr('deep_read')|list|length %}
+  {% set needs_read = n_read_here < 1 %}
+  <details class="resultfilters{% if needs_read %} inert{% endif %}" id="resultfilters"
+           {% if needs_read %}data-needs-read="1"{% endif %}>
+    <summary>Filter and sort results{% if needs_read %}
+      <span class="small muted"> &middot; needs references read in full</span>{% endif %}</summary>
+  {% if needs_read %}
+  <div class="filtergate">
+    <p class="small" style="margin:0 0 .5em">
+      <b>Nothing has been read end to end yet.</b> Sorting by relevancy score, filtering by the
+      elements a reference covers and the ranking itself are all computed from the full text of
+      the references, not from the search. Read the strongest few and this becomes live.</p>
+    {% if current_user and not read_only %}
+    <button type="button" class="btn sm primary readall" id="readTop25"
+            data-n="25" data-pool="{{ v.n_unread or 25 }}"
+            title="Reads the 25 best-screened references end to end against every element, then scores and reorders the whole page over that evidence.">
+      Read the top 25 in full</button>
+    <span class="small muted">About a minute per ten references.</span>
+    {% else %}
+    <span class="small muted"><a href="{{ request.script_root }}/login">Sign in</a> to read
+      references in full.</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  <fieldset class="controlswrap"{% if needs_read %} disabled{% endif %}>
   <div class="controls" role="group" aria-label="Sort and filter the results">
     <span class="cgroup">
       <label class="lab" for="sortby">Sort by</label>
@@ -844,17 +1210,41 @@
       <select id="felement" onchange="applyControls()"><option value="">Any</option>
         {% for el in v.elements %}<option value="{{ loop.index0 }}">{{ el[:44] }}</option>{% endfor %}</select>
     </span>
-    <span class="cgroup">
-      <label class="lab" for="fflag">Triage</label>
-      <select id="fflag" onchange="applyControls()"><option value="">All</option>
-        <option value="relevant">Relevant</option><option value="maybe">Maybe</option>
-        <option value="not">Not relevant</option><option value="unflagged">Unflagged</option></select>
-    </span>
-    {% if v.subject %}<label class="toggle"><input type="checkbox" id="fprior" onchange="applyControls()"> Prior art only</label>{% endif %}
+    {#  TRIAGE AND "PRIOR ART ONLY" REMOVED, 2026-08-27. Triage filtered on flags the reader sets
+        by hand and almost nobody sets, so it was a control over an empty axis; "prior art only"
+        duplicates what the date engine has already decided and shows on every card. Both are kept
+        out of the DOM rather than hidden, so the row is one line at any width.
+        `fflag` and `fprior` are still READ by applyControls() through the null-safe helper below,
+        so removing the controls changes no behaviour: absent means unfiltered. #}
     <label class="toggle"><input type="checkbox" id="fdraw" onchange="applyControls()"> Has drawings</label>
+    {#  THE BULK FORM OF THE SAME THING. One card at a time answers "is this document any good";
+        this answers "is the ORDER any good", which is a different question and the reason the
+        re-scoring matters: rarity is measured over the references actually charted, so widening
+        the read set moves every score, not just the new ones. #}
+    {#  THE POOL, NOT THE PAGE. This counted the cards, so a search that screened 601 candidates
+        offered to read 60 of them and said "all". The server's `unread` bucket is what the
+        request actually draws from, and one request takes at most `read_more_max` of it. #}
+    {% set n_unread = v.n_unread or (v.cards|rejectattr('deep_read')|list|length) %}
+    {% set n_take = [n_unread, (v.read_more_max or 250)]|min %}
+    {% if current_user and not read_only and n_unread %}
+    {#  The sort bar is one row and stays one row, so the pool is four characters here and the
+        whole sentence is in the title. Spelling it out inline pushed "60 of 60 references shown"
+        off the right edge. #}
+    <button type="button" class="btn ghost sm readall" id="readAllUnread"
+            data-n="{{ n_take }}" data-pool="{{ n_unread }}"
+            title="{{ n_unread }} reference{{ '' if n_unread == 1 else 's' }} were screened by this search and not read end to end. One run reads the {{ n_take }} best-screened of them and then scores the whole page again over the widened evidence; run it again for the next {{ n_take }}.">
+      {% if n_take < n_unread %}Read {{ n_take }} more{% else %}Read the {{ n_unread }} unread{% endif %}</button>
+    {#  No pool figure here: measured, it pushed the bar 36px past its own width and clipped
+        "60 of 60 references shown" off the end. The screened total is already on the page, in the
+        read-depth chooser above ("the strongest 400 of 601 screened"), and in this button's own
+        title. A one-row bar that scrolls is not a one-row bar. #}
+    {% endif %}
     <span id="shown" role="status" aria-live="polite" aria-atomic="true"></span>
   </div>
+  </fieldset>
+  <div id="readAllProgress" class="readprog" hidden></div>
   </details>
+  {% endif %}
 
   <div class="cards" id="cards">
     {% for c in v.cards %}{{ refcard(c, v.partial) }}{% endfor %}
@@ -918,21 +1308,34 @@
 <dialog id="publishDlg" class="dlg">
   <form method="dialog" class="stack" style="min-width:min(30rem,90vw)">
     <h3 class="h3" style="margin-top:0">Public link</h3>
-    <p class="small muted" id="publishState">Anyone with this link can read the report. No account
-      needed. Nothing on the public page can change or re-run the search.</p>
+    {#  THE ADDRESS EXISTS BEFORE THE DECISION DOES.
+        The link used to be minted by the Publish button, so the field was empty until you had
+        already made the report public: you could not see, copy or paste the address you were
+        about to hand out until handing it out was done. But the address is not a secret and it is
+        not generated, it is this report's own slug, so it is written here from the start and the
+        toggle decides only whether it resolves. Off by default, and off is the state a fresh
+        report is in: nothing is public because a link was shown. #}
     <label class="small" for="publishUrl">Link</label>
     <div style="display:flex;gap:8px;align-items:center">
       <input id="publishUrl" class="input" readonly style="flex:1" value="">
       <button type="button" class="btn ghost sm" id="publishCopy">Copy</button>
+    </div>
+    <div class="pubtog">
+      <label class="switch">
+        <input type="checkbox" id="publishToggle">
+        <span class="track"><span class="knob"></span></span>
+        <span class="swlab" id="publishToggleLab">Not published</span>
+      </label>
+      <span class="small muted" id="publishState">The address above does not resolve. Turn this on
+        and anyone holding it can read the report without an account.</span>
     </div>
     <label class="small" for="publishPw">Password <span class="muted">(optional)</span></label>
     <input id="publishPw" class="input" type="text" autocomplete="off"
            placeholder="leave blank for no password" style="max-width:22rem">
     <p class="small muted" id="publishPwState"></p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-      <button type="button" class="btn sm" id="publishSave">Publish</button>
+      <button type="button" class="btn sm" id="publishSave" hidden>Set password</button>
       <button type="button" class="btn ghost sm" id="publishClearPw" hidden>Remove password</button>
-      <button type="button" class="btn ghost sm danger" id="publishRevoke" hidden>Revoke link</button>
       <span class="grow"></span>
       <button class="btn ghost sm" value="close">Close</button>
     </div>
@@ -1061,6 +1464,50 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
 {% if not read_only %}
 (function(){
   const B = window.APP_BASE || '';
+
+  /*  THE COST OF THIS SEARCH. Fetched from the same receipt endpoint the history panel uses, so
+      the two can never disagree, and rendered only when a figure exists: a report written before
+      pricing has no spend block and must not be shown as free. */
+  (function(){
+    const wrap = document.getElementById('spendWrap');
+    const fig = document.getElementById('spendFig'), box = document.getElementById('spendBox');
+    const dlg = document.getElementById('spendDlg');
+    if (!wrap || !fig || !box) return;
+    /*  Open the dialog rather than un-hiding a panel that the summary row clips. */
+    fig.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();          // the figure sits inside a <summary>: do not toggle it
+      if (dlg && dlg.showModal) { dlg.showModal(); }
+    });
+    const slug = {{ v.slug|tojson }};
+    const esc = x => String(x==null?'':x).replace(/[&<>"]/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const money = v => { const n = Number(v||0);
+      return !(n>0) ? '$0.00' : (n<0.01 ? '<$0.01' : (n<10 ? '$'+n.toFixed(2) : '$'+n.toFixed(0))); };
+    if (!slug) return;
+    fetch(B+'/api/search/'+encodeURIComponent(slug)+'/stats', {credentials:'same-origin'})
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const sp = d && d.stats && d.stats.spend;
+        if (!sp || sp.total_usd == null) return;
+        fig.innerHTML = money(sp.total_usd);
+        wrap.hidden = false;
+        const rows = (sp.lines||[]).map(l =>
+          '<tr><td>'+esc(l.model || l.name)+(l.kind==='api'?' <span class="cc">API</span>':'')
+          + '</td><td class="cc">'+esc(l.detail||'')+'</td>'
+          + '<td class="num">'+money(l.usd)+'</td></tr>').join('');
+        box.innerHTML = '<table><thead><tr><th>Model or API</th><th>Work</th>'
+          + '<th class="num">Cost</th></tr></thead><tbody>'+rows+'</tbody>'
+          + '<tfoot><tr><td colspan="2">Total</td><td class="num"><b>'+money(sp.total_usd)
+          + '</b></td></tr></tfoot></table>'
+          + '<div class="cc">Priced at rates quoted on '+esc(sp.priced_on||'')+'.'
+          + (((sp.unpriced||[]).length) ? ' Not priced, no rate on file: '
+             + esc(sp.unpriced.join(', '))+'.' : '') + '</div>';
+        /*  The old toggle is superseded by the dialog opened above: `box` now lives INSIDE
+            the dialog, so hiding it would blank the very thing the dialog exists to show. */
+      })
+      .catch(() => {});
+  })();
   const save = document.getElementById('saveReportBtn');
   if(save){
     save.addEventListener('click', async () => {
@@ -1096,12 +1543,103 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
         });
         const d = await r.json();
         if(!r.ok) throw new Error(d.error || 'rename failed');
-        if(heading) heading.textContent = d.title || title.trim();
+        if(heading){ heading.textContent = d.title || title.trim(); heading.hidden = false; }
         if(save){ save.dataset.saved='true'; save.classList.add('saved'); save.textContent='✓ Saved report'; }
       }catch(_){ rename.textContent = 'Could not rename — retry'; }
       finally{ rename.disabled = false; }
     });
   }
+
+
+/*  READ IN FULL, ON DEMAND. One card, or every unread one. Both post to the same endpoint and
+    both end in a reload, because the ranking is recomputed server-side over the widened evidence
+    and half of it cannot be applied in place: every score on the page changes, not just the new
+    ones. See src/read_more.py. */
+(function readInFull(){
+  var B = window.APP_BASE || '';
+  var slug = window.SLUG;
+  if (!slug) { return; }
+  var box = document.getElementById('readAllProgress');
+
+  function say(t, bad){
+    if (!box) { return; }
+    box.hidden = false;
+    box.textContent = t;
+    box.classList.toggle('bad', !!bad);
+  }
+
+  function poll(){
+    fetch(B + '/api/read-in-full/' + encodeURIComponent(slug) + '/progress',
+          {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.state === 'running'){
+          say((d.msg || 'Reading') + (d.total ? ' (' + (d.done||0) + '/' + d.total + ')' : '') + '…');
+          setTimeout(poll, 1500);
+          return;
+        }
+        if (d.state === 'error'){ say(d.error || 'Could not read those references.', true); return; }
+        if (d.state === 'done'){ say((d.msg || 'Done') + ' Reloading…'); location.reload(); return; }
+        say(d.msg || '');
+      })
+      .catch(function(){ setTimeout(poll, 3000); });
+  }
+
+  function ask(body, label){
+    say('Starting…');
+    fetch(B + '/api/read-in-full/' + encodeURIComponent(slug), {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+      body:JSON.stringify(body)
+    }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+      .then(function(res){
+        if (!res.ok){ say(res.d.error || 'Could not start.', true); return; }
+        if (res.d.state === 'idle'){ say(res.d.msg || 'Nothing to read.'); return; }
+        poll();
+      })
+      .catch(function(){ say('Could not start.', true); });
+  }
+
+  document.addEventListener('click', function(ev){
+    var one = ev.target.closest && ev.target.closest('.readfull');
+    if (one){
+      ev.preventDefault();
+      one.disabled = true;
+      one.textContent = 'reading…';
+      ask({pubs:[one.dataset.pub]}, one.dataset.pub);
+      return;
+    }
+    var all = ev.target.closest && ev.target.closest('#readAllUnread');
+    if (all){
+      ev.preventDefault();
+      var n = all.dataset.n || 'these';
+      if (!confirm('Read all ' + n + ' unread references end to end?\n\n'
+                   + 'This spends a few model calls per document and takes minutes. Every score '
+                   + 'on the page is then recomputed over the widened evidence, so the order will '
+                   + 'change.')) { return; }
+      all.disabled = true;
+      /*  ASK THE SERVER FOR ITS OWN POOL. This used to send the pubs of the cards on the page,
+          so "read all unread" read at most sixty of the six hundred the screen had scored, and
+          the ones it skipped were not the weakest, they were the ones the page had no room for.
+          `{all:true}` takes the unread bucket best-screened first and stops at the per-run cap. */
+      ask({all: true});
+    }
+  });
+
+  /*  A build already running when the page was opened: pick it up rather than showing nothing. */
+  fetch(B + '/api/read-in-full/' + encodeURIComponent(slug) + '/progress',
+        {credentials:'same-origin'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if (d && d.state === 'running'){ poll(); } })
+    .catch(function(){});
+})();
+
+
+/*  The depth ETA is superseded by readDepthEta in app.js, which follows BOTH controls.
+    Two listeners on the same select is not a duplicate, it is a race: this one wrote the
+    interactive figure last on every depth change, so picking a depth while Batched was selected
+    silently replaced the batched estimate with a time four times shorter than the run would
+    take. Deleted rather than left dormant, because a dormant listener is one someone re-binds. */
 
   const card = document.getElementById('archiveCard');
   const status = document.getElementById('archiveStatus');

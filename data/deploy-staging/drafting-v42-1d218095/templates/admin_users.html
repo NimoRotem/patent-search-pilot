@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}User administration | Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap adminpage">
+  <div class="pagehead">
+    <div><h1>User administration</h1><p class="muted">Promote administrators or suspend access without deleting reports.</p></div>
+    <a class="btn ghost sm" href="{{ request.script_root }}/admin/searches">All account searches</a>
+  </div>
+  {% if store_error %}<div class="formerror" role="alert">Account store unavailable: {{ store_error }}</div>{% endif %}
+  {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+  {% if message %}<div class="formok" role="status">{{ message }}</div>{% endif %}
+
+  {#  An administrator inviting somebody is not the same as an administrator SETTING their
+      password: the invitee chooses it, so nobody else ever knows it. The link is single-use and
+      expires, and no account exists until it is opened.  #}
+  <section class="panel dsec invitesec">
+    <h2>Invite somebody</h2>
+    <form method="post" action="{{ request.script_root }}/admin/invitations" class="inviteform">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Email address<input type="email" name="email" required maxlength="200"></label>
+      <label>Name <span class="muted">(optional)</span><input type="text" name="full_name" maxlength="120"></label>
+      <label class="invadmin"><input type="checkbox" name="is_admin" value="1"> Administrator</label>
+      <button class="btn sm" type="submit">Send invitation</button>
+    </form>
+    {% if invitations %}
+    <div class="tablewrap">
+      <table class="admintable">
+        <thead><tr><th>Invited</th><th>State</th><th>By</th><th>Expires</th><th></th></tr></thead>
+        <tbody>
+        {% for i in invitations %}
+        <tr>
+          <td data-label="Invited"><b>{{ i.email }}</b><span>{{ i.full_name }}{% if i.is_admin %} · administrator{% endif %}</span></td>
+          <td data-label="State"><span class="badge {{ 'b-cached' if i.state == 'accepted' else ('b-warn' if i.state in ['expired','revoked'] else '') }}">{{ i.state }}</span></td>
+          <td data-label="By">{{ i.invited_by_name or '—' }}</td>
+          <td data-label="Expires">{{ i.expires_at }}</td>
+          <td data-label="">{% if i.state == 'open' %}
+            <form method="post" action="{{ request.script_root }}/admin/invitations/{{ i.id }}/revoke">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn ghost xs" type="submit">Withdraw</button>
+            </form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+  <section class="adminstats">
+    <div class="statcard"><b>{{ users|length }}</b><span>accounts</span></div>
+    <div class="statcard"><b>{{ mail_stats.get('pending',0) + mail_stats.get('retry',0) }}</b><span>emails queued</span></div>
+    <div class="statcard"><b>{{ mail_stats.get('sent',0) }}</b><span>emails sent</span></div>
+    <div class="statcard"><b class="{{ 'good' if mail_transport.configured else 'bad' }}">{{ 'ready' if mail_transport.configured else 'needs configuration' }}</b><span>{{ mail_transport.transport }} transport · {{ mail_transport.detail }}</span></div>
+  </section>
+  <div class="tablewrap">
+    <table class="admintable">
+      <thead><tr><th>User</th><th>Role</th><th>State</th><th>Searches</th><th>Joined / last login</th><th>Manage</th></tr></thead>
+      <tbody>
+      {% for u in users %}
+      <tr>
+        <td data-label="User"><b>{{ u.full_name }}</b><span>{{ u.email }}</span>
+          {% if not u.email_verified_at %}<span class="badge b-warn" title="This address has not been confirmed, so completion emails may not reach it">unconfirmed</span>{% endif %}</td>
+        <td data-label="Role">{{ 'Administrator' if u.is_admin else 'User' }}</td>
+        <td data-label="State"><span class="badge {{ 'b-cached' if u.is_active else 'b-warn' }}">{{ 'active' if u.is_active else 'suspended' }}</span></td>
+        <td data-label="Searches">{{ u.searches }} total · {{ u.saved_searches }} saved</td>
+        <td data-label="Joined / login"><span>{{ u.created_at }}</span><span>{{ u.last_login_at or 'never' }}</span></td>
+        <td data-label="Manage"><div class="adminactions">
+          <form method="post" action="{{ request.script_root }}/admin/users/{{ u.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="{{ 'demote' if u.is_admin else 'promote' }}">
+            <button class="btn ghost xs" type="submit">{{ 'Remove admin' if u.is_admin else 'Make admin' }}</button>
+          </form>
+          <form method="post" action="{{ request.script_root }}/admin/users/{{ u.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="{{ 'deactivate' if u.is_active else 'activate' }}">
+            <button class="btn ghost xs" type="submit">{{ 'Suspend' if u.is_active else 'Reactivate' }}</button>
+          </form>
+          {#  Deletion removes the account and everything keyed to it. Suspension is the reversible
+              option and is offered first; this one asks, and the store refuses to remove the last
+              administrator or the account you are signed in with.  #}
+          <form method="post" action="{{ request.script_root }}/admin/users/{{ u.id }}/delete"
+                onsubmit="return confirm('Delete {{ u.email }} and every search, saved patent and draft belonging to it? This cannot be undone.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn ghost xs danger" type="submit">Delete</button>
+          </form>
+        </div></td>
+      </tr>
+      {% else %}<tr><td colspan="6" class="muted adminempty">No named accounts yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

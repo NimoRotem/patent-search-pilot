@@ -1,0 +1,1 @@
+The present disclosure relates to electric vehicle supply equipment, and more particularly to an edge controller that allocates current among several electric vehicle connectors supplied by a single electrical branch and that verifies the resulting current both at each connector and at an independent upstream branch measurement point.

@@ -1942,6 +1942,31 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .histdetail .hxnote{margin:.3rem 0 0;line-height:1.4}
 /*  Which databases the search drew from. Small, quiet and readable at a glance: an attorney
     checking a result wants the list of sources and their contribution, not a dashboard. */
+/*  The picker's flags. A document that is only 102(a)(2) art, or that looks commonly owned, is a
+    decision and not a detail, so it is legible at a glance and carries its own explanation. */
+.flag{display:inline-block;font-size:.72rem;line-height:1.5;padding:0 .4rem;border-radius:3px;
+  border:1px solid currentColor;white-space:nowrap}
+.flag-warn{color:#7a5b00;background:#fff8e6}
+.flag-bad{color:#8a1f11;background:#fdefed}
+/*  Not a warning. A document the United States cannot use is often the best one on another
+    track, and it should not wear the same colour as one that is simply out. */
+.flag-ok{color:#1c5c34;background:#eef7f0}
+.qhelp{display:inline-flex;align-items:center;justify-content:center;width:1.05rem;height:1.05rem;
+  margin-left:.25rem;border:1px solid var(--border,#bbb);border-radius:50%;font-size:.7rem;
+  color:var(--muted,#666);cursor:pointer;user-select:none;vertical-align:text-top}
+.qhelp:hover,.qhelp:focus{border-color:var(--accent);color:var(--fg,#222);outline:none}
+.qhelp-body{display:none}
+/*  The signature consent on the account page. A checkbox and its sentence, laid out so the
+    sentence is readable rather than a run-on beside a box: this is the control that decides
+    whether a paper filed at the USPTO carries somebody's signature. */
+.consentbox{display:flex;gap:.55rem;align-items:flex-start;margin:.5rem 0 .2rem;
+  padding:.6rem .7rem;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--s3);font-size:.86rem;line-height:1.5;font-weight:400;cursor:pointer}
+.consentbox input{margin-top:.2rem;flex:none}
+.consentbox span{min-width:0}
+#qhelpText p{margin:.55rem 0}
+.feebar{margin:1em 0;padding:.7em .9em;background:var(--bg2,#fafafa);
+  border:1px solid var(--border,#e6e6e6);border-radius:4px}
 /*  The prompt, shown verbatim in the rebuild dialog. Monospace and scrollable: it is a long
     instruction and the point is that it can be read, not that it looks tidy. */
 .promptbox{max-height:16rem;overflow:auto;white-space:pre-wrap;word-break:break-word;
@@ -2037,3 +2062,690 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
   border-top:1px solid var(--s2);padding-top:10px}
 .phasebuy{display:grid;gap:5px;align-content:start;margin:0}
 .phasenote{font-size:12px;color:var(--muted);line-height:1.4}
+
+/*  The (?) mark, used anywhere a control needs explaining without a paragraph beside it.
+    Deliberately quiet: it is an offer, not an instruction. */
+.qmark{display:inline-flex;align-items:center;justify-content:center;width:1.15rem;height:1.15rem;
+  padding:0;margin-left:.3rem;border:1px solid var(--border,#c9c9c4);border-radius:50%;
+  background:none;font:inherit;font-size:.72rem;line-height:1;color:var(--muted,#6b6b66);
+  cursor:pointer;vertical-align:middle}
+.qmark:hover,.qmark:focus-visible{border-color:var(--accent);color:var(--fg,#222)}
+.qmarkdlg p{margin:.6rem 0}
+.qmarkdlg p:first-child{margin-top:0}
+
+/*  ------------------------------------------------------- the masthead inside a foreign page
+    The register lookup is a different app with its own inline palette on :root, and it happens
+    to use ten of the same variable names we do. Loading this stylesheet into that page would
+    otherwise repaint the whole lookup: its green accent turns our blue, its lines change colour.
+
+    Two halves to the fix and both are needed. That page inserts this stylesheet as the FIRST
+    thing in its <head>, so its own :root still wins for its own UI. And the masthead declares the
+    palette it needs on itself, here, so it keeps ours wherever it is dropped. Values duplicated
+    from :root above deliberately: this block exists precisely so the two can differ. */
+#appchrome{
+  --line:#deddd6; --line2:#c9c9c2; --ink:#17212b; --muted:#5e6875;
+  --accent:#175cd3; --accent-soft:#e9f0fd;
+  --warn:#9a5b13; --warn-soft:#fbf0df; --bad:#b42318; --bad-soft:#fcebea;
+  color:var(--ink);
+}
+
+/*  WHAT A SEARCH COST, on the row. A button rather than a span because it opens the breakdown:
+    a figure nobody can take apart is a figure nobody can check. Tabular numerals so a column of
+    them lines up. */
+.b-spend{background:var(--bg2,#f4f4f5);color:var(--ink,#222);border:1px solid var(--border,#e6e6e6);
+  cursor:pointer;font-variant-numeric:tabular-nums;font-family:inherit}
+.b-spend:hover{background:var(--accent-soft,#eef4ff);border-color:var(--accent,#175cd3);
+  color:var(--accent,#175cd3)}
+.histdetail .srctbl tfoot td{padding-top:.28rem;border-top:1px solid var(--border,#e6e6e6)}
+/*  The same figure on the report page, where it sits beside the other receipt facts. */
+.spendfig{background:none;border:0;padding:0;cursor:pointer;font:inherit;
+  color:var(--accent,#175cd3);text-decoration:underline;text-underline-offset:2px;
+  font-variant-numeric:tabular-nums}
+.spendbox{margin:.5rem 0 0}
+.spendbox table{border-collapse:collapse;font-size:.82rem;min-width:min(100%,28rem)}
+.spendbox th{text-align:left;font-weight:600;color:var(--muted,#666);font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.03em;padding:.1rem .8rem .18rem 0;
+  border-bottom:1px solid var(--border,#e6e6e6)}
+.spendbox td{padding:.16rem .8rem .16rem 0;vertical-align:top}
+.spendbox td.num,.spendbox th.num{text-align:right;font-variant-numeric:tabular-nums;padding-right:0}
+.spendbox tfoot td{border-top:1px solid var(--border,#e6e6e6);padding-top:.28rem}
+
+
+/*  The progress narrative is one line now, not a nine-row checklist: same type scale as the row
+    it replaces, so nothing else on the banner had to move. */
+.stagenow{padding:2px 0}
+.stagenow .st-name{font-weight:600;font-size:13.5px;display:block}
+.stagenow .st-note{font-size:12.5px;color:var(--faint);margin-top:2px;line-height:1.5;display:block}
+
+/*  Run-time estimates live behind this rather than in the sentence. They are a nice-to-know and
+    they were also stale, so they get an affordance and not a line of prose. */
+.etaclock{display:inline-block;margin-left:.35em;font-size:12px;color:var(--faint);cursor:help;
+          vertical-align:baseline}
+.etaclock:hover,.etaclock:focus{color:var(--muted);outline:none}
+
+/*  An unread reference has no score to show. Muted and lighter than a real number so the eye does
+    not read the dash as a value. */
+.relnum-none{color:var(--line2);font-weight:600}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   2026-08-27. Three defects, reported on a phone and reproduced at 390px and 1440px.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/*  1. FIVE VARIABLES THAT WERE NEVER DEFINED, referenced 36 times between them.
+    A later block of this sheet was written against a different naming convention
+    (--border / --fg / --bg2 / --card / --r-md) than the palette above uses
+    (--line / --ink / --s3 / --s1 / --r-sm). Every one of those rules therefore fell through to
+    a hardcoded fallback off the palette, so panels, borders and question marks in the newer
+    parts of the app were a slightly different grey from everything around them. One of them,
+    `.histrow{border-radius:var(--r-md)}`, had no fallback at all and was simply an invalid
+    declaration that the browser dropped.
+
+    These are ALIASES, not new colours: the palette stays the single source of truth and the
+    36 rules land on it without any of them being edited.  */
+:root{
+  --border:var(--line);
+  --fg:var(--ink);
+  --bg2:var(--s3);
+  --card:var(--s1);
+  --r-md:var(--r-sm);
+}
+
+/*  2. THE EXPANDED HISTORY ROW NEVER SPANNED THE ROW.
+    `.histdetail` asks for `grid-column:1/-1`, but `.histrow` is `display:flex`, where
+    `grid-column` means nothing at all. The panel was therefore laid out as an ordinary flex
+    item, sized by what was left over. In a flex row the way to say "take the whole line" is a
+    flex-basis of 100%, so say that; `grid-column` is left in place for any grid context.  */
+.histrow > .histdetail{flex:0 0 100%;width:100%}
+
+/*  3. A TIMESTAMP IS ONE VALUE AND MUST NOT BREAK ACROSS LINES.
+    On a phone the date wrapped as "2026-08-" / "27 18:45", which reads as two different dates
+    for as long as it takes to notice that it is not.  */
+.histrow .hxwhen{white-space:nowrap}
+
+@media (max-width:640px){
+  /*  4. THE QUERY COLUMN COLLAPSED TO ONE CHARACTER PER LINE.
+      This is what the phone actually showed: "a" on one line, "g…" on the next, in a column
+      about twenty pixels wide, for half the rows in the history.
+
+      `.histq` is `flex:1;min-width:0`, which is right on a wide screen and is what makes the
+      two-line clamp end in an ellipsis instead of a scrollbar. On a narrow one it is fatal:
+      `min-width:0` lets the query shrink past its own content, while the badges beside it are
+      `white-space:nowrap` and will not shrink at all, so the query was given whatever was left
+      over, which was nothing. The text was still there, still in the DOM, still in the title
+      attribute, and invisible.
+
+      Below the breakpoint the two stack, which is the only sane order on a phone anyway: the
+      query gets the full width and the metadata wraps underneath it.  */
+  .histrow{flex-direction:column;align-items:stretch;gap:6px}
+  .histrow > .histq{flex:none;width:100%;-webkit-line-clamp:3}
+  .histrow > .small.muted{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+
+  /*  5. A FOUR-COLUMN TABLE DOES NOT FIT ON A PHONE, and the settings page has one. At 390px
+      the first column was squeezed to about eight characters, so every setting name wrapped one
+      word per line and the last column fell off the side. Tables stop being tables here and
+      become one card per row, each cell labelled with the heading it lost.  */
+  .knobs, .knobs tbody, .knobs tr, .knobs td{display:block;width:auto}
+  .knobs thead{display:none}
+  .knobs tr{border:1px solid var(--line);border-radius:var(--r-sm);
+    padding:.7em .8em;margin:0 0 .7em;background:var(--s1)}
+  .knobs td{border:0;padding:.2em 0}
+  .knobs td.num{white-space:normal}
+  .knobs td[data-l]::before{content:attr(data-l);display:block;font-size:.72em;
+    text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:.15em}
+  .knobs .knoblabel{font-size:1.02em}
+  .knobs input[type=number], .knobs select{max-width:100%;width:auto}
+
+  /*  The 1.290 package builder: the size, the button and its (?) were one nowrap flex line and
+      ran off the side of a phone.  */
+  .pkgbuild{align-items:stretch}
+  .pkgbuild .pkgsize{justify-content:space-between}
+  .pkgbuild select{flex:1;min-width:0}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   Report page, 2026-08-27: one progress line, a thin filter row, the escalation moved down to
+   the results, and the secondary actions behind one control. The object of all of it is that the
+   first result is above the fold.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/*  THE PROGRESS LINE. One row, clickable, with everything it used to print stacked underneath it
+    now behind the click. */
+.stagenow .st-toggle{display:flex;align-items:baseline;gap:.45rem;width:100%;text-align:left;
+  background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;
+  min-width:0}
+.stagenow .st-line{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.stagenow .st-chev{flex:none;width:.7em;color:var(--faint);transition:transform .12s ease}
+.stagenow .st-chev::before{content:"\25B8"}
+.stagenow .st-toggle[aria-expanded="true"] .st-chev{transform:rotate(90deg)}
+.stagenow .st-toggle:hover .st-line{color:var(--accent)}
+.stagenow .st-detail{margin:.45rem 0 0;padding:.5rem .65rem;background:var(--s3);
+  border:1px solid var(--line);border-radius:var(--r-sm);font-size:.86rem;line-height:1.5}
+.stagenow .st-note{margin:0 0 .5rem;color:var(--muted)}
+/*  The live feed of references being read. Newest first, so the eye lands on the one that just
+    arrived; monospace on the publication number because that is the part being scanned. */
+/*  The search page, redesigned 2026-08-30: say it, choose the search, go. */
+.searchintro h1{margin-bottom:.15em}
+.moderow{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.6rem 0 .2rem}
+.moderow .lab{font-size:.92em;color:var(--muted)}
+.moderow select{padding:.4em .55em;font:inherit;min-width:14rem}
+.moderow .eta{margin-left:auto;white-space:nowrap}
+/*  The build's settings on ONE line, wrapping only when the viewport forces it. */
+.advline{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.advline label{display:inline-flex;align-items:center;gap:.35rem;font-size:.93em;white-space:nowrap}
+.advline select{padding:.3em .45em;font:inherit}
+.advline .toggle{gap:.3rem}
+/*  Both opt-ins on the action bar, in one row with the button. */
+.gostick .toggle{white-space:nowrap}
+
+/*  The filter bar before anything has been read: visibly not yet a control. `disabled` on the
+    fieldset is what actually stops it; this is what says so. */
+.resultfilters.inert > summary{opacity:.7}
+.resultfilters .filtergate{padding:.7em .9em;margin:.4em 0 .6em;border:1px dashed var(--line);
+  border-radius:8px;background:var(--card)}
+.resultfilters .controlswrap{border:0;margin:0;padding:0;min-width:0}
+.resultfilters .controlswrap[disabled]{opacity:.45;pointer-events:none}
+
+/*  The two searches, chosen before anything runs. Two cards, not a dropdown: the difference
+    between them is a paragraph each, and a dropdown cannot carry one. */
+.modepick{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin:0 0 .9rem}
+.modeopt{display:grid;grid-template-columns:auto 1fr;grid-template-areas:"r t" "r b";
+  gap:.15rem .55rem;align-items:start;padding:.6rem .75rem;border:1px solid var(--line);
+  border-radius:8px;cursor:pointer;background:var(--card)}
+.modeopt input{grid-area:r;margin-top:.2rem}
+.modeopt .mt{grid-area:t;font-weight:600}
+.modeopt .mb{grid-area:b;line-height:1.35}
+.modeopt:has(input:checked){border-color:var(--accent,#2b6cb0);box-shadow:0 0 0 1px var(--accent,#2b6cb0) inset}
+.modeopt.disabled{opacity:.55;cursor:not-allowed}
+.advopts.attackonly summary{font-weight:600}
+@media (max-width:640px){.modepick{grid-template-columns:1fr}}
+
+.stagenow .st-feed{margin:0 0 .6rem;padding-left:1.1rem;max-height:15rem;overflow:auto}
+.stagenow .st-feed li{margin:.2rem 0;line-height:1.35}
+.stagenow .st-feed li b{font-family:var(--mono,ui-monospace,SFMono-Regular,Menlo,monospace);
+  font-weight:600;color:var(--ink)}
+.stagenow .st-feed li .ttl{color:var(--ink);opacity:.85}
+.stagenow .st-feed li .muted{color:var(--muted);font-size:.92em}
+.stagenow .st-all{margin:0;padding-left:1.1rem;color:var(--muted)}
+.stagenow .st-all li{margin:.18rem 0}
+.stagenow .st-all li b{color:var(--ink);font-weight:600}
+.stagenow .st-all li span{display:block;font-size:.94em}
+.stagenow .st-all li.done{opacity:.55}
+.stagenow .st-all li.now b{color:var(--accent)}
+.stagenow .st-all li.now{font-weight:500}
+
+/*  THE FILTER ROW, one line at any width. It was a wrapping grid of five labelled selects and two
+    checkboxes; two of the controls have gone and the rest are told not to grow. */
+.resultfilters .controls{display:flex;flex-wrap:nowrap;align-items:center;gap:.5rem .8rem;
+  overflow-x:auto;padding:.15rem 0}
+.resultfilters .controls .cgroup{display:inline-flex;align-items:center;gap:.35rem;flex:none}
+.resultfilters .controls .lab{font-size:11.5px;color:var(--muted);font-weight:600;white-space:nowrap}
+.resultfilters .controls select{padding:.25em .4em;font-size:12.5px;max-width:11rem}
+.resultfilters .controls .toggle{white-space:nowrap;flex:none;font-size:12.5px}
+.resultfilters .controls #shown{margin-left:auto;white-space:nowrap;flex:none}
+
+/*  THE ESCALATION, now sitting immediately above the results it would replace. */
+.phasebar{margin:0 0 .7rem}
+.phasebar .phasebuys{display:flex;flex-wrap:wrap;gap:.5rem .7rem;align-items:center}
+.phasebar .phasebuy{display:inline-flex;align-items:center;gap:.35rem;margin:0}
+
+/*  MORE OPTIONS. A <details> used as a menu: no script, keyboard reachable, closes on Escape. */
+.moreops{position:relative;display:inline-block}
+.moreops>summary{list-style:none;cursor:pointer}
+.moreops>summary::-webkit-details-marker{display:none}
+.moreops>summary::after{content:" \25BE";color:var(--faint)}
+.moreopsmenu{position:absolute;z-index:40;right:0;margin-top:.3rem;min-width:14rem;
+  background:var(--s1);border:1px solid var(--line);border-radius:var(--r-sm);
+  box-shadow:var(--shadow);padding:.3rem}
+.moreopsmenu .mo{display:block;width:100%;text-align:left;background:none;border:0;
+  padding:.42rem .55rem;border-radius:4px;font:inherit;font-size:13px;color:var(--ink);
+  cursor:pointer;text-decoration:none}
+.moreopsmenu .mo:hover{background:var(--accent-soft);color:var(--ink);text-decoration:none}
+.moreopsmenu form{margin:0}
+
+/*  THE MERGED SCOPE PANEL. What was read, and what the Office had already read, in one panel
+    instead of two stacked ones. */
+.subsec{margin:.8rem 0 0;padding-top:.6rem;border-top:1px solid var(--line)}
+.subsec .subh{margin:0 0 .3rem;font-size:.92rem;font-weight:650}
+.subsec .subh .ts{font-weight:400;color:var(--muted);font-size:.86em;margin-left:.4rem}
+
+/*  Cost now rides in the run-facts line rather than owning a block above the query. */
+.runfacts .spendfig{background:none;border:0;padding:0;font:inherit;color:inherit;
+  cursor:pointer;text-decoration:underline dotted}
+.runfacts .spendfig:hover{color:var(--accent)}
+
+@media (max-width:640px){
+  .resultfilters .controls{flex-wrap:wrap;overflow-x:visible}
+  .resultfilters .controls #shown{margin-left:0}
+  .moreopsmenu{right:auto;left:0}
+}
+
+/*  ONE ROW MEANS ONE ROW. The component renders the live stage line and, beside it, the run's
+    overall clock and token count: two different facts and, until this rule, two stacked lines.
+    They are laid out as one row with the clock pinned right, so a collapsed progress display is a
+    single line at any width and the expander is the only thing that adds height. */
+#refiningStages, .progressmount{display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:baseline;column-gap:.7rem}
+#refiningStages > .stagenow, .progressmount > .stagenow{grid-column:1;min-width:0}
+#refiningStages > .pgclock, .progressmount > .pgclock{grid-column:2;margin:0 !important;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+@media (max-width:640px){
+  #refiningStages, .progressmount{grid-template-columns:minmax(0,1fr)}
+  #refiningStages > .pgclock, .progressmount > .pgclock{grid-column:1;margin:.15rem 0 0 !important}
+}
+
+/*  THE QUERY HEAD ROW. The tier badge, "Show full search" and "Refine and search again" on one
+    line: three controls that describe or change this search, which were three stacked blocks. */
+.qhead{display:flex;align-items:center;gap:.55rem .8rem;flex-wrap:wrap;margin-top:.35rem}
+.qhead .kindbadge.onreport{margin:0;padding:2px 9px;border-radius:var(--r-pill);
+  display:inline-flex;align-items:center;gap:.3rem;font-size:12.5px;background:var(--s3)}
+.qhead .kindbadge .kindname{font-weight:650;color:var(--ink)}
+.qhead .qmore{margin:0}
+
+/*  TWO LINES, NOT THREE. A search brief runs to a couple of thousand characters and the clamp was
+    three lines of it above every result; the whole string is still in the DOM and one click away. */
+.qwrap.clamped .q{-webkit-line-clamp:2}
+
+/*  The progress line now sits inside the refining banner, so it must not push it wide. */
+.refining #refiningStages{width:100%;min-width:0;margin-top:2px}
+.refining .stagenow .st-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/*  "Sort by" and its siblings had no breathing room top or bottom: the row sat flush against the
+    panel edge above it and the first card below. */
+.resultfilters .controls{padding:.55rem .8rem !important}
+.resultfilters{margin:.2rem 0 .7rem}
+.resultfilters>summary{padding:0 .1rem}
+
+/*  THE ACCOUNT CHIP AND ITS MENU. One row in the header, the address inside the menu. */
+.acctmenu{position:relative}
+.acctmenu>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;
+  padding:3px 9px 3px 3px;border:1px solid var(--line);border-radius:var(--r-pill);
+  background:var(--s1);font-size:13px;color:var(--ink);white-space:nowrap;max-width:14rem}
+.acctmenu>summary::-webkit-details-marker{display:none}
+.acctmenu>summary::after{content:"\25BE";color:var(--faint);font-size:.8em}
+.acctmenu>summary:hover,.acctmenu[open]>summary{border-color:var(--line2)}
+.acctmenu.active>summary{border-color:rgba(76,141,255,.45);background:var(--accent-soft)}
+.acctinit{display:inline-flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;
+  border-radius:50%;background:var(--accent);color:var(--accent-fg);font-size:11.5px;
+  font-weight:700;flex:none}
+.acctname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.acctpop{position:absolute;right:0;top:calc(100% + .35rem);z-index:60;min-width:15rem;
+  background:var(--s1);border:1px solid var(--line);border-radius:var(--r-sm);
+  box-shadow:var(--shadow);padding:.3rem}
+.acctwho{padding:.45rem .55rem .5rem;border-bottom:1px solid var(--line);margin-bottom:.25rem;
+  display:grid;gap:.1rem}
+.acctwho b{font-size:13px}
+.acctwho span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.acctpop .mo{display:block;padding:.42rem .55rem;border-radius:4px;font-size:13px;
+  color:var(--ink);text-decoration:none}
+.acctpop .mo:hover{background:var(--accent-soft);text-decoration:none}
+.acctpop .mo-out{border-top:1px solid var(--line);margin-top:.25rem;padding-top:.5rem;
+  color:var(--bad)}
+
+/*  READ IN FULL. The per-card ask, sized to sit where the "no score" sentence was. */
+.readfull{margin-top:.25rem;font:inherit;font-size:10.5px;line-height:1.3;padding:2px 7px;
+  border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--s1);
+  color:var(--muted);cursor:pointer;white-space:nowrap}
+.readfull:hover{border-color:var(--accent);color:var(--accent)}
+.readfull:disabled{opacity:.6;cursor:default}
+.readall{flex:none;white-space:nowrap}
+.readprog{margin:.4rem .8rem .5rem;font-size:12.5px;color:var(--muted)}
+.readprog.bad{color:var(--bad)}
+
+/*  The tier chip on the query row kept the old block rule's left accent, which rendered as a
+    stray bracket beside the word. */
+.qhead .kindbadge.onreport{border:1px solid var(--line);border-left-width:1px}
+.qhead .kindbadge.onreport::before{content:none}
+
+/*  THE COVERAGE PAGE. It had no side margin at all (no .wrap), no separation between sections and
+    eight paragraphs of prose between its numbers. Four figures, then everything else behind one
+    disclosure, with the explanations behind their (?) marks. */
+.corpuspage{padding:28px 0 40px}
+.cphead{display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap;margin-bottom:.2rem}
+.cphead h1{margin:0}
+.cpage{font-size:12.5px;color:var(--muted)}
+.cphead .btn{margin-left:auto}
+.cpwarn{margin:.6rem 0}
+.cpgrid{display:grid;gap:.7rem;margin:1.1rem 0 0;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.cpstat{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:.85rem 1rem}
+.cpstat-lead{border-color:rgba(23,92,211,.35);background:var(--accent-soft)}
+.cpk{display:block;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.01em}
+.cpv{display:block;font-size:30px;line-height:1.15;margin:.25rem 0 .1rem;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.cpsub{display:block;font-size:12px;color:var(--muted)}
+.nomeasure{font-size:15px;font-weight:400;color:var(--muted);font-style:italic}
+.cpmore{margin:1.4rem 0 0;border-top:1px solid var(--line);padding-top:.7rem}
+.cpmore>summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:.6rem;
+  flex-wrap:wrap}
+.cpmore>summary::-webkit-details-marker{display:none}
+.cpmore>summary::before{content:"\25B8";color:var(--faint)}
+.cpmore[open]>summary::before{content:"\25BE"}
+.cpsumh{font-weight:650}
+.cpsums{font-size:12.5px;color:var(--muted)}
+.cpmorein{margin-top:.9rem;display:grid;gap:1.1rem}
+.cprow h2{font-size:15px;margin:0 0 .45rem}
+.cpinline{display:flex;flex-wrap:wrap;gap:.35rem 1.2rem;font-size:13px}
+.cpinline b{font-variant-numeric:tabular-nums}
+.cpfail{margin:.2rem 0 .5rem;font-size:12.5px;color:var(--bad)}
+.cpbarwrap{margin-top:.5rem}
+.cpbar{height:6px;background:var(--s2);border-radius:99px;overflow:hidden}
+.cpbar span{display:block;height:100%;background:var(--accent)}
+.cptbl{border-collapse:collapse;margin-top:.5rem;font-size:12.5px;width:100%;max-width:46rem}
+.cptbl th{text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;
+  text-transform:uppercase;letter-spacing:.03em;padding:.2rem .8rem .25rem 0;
+  border-bottom:1px solid var(--line)}
+.cptbl td{padding:.28rem .8rem .28rem 0;vertical-align:top;border-bottom:1px solid var(--s2)}
+.cptbl .num,.cptbl th.num{text-align:right;font-variant-numeric:tabular-nums;padding-right:1.1rem}
+@media (max-width:640px){ .corpuspage{padding:18px 0 28px} .cpv{font-size:25px} }
+
+/*  THE DOCUMENT ROW: preview, edit, download. */
+.pvbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent);cursor:pointer;
+  text-decoration:none}
+.pvbtn:hover{text-decoration:underline}
+.dlmenu{position:relative;display:inline-block}
+.dlmenu>summary{list-style:none;cursor:pointer;color:var(--accent)}
+.dlmenu>summary::-webkit-details-marker{display:none}
+.dlmenu>summary::after{content:" \25BE"}
+.dlmenu>summary:hover{text-decoration:underline}
+.dlpop{position:absolute;z-index:50;left:0;margin-top:.3rem;min-width:15rem;background:var(--s1);
+  border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:var(--shadow);padding:.3rem}
+.dlpop .mo{display:block;padding:.4rem .55rem;border-radius:4px;font-size:13px;color:var(--ink);
+  text-decoration:none;white-space:nowrap}
+.dlpop .mo:hover{background:var(--accent-soft);text-decoration:none}
+.dlpop .mo .muted{font-size:11.5px;margin-left:.35rem}
+
+/*  The preview dialog: the actual filed PDF, rendered, at a readable size. */
+.pvdlg{width:min(58rem,94vw);max-width:none;height:min(86vh,60rem);padding:0;border:0;
+  border-radius:var(--r);overflow:hidden}
+.pvdlg::backdrop{background:rgba(23,33,43,.42)}
+.pvhead{display:flex;align-items:center;gap:.8rem;padding:.6rem .9rem;border-bottom:1px solid var(--line);
+  background:var(--s1)}
+.pvdlg iframe{display:block;width:100%;height:calc(100% - 3.1rem);border:0;background:var(--s2)}
+
+/*  THE READ-DEPTH CHOOSER. One row: what to read, how long it takes, and go. */
+.readdepth{display:flex;align-items:center;gap:.5rem .7rem;flex-wrap:wrap}
+.readdepth .rdlab{display:inline-flex;align-items:center;gap:.4rem;font-size:12.5px;
+  color:var(--muted);font-weight:600}
+.readdepth select{padding:.3em .45em;font:inherit;font-size:13px;max-width:16rem}
+.readdepth .rdeta{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.readdepth .rdbatch{font-size:12.5px;white-space:nowrap}
+
+/*  The cost breakdown, as a dialog. It was clipped to two lines inside a 39px summary row. */
+.spenddlg{width:min(34rem,94vw);border:0;border-radius:var(--r);padding:1rem 1.1rem}
+.spenddlg::backdrop{background:rgba(23,33,43,.42)}
+.spenddlg .spendbox{margin:.2rem 0 0;max-height:60vh;overflow:auto}
+.spenddlg .spendbox table{width:100%}
+
+/*  ── the publish switch ──────────────────────────────────────────────────────────────────────
+    A checkbox drawn as a switch, because publish/un-publish is one state and not two verbs. The
+    real input keeps its own focus ring and keyboard behaviour; only the track and knob are drawn.
+    The dimmed address is the un-published state: readable and copyable, visibly not live. */
+.pubtog { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 2px; }
+.switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch .track {
+  width: 38px; height: 21px; border-radius: 999px; background: var(--line, #d8dde5);
+  position: relative; transition: background .15s ease; flex: 0 0 auto;
+}
+.switch .knob {
+  position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.28); transition: transform .15s ease;
+}
+.switch input:checked + .track { background: var(--ok, #1a7f4b); }
+.switch input:checked + .track .knob { transform: translateX(17px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; }
+.switch input:disabled + .track { opacity: .55; cursor: default; }
+.switch .swlab { font-size: .9rem; font-weight: 600; }
+#publishUrl.dim { color: var(--muted, #6b7280); background: var(--bg-soft, #f6f7f9); }
+
+
+/*  ── coverage: the nested detail sections ────────────────────────────────────────────────────
+    Each is one subject the reader may or may not want: the two databases, the services, the
+    batching trade, the machines. Collapsed, they are five rows; the page still opens on four
+    numbers, which is what it is for. Nested inside "The machinery behind it", so the indent and
+    the lighter rule are what say which level you are at. */
+.cpsec { border-top: 1px solid var(--line, #e6e8ec); }
+.cpsec:first-of-type { border-top: 0; }
+.cpsec > summary {
+  cursor: pointer; list-style: none; padding: 13px 4px 13px 26px; position: relative;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+}
+.cpsec > summary::-webkit-details-marker { display: none; }
+.cpsec > summary::before {
+  content: "›"; position: absolute; left: 7px; top: 11px; font-size: 1.15rem;
+  color: var(--muted, #6b7280); transition: transform .14s ease; transform-origin: 45% 55%;
+}
+.cpsec[open] > summary::before { transform: rotate(90deg); }
+.cpsec > summary:hover { background: var(--bg-soft, #f7f8fa); }
+.cpsec .cpsumh { font-weight: 650; font-size: 1rem; }
+.cpsec .cpsums { color: var(--muted, #6b7280); font-size: .87rem; }
+.cpsecin { padding: 0 4px 18px 26px; }
+.cptext {
+  margin: 0 0 11px; max-width: 74ch; line-height: 1.55; font-size: .93rem;
+  color: var(--fg, #1f2430);
+}
+.cptext code { font-size: .86em; word-break: break-word; }
+.cpsub2 { display: block; color: var(--muted, #6b7280); font-size: .78rem; }
+.corpuspage .cptbl { margin: 4px 0 12px; }
+@media (max-width: 640px) {
+  .cpsec > summary { padding-left: 22px; }
+  .cpsecin { padding-left: 10px; }
+  /*  Five columns do not fit a phone. Scroll the table rather than wrapping every cell to one
+      word per line, which is what the machines table did before. */
+  .cpsecin .cptbl { display: block; overflow-x: auto; white-space: nowrap; }
+}
+
+
+/*  HIDDEN MEANS HIDDEN.
+    `[hidden]` is a UA rule setting display:none, and ANY author rule that sets display beats it.
+    Almost every control here has one: .btn is inline-flex, .mo is block. So `el.hidden = true` in
+    script did nothing to a button, which is why two password buttons sat on an unpublished report
+    offering to change a password on a link that does not resolve. Two places had already patched
+    around it locally (.archivecompact, .chatstatus); this is the same fix once, for everything. */
+[hidden] { display: none !important; }
+
+
+/*  ── why a control is greyed, on hover ───────────────────────────────────────────────────────
+    A disabled button receives no pointer events: its own `title` never fires and its own `:hover`
+    never matches, which is why the greyed submission button was silent about what it wanted. The
+    explanation therefore hangs off a wrapper that is not disabled.
+
+    Not a `title`: this is three sentences and a native tooltip truncates, waits a second, and is
+    unreachable from the keyboard. `:focus-within` carries it for a keyboard reader, since the
+    button itself cannot take focus while disabled but the wrapper's siblings can be tabbed past. */
+.gatewrap { position: relative; display: inline-flex; }
+.gatetip {
+  position: absolute; left: 0; top: calc(100% + 8px); z-index: 60;
+  width: min(30rem, 82vw); padding: 11px 13px;
+  background: var(--panel, #fff); color: var(--ink, #1f2430);
+  border: 1px solid var(--line, #d8dde5); border-radius: var(--r-sm, 6px);
+  box-shadow: 0 8px 26px rgba(0,0,0,.16);
+  font-size: .86rem; line-height: 1.5; font-weight: 400;
+  opacity: 0; visibility: hidden; transform: translateY(-3px);
+  transition: opacity .13s ease, transform .13s ease, visibility .13s;
+}
+.gatetip::before {
+  content: ""; position: absolute; left: 18px; top: -6px; width: 10px; height: 10px;
+  background: inherit; border-left: 1px solid var(--line, #d8dde5);
+  border-top: 1px solid var(--line, #d8dde5); transform: rotate(45deg);
+}
+.gatewrap:hover .gatetip,
+.gatewrap:focus-within .gatetip { opacity: 1; visibility: visible; transform: translateY(0); }
+.gatewrap .btn[disabled] { pointer-events: none; }
+@media (max-width: 640px) {
+  /*  A 30rem bubble anchored left runs off a phone. Pin it to the viewport instead. */
+  .gatetip { position: fixed; left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; }
+  .gatetip::before { display: none; }
+}
+
+
+/*  The sort bar is one row by design; nothing in it may wrap or push a sibling off the edge. */
+.controls .nowrap { white-space: nowrap; }
+.controls #shown { white-space: nowrap; }
+
+
+/*  "and build" broke across two lines because the label is a flex item that may shrink. The
+    words in front of a control are part of the control; wrapping them makes the row read as four
+    stacked fragments instead of one sentence. */
+.rdlab { white-space: nowrap; }
+.rdlab select { white-space: normal; }
+/*  "read this one" is three characters wider than "read in full" was, and the card's right rail
+    is fixed. Let the button use the rail's full width rather than clipping. */
+.relscore .readfull, .readfull { max-width: 100%; white-space: nowrap; }
+
+
+/*  ── the read-depth slider ───────────────────────────────────────────────────────────────────
+    The number and the line are one control, so they sit in one flex box and the read-out never
+    wraps under the track. Width is capped: a range input with no width fills its flex parent and
+    pushed the rest of the row off the page. */
+.rdslider { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.rdslider input[type="range"] {
+  width: clamp(9rem, 18vw, 15rem); accent-color: var(--accent, #2563eb);
+  height: 22px; cursor: pointer; flex: 0 0 auto;
+}
+.rdslider input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent, #2563eb); outline-offset: 3px; border-radius: 4px;
+}
+.rdcount { font-size: .86rem; color: var(--ink, #1f2430); white-space: nowrap; font-weight: 600; }
+@media (max-width: 640px) {
+  /*  On a phone the row is already stacked; let the track take the width it has and the read-out
+      sit under it rather than squeezing both onto one line. */
+  .rdslider { flex-wrap: wrap; }
+  .rdslider input[type="range"] { width: 100%; }
+  .rdcount { white-space: normal; }
+}
+
+/*__APPEND__*/
+/*__APPEND__*/
+/*__APPEND__*/
+
+/*  ── the start button rides the bottom of the page ───────────────────────────────────────────
+    After a document is broken down this page is several screens long and the button that starts
+    the search was at the end of it. Sticky, not fixed, so it sits in the flow on a short page and
+    only pins itself once the page is long enough to scroll past it. */
+.gostick {
+  position: sticky; bottom: 0; z-index: 40;
+  padding: 10px 12px; margin: 6px -12px -6px;
+  background: color-mix(in srgb, var(--panel, #fff) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid var(--line, #e6e8ec);
+}
+@supports not (backdrop-filter: blur(1px)) { .gostick { background: var(--panel, #fff); } }
+
+/*  The third-party toggle sat under whatever margin the hidden inputs above it left behind. */
+.searchcard .tpsrc { margin-top: 0; }
+.searchcard .tpsrc + .qmark { margin-left: 2px; }
+.notifychoice { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/*  ── long text is three lines until asked ────────────────────────────────────────────────────
+    The abstract, each claim and the extracted text are all documents in their own right, and the
+    review panel showed every one of them in full: several screens of scrolling before the button.
+    Three lines each, click to open. Not a <details>, because the summary would be the first three
+    lines and a marker beside them reads as a heading rather than as truncated prose. */
+.clamp3 {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; cursor: pointer; position: relative;
+}
+.clamp3.open { display: block; -webkit-line-clamp: none; overflow: visible; }
+.clamp3::after {
+  content: "more"; position: absolute; right: 0; bottom: 0; padding-left: 2.2em;
+  font-size: .78rem; font-weight: 600; color: var(--accent, #2563eb);
+  background: linear-gradient(90deg, transparent, var(--panel, #fff) 2em);
+}
+.clamp3.open::after { content: "less"; position: static; padding: 0 0 0 6px; background: none; }
+
+
+/*  The claim number and its IND/dep tag on one line, not stacked in a column. */
+.exclaimno { flex-direction: row !important; align-items: baseline !important;
+             gap: 5px !important; padding-top: 3px !important; min-width: 4.4rem; }
+.exclaim { align-items: start; }
+.exclaimta { min-height: 2.2em; resize: vertical; }
+.exclaimta.clamp3 { max-height: 4.6em; overflow: auto; }
+.exclaimta.clamp3.open { max-height: none; }
+
+/*  The sticky bar carries the button and the one choice that changes the cost of the run. */
+.gostick { display: flex; align-items: center; gap: 14px; flex-wrap: nowrap; }
+.gostick .toggle { white-space: nowrap; font-size: .85rem; margin: 0; }
+.gostick .qmark { flex: 0 0 auto; }
+
+/*  These three all have to hold one line and were each wrapping to two. */
+.notifychoice, .notifyopt, .scope-line, .dropline {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.notifyopt { display: inline-flex; align-items: center; gap: 7px; }
+@media (max-width: 720px) {
+  .notifychoice, .notifyopt, .scope-line, .dropline { white-space: normal; }
+  .gostick { flex-wrap: wrap; }
+}
+
+/*  An empty status box is not a status. */
+.ex-status[hidden] { display: none !important; }
+
+.advopts { margin: 10px 0 2px; }
+.advopts > summary { cursor: pointer; font-size: .86rem; font-weight: 600; color: var(--muted, #6b7280); }
+.advgrid { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 9px 2px 2px; }
+.advgrid label { display: inline-flex; align-items: center; gap: 7px; font-size: .86rem; }
+.advgrid select { max-width: 15rem; }
+.advmore { flex: 1 1 100%; }
+
+
+
+/*  Belt and braces on the empty status box: hidden by attribute AND when it holds nothing. */
+.ex-status:empty { display: none !important; }
+.notifychoice.slim { background: none; border: 0; padding: 0; margin: 6px 0 0; }
+
+/*  ── the read controls, one row at 1440 ──────────────────────────────────────────────────────
+    Nowrap was not enough: the row carries three labelled selects, a slider, a read-out, two
+    checkboxes, three (?) and a button. Content had to go, not only whitespace. The estimate folds
+    into the read-out and the (?) marks collapse to one for the whole row. */
+.phasebuy.readdepth { gap: 6px 8px; font-size: .84rem; }
+.phasebuy.readdepth .rdlab { gap: 4px; }
+.phasebuy.readdepth select { max-width: 10.5rem; font-size: .82rem; padding: 3px 6px; }
+.phasebuy.readdepth .rdeta { display: none; }
+.phasebuy.readdepth .qmark { display: none; }
+.phasebuy.readdepth .qmark:first-of-type { display: inline-flex; }
+.phasebuy.readdepth .toggle { font-size: .78rem; gap: 4px; }
+.phasebuy.readdepth .btn { padding: 6px 12px; font-size: .84rem; }
+.phasebuy.readdepth .rdslider input[type="range"] { width: clamp(5rem, 8vw, 8rem); }
+
+
+/*  ONE ROW, AND THIS TIME THE RULE EXISTS.
+    The nowrap for this row was written two revisions ago and the patch carrying it was REFUSED on
+    a duplicate marker, so the CSS never landed while I reported it as done three times. Measured
+    from the live DOM afterwards: row one used 997px of 1122px, leaving 125px for an email toggle
+    and a button that need 275px together, so it wrapped. Both halves are fixed here: the wrap is
+    forbidden at a specificity above `.phasebar .phasebuy`, and the labels were cut to fit rather
+    than being squeezed by CSS alone. */
+.phasebar .phasebuy.readdepth {
+  display: flex !important; flex-wrap: nowrap !important;
+  align-items: center; gap: 6px 8px; min-width: 0; font-size: .84rem;
+}
+.phasebar .phasebuy.readdepth > * { flex: 0 0 auto; }
+.phasebar .phasebuy.readdepth select { flex: 0 1 auto; min-width: 0; max-width: 10rem; }
+.phasebar .phasebuy.readdepth .rdslider input[type="range"] { width: clamp(5rem, 7vw, 7.5rem); }
+.phasebar .phasebuy.readdepth .rdcount { max-width: 12rem; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 1000px) {
+  .phasebar .phasebuy.readdepth { flex-wrap: wrap !important; }
+}
+
+
+/*  The sticky bar is a bar, not a panel. Measured: 66px tall for a 45px button, so a third of it
+    was padding around a control that is already the tallest thing on the page. */
+.gostick { padding: 6px 12px; gap: 12px; }
+.gostick .btn { padding: 8px 16px; }
+
+
+/*  WHILE THE SEARCH IS SCORING THERE IS NOTHING TO CHOOSE A DEPTH FOR.
+    The row was left visible and merely disabled, which still cost its height and still read as a
+    control. `data-running` is set from `v.partial`, so this hides the whole bar for the duration
+    of the run; the page reloads itself when the run finishes and the bar comes back.
+
+    TRADE, stated because it reverses an earlier decision: an INTERRUPTED report is also partial,
+    so it loses this control too. Re-running one is under More options. If that turns out to
+    matter more than the space, the fix is a separate "job is live" flag rather than reusing
+    `partial` for two different states. */
+.phasebar:has(.readdepth[data-running]) { display: none; }
+

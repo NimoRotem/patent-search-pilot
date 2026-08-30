@@ -1,0 +1,317 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "a47l_ep2557326a1",
+ "subject_pub": "EP-2557326-A1",
+ "n_claims_source": 12,
+ "claims_source": "family_claims:US-9574614-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 48,
+  "by_kind": {
+   "independent_limitation": 16,
+   "combination": 3,
+   "dependent_limitation": 29
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A coupling head having a coupling head rotation axis.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The coupling head includes three drive surfaces.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The three drive surfaces of the coupling head are rotationally symmetrical through 120\u00b0 with respect to the coupling head rotation axis.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A coupling member having a coupling member rotation axis.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The coupling member includes three first, right open helicoidal drive surfaces.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The axis of the first helicoidal drive surfaces substantially coincides with the coupling member rotation axis.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The three drive surfaces of the coupling member are rotationally symmetrical through 120\u00b0 with respect to the coupling member rotation axis.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The coupling member further includes three second drive surfaces.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Each second drive surface is mirror symmetric to a respective first right open helicoidal drive surface.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The mirror symmetry is in a respective axial-radial plane of symmetry.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The coupling head and coupling member are detachably couplable.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "In a coupled state, their respective rotational axes are aligned.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The coupling head is rotatable to drive each of its three drive surfaces.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Each drive surface of the coupling head is in contact with one of a respective first drive surface or second drive surface of the coupling member.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Driving the coupling head in contact with the coupling member results in exertion of both torque and an axially directed force on the coupling member.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The axially directed force is independent of whether the coupling member is driven clockwise or counter-clockwise.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A drive coupling assembly for a high-speed rotating brush, comprising a coupling head with three 120\u00b0 rotationally symmetrical drive surfaces, and a coupling member with three first right open helicoidal drive surfaces and three mirror-symm",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A high-speed rotating brush assembly for a floor cleaning device, comprising an elongate, substantially cylindrical brush with one end provided with a drive coupling assembly, where the coupling head has three 120\u00b0 rotationally symmetrical ",
+   "kind": "combination",
+   "source": "claim 11",
+   "weight": 0.9
+  },
+  {
+   "text": "A floor cleaning device, comprising an elongate, substantially cylindrical brush rotatably mounted, a motor mechanism to drive the brush at at least 2500 rpm, and a drive coupling assembly between the motor and brush, where the coupling hea",
+   "kind": "combination",
+   "source": "claim 12",
+   "weight": 0.9
+  },
+  {
+   "text": "Each drive surface of the coupling head and coupling member has a radial extent of \u226615 mm.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The radial extent is the length of the largest radius of the respective drive surface.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive surfaces of the coupling head and coupling member have a radial extent of \u22669 mm.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The coupling member defines a coupling head reception cavity.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The cavity is bounded by a side wall that extends around the coupling member rotation axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The cavity provides for three radially inwardly protruding drive cams.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Each drive cam has a respective one of the first drive surfaces.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Each of the three radially inwardly protruding drive cams provides for a leading first drive surface and a trailing second drive surface, viewed tangentially.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The coupling head reception cavity is further bounded by a generally planar back wall.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The back wall extends perpendicular to the coupling member rotation axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The back wall connects to the side wall.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The coupling head includes a generally triangular drive section.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The triangular drive section provides for the coupling head's drive surfaces.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive surfaces are interconnected by connecting surfaces.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Each drive surface of the coupling head includes a slight convex curvature, seen in a plane perpendicular to the coupling head rotation axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Each drive surface of the coupling head has a convex curvature whose center lies substantially on the coupling head rotation axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The curvature is seen in a plane substantially transverse to a respective drive surface and containing the coupling head rotation axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The back wall of the coupling head reception cavity includes a central opening or recess.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The coupling head comprises a central nose that protrudes axially from the triangular drive section.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The opening or recess is configured to receive the nose in the coupled condition.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "A brush assembly with an elongate, substantially cylindrical brush.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The brush extends between a first end and a second end.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The brush is configured to be rotatably mounted at said ends in a floor cleaning device.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "One of the brush ends is provided with one of a coupling head or a coupling member of a drive coupling assembly.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "A floor cleaning device comprising a motor mechanism.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The motor mechanism is configured to drive the brush into rotation at a rotational speed of at least 2500 rpm.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "A drive coupling assembly is disposed between the motor mechanism and the brush.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "During operation, torque from the motor mechanism is transferred to the brush via the drive coupling assembly.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "A force directed along the longitudinal axis of the brush is transferred via the drive coupling assembly.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "c1b5b720b30bc5f1"
+}

@@ -1774,41 +1774,35 @@ async function openSimilar(pn){
    backwards, each stage keeps the numbers it learned, and the active stage shows how long it has
    been running — a silent server still reads as visible, honest progress. */
 const LIVE_CORPUS_N = Number((typeof window !== 'undefined' && window.CORPUS_PUBLICATIONS) || 0);
-const LIVE_CORPUS_NOTE = (LIVE_CORPUS_N
-  ? 'Our own pgvector corpus of ' + LIVE_CORPUS_N.toLocaleString() + ' publications with full claims and description text, '
-  : 'Our own pgvector corpus with full claims and description text, ')
-  + 'searched through eight channels at once: dense and claim-dense embeddings, sparse BM25 over '
-  + 'claims and full text, CPC classification, backward and forward citations, query-by-example '
-  + 'and cross-lingual EN/DE.';
-/*  THE STAGE LIST IS WHAT THE USER BELIEVES IS HAPPENING, so it has to match what is.
+const LIVE_CORPUS_CLAIMS = Number((typeof window !== 'undefined' && window.CORPUS_CLAIMS_PUBS) || 0);
+/*  THIS SENTENCE SAID SOMETHING FALSE until 2026-08-25. It read "N publications with full claims
+    and description text", where N is every publication in the corpus. MEASURED: N is 4,984,254 and
+    the number with parsed claims is 814,523, which is 16%; description text is rarer still. An
+    attorney reading it would believe the run had searched five million patents' claims. The count
+    now comes from the same snapshot /corpus shows, and the sentence says only what is true: how
+    many publications there are, and how many of them the search can read claims for. */
+/*  THE STAGE LIST IS THE RANK AND THE NAME, and nothing else.
 
-    It did not. Two defects, both visible on a five-hour run:
-      * `KIND_RANK` topped out at `reranking`, so the deep read and the orphan-claim rescue — which
-        together are the overwhelming majority of a search's wall clock — had no stage at all. The
-        page parked on "Reranking and grounding" and its note for over two hours while the elapsed
-        timer counted, which reads as a hang and describes the wrong work entirely.
-      * the rerank note said "the closest 25 references" when retrieval.RERANK_TOP is 50, and the
-        corpus note listed a handful of channels as though the local index were the whole search.  */
+    It used to carry a two-sentence NOTE per stage as well: what the corpus is, which eight
+    channels are searched, what the screen scores, what the cross-encoder does. 1,600 characters of
+    prose, identical on every run and on every report, rendered in the panel a reader opens when
+    the counter has not moved for ten minutes. It was reported twice as the thing on screen, so it
+    is gone from the file and not only from the render: prose that nothing displays is prose the
+    next change re-displays. What the panel shows now is the run's own activity; see createProgress.
+
+    The name is still the headline when the server has sent no message of its own, and the rank is
+    still what the progress bar and KIND_RANK are keyed on.  */
 const STAGES = [
-  { key: 'decompose', rank: 0, name: 'Reading the disclosure',
-    note: 'Extracting the claims verbatim, splitting them into their separate limitations, and condensing the document into a search brief.' },
-  { key: 'search',    rank: 1, name: 'Searching our corpus',
-    note: LIVE_CORPUS_NOTE },
-  { key: 'expand',    rank: 2, name: 'Expanding the candidate set',
-    note: 'Following citations, patent families and EN/DE equivalents outward from the seed hits, plus the query document\'s own text chunks and a drawing-image match against the corpus figure index.' },
-  { key: 'federate',  rank: 3, name: 'Every external source, in parallel',
-    note: 'BigQuery Google Patents (all 170M publications), SerpApi Google Patents, PQAI, EPO OPS, USPTO ODP, OpenAlex, HimmPat (CN/JP/KR with English full text), IP Australia, Lens.org and KIPRIS — whichever are configured — fused with the local results by reciprocal rank.' },
-  { key: 'rounds',    rank: 4, name: 'Refinement rounds',
-    note: 'Re-querying on the limitations that are still uncovered, until new families stop appearing.' },
-  { key: 'screen',    rank: 5, name: 'Screening the candidates',
-    note: 'Every candidate scored 0-100 from its title, abstract and first claims, to decide which are worth reading in full.' },
-  { key: 'read',      rank: 6, name: 'Reading references in full',
-    note: 'Each selected reference read end to end against every claim limitation and disclosure. Every cell carries a verbatim quote that must be found in the reference and located in a specific passage, then survive an independent refuter. This is the longest stage.' },
-  { key: 'rescue',    rank: 7, name: 'Going back for uncovered claims',
-    note: 'Any limitation still without prior art gets its own search, and what comes back is read in full against the same checklist.' },
-  { key: 'rerank',    rank: 8, name: 'Reranking and grounding',
-    note: 'A bge-reranker cross-encoder rescores the closest ' + (window.RERANK_TOP || 50) + ' references, then the page is ordered by rarity-weighted grounded evidence and by how many claims each reference answers.' },
-  { key: 'done',      rank: 9, name: 'Report ready', note: '' }
+  { key: 'decompose', rank: 0, name: 'Reading the disclosure' },
+  { key: 'search', rank: 1, name: 'Searching our corpus' },
+  { key: 'expand', rank: 2, name: 'Expanding the candidate set' },
+  { key: 'federate', rank: 3, name: 'Every external source, in parallel' },
+  { key: 'rounds', rank: 4, name: 'Refinement rounds' },
+  { key: 'screen', rank: 5, name: 'Screening the candidates' },
+  { key: 'read', rank: 6, name: 'Reading references in full' },
+  { key: 'rescue', rank: 7, name: 'Going back for uncovered claims' },
+  { key: 'rerank', rank: 8, name: 'Reranking and grounding' },
+  { key: 'done', rank: 9, name: 'Report ready' },
 ];
 const KIND_RANK = {
   elements: 1, search_progress: 1, seeded: 2, seed_progress: 2, partial: 2,
@@ -1827,11 +1821,37 @@ function createProgress(mount, opts){
   const stages = STAGES.filter(s => s.key !== 'federate' || wide);
   const DONE_RANK = STAGES[STAGES.length - 1].rank;   // was hardcoded 6; the list is longer now
   const state = { rank: 0, detail: {}, since: Date.now(), started: Date.now(), msg: '',
-                  tokens: 0, elapsed: 0, elapsedTotal: 0, attempt: 0 };
-  mount.innerHTML = '<ul class="stages">' + stages.map(s =>
-    '<li data-rank="' + s.rank + '"><span class="ico" aria-hidden="true">✓</span>' +
-    '<span class="txt"><span class="st-name">' + s.name + '</span>' +
-    '<span class="st-note">' + s.note + '</span></span></li>').join('') + '</ul>' +
+                  tokens: 0, elapsed: 0, elapsedTotal: 0, attempt: 0,
+                  activity: [], seen: {} };
+  /*  ONE LINE, NOT NINE ROWS. The checklist made sense when a stage could hold the page for two
+      hours: the list told you where you were in a long run. The search is fast now, so the list
+      is nine paragraphs of text that never change wrapped around one that does, and the reader
+      has to find the live row to learn anything. This renders only the CURRENT stage, which is
+      the only row that was ever carrying information. */
+  /*  AND ONE LINE MEANS ONE LINE. It still rendered the stage NAME and then the stage NOTE
+      underneath it, and the note is two sentences of explanation plus the counters plus the
+      running clock, which wrapped to three more. Stacked with the banner's own message and title
+      that was five lines of moving text above a results list.
+
+      What a person watching a search needs on the page is one line: what is happening now, with
+      its numbers and how long it has been going. Everything else is worth exactly one click, so
+      it is behind one: the stage's explanation and the whole run narrative, every stage with its
+      own note, which is the checklist this used to be.  */
+  /*  WHAT IS HAPPENING, NOT WHAT THE PIPELINE IS. The panel behind the chevron used to be the
+      nine stages with their two-sentence notes: 1,600 characters of fixed prose that is identical
+      on every run and on every report, opened by somebody who wanted to know why the counter had
+      not moved in ten minutes. It answered a question nobody was asking.
+
+      It is the run's own activity now, newest first: every distinct thing the server said it
+      was doing, and for the reading stage the references themselves with what came back from
+      each. The nine notes are gone entirely. They were still under the feed after the first pass
+      at this and were reported again, verbatim, as the thing on screen. */
+  mount.innerHTML = '<div class="stagenow">' +
+    '<button type="button" class="st-toggle" aria-expanded="false">' +
+      '<span class="st-chev" aria-hidden="true"></span>' +
+      '<span class="st-line"></span></button>' +
+    '<div class="st-detail" hidden><ol class="st-feed" reversed></ol>' +
+      '<p class="st-empty muted"></p></div></div>' +
     /* The overall clock lives INSIDE the component: the generating page has its own #elapsed
        footer, but most of a long run is watched from the report page's refining banner, which
        had no counter at all — "no overall time and token counter" was reported verbatim. */
@@ -1842,30 +1862,79 @@ function createProgress(mount, opts){
     if (d.elements) out.push(d.elements + ' element' + (d.elements !== 1 ? 's' : '') + ' identified');
     if (d.families) out.push(d.families.toLocaleString() + ' candidate families');
     if (d.round) out.push('round ' + d.round);
+    /*  WHAT IS DOING THE WORK AND HOW FAST. Reading is 97% of the bill and the only stage that
+        scales, so while it runs the line names the model and the measured rate rather than only
+        counting documents. The rate is this run's own tokens over its own elapsed time, so it is
+        what the search is actually getting rather than a quoted figure. */
+    if (state.rank >= 6 && state.rank <= 7) {
+      if (window.READ_MODEL) { out.push(window.READ_MODEL); }
+      var secs = state.elapsed || Math.round((Date.now() - state.started) / 1000);
+      if (state.tokens > 0 && secs > 5) {
+        out.push(Math.round(state.tokens / secs).toLocaleString() + ' tok/s');
+      }
+    }
     if (state.rank <= 3 && d.search_done) {
       out.push(d.search_done + ' of up to ' + d.search_max + ' retrieval passes');
       if (d.search_seconds != null) out.push('last pass ' + Number(d.search_seconds).toFixed(1) + 's');
     }
     return out;
   }
-  function paint(){
-    stages.forEach(s => {
-      const li = mount.querySelector('li[data-rank="' + s.rank + '"]');
-      if (!li) return;
-      li.classList.toggle('done', s.rank < state.rank);
-      li.classList.toggle('active', s.rank === state.rank && state.rank < DONE_RANK);
-      const el = li.querySelector('.st-note');
-      if (s.rank === state.rank){
-        const bits = facts();
-        // Only the ACTIVE stage carries the counters and a running clock, so a quiet server still
-        // shows movement. Finished stages fall back to their plain description — leaving a frozen
-        // "Running 12s" on a completed row reads as a hang, which is the bug this replaced.
-        el.textContent = s.note + (bits.length ? ' ' + bits.join(' · ') + '.' : '') +
-          (s.rank < DONE_RANK ? ' Running ' + fmtDur(Date.now() - state.since) + '.' : '');
-      } else {
-        el.textContent = s.note;
-      }
+  const tog = mount.querySelector('.st-toggle');
+  if (tog){
+    tog.addEventListener('click', function(){
+      const box = mount.querySelector('.st-detail');
+      const open = tog.getAttribute('aria-expanded') === 'true';
+      tog.setAttribute('aria-expanded', open ? 'false' : 'true');
+      if (box) box.hidden = open;
     });
+  }
+
+  function paint(){
+    //  Only the stage actually running is drawn. Its own clock keeps ticking so a quiet server
+    //  still shows movement rather than reading as a hang.
+    const cur0 = stages.find(s => s.rank === state.rank) || stages[stages.length - 1];
+    const lineEl = mount.querySelector('.stagenow .st-line');
+    if (lineEl){
+      /*  The server's own message when there is one: "Screening candidates: batch 8 of 25" says
+          more than "Screening the candidates" and is the same length. The stage name is the
+          fallback, not the headline. */
+      const bits = facts();
+      const head = (state.msg && state.msg !== 'done') ? state.msg : cur0.name;
+      lineEl.textContent = head +
+        (bits.length ? ' · ' + bits.join(' · ') : '') +
+        (cur0.rank < DONE_RANK ? ' · ' + fmtDur(Date.now() - state.since) : '');
+    }
+    const feedEl = mount.querySelector('.stagenow .st-feed');
+    const emptyEl = mount.querySelector('.stagenow .st-empty');
+    if (feedEl){
+      /*  Newest first, because the interesting one is the one that just landed. Rebuilt whole:
+          the list is capped, so this is at most 40 <li>s once a second. */
+      const rows = state.activity.slice().reverse();
+      feedEl.hidden = !rows.length;
+      if (emptyEl){
+        emptyEl.hidden = !!rows.length;
+        emptyEl.textContent = rows.length ? '' : 'Nothing to report yet.';
+      }
+      if (rows.length){
+        feedEl.innerHTML = rows.map(function (r){
+          if (r.pub){
+            const bits = [];
+            if (r.note) bits.push(r.note);
+            if (r.chars > 0) bits.push(r.chars >= 1000 ? Math.round(r.chars / 1000) + 'k chars'
+                                                       : r.chars + ' chars');
+            if (r.n_features > 0) bits.push(r.n_features + ' limitation'
+                                            + (r.n_features === 1 ? '' : 's') + ' answered');
+            if (r.reused) bits.push('reused from this run');
+            if (r.found === false) bits.push('no full text');
+            return '<li><b>' + esc(r.pub) + '</b>'
+                 + (r.title ? ' <span class="ttl">' + esc(r.title) + '</span>' : '')
+                 + (bits.length ? ' <span class="muted">' + esc(bits.join(' · ')) + '</span>' : '')
+                 + '</li>';
+          }
+          return '<li><span class="ttl">' + esc(r.text) + '</span></li>';
+        }).join('');
+      }
+    }
     const live = mount.parentElement && mount.parentElement.querySelector('[data-progress-live]');
     if (live){
       const cur = stages.find(s => s.rank === state.rank) || stages[stages.length - 1];
@@ -1916,6 +1985,33 @@ function createProgress(mount, opts){
     apply(ev){
       const r = KIND_RANK[ev.kind];
       if (r != null && r > state.rank){ state.rank = r; state.since = Date.now(); }
+      /*  THE FEED, before the merge: `detail` is cumulative (Object.assign), so a `pub` that
+          arrived three events ago is still sitting in it and cannot be told from a new one. The
+          server sends the whole rolling log, so a page opened mid-run is caught up rather than
+          starting empty; entries are keyed so a re-render never duplicates a row. */
+      const log = ev.read_log;
+      let addedRows = 0;
+      if (Array.isArray(log)){
+        log.forEach(function (r){
+          const k = 'r|' + (r && r.pub) + '#' + (r && r.n) + '#' + ((r && r.note) || '');
+          if (!r || !r.pub || state.seen[k]) return;
+          state.seen[k] = 1;
+          state.activity.push(r);
+          addedRows++;
+        });
+      }
+      /*  AND EVERY OTHER STAGE. The reading stage names documents; decomposing, searching,
+          screening and ranking name only themselves, and those are the minutes the reader was
+          staring at one unchanged sentence for. Each distinct message is one line in the log, so
+          the panel is the run's own narrative rather than a description of the product. */
+      /*  ...but NOT twice. The reading message already names the document, so an event that
+          brought rows has said everything the message would, in more detail. Logging both put
+          every reference in the panel two lines running. */
+      if (ev.msg && ev.msg !== 'done' && !addedRows){
+        const k = 'm|' + ev.msg;
+        if (!state.seen[k]){ state.seen[k] = 1; state.activity.push({ text: ev.msg }); }
+      }
+      if (state.activity.length > 40) state.activity = state.activity.slice(-40);
       if (ev.detail) Object.assign(state.detail, ev.detail);
       if (typeof ev.tokens === 'number' && ev.tokens > state.tokens) state.tokens = ev.tokens;
       if (typeof ev.elapsed_sec === 'number' && ev.elapsed_sec > state.elapsed) state.elapsed = ev.elapsed_sec;
@@ -2372,23 +2468,29 @@ async function streamNewCards(){
   var pwState = document.getElementById('publishPwState');
   var state = document.getElementById('publishState');
   var save = document.getElementById('publishSave');
-  var revoke = document.getElementById('publishRevoke');
   var clearPw = document.getElementById('publishClearPw');
+  var tog = document.getElementById('publishToggle');
+  var togLab = document.getElementById('publishToggleLab');
 
   function paint() {
     var live = btn.dataset.published === 'true';
     var hasPw = btn.dataset.haspassword === 'true';
-    out.value = live ? location.origin + url : '';
-    out.placeholder = live ? '' : 'not published yet';
-    save.textContent = live ? 'Update' : 'Publish';
-    revoke.hidden = !live;
+    /*  The address is shown either way. See the dialog's comment: it is derived from the slug,
+        not minted, so hiding it until publication only stopped the owner reading what they were
+        about to hand out. The toggle is the access control; the field is just the address. */
+    out.value = location.origin + url;
+    out.classList.toggle('dim', !live);
+    tog.checked = live;
+    togLab.textContent = live ? 'Published' : 'Not published';
+    save.hidden = !live;
+    save.textContent = hasPw ? 'Change password' : 'Set password';
     clearPw.hidden = !(live && hasPw);
-    pwState.textContent = hasPw
-      ? 'A password is set. Type a new one to change it, or remove it below.'
-      : 'No password — anyone with the link can open it.';
+    pwState.textContent = !live ? ''
+      : (hasPw ? 'A password is set. Type a new one to change it, or remove it below.'
+               : 'No password — anyone with the link can open it.');
     state.textContent = live
-      ? 'Anyone with this link can read the report. No account needed, and nothing on the public page can change or re-run the search.'
-      : 'Publishing creates a link that opens without an account. Until then the address does not resolve at all.';
+      ? 'Live. Anyone with this link can read the report, with no account, and nothing on the public page can change or re-run the search.'
+      : 'The address above does not resolve. Turn this on and anyone holding it can read the report without an account.';
     btn.textContent = live ? 'Public link ✓' : 'Export';
   }
 
@@ -2400,12 +2502,45 @@ async function streamNewCards(){
     }).then(function (r) { return r.json(); });
   }
 
-  btn.addEventListener('click', function () { paint(); dlg.showModal(); });
+  btn.addEventListener('click', function () {
+    /*  The button now lives inside the More options menu, so the menu has to shut behind it:
+        a <details> left open under a modal is a panel the reader has to close twice. */
+    var menu = btn.closest('details.moreops');
+    if (menu) menu.open = false;
+    paint();
+    dlg.showModal();
+  });
+
+  /*  ONE SWITCH, BOTH DIRECTIONS. Publish and Revoke were two buttons that were never both
+      available, which is a toggle wearing a disguise. Revoking still asks, because a link that
+      has been sent to somebody stops working; publishing does not, because it is undoable by
+      the same switch. On failure the checkbox is put back where it was, so what is drawn is
+      never ahead of what the server did. */
+  tog.addEventListener('change', function () {
+    var want = tog.checked;
+    if (!want && !confirm('Un-publish? Anyone holding the link will get a 404. The viewer log is kept.')) {
+      tog.checked = true;
+      return;
+    }
+    tog.disabled = true;
+    post(want ? {password: pw.value || ''} : {revoke: true}).then(function (d) {
+      tog.disabled = false;
+      if (!d || !d.ok) {
+        tog.checked = !want;
+        state.textContent = (d && d.error) || 'That did not work. Try again.';
+        return;
+      }
+      btn.dataset.published = want ? 'true' : 'false';
+      if (want) { btn.dataset.haspassword = d.has_password ? 'true' : 'false'; pw.value = ''; }
+      paint();
+    }).catch(function () { tog.disabled = false; tog.checked = !want; });
+  });
+
   save.addEventListener('click', function () {
     save.disabled = true;
     post({password: pw.value || ''}).then(function (d) {
       save.disabled = false;
-      if (!d || !d.ok) { pwState.textContent = 'Could not publish. Try again.'; return; }
+      if (!d || !d.ok) { pwState.textContent = 'Could not save the password. Try again.'; return; }
       btn.dataset.published = 'true';
       btn.dataset.haspassword = d.has_password ? 'true' : 'false';
       pw.value = '';
@@ -2415,12 +2550,6 @@ async function streamNewCards(){
   clearPw.addEventListener('click', function () {
     post({clear_password: true}).then(function (d) {
       if (d && d.ok) { btn.dataset.haspassword = 'false'; paint(); }
-    });
-  });
-  revoke.addEventListener('click', function () {
-    if (!confirm('Revoke the public link? Anyone holding it will get a 404. The viewer log is kept.')) return;
-    post({revoke: true}).then(function (d) {
-      if (d && d.ok) { btn.dataset.published = 'false'; paint(); }
     });
   });
   document.getElementById('publishCopy').addEventListener('click', function () {
@@ -2705,3 +2834,190 @@ async function streamNewCards(){
     open(btn);
   });
 })();
+
+
+/*  ------------------------------------------------------------------ the (?) mark, anywhere
+    A page that explains itself in a paragraph beside every control is a page nobody finishes
+    reading. The explanation is still worth having, so it moves one click away: the control says
+    what it is, and the (?) beside it says how it works and when it matters.
+
+    Usage is one element and no wiring:
+
+        <button type="button" class="qmark" data-title="Concept search"
+                data-help="Breaks the description into…">?</button>
+
+    Two paragraphs: separate with a blank line. `type="button"` matters inside a form, and the
+    markup is a <button> rather than a <span> so it is reachable by keyboard without a tabindex.
+*/
+(function questionMarks() {
+  var dlg = null;
+
+  function ensure() {
+    if (dlg) { return dlg; }
+    dlg = document.createElement('dialog');
+    dlg.className = 'dlg qmarkdlg';
+    dlg.innerHTML =
+      '<form method="dialog" class="stack" style="min-width:min(34rem,92vw)">' +
+      '<h3 class="h3" data-t style="margin-top:0"></h3>' +
+      '<div class="small" data-b style="line-height:1.6"></div>' +
+      '<div style="display:flex;margin-top:.7rem"><span class="grow"></span>' +
+      '<button class="btn ghost sm" value="close">Close</button></div></form>';
+    document.body.appendChild(dlg);
+    return dlg;
+  }
+
+  function open(btn) {
+    var d = ensure();
+    if (!d.showModal) { return; }                 // no <dialog>: leave the title attribute to it
+    d.querySelector('[data-t]').textContent = btn.getAttribute('data-title') || 'About this';
+    var body = btn.getAttribute('data-help') || '';
+    d.querySelector('[data-b]').innerHTML = body.split(/\n\s*\n/).map(function (p) {
+      //  The text is authored in the template, never from a user, but escape it anyway: this is
+      //  one line and it means a future data-help that IS user text cannot inject.
+      var e = document.createElement('div');
+      e.textContent = p.trim();
+      return '<p>' + e.innerHTML + '</p>';
+    }).join('');
+    d.showModal();
+  }
+
+  /*  THE OTHER CONVENTION, which had no handler at all.
+
+      The 1.290 picker carries four question marks written as `<span class="qhelp"
+      data-help="secret">` with the text in a hidden `<div id="helpSecret" class="qhelp-body">`
+      beside them. `.qhelp` is a STYLE rule in style.css and nothing was ever bound to it, so all
+      four rendered as a question mark that did nothing when clicked. They are the four
+      explanations that decide whether a document goes in an envelope filed at the USPTO.
+
+      They keep their markup, because their text is rich (it carries <b> lead-ins) and stuffing
+      rich text into a data-help attribute would flatten it: `open()` escapes, on purpose. So
+      this resolves the LINKED HIDDEN BODY instead and hands its markup to the same dialog.  */
+  function openLinked(b) {
+    var key = b.getAttribute('data-help') || '';
+    var el = document.getElementById('help' + key.charAt(0).toUpperCase() + key.slice(1));
+    if (!el) { return; }
+    var d = ensure();
+    if (!d.showModal) { return; }
+    d.querySelector('[data-t]').textContent =
+      b.getAttribute('data-title') || b.getAttribute('aria-label') || 'About this';
+    d.querySelector('[data-b]').innerHTML = el.innerHTML;
+    d.showModal();
+  }
+
+  document.addEventListener('click', function (ev) {
+    if (!ev.target.closest) { return; }
+    var b = ev.target.closest('.qmark');
+    if (b) { ev.preventDefault(); open(b); return; }
+    var q = ev.target.closest('.qhelp[data-help]');
+    if (q) { ev.preventDefault(); openLinked(q); }
+  });
+
+  //  `.qhelp` is a <span role="button" tabindex="0">, so the browser does not press it on Enter
+  //  or Space the way it would a real <button>. Without this the four are keyboard-dead as well.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') { return; }
+    if (!ev.target.closest) { return; }
+    var q = ev.target.closest('.qhelp[data-help]');
+    if (q) { ev.preventDefault(); openLinked(q); }
+  });
+})();
+
+/*  THE ETA HAS TO FOLLOW BOTH CONTROLS.
+    The depth select carries a data-eta measured for the interactive reader. Batched is about four
+    times the wall clock for the same coverage (6.7 pairs/s against 26.8, measured), so a page that
+    kept showing the interactive figure beside a batched run would be quoting a time it cannot
+    meet. The multiplier is applied here, in one place, and the email checkbox is forced on with
+    it: a run nobody is watching has to be able to tell you it finished. */
+(function readDepthEta() {
+  var sel = document.getElementById('readTop');
+  var mode = document.getElementById('readBatched');
+  var dest = document.getElementById('readThen');
+  var out = document.getElementById('readEta');
+  if (!sel || !out) return;
+  var mail = document.querySelector('.readdepth input[name="notify_email"]');
+
+  function scale(text, factor) {
+    /*  The ETA is prose ("about 6 minutes", "8 to 12 minutes"), so every number in it is scaled
+        rather than the string being re-derived: that keeps whatever wording the server chose. */
+    return text.replace(/\d+(?:\.\d+)?/g, function (n) {
+      var v = parseFloat(n) * factor;
+      /*  Whole minutes from three up. "about 7.5 to 17 minutes" is false precision on an
+          estimate whose own range is a factor of two. */
+      return String(v >= 3 ? Math.round(v) : Math.round(v * 10) / 10);
+    });
+  }
+
+  /*  Each control multiplies the same base, so the line under them is one number rather than
+      three that have to be added up by the reader.
+
+      Batched: 4x, measured (6.7 pairs a second against 26.8 per-document).
+      Grid:    the per-requirement sweep goes from 3 documents a limitation to 12, and the sweep
+               is calls, so the run is about half again as long at the same read depth.
+      Packet:  one further model call per document after the reading, which is a minute or two on
+               a ten-document packet and is named rather than folded into the number. */
+  /*  The estimate for an arbitrary N, since a slider is not a list of seven rungs any more.
+      Same shape the server quotes: a fixed cost for retrieval, screening and the external
+      fan-out, plus about 2.5 seconds a document read, and a range because a document's length
+      is the variance. Kept here rather than round-tripped so the number moves with the thumb. */
+  function etaFor(n) {
+    var lo = Math.round((90 + n * 2.0) / 60);
+    var hi = Math.round((180 + n * 4.5) / 60);
+    if (hi <= lo) { hi = lo + 1; }
+    return 'about ' + lo + ' to ' + hi + ' minutes';
+  }
+
+  function paint() {
+    var done = parseInt(sel.dataset.done || '0', 10) || 0;
+    var want = parseInt(sel.value, 10) || 0;
+    var add = Math.max(0, want - done);
+    var base = etaFor(add);
+    var count = document.getElementById('readCount');
+    if (count) {
+      /*  What the number MEANS, which is not the same as the number. On a fresh search it is
+          "read 45"; on one that has already read 100 it is "125 in total, 25 more than the 100
+          already read", because the 100 are not read again and are not paid for again. */
+      count.textContent = done
+        ? want + ' in total · ' + add + ' more than the ' + done + ' already read'
+        : 'the strongest ' + want;
+    }
+    var batched = mode && mode.value === '1';
+    var want = dest ? dest.value : 'list';
+    var factor = (batched ? 4 : 1) * (want === 'grid' ? 1.5 : 1);
+    var text = base && factor !== 1 ? scale(base, factor) : base;
+    if (text && want === 'packet') { text += ', then the papers'; }
+    if (text && batched) { text += ' · emailed'; }
+    out.textContent = text;
+    out.classList.toggle('rdeta-batched', !!batched);
+    if (batched && mail) { mail.checked = true; }
+    var go = document.getElementById('startReading');
+    if (go) {
+      go.textContent = want === 'list' ? 'Start reading'
+                     : want === 'grid' ? 'Read and build the grid'
+                     : 'Read and build the submission';
+    }
+  }
+  sel.addEventListener('change', paint);
+  sel.addEventListener('input', paint);          /* while dragging, not only on release */
+  if (mode) mode.addEventListener('change', paint);
+  if (dest) dest.addEventListener('change', paint);
+  paint();
+})();
+
+
+/*  clamp3 toggle: click a clamped block to open it, click again to close. Delegated, so blocks
+    the extract step writes after this script ran are covered too. A textarea cannot be clamped
+    this way (it is a form control, not a box of text), so it gets a row cap instead. */
+(function clampToggle() {
+  document.addEventListener('click', function (ev) {
+    var el = ev.target.closest && ev.target.closest('.clamp3');
+    if (!el || el.tagName === 'TEXTAREA') { return; }
+    el.classList.toggle('open');
+  });
+  document.addEventListener('focusin', function (ev) {
+    var t = ev.target;
+    if (t && t.tagName === 'TEXTAREA' && t.classList.contains('clamp3')) {
+      t.classList.add('open');
+    }
+  });
+})();
+

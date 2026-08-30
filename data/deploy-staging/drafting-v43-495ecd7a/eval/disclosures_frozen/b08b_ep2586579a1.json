@@ -1,0 +1,335 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b08b_ep2586579a1",
+ "subject_pub": "EP-2586579-A1",
+ "n_claims_source": 1,
+ "claims_source": "family_claims:US-2013104709-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 51,
+  "by_kind": {
+   "independent_limitation": 28,
+   "combination": 5,
+   "dependent_limitation": 18
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A device for slicing food products.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Food products can have a non-homogeneous structure.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Food products supplied by a supply device to a cutting device.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The cutting device is a slicer.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Food products cut into slices in the slicer are removed by a removal device.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The removal device is formed by one or more endless belts.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Devices are provided in the slicer, supply device, or removal device.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The devices self-clean the slicer, supply device, and/or removal device, and/or cutting device.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The removal device is formed by an endless belt.",
+   "kind": "independent_limitation",
+   "source": "claim 10",
+   "weight": 1.0
+  },
+  {
+   "text": "Devices are provided in at least one of the slicer, supply device, and removal device.",
+   "kind": "independent_limitation",
+   "source": "claim 10",
+   "weight": 1.0
+  },
+  {
+   "text": "The devices sterilize the slicer, supply device, and removal device.",
+   "kind": "independent_limitation",
+   "source": "claim 10",
+   "weight": 1.0
+  },
+  {
+   "text": "A suction unit for sucking away cutting powder is provided in the production zone of the slicer.",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "A conveyor belt is an endless belt.",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "The conveyor belt removes food products cut into slices in a slicer.",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "Food products are transported in the upper portion of the conveyor belt.",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "A device for continuous cleaning of the conveyor belt is provided in the lower portion of the conveyor belt.",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "A method for slicing food products having a non-homogeneous structure.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "Supplying food products to a slicer by a supply device.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "Cutting food products into slices in the slicer.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "Removing slices from the slicer by a removal device.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "During production breaks and/or production, at least one of the involved devices and/or the slicer are cleaned by suction.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "Cutting food into slices in the slicer.",
+   "kind": "independent_limitation",
+   "source": "claim 21",
+   "weight": 1.0
+  },
+  {
+   "text": "Sterilizing at least one of the devices or slicer by steam, peroxide, or ozone lamps during production breaks or production.",
+   "kind": "independent_limitation",
+   "source": "claim 21",
+   "weight": 1.0
+  },
+  {
+   "text": "A method for cleaning an endless conveyor belt downstream of a slicing device.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "Cleaning a lower portion of the endless conveyor belt with cleaning liquid.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "The endless conveyor belt passes through a cleaning liquid.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "Excess cleaning liquid can be scraped off.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "The endless conveyor belt is further cleaned with brushes.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "A device for slicing food products, where food products can have a non-homogeneous structure, supplied by a supply device to a slicer, cut into slices, and removed by a removal device formed by one or more endless belts, comprising devices ",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A device for slicing food products with non-homogeneous structure, supplied by a supply device to a slicer, cut into slices, and removed by a removal device formed by an endless belt, comprising devices in at least one of the slicer, supply",
+   "kind": "combination",
+   "source": "claim 10",
+   "weight": 0.9
+  },
+  {
+   "text": "A device for slicing food products with non-homogeneous structure, comprising a suction unit for sucking away cutting powder in the production zone of the slicer.",
+   "kind": "combination",
+   "source": "claim 14",
+   "weight": 0.9
+  },
+  {
+   "text": "A conveyor belt as an endless belt, removing sliced food products, transporting food in its upper portion, and having a continuous cleaning device in its lower portion.",
+   "kind": "combination",
+   "source": "claim 16",
+   "weight": 0.9
+  },
+  {
+   "text": "A method for slicing food products with non-homogeneous structure, comprising supplying food to a slicer, cutting it into slices, removing slices, and cleaning at least one device or the slicer by suction during production breaks and/or pro",
+   "kind": "combination",
+   "source": "claim 20",
+   "weight": 0.9
+  },
+  {
+   "text": "Self-cleaning devices are operable during production breaks.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Self-cleaning devices are operable during production.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Self-cleaning devices are operable with a cleaning liquid.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning liquid is sprayed onto the area to be cleaned using spray balls.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray balls are at the end of lines for cleaning liquid.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray balls comprise a plurality of openings formed as nozzles.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Drain facilities for cleaning liquid are provided in at least one of the slicer, supply devices, or removal devices.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "No drain facilities for cleaning liquid are provided at the slicer, supply devices, or removal devices.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning liquid is dischargeable via drain facilities at a floor.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Devices for drying, rinsing, and/or disinfection are provided in at least one of the slicer, supply devices, or removal devices.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Sterilizing devices are operable during production breaks.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Sterilizing devices are operable during production.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Steam, peroxide, or ozone lamps are used for sterilizing.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Cutting powder is sucked away during production.",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "The lower portion of the conveyor belt is cleaned with a cleaning liquid.",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "The lower portion of the conveyor belt is guidable through a cleaning liquid.",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Devices for scraping off cleaning liquid are provided at the lower portion of the conveyor belt.",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Devices for brushing the conveyor belt are provided at the lower portion of the conveyor belt.",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "ecaee17a34157997"
+}

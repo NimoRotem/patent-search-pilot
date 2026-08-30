@@ -1,0 +1,49 @@
+{
+  "project_id": 10,
+  "title": "Passive Cold-Chain Carrier With Recirculating Side And Return Passages",
+  "version_no": 2,
+  "ready": false,
+  "blockers": [
+    {
+      "title": "The independent review did not pass",
+      "detail": "I read input/disclosure.md, input/conversation.md, input/brief.md and input/request.md; all ten draft sections (01-title through 10-abstract); draft/numerals.md; all seven figure briefs (FIG-1.md through FIG-7.md); prior_art/INDEX.md; and review/previous-qa.md.\n\nSCOPE LIMIT I COULD NOT WORK AROUND. Two artifacts the review instructions assume do not exist in this workspace. There is no rendered-*.png for any figure - figures/ contains only the seven Markdown briefs - and there is no review/figure-audit-evidence.json. I verified this by searching the whole workspace tree for *.png, *.json, *.svg and *.pdf; the search returned nothing anywhere under the workspace. Consequently no pixel-level verification was possible: I could not check visible geometry, printed numerals, leader terminals, hatch angles, or the FIG. 6 cutting-plane line, its arrows and its section designations against actual pixels. Everything I report about the drawings below is a text-level check of the briefs against the specification, the numeral table and the inventor's disclosure. This is the same condition the two mechanical checks already report (7 described figures with no sheet; 31 specification numerals absent from every drawing), which I was told not to re-report; the package plainly cannot be published until the sheets are rendered.\n\nWorth noting for the render step: the deficiency is only that no sheets exist, not that the drawing plan is incomplete. The union of the numerals assigned across the seven briefs (FIG-1: 10/12/20/22/40/60/100; FIG-2: 40/42/44/46/48/54/56/58; FIG-3: 14/18/42/56/58/62/64; FIG-4: 24/26/28/30/50/54; FIG-5: 50/70/72/74/76; FIG-6: 10/14/80/82; FIG-7: 10/14/80/82/84/86) is exactly the 31 numerals in numerals.md and exactly the 31 used in the specification. Rendering the seven briefs as written should clear both mechanical checks without any change to the filing text.\n\nCITATIONS (step 4). prior_art/INDEX.md lists no references (\"| (none) | | |\") and the draft contains no [REF:...] citation anywhere (verified by search across draft/ and figures/; the only hits are the INDEX's own instruction line and prior review logs). There is therefore no characterisation of a cited source to test. The Background's uncited statements about powered carriers, passive carriers, condensate and electronic data loggers are prior-art framing, not assertions about the invention, and per the instructions I did not require the inventor's disclosure to support them. As the drafting brief warned, the art supplied here is empty and may well be incomplete.\n\nSOURCE LEDGER (step 1) - everything traces. I traced every claim limitation in claims 1-20, all 31 numerals, and every structure, relationship, position, connection, result and variant asserted in the Summary, Detailed Description and the seven briefs to the disclosure: shell/floor/side walls/upper edge/ledges; tray with bottom wall, tray side walls, tray feet, perforations, lower return passage, side supply passages; spacer frame with central inlet opening, two downward guide ducts, peripheral outlet openings, mating channel, resilient feet, discharge openings; lid with depending indexing rib and compressible lid gasket; condensate channel, absorbent wick, pull tab; exposure indicator with stem, temperature-responsive latch and spring; the full circulation path; the \"free of a fan, a pump and any powered air mover\" negative limitation; and the method. The one defect the previous review recorded (the description asserting the cassettes are held \"upright\", an attitude no source gives) has been fixed - draft/08 now reads \"the two cassettes are held by the spacer frame 42 in a mutually facing arrangement\", with no attitude asserted, so the briefs' schematic upright slabs read as a generic depiction convention. I specifically re-tested the items most likely to be candidate-invented and found each entailed by disclosed language rather than added: claim 12's \"meets the mating channel while the insulated lid is spaced above the upper edge\" follows from \"A compressible lid gasket seals against the upper edge of the shell after registration\"; claim 15's \"opens upward at a top region\" follows from a depending rib entering a channel in a frame that sits below the lid; claim 5's \"removable from the spacer frame\" follows from \"conditioned cassettes are fitted to the spacer frame\"; and the wick/channel \"remain in the outer shell 10 when the product tray 20 is removed\" follows from \"A pull tab on the wick remains accessible when the product tray is removed\".\n\nFIGURES AND NUMERALS (step 2) - consistent at the text level. Every numeral labels the same part in numerals.md, in the description and in every brief that uses it (I extracted all term-numeral pairings mechanically and found no mislabeling). Every part the specification says is \"seen in FIG. n\" is present in that brief: 26/28/30 in FIG-4; 62/56/64 and 18/58 in FIG-3; 70/72/74/76/50 in FIG-5; 80 in FIG-6; 82/84/86 in FIG-7. The Brief Description of each figure agrees with that figure's brief. The three broken-line enlargement curves listed in FIG-1 match the contents of FIGS. 3, 4 and 5, and the left/right handedness of each enlargement matches its position in FIG. 1 (FIG-3 and FIG-4 put the shell wall left, FIG-5 puts it right). I checked the FIG. 1 section plane against FIG. 2's geometry: a plane transverse to the two slabs cuts both cassettes, both guide ducts and the groove in the near long side wall, which is exactly what FIG-1 describes and is what puts the mating channel (FIG. 3) and one peripheral outlet (FIG. 4) on the same left-hand wall. The FIG. 6 cutting-plane description is internally correct - a broken line, a matching designation \"7\" at each end with no numeral leader, both arrows pointing the same way - and I worked the view direction through: with the FIG. 6 camera looking inward at the outer wall face and both arrows pointing to image-left, the FIG. 7 view has outward toward image-left, which is exactly what FIG-7 states (\"its outer surface facing left\", stem \"projects to the left\"). All of this is a check of the briefs only; none of it is pixel-verified.\n\nLANGUAGE AND LOGIC (step 3) and CLAIM SUPPORT (step 5). One name per element throughout (\"product tray\", \"thermal module\", \"spacer frame\", \"depending indexing rib\", \"peripheral outlet openings\", \"mechanical exposure indicator\"); the briefs describe geometry generically and then name it (\"This trough is the condensate channel 70\"), which is not drift. Claims 1-20 have literal antecedent basis and each limitation is supported in the Detailed Description with no terminology drift. The abstract is 141 words, one paragraph, and matches the claim-1 flow path. The \"Essential and optional features\" paragraph tracks the disclosure's own division (\"The wick and the irreversible mechanical exposure indicator are supported optional features\"; \"The disclosed essential relationship is the registered passive circulation path... combined with lid-driven registration\").\n\nI found no defect in the candidate that I can substantiate with a quote, so the findings list is empty. One observation that is not a finding: the drafting agent's last message in conversation.md reports FIG. 1 and FIG. 5 edits (a tray wall \"continuing below the bottom wall to a lower edge spaced above the floor 12 just inboard of the trough\") that are not present in the current FIG-1.md or FIG-5.md, which instead show a tray box whose walls meet its bottom wall with the perforations at that junction. The current briefs are mutually consistent and consistent with FIG-4, the description and the claims, so there is nothing to correct in the filing text; I mention it only because the agent's report and the files on disk do not describe the same geometry.",
+      "items": ""
+    },
+    {
+      "title": "Every specification numeral appears in a drawing",
+      "detail": "31 reference numeral(s) are used in the specification but absent from every drawing. Add each missing numeral to an appropriate focused sheet or redistribute the existing drawing plan. Do not remove a disclosed part, numeral definition, or supporting text to silence this check.",
+      "items": "10; 12; 14; 18; 20; 22"
+    },
+    {
+      "title": "Each described figure has a drawing sheet",
+      "detail": "A figure is described in the specification but no drawing has been prepared for it. Every described figure is required before the package can be published.",
+      "items": "FIG. 1; FIG. 2; FIG. 3; FIG. 4; FIG. 5; FIG. 6"
+    },
+    {
+      "title": "7 figure(s) are described but no drawing sheet exists",
+      "detail": "35 USC 113 requires a drawing where one is necessary to understand the invention. Drawings may be filed informally and corrected later, but they must be filed.",
+      "items": ""
+    },
+    {
+      "title": "The drawing set does not match the application text",
+      "detail": "Every described figure must have exactly one checked sheet, with no obsolete or extra sheet.",
+      "items": "missing FIG. 1; missing FIG. 2; missing FIG. 3; missing FIG. 4; missing FIG. 5; missing FIG. 6; missing FIG. 7"
+    }
+  ],
+  "formalities": [],
+  "qa_verdict": "fail",
+  "section_count": 10,
+  "figure_count": 0,
+  "citation_count": 0,
+  "reference_count": 0,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "d8b32efaaa55c093264ab8b7579bf62bb4922601b254c9641b62b6b7756955ec",
+  "figures": [],
+  "docx": {},
+  "all_drawings_current": false,
+  "docx_media_matches_figures": false,
+  "acceptance_pass": false
+}

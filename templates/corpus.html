@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Coverage | Rotem Patents{% endblock %}
+{% block title %}Coverage | IPtorch{% endblock %}
 {% block body %}
 {#
   What this system searches, for the person relying on the result.
@@ -23,10 +23,10 @@
 
 <h1 style="margin-bottom:.15em">Coverage</h1>
 <p class="small muted" style="margin-top:0">
-  What a search on this system actually looks at: the patent corpus it reads today, the fuller one
-  still being built, and the external databases it searches alongside them. Every number here is
-  measured, not estimated, and each section says which database its numbers came from, because
-  they are different databases and their counts do not match.
+  <b>Administrators only.</b> What a search actually looks at: the corpus it reads today, the
+  fuller one being built, the external databases it searches alongside them, and what all of that
+  has been measured to do. Every number is measured rather than estimated, and each section names
+  the database it came from, because they are different databases and their counts do not match.
 </p>
 
 <div class="card" style="margin:1em 0;padding:1em">
@@ -188,7 +188,7 @@
   #}
   <p class="small muted" style="margin:.6em 0 0">
     <b>EU registered designs</b> are searched separately, on the
-    <a href="{{ request.script_root }}/designs">Designs</a> page. They protect appearance
+    <a href="{{ lookup_base }}/#designs">Designs tab of Lookup</a>. They protect appearance
     rather than function, carry no claims to read, and are therefore not part of the fan-out
     above and never enter a patent report's ranking.
   </p>
@@ -221,6 +221,46 @@
     <li><b>Nothing here is a legal opinion.</b> The system finds and reads documents and says what
       they disclose. Whether that anticipates a claim is a judgement for the attorney signing it.</li>
   </ul>
+</div>
+
+{#  THE MEASUREMENTS, which used to be printed on the search page, in the footer of every page and
+    in the summary line of every report. They are engineering telemetry: a recall figure reads to
+    a customer as a confidence score for THEIR search, which it is not, and a corpus size and a
+    class list are a specification sheet for a competitor. They belong on exactly one page and
+    this is it. Every figure is from corpus_facts, so it cannot drift from what was measured. #}
+<div class="card" style="margin:1em 0;padding:1em">
+  <h2 style="margin-top:0">What it has been measured to do</h2>
+  <div class="hxgrid">
+    <div><span class="fldl">Recall</span>
+      {% if f.recall_pct is not none %}<b>{{ f.recall_pct }}%</b> @100
+      <span class="cc">on {{ f.recall_queries }} benchmark queries</span>{% else %}not measured{% endif %}</div>
+    {% if f.rationale_error_pct is not none %}
+    <div><span class="fldl">Rationales overclaiming</span> <b>{{ f.rationale_error_pct }}%</b>
+      <span class="cc">of {{ f.rationale_n }} audited</span></div>
+    {% endif %}
+    {% if f.chart_fp_pre_pct is not none %}
+    <div><span class="fldl">Chart cells wrong, before verification</span>
+      <b>{{ f.chart_fp_pre_pct }}%</b> <span class="cc">of {{ f.chart_fp_pre_n }}</span></div>
+    {% endif %}
+    {% if f.chart_indep_checked %}
+    <div><span class="fldl">Still overclaiming, after it</span>
+      <b>{{ f.chart_indep_pct }}%</b>
+      <span class="cc">{{ f.chart_indep_overclaim }} of {{ f.chart_indep_checked }}, re-read independently</span></div>
+    {% endif %}
+  </div>
+  <p class="small muted" style="margin:.6em 0 0">
+    Read the recall figure as what it is: on a benchmark of known-relevant families, that share
+    appeared in the top 100. It is a property of the benchmark and the corpus, not a confidence
+    score for any particular search, which is why it is not shown to customers.
+    {% if f.chart_indep_checked %}The post-verification figure is the one to trust: the verifier's
+    own tally of its own work was better, and the samples are small and share a model family with
+    the judge, so treat it as a lower bound.{% endif %}
+  </p>
+  <p class="small muted" style="margin:.5em 0 0">
+    {% if f.recall_basis %}Recall basis: {{ f.recall_basis }}.{% endif %}
+    {% if f.rationale_basis %} Rationale basis: {{ f.rationale_basis }}.{% endif %}
+    {% if f.chart_indep_basis %} Independent re-read: {{ f.chart_indep_basis }}.{% endif %}
+  </p>
 </div>
 
 <details class="card" style="margin:1em 0 2em;padding:1em">

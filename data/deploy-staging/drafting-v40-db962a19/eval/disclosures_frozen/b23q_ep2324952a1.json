@@ -1,0 +1,240 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b23q_ep2324952a1",
+ "subject_pub": "EP-2324952-A1",
+ "n_claims_source": 11,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 35,
+  "by_kind": {
+   "independent_limitation": 10,
+   "combination": 2,
+   "dependent_limitation": 20,
+   "potential_claim": 3
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Machining device for workpieces",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Machine bed and at least one processing unit connected to the machine bed",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Machine bed has a main body",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Main body consists at least in sections of a hardenable mass",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Main body and/or part of the processing unit consists at least in sections of cement-bound concrete",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Method for producing a main body of a machining device",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "Method includes producing a base section from concrete",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "Method includes preparing at least one connecting section to be connected to the base section",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "Method includes aligning the at least one connecting section in a reference position",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "Method includes connecting the at least one connecting section with the base section",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "Machining device with a machine bed having a main body made of hardenable mass, where the main body and/or part of the processing unit is made of cement-bound concrete or fiber concrete",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Method for producing a main body by making a concrete base section, preparing and aligning a connecting section, and connecting them",
+   "kind": "combination",
+   "source": "claim 9",
+   "weight": 0.9
+  },
+  {
+   "text": "Main body is multi-part",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Main body has a base portion of cement-bound concrete and at least one subsequently connected connecting portion",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Connecting portion is a concrete component",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Connecting portion is a metal element",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Metal element is a guide element",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Parts of the main body are glued together",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Parts of the main body are toothed",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Main body has at least one connecting portion such that it has an L-shaped cross-section",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Main body has at least one connecting portion such that it has a U-shaped cross-section",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Main body has at least one connecting portion such that it has a triangular cross-section",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Main body has at least one steel profile",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Steel profile is cast in concrete",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Processing unit has a bar-shaped guide device",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Bar-shaped guide device is a boom",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Bar-shaped guide device is a portal",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Bar-shaped guide device consists at least partially of concrete",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Bar-shaped guide device comprises at least one steel profile",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Connecting section is aligned by an alignment station",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Connecting section is held ready for connection by an alignment station",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Base section is moved towards the aligned connecting section during connection",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Workpieces are at least partially made of wood",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  },
+  {
+   "text": "Workpieces are at least partially made of wood-based materials",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  },
+  {
+   "text": "Workpieces are at least partially made of plastic",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  }
+ ],
+ "content_hash": "5779121f43b096cd"
+}

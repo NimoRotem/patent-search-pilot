@@ -1,0 +1,154 @@
+TITLE OF THE INVENTION
+
+Self-Flushing Inline Liquid Metering Valve With Indexed Dose Selection
+
+CROSS-REFERENCE TO RELATED APPLICATIONS
+
+[0001] Not applicable.
+
+STATEMENT REGARDING FEDERALLY SPONSORED RESEARCH OR DEVELOPMENT
+
+[0002] Not applicable.
+
+FIELD OF THE INVENTION
+
+[0003] The present disclosure relates to inline liquid metering valves, and more particularly to a reusable valve that delivers a repeatable measured volume of a concentrate into a flowing carrier liquid and that rinses the internal surfaces wetted by the concentrate as part of the same mechanical cycle.
+
+BACKGROUND OF THE INVENTION
+
+[0004] Many liquid handling installations add a small, accurately measured quantity of a concentrate to a much larger stream of a carrier liquid that is already flowing in a pipe. The concentrate may be aggressive, staining, strongly colored, biologically active, or simply expensive, and the quantity that must be added is small in comparison with the carrier flow. The addition therefore has to be made repeatably, without measuring the concentrate by eye, and without allowing the concentrate to reach any part of the installation other than the carrier stream itself.
+[0005] Two practical difficulties dominate this kind of dosing. The first is separation of the two liquids upstream of the point of addition. Where a dosing device sits between a concentrate source and a carrier line under pressure, a path that momentarily connects the two can allow carrier liquid to be forced back toward the concentrate source, or can allow concentrate to reach the carrier line at a time when no dose is called for. Where the two sides are kept apart by separately actuated shut-off elements, the separation depends on those elements being commanded in the correct order.
+[0006] The second difficulty is residue. The surfaces that the concentrate touches, in particular the port through which it enters the metering volume and the seat of the check element through which the dose leaves, may retain a film of concentrate after the dose has been delivered. Where such a film passes into the carrier stream between doses, the quantity actually added is not the quantity that was measured; and where it dries or reacts on the wetted surfaces, the accuracy of the valve changes in service. Where the valve must be broken out of the line and cleaned by hand, the installation is taken out of service; and where a rinse is a separate operation commanded after the dose, it depends on that operation being performed at the right moment.
+[0007] Dose selection presents a further difficulty. Adjustable dosing devices may be set by a screw or by an electronically stored value. There remains a need for a setting that is retained by the mechanism itself and that is visible at the valve without electronics.
+[0008] There remains a need for an inline metering valve in which the separation of the concentrate from the carrier liquid is enforced by the geometry of the moving parts rather than by the order in which external commands arrive, in which the surfaces wetted by the concentrate are rinsed by the carrier liquid as an unavoidable part of the return of the metering element, and in which the selected dose is both retained and displayed mechanically.
+
+BRIEF SUMMARY OF THE INVENTION
+
+[0009] An inline liquid metering valve delivers a repeatable measured volume of concentrate into a flowing carrier liquid and rinses the surfaces that contacted the concentrate after each dose, without any command additional to the stroke that delivers the dose.
+[0010] The valve has a housing with an inlet and an outlet and a metering sleeve fixed within the housing. The metering sleeve defines a dose chamber, a concentrate port opening into the dose chamber, a carrier-liquid admission port opening into the dose chamber, and a flush bypass that opens downstream of the dose chamber. A piston slides axially in the dose chamber between a fill position and a discharge position. The piston has an upstream sealing land and a downstream sealing land axially spaced from one another and joined by a reduced-diameter waist.
+[0011] Separation of the two liquids is enforced by the axial order of the land faces and the port edges rather than by the sequence in which any external command arrives. In the fill position, the waist connects the concentrate port to the dose chamber while the upstream and downstream sealing lands isolate the carrier-liquid admission port from the concentrate port. Movement of the piston toward the discharge position closes the concentrate port before the downstream sealing land uncovers the carrier-liquid admission port. Carrier liquid then enters behind the measured volume of concentrate and expels that volume through a one-way outlet valve toward the outlet. Because one land face has passed the concentrate port before the other land face releases the carrier-liquid admission port, no position of the piston places the concentrate source in communication with the carrier-liquid path.
+[0012] The rinse is carried out by the return of the same piston. An annular rinse channel lies between an outer surface of the metering sleeve and an inner surface of the housing, and at least one rinse opening leads from that channel through the metering sleeve into the dose chamber. A follower pin carried by the piston rod opens a normally closed flush poppet connected to the flush bypass during the return stroke, so that carrier liquid sweeps the annular rinse channel, issues from the rinse opening across the surfaces wetted by the concentrate, and leaves through the flush bypass to the outlet. The flush poppet closes before the waist reconnects the concentrate port to the dose chamber, so the rinse is complete, and the rinse liquid is on its way to the outlet, before any further concentrate can enter. The rinse cannot be omitted, mistimed or deferred, because the element that opens it is carried by the piston rod itself.
+[0013] In described embodiments, a flexible lip on the upstream sealing land wipes the wall of the dose chamber before the flush poppet opens. Two radial rinse openings are directed across the concentrate port and across the one-way outlet valve.
+[0014] Dose selection is mechanical and self-indexing. An index collar surrounds the metering sleeve and has a helical cam groove engaged by the follower pin, so that each full stroke of the piston turns the index collar by one increment. Three selectable axial stop faces on the index collar limit the travel of the piston and thereby set three dose volumes, a spring-biased detent engaging one of three recesses retains the selected setting, and a transparent window in the housing shows one of three dose setting numerals carried by the index collar, so that the setting is visible without electronics.
+[0015] A replaceable cartridge contains the piston, the metering sleeve, the one-way outlet valve and the flush poppet, and is retained by a threaded end cap. Removing the threaded end cap withdraws the cartridge without disturbing the connections at the inlet and the outlet.
+[0016] A corresponding method admits concentrate to the dose chamber, closes the concentrate port before uncovering the carrier-liquid admission port, expels the measured volume through the one-way outlet valve, and then opens the flush poppet with the follower pin during the return of the piston and closes it again before the concentrate port is reconnected.
+
+BRIEF DESCRIPTION OF THE SEVERAL VIEWS OF THE DRAWINGS
+
+[0017] FIG. 1 is a longitudinal sectional view of an inline liquid metering valve.
+[0018] FIG. 2 is an enlarged longitudinal sectional view of the metering portion of the valve of FIG. 1, with the piston in the fill position.
+[0019] FIG. 3 is an enlarged longitudinal sectional view of the metering portion of the valve of FIG. 1 during the return stroke of the piston, with the flush poppet held open.
+[0020] FIG. 4 is a fragmentary side view of the index collar and the parts that set and retain the dose.
+
+DETAILED DESCRIPTION OF THE INVENTION
+
+[0021] In the following description, the terms upstream and downstream refer to the direction of travel of the carrier liquid from the inlet toward the outlet, and the terms axial and radial refer to the axis along which the piston slides.
+[0022] FIG. 1 shows an inline liquid metering valve 10 having a cylindrical housing 12 with an inlet 14 at one axial end and an outlet 16 at the opposite axial end, a metering sleeve 18 fixed within the housing 12, a cartridge 64 retained in the housing 12 by a threaded end cap 66, and a transparent window 52 in the housing 12.
+[0023] The inline liquid metering valve 10 is connected in a line that already carries a flowing carrier liquid. Carrier liquid enters at the inlet 14, passes along the housing 12, and leaves at the outlet 16. That flow is the main flow into which each dose of concentrate is delivered, and it is also the flow that rinses the valve. The metering sleeve 18 is spaced radially inward from the inner surface of the housing 12.
+[0024] FIG. 2 shows the metering sleeve 18 defining a dose chamber 20, a concentrate port 22 opening into the dose chamber 20 and a carrier-liquid admission port 24 opening into the dose chamber 20. FIG. 2 further shows an upstream sealing land 30 and a downstream sealing land 32 joined by a reduced-diameter waist 34 in the fill position, and a one-way outlet valve 38.
+[0025] The dose chamber 20 is cylindrical. The concentrate port 22 is a radial port through the wall of the metering sleeve 18 and is connected in use to a concentrate source. The carrier-liquid admission port 24 passes through the wall of the metering sleeve 18 at an axial position downstream of the concentrate port 22, and admits carrier liquid to the dose chamber 20. The metering sleeve 18 further defines a flush bypass 26 that opens downstream of the dose chamber 20.
+[0026] A piston 28 is axially slidable in the dose chamber 20 between a fill position and a discharge position. The upstream sealing land 30 and the downstream sealing land 32 are axially spaced from one another on the piston 28 and are joined by the reduced-diameter waist 34. Each sealing land bears on the wall of the dose chamber 20, while the waist 34 stands clear of that wall. A piston rod 36 extends from the piston 28 along the axis of the dose chamber 20 and is arranged to be driven through a stroke and a return stroke. The one-way outlet valve 38 is arranged to pass liquid from the dose chamber 20 toward the outlet 16 and to prevent flow in the opposite direction.
+[0027] In the fill position the waist 34 connects the concentrate port 22 to the dose chamber 20, and the upstream sealing land 30 and the downstream sealing land 32 isolate the carrier-liquid admission port 24 from the concentrate port 22. Concentrate accordingly passes from the concentrate source through the concentrate port 22 into the dose chamber 20 to form a measured volume of concentrate, the extent of which is fixed by the travel then permitted to the piston 28. Throughout the fill position the carrier-liquid path is closed to the concentrate, because the downstream sealing land 32 overlies the carrier-liquid admission port 24 while the upstream sealing land 30 closes the dose chamber 20 on the other side of the waist 34.
+[0028] Movement of the piston 28 toward the discharge position closes the concentrate port 22 before the downstream sealing land 32 uncovers the carrier-liquid admission port 24. Only after the concentrate port 22 has been closed does continued travel of the piston 28 carry the downstream sealing land 32 clear of the carrier-liquid admission port 24. Carrier liquid then enters through the carrier-liquid admission port 24 behind the measured volume of concentrate in the dose chamber 20 and expels the measured volume through the one-way outlet valve 38 toward the outlet 16, where it joins the main flow.
+[0029] The axial ordering of the faces of the upstream sealing land 30 and the downstream sealing land 32 relative to the edges of the concentrate port 22 and the carrier-liquid admission port 24 is chosen so that the concentrate port 22 is closed at every position of the piston 28 at which the carrier-liquid admission port 24 is open. There is accordingly no position of the piston 28 at which the concentrate source communicates directly with the carrier-liquid path. The separation of the two liquids is a property of the geometry of the piston 28 and the metering sleeve 18. It does not depend on the order in which external commands are given, on any control signal, or on the correct operation of a separately actuated shut-off element. The port that must close does so at an earlier point on the same continuous path of travel than the point at which the other port opens.
+[0030] FIG. 3 shows the piston 28 during the return stroke toward the fill position, with a flexible lip 56, a follower pin 44 holding a flush poppet 58 open, an annular rinse channel 60, two radial rinse openings 62, the concentrate port 22, and the flush bypass 26. The follower pin 44 is carried by the piston rod 36.
+[0031] The flexible lip 56 is carried on the upstream sealing land 30 and bears on the wall of the dose chamber 20. As the return stroke begins, the flexible lip 56 wipes the wall of the dose chamber 20.
+[0032] The annular rinse channel 60 lies between an outer surface of the metering sleeve 18 and an inner surface of the housing 12, and is supplied with carrier liquid from the inlet 14. The two radial rinse openings 62 pass through the wall of the metering sleeve 18 and connect the annular rinse channel 60 to the dose chamber 20. One of the two radial rinse openings 62 is directed across the concentrate port 22 and the other is directed across the one-way outlet valve 38.
+[0033] The flush poppet 58 is normally closed and is connected to the flush bypass 26. Near the end of the return stroke, the follower pin 44 reaches the flush poppet 58 and opens it. Carrier liquid then flows from the inlet 14 through the annular rinse channel 60, through the two radial rinse openings 62 across the concentrate port 22 and the one-way outlet valve 38, and through the flush bypass 26 to the outlet 16. The rinse liquid therefore reaches the outlet 16, as the dose does, and is carried away in the main flow.
+[0034] The flush poppet 58 closes before the waist 34 reconnects the concentrate port 22 to the dose chamber 20. Throughout the interval in which the annular rinse channel 60 communicates with the flush bypass 26, the waist 34 is out of register with the concentrate port 22, so that the waist 34 does not connect the concentrate port 22 to the dose chamber 20. Only when the flush poppet 58 has closed does the continuing return of the piston 28 bring the waist 34 back into register with the concentrate port 22, at which point the dose chamber 20 is charged again for the next dose.
+[0035] Because the follower pin 44 that opens the flush poppet 58 is carried by the piston rod 36, the rinse occurs once for every dose and at the same point in every cycle. It is not a separate operation, it needs no command, and it cannot be omitted while the valve continues to be used. The rinse also occurs before the waist 34 has reconnected the concentrate port 22 to the dose chamber 20 and after the wall of the dose chamber 20 has been wiped.
+[0036] FIG. 4 shows an index collar 40 having a helical cam groove 42 engaged by the follower pin 44 carried by the piston rod 36, three selectable axial stop faces 46, and three dose setting numerals 54. FIG. 4 further shows a spring-biased detent 48 engaging one of three detent recesses 50.
+[0037] The index collar 40 surrounds the metering sleeve 18. Each full stroke of the piston 28 draws the follower pin 44 along the helical cam groove 42 and turns the index collar 40 by one increment, so that the index collar 40 advances by itself as the valve is used and needs no separate indexing drive.
+[0038] The three axial stop faces 46 are carried by the index collar 40 at different axial positions. The stop face presented by the current increment of rotation limits the travel of the piston 28 and thereby sets the dose volume, so that the three axial stop faces 46 correspond to three dose volumes. The spring-biased detent 48 engages one of the three detent recesses 50 to retain the selected setting until the index collar 40 is next indexed.
+[0039] The transparent window 52 in the housing 12 shows one of the three dose setting numerals 54 carried by the index collar 40. The dose setting numeral presented at the transparent window 52 is the one associated with the axial stop face then limiting the travel of the piston 28, so that the dose setting is mechanically visible without electronics. What is seen at the transparent window 52 is the position of the index collar 40 itself.
+[0040] The cartridge 64 contains the piston 28, the metering sleeve 18, the one-way outlet valve 38 and the flush poppet 58, and is removable from the housing 12 as a unit. Removing the threaded end cap 66 withdraws the cartridge 64 from the housing 12 without disturbing the connections at the inlet 14 and the outlet 16, so that the cartridge 64 is replaced as a unit while the housing 12 remains in the line.
+[0041] In use, carrier liquid flows through the housing 12 from the inlet 14 to the outlet 16. With the piston 28 in the fill position, concentrate is admitted through the concentrate port 22 and past the waist 34 into the dose chamber 20 to form a measured volume, the upstream sealing land 30 and the downstream sealing land 32 isolating the carrier-liquid admission port 24 from the concentrate port 22. The piston 28 is then advanced toward the discharge position so as to close the concentrate port 22 and thereafter to uncover the carrier-liquid admission port 24 with the downstream sealing land 32. Carrier liquid is admitted through the carrier-liquid admission port 24 behind the measured volume and expels the measured volume through the one-way outlet valve 38 toward the outlet 16. The extent of the travel available to the piston 28, and therefore the measured volume, is fixed by the selected one of the three axial stop faces 46.
+[0042] The piston 28 is then returned toward the fill position. During the return, the flexible lip 56 on the upstream sealing land 30 wipes the wall of the dose chamber 20, and the follower pin 44 carried by the piston rod 36 opens the normally closed flush poppet 58. Carrier liquid flows through the annular rinse channel 60 between the metering sleeve 18 and the housing 12, through the two radial rinse openings 62 in the metering sleeve 18 across the concentrate port 22 and the one-way outlet valve 38, and through the flush bypass 26 that opens downstream of the dose chamber 20 to the outlet 16. The flush poppet 58 is closed before the waist 34 reconnects the concentrate port 22 to the dose chamber 20. Over the same full stroke, the follower pin 44 traveling in the helical cam groove 42 turns the index collar 40 by one increment, the spring-biased detent 48 enters the next of the three detent recesses 50, and the dose setting numeral then presented at the transparent window 52 shows the setting that will govern the next dose. The valve is thereby left charged, rinsed and set, ready for the following cycle.
+[0043] The foregoing description sets out embodiments of the invention. A skilled reader may make changes of detail to the described embodiments without departing from the scope of the claims that follow.
+
+
+========================================================================
+
+CLAIMS
+
+What is claimed is:
+
+1. An inline liquid metering valve, comprising:
+
+a housing having an inlet and an outlet;
+
+a metering sleeve fixed within the housing, the metering sleeve defining a dose chamber, a concentrate port opening into the dose chamber, a carrier-liquid admission port opening into the dose chamber, and a flush bypass that opens downstream of the dose chamber;
+
+an annular rinse channel between an outer surface of the metering sleeve and an inner surface of the housing, and at least one rinse opening through the metering sleeve connecting the annular rinse channel to the dose chamber;
+
+a piston axially slidable in the dose chamber between a fill position and a discharge position, the piston having an upstream sealing land and a downstream sealing land axially spaced from one another and joined by a reduced-diameter waist;
+
+a piston rod extending from the piston and carrying a follower pin;
+
+a one-way outlet valve arranged to pass liquid from the dose chamber toward the outlet; and
+
+a normally closed flush poppet connected to the flush bypass;
+
+wherein in the fill position the waist connects the concentrate port to the dose chamber and the upstream sealing land and the downstream sealing land isolate the carrier-liquid admission port from the concentrate port;
+
+wherein movement of the piston toward the discharge position closes the concentrate port before the downstream sealing land uncovers the carrier-liquid admission port, whereby carrier liquid entering through the carrier-liquid admission port passes behind a measured volume of concentrate in the dose chamber and expels the measured volume through the one-way outlet valve toward the outlet; and
+
+wherein the follower pin opens the flush poppet during a return stroke of the piston toward the fill position, whereby carrier liquid flows through the annular rinse channel, through the at least one rinse opening and through the flush bypass to the outlet, the flush poppet closing before the waist reconnects the concentrate port to the dose chamber.
+
+2. The inline liquid metering valve of claim 1, wherein the at least one rinse opening comprises two radial rinse openings through the metering sleeve, one of the two radial rinse openings being directed across the concentrate port and the other of the two radial rinse openings being directed across the one-way outlet valve.
+
+3. The inline liquid metering valve of claim 1, further comprising a flexible lip carried on the upstream sealing land and bearing on a wall of the dose chamber, the flexible lip wiping the wall of the dose chamber during the return stroke before the follower pin opens the flush poppet.
+
+4. The inline liquid metering valve of claim 1, wherein the waist is out of register with the concentrate port, so that the waist does not connect the concentrate port to the dose chamber, throughout an interval in which the annular rinse channel communicates with the flush bypass.
+
+5. The inline liquid metering valve of claim 1, wherein faces of the upstream sealing land and of the downstream sealing land and edges of the concentrate port and of the carrier-liquid admission port are axially positioned such that the concentrate port is closed at every position of the piston at which the carrier-liquid admission port is open.
+
+6. The inline liquid metering valve of claim 1, further comprising an index collar surrounding the metering sleeve and having a helical cam groove engaged by the follower pin, the index collar being turned by one increment by each full stroke of the piston.
+
+7. The inline liquid metering valve of claim 6, further comprising three selectable axial stop faces carried by the index collar at different axial positions, each of the three selectable axial stop faces, when selected, limiting travel of the piston to set a respective dose volume.
+
+8. The inline liquid metering valve of claim 7, further comprising a spring-biased detent and three detent recesses, the spring-biased detent engaging one of the three detent recesses to retain a selected setting of the index collar.
+
+9. The inline liquid metering valve of claim 7, further comprising a transparent window in the housing and three dose setting numerals carried by the index collar, the transparent window showing one of the three dose setting numerals, the one of the three dose setting numerals presented at the transparent window being associated with a selected one of the three selectable axial stop faces that then limits the travel of the piston.
+
+10. The inline liquid metering valve of claim 1, further comprising a cartridge containing the piston, the metering sleeve, the one-way outlet valve and the flush poppet, the cartridge being removable from the housing as a unit.
+
+11. The inline liquid metering valve of claim 10, further comprising a threaded end cap retaining the cartridge in the housing, the threaded end cap being removable to withdraw the cartridge from the housing without disturbing connections at the inlet and at the outlet.
+
+12. The inline liquid metering valve of claim 1, wherein the housing is cylindrical, the inlet being at one axial end of the housing and the outlet being at an opposite axial end of the housing.
+
+13. A method of dosing a concentrate into a flowing carrier liquid, comprising:
+
+flowing carrier liquid through a housing from an inlet to an outlet;
+
+with a piston in a fill position in a dose chamber of a metering sleeve fixed within the housing, admitting concentrate through a concentrate port and past a reduced-diameter waist of the piston into the dose chamber to form a measured volume, an upstream sealing land and a downstream sealing land of the piston isolating a carrier-liquid admission port from the concentrate port;
+
+advancing the piston toward a discharge position so as to close the concentrate port and thereafter to uncover the carrier-liquid admission port with the downstream sealing land;
+
+admitting carrier liquid through the carrier-liquid admission port behind the measured volume and expelling the measured volume through a one-way outlet valve toward the outlet;
+
+returning the piston toward the fill position;
+
+during the returning, opening a normally closed flush poppet with a follower pin carried by a piston rod of the piston, and flowing carrier liquid through an annular rinse channel between an outer surface of the metering sleeve and an inner surface of the housing, through at least one rinse opening in the metering sleeve and through a flush bypass that opens downstream of the dose chamber to the outlet; and
+
+closing the flush poppet before the waist reconnects the concentrate port to the dose chamber.
+
+14. The method of claim 13, further comprising wiping a wall of the dose chamber with a flexible lip carried on the upstream sealing land during the returning and before the opening of the flush poppet.
+
+15. The method of claim 13, wherein the flowing of carrier liquid through the at least one rinse opening comprises directing carrier liquid from one of two radial rinse openings across the concentrate port and from the other of the two radial rinse openings across the one-way outlet valve.
+
+16. The method of claim 13, wherein the waist remains out of register with the concentrate port, so that the waist does not connect the concentrate port to the dose chamber, throughout an interval in which the annular rinse channel communicates with the flush bypass.
+
+17. The method of claim 13, further comprising turning an index collar surrounding the metering sleeve by one increment for each full stroke of the piston by way of the follower pin engaged in a helical cam groove of the index collar.
+
+18. The method of claim 17, further comprising limiting travel of the piston with a selected one of three axial stop faces carried by the index collar, thereby setting the measured volume.
+
+19. The method of claim 18, further comprising retaining the selected one of the three axial stop faces with a spring-biased detent engaging one of three detent recesses, and displaying, through a transparent window in the housing, one of three dose setting numerals carried by the index collar.
+
+20. The method of claim 13, further comprising removing a threaded end cap from the housing and withdrawing from the housing, as a unit, a cartridge containing the piston, the metering sleeve, the one-way outlet valve and the flush poppet, while the inlet and the outlet remain connected.
+
+========================================================================
+
+ABSTRACT OF THE DISCLOSURE
+
+An inline liquid metering valve has a housing with an inlet and an outlet and a metering sleeve defining a dose chamber, a concentrate port, a carrier-liquid admission port and a flush bypass opening downstream of the dose chamber. A piston sliding in the dose chamber has two sealing lands joined by a reduced-diameter waist. In a fill position the waist connects the concentrate port to the dose chamber while the lands isolate the carrier-liquid admission port. Movement toward a discharge position closes the concentrate port before the downstream land uncovers the carrier-liquid admission port, so carrier liquid passes behind the measured volume and expels it through a one-way outlet valve. On the return stroke a follower pin on the piston rod opens a normally closed flush poppet, rinsing the wetted surfaces through an annular rinse channel and closing before the concentrate port is reconnected.

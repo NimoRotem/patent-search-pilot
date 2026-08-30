@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Pro | IPtorch{% endblock %}
+{% block body %}
+<div class="wrap">
+  <h1>This one is Pro</h1>
+  <p>{{ reason }}</p>
+  <p class="small muted">Pro is not a subscription. A card on file, a minimum $10 of credit, and
+    you are charged for the model time a run actually spends. A month with no searches costs
+    nothing, and the prior-art search stays free whatever you do.</p>
+  {% if need == 'free' %}
+  <p><a class="btn" href="{{ request.script_root }}/register">Create a free account</a>
+     <a class="btn ghost" href="{{ request.script_root }}/login">Sign in</a></p>
+  {% else %}
+  <p><a class="btn" href="{{ request.script_root }}/billing">Add a card</a>
+     <a class="btn ghost" href="{{ request.script_root }}/">Back to search</a></p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -48,6 +48,18 @@ _SCHEMA = (
     #  copied onto each published report and never needs to be read back, so there is no reason to
     #  hold the plaintext. Empty means no default has been set, and nothing is auto-published until
     #  one is, because a link with no password is a report anyone who guesses the slug can read.
+    #  FILING IDENTITY. The USPTO fee depends on entity size and small is the common case for the
+    #  people using this, so it is the default: a large-entity user says so once. `signature_name`
+    #  is the S-signature under 37 CFR 1.4(d)(2), stored as the bare name and printed between
+    #  forward slashes on the papers that need signing.
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS entity_size text NOT NULL DEFAULT 'small'",
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS signature_name text NOT NULL DEFAULT ''",
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS signature_title text NOT NULL DEFAULT ''",
+    #  CONSENT, RECORDED, WITH THE MOMENT IT WAS GIVEN. A name in a box is not authority to sign
+    #  a paper filed at the USPTO on somebody's behalf. 37 CFR 1.4(d)(2) works because inserting
+    #  the S-signature is the SIGNER's own act, so the tool has to be able to say when the signer
+    #  said so. Null means no signature is applied and the papers carry a line to sign by hand.
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS signature_consent_at timestamptz",
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS share_password_hash text NOT NULL DEFAULT ''",
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS autopublish boolean NOT NULL DEFAULT true",
     """CREATE TABLE IF NOT EXISTS app_saved_searches (
@@ -170,6 +182,58 @@ def set_share_password(user_id, password):
                     "WHERE id=%s RETURNING *",
                     (generate_password_hash(password) if password else "", int(user_id)))
         return public_user(cur.fetchone())
+
+
+ENTITY_SIZES = ("small", "large")
+
+
+def set_filing_identity(user_id, *, entity_size=None, signature_name=None, signature_title=None,
+                        signature_consent=None):
+    """Who signs, and at what entity size. Both go on filed papers, so both are set once here."""
+    ensure_schema()
+    if entity_size is not None and entity_size not in ENTITY_SIZES:
+        raise ValueError("Entity size must be small or large.")
+    name = None if signature_name is None else re.sub(r"\s+", " ", signature_name.strip())[:120]
+    #  The S-signature is letters, numbers and a few name characters between forward slashes. A
+    #  slash INSIDE it would close the signature early, so it is refused rather than trimmed.
+    if name and ("/" in name or "\\" in name):
+        raise ValueError("A signature name cannot contain a slash.")
+    title = None if signature_title is None else re.sub(r"\s+", " ", signature_title.strip())[:120]
+    #  CONSENT IS GIVEN, NOT INHERITED. Withdrawing it clears the timestamp; giving it stamps
+    #  now(). Changing the NAME clears it too: authority was given for a particular signature, and
+    #  carrying it silently onto a different one is precisely the thing consent exists to prevent.
+    with db.cursor() as cur:
+        cur.execute("SELECT signature_name FROM app_users WHERE id=%s", (int(user_id),))
+        prev = str((cur.fetchone() or {}).get("signature_name") or "")
+        if signature_consent is None:
+            consent_sql = ("NULL" if (name is not None and name != prev)
+                           else "signature_consent_at")
+        else:
+            consent_sql = "now()" if signature_consent else "NULL"
+        cur.execute("UPDATE app_users SET entity_size=COALESCE(%s,entity_size),"
+                    "signature_name=COALESCE(%s,signature_name),"
+                    "signature_title=COALESCE(%s,signature_title),"
+                    "signature_consent_at=" + consent_sql + ",updated_at=now() "
+                    "WHERE id=%s RETURNING *",
+                    (entity_size, name, title, int(user_id)))
+        return public_user(cur.fetchone())
+
+
+def filing_identity(user_id):
+    """-> {"entity_size", "signature_name", "signature_title"}. Small entity unless told otherwise."""
+    ensure_schema()
+    try:
+        with db.cursor() as cur:
+            cur.execute("SELECT entity_size, signature_name, signature_title, "
+                        "signature_consent_at FROM app_users WHERE id=%s", (int(user_id),))
+            row = cur.fetchone() or {}
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        row = {}
+    return {"entity_size": str(row.get("entity_size") or "small"),
+            "signature_name": str(row.get("signature_name") or ""),
+            "signature_title": str(row.get("signature_title") or ""),
+            "signature_consent_at": row.get("signature_consent_at")}
 
 
 def search_owner(slug):

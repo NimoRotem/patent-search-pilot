@@ -6,10 +6,20 @@ Provider: Vertex AI `gemini-2.5-flash` via the GCE service account (OpenAI accou
 from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
-import json, re, threading
+import json, os, re, threading
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 AGENT_MODEL = "gemini-2.5-flash"
+
+#  The vision model for reads where MISSING something costs evidence rather than latency. Reading a
+#  scanned IDS or citation list is one: every number on that form is a reference an examiner already
+#  considered, and a row dropped in transcription is art the search must then rediscover by
+#  similarity or never finds. Measured on US 19/318,450: flash with thinking off returned 4 of the
+#  9 numbers on the wrapper. gemini-2.5-pro cannot take a thinking budget of 0, and its thinking
+#  tokens come out of max_output_tokens, so the budget is ADDED to the caller's ask, not taken from
+#  it.
+VISION_STRONG_MODEL = os.environ.get("VISION_STRONG_MODEL", "gemini-2.5-pro")
+VISION_STRONG_THINKING = int(os.environ.get("VISION_STRONG_THINKING", "1024"))
 _local = threading.local()
 def _client():
     if not hasattr(_local, "c"):
@@ -274,13 +284,16 @@ _FIGURES_SYS = (
 
 @retry(wait=wait_exponential(min=1, max=20), stop=stop_after_attempt(3),
        retry=retry_if_exception_type(Exception))
-def _call_vision(system, parts, max_tokens):
+def _call_vision(system, parts, max_tokens, strong=False):
+    """One vision answer. `strong=True` picks the thinking model, for transcription-critical reads."""
     from google.genai.types import GenerateContentConfig, ThinkingConfig
+    model = VISION_STRONG_MODEL if strong else AGENT_MODEL
+    budget = VISION_STRONG_THINKING if strong else 0
     return _client().models.generate_content(
-        model=AGENT_MODEL, contents=parts,
+        model=model, contents=parts,
         config=GenerateContentConfig(system_instruction=system, temperature=0.2,
-                                     max_output_tokens=max_tokens,
-                                     thinking_config=ThinkingConfig(thinking_budget=0)))
+                                     max_output_tokens=max_tokens + budget,
+                                     thinking_config=ThinkingConfig(thinking_budget=budget)))
 
 
 def describe_figures(image_blobs, context: str = "", max_images: int = 4) -> str:

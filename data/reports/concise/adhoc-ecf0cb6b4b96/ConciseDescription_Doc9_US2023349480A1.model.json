@@ -1,0 +1,173 @@
+{
+ "n": 9,
+ "pub": "US-2023349480-A1",
+ "family_id": "88306497",
+ "biblio": {
+  "pub": "US-2023349480-A1",
+  "label": "U.S. Patent Application Publication No. US 2023/0349480 A1",
+  "kind": "publication",
+  "title": "Vacuum unit",
+  "country": "US",
+  "inventor": "Georg Preisenberger",
+  "assignee": "Festo SE and Co KG",
+  "publication_date": "2023-11-02",
+  "priority_date": "2022-05-02",
+  "filing_date": "2023-05-01",
+  "dates_source": "corpus",
+  "abstract": "A vacuum unit having at least one vacuum generator extending along a main axis and comprising a base body, further having a silencer housing containing a silencer. An ejector unit extends in the base body and an ejector axis is oriented parallel to the main axis and a suction zone of the ejector unit communicates via a vacuum channel with a vacuum tapping opening, and an air exhaust channel of the ejector unit extends through the silencer housing and has a deflected course through 90 degrees in the silencer housing and opens out to the environment with an air exhaust opening. The vacuum tapping opening is formed on an end face of the silencer housing facing away from the base body in the main direction and wherein the air exhaust opening is also formed on the silencer housing with an orientation perpendicular to the main axis.",
+  "issue_date_pretty": "November 2, 2023",
+  "priority_date_pretty": "May 2, 2022"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a vacuum unit having at least one vacuum generator extending along a main axis and comprising a base body, further having a silencer housing containing a silencer. An ejector unit extends in the base body and an ejector axis is oriented parallel to the main axis and a suction zone of the ejector unit communicates via a vacuum channel with a vacuum tapping opening, and an air exhaust channel of the ejector unit extends through the silencer housing and has a deflected course through 90 degrees in the silencer housing and opens out to the environment with an air exhaust opening. The vacuum tapping opening is formed on an end face of the silencer housing facing away from the base body in the main direction and wherein the air exhaust opening is also formed on the silencer housing with an orientation perpendicular to the main axis.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[b]",
+   "quote_claim": true,
+   "claim_text": "a housing which has a grip portion for gripping the grip unit, and an, electrically operated, vacuum generating device",
+   "claim_paraphrase": "a housing which has a grip portion for gripping the grip unit, and an, electrically operated, vacuum generating device",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A vacuum unit having at least one vacuum generator extending along a main axis and comprising a base body, further having a silencer housing containing a silencer.",
+   "note": "This reference discloses a vacuum unit with a vacuum generator. It mentions an electrically actuable vacuum control valve, implying electrical operation",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 0,
+   "disclosure": "This reference discloses a vacuum unit having at least one vacuum generator and an electrically actuable vacuum control valve, implying electrical operation."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[d]",
+   "quote_claim": true,
+   "claim_text": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "claim_paraphrase": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "an air exhaust channel of the ejector unit extends through the silencer housing and has a deflected course through 90 degrees in the silencer housing and opens out to the environment with an air exhaust opening.",
+   "note": "This reference discloses an air exhaust channel extending through a silencer housing to an air exhaust opening. The silencer housing is attached to a base body, which could be part of a grip portion.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 1,
+   "disclosure": "This reference discloses an air exhaust channel of an ejector unit that extends through a silencer housing and opens out to the environment with an air exhaust opening."
+  },
+  {
+   "claim_no": 2,
+   "label": "claim 2[a]",
+   "quote_claim": false,
+   "claim_text": "The grip unit according to claim 1, wherein the grip portion is at least partially lined with a sound-damping material",
+   "claim_paraphrase": "The grip unit according to claim 1, wherein the grip portion is at least partially lined with a sound-damping material",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A vacuum unit having at least one vacuum generator extending along a main axis and comprising a base body, further having a silencer housing containing a silencer.",
+   "note": "This reference describes a vacuum unit with a silencer housing containing a silencer for noise reduction",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 2,
+   "disclosure": "This reference discloses a silencer housing containing a silencer."
+  },
+  {
+   "claim_no": 5,
+   "label": "claim 5[a]",
+   "quote_claim": false,
+   "claim_text": "The grip unit according to claim 3, wherein the grip portion is elongated between the first housing portion and a second housing portion, wherein the air outlet is arranged on the second housing portion",
+   "claim_paraphrase": "The grip unit according to claim 3, wherein the grip portion is elongated between the first housing portion and a second housing portion, wherein the air outlet is arranged on the …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A vacuum unit having at least one vacuum generator extending along a main axis and comprising a base body, further having a silencer housing containing a silencer.",
+   "note": "This reference describes a vacuum unit with a base body and a silencer housing, and an air exhaust opening on the silencer housing. This could be interpreted as a first and second housing portion with an air outlet on the second",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 3,
+   "disclosure": "This reference discloses a vacuum unit comprising a base body and a silencer housing, with an air exhaust opening formed on the silencer housing."
+  },
+  {
+   "claim_no": 7,
+   "label": "claim 7[a]",
+   "quote_claim": false,
+   "claim_text": "The grip unit according to claim 1, wherein downstream of the grip portion, in on or in the second housing portion, one or more, bent or curved, air baffles are arranged for guiding exhaust air emerging from the grip portion to the air outlet",
+   "claim_paraphrase": "The grip unit according to claim 1, wherein downstream of the grip portion, in on or in the second housing portion, one or more, bent or curved, air baffles are arranged for …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "wherein an air exhaust channel adjoins the capture nozzle and passes through the silencer housing and the silencer located therein and has a deflected course through 90 degrees in the silencer housing and opens out to the environment with an",
+   "note": "This reference discloses an air exhaust channel with a deflected course through 90 degrees in a silencer housing for guiding exhaust air to an air exhaust opening.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.8,
+   "_id": 4,
+   "disclosure": "This reference discloses an air exhaust channel that has a deflected course through 90 degrees in the silencer housing."
+  },
+  {
+   "claim_no": 8,
+   "label": "claim 8[b]",
+   "quote_claim": false,
+   "claim_text": "wherein one or more air baffles for directing the exhaust air away from the battery coupling point are provided in an region of the air outlet or downstream of the air outlet",
+   "claim_paraphrase": "one or more air baffles for directing the exhaust air away from the battery coupling point are provided in an region of the air outlet or downstream of the air outlet",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "wherein an air exhaust channel adjoins the capture nozzle and passes through the silencer housing and the silencer located therein and has a deflected course through 90 degrees in the silencer housing and opens out to the environment with an",
+   "note": "This reference discloses an air exhaust channel with a deflected course and an air exhaust opening, which can be considered a form of directing exhaust air.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.7,
+   "_id": 5,
+   "disclosure": "This reference discloses an air exhaust channel that has a deflected course through 90 degrees in the silencer housing and opens out to the environment with an air exhaust opening."
+  },
+  {
+   "claim_no": 11,
+   "label": "claim 11[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate in order to generate a vacuum between the suction plate and an object to be lifted",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "a suction zone of the ejector unit communicates via a vacuum channel with a vacuum tapping opening, which vacuum tapping opening enables the tapping of a vacuum and is arranged on an outer vacuum tapping surface of the vacuum generator",
+   "note": "This reference describes a vacuum tapping opening that enables tapping of a vacuum and is connected via a vacuum channel to a suction zone.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.6,
+   "_id": 6,
+   "disclosure": "This reference discloses a vacuum tapping opening that is fluidically connected via a vacuum channel to a suction zone of an ejector unit."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 7,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

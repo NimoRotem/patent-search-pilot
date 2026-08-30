@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Billing | IPtorch{% endblock %}
+{% block body %}
+{% from "_qhelp.html" import qhelp with context %}
+<div class="wrap">
+  <h1>Billing</h1>
+  <p class="small muted">Pro is not a subscription. You put a card on file, keep a small balance,
+    and are charged for the model time a run actually spends. A month with no searches costs
+    nothing.</p>
+
+  <div class="card" style="padding:1em;margin:1em 0">
+    <h2 style="margin-top:0">Account</h2>
+    <p><b>{{ ent.label }}</b>
+      {% if ent.tier == 'pro' %}&middot; balance <b>${{ '%.2f'|format(ent.balance_usd or 0) }}</b>
+      {% else %}&middot; reads up to {{ ent.read_limit }} references in full per run{% endif %}</p>
+    {% if user.card_last4 %}
+    <p class="small">Card on file: {{ user.card_brand|title }} ending {{ user.card_last4 }}
+      <form method="post" action="{{ request.script_root }}/billing/card/remove" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn ghost sm" type="submit">Remove</button></form></p>
+    {% endif %}
+  </div>
+
+  {% if not user.card_last4 %}
+  <div class="card" style="padding:1em;margin:1em 0">
+    <h2 style="margin-top:0">Add a card</h2>
+    <p class="small muted">Stored by Stripe, never by us. Charged only when a run spends model
+      time, plus the ${{ '%.0f'|format(ent.min_topup_usd) }} minimum you top up with.</p>
+    <div id="card-element" style="margin:.8em 0"></div>
+    <button class="btn" id="saveCard">Save card and add ${{ '%.0f'|format(ent.min_topup_usd) }}</button>
+    <p class="small warn" id="cardErr" hidden style="margin-top:.6em"></p>
+  </div>
+  {% else %}
+  <div class="card" style="padding:1em;margin:1em 0">
+    <h2 style="margin-top:0">Add credit</h2>
+    <form method="post" action="{{ request.script_root }}/billing/topup">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Amount
+        <select name="usd">
+          {% for a in [10, 25, 50, 100, 250] %}<option value="{{ a }}">${{ a }}</option>{% endfor %}
+        </select></label>
+      <button class="btn sm" type="submit">Charge the card</button>
+    </form>
+    <form method="post" action="{{ request.script_root }}/billing/autotopup" style="margin-top:.6em">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="toggle"><input type="checkbox" name="on" value="1"
+        {{ 'checked' if (user.auto_topup_usd or 0) > 0 }}> Top up automatically when the balance
+        falls below ${{ '%.0f'|format(auto_at) }}</label>
+      <select name="usd">
+        {% for a in [10, 25, 50, 100] %}<option value="{{ a }}"
+          {{ 'selected' if (user.auto_topup_usd or 0)|int == a }}>${{ a }}</option>{% endfor %}
+      </select>
+      <button class="btn ghost sm" type="submit">Save</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if msg %}<div class="card" style="padding:.7em 1em;margin:1em 0">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="warn" style="padding:.7em 1em;margin:1em 0">{{ err }}</div>{% endif %}
+
+  <h2>Ledger</h2>
+  {% if rows %}
+  <table class="tbl small">
+    <thead><tr><th>When</th><th>What</th><th>Run</th><th style="text-align:right">USD</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ r.note or r.kind }}</td>
+          <td>{% if r.slug %}<a href="{{ request.script_root }}/report/{{ r.slug }}">{{ r.slug }}</a>{% endif %}</td>
+          <td style="text-align:right">{{ '%+.2f'|format(r.usd) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="small muted">Nothing yet.</p>{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if not user.card_last4 and pk %}
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+/*  The card never touches this server: Stripe Elements collects it, the SetupIntent confirms it
+    off-session, and we only ever see the payment_method id and the last four digits. */
+(function(){
+  const stripe = Stripe({{ pk|tojson }});
+  const el = stripe.elements().create('card');
+  el.mount('#card-element');
+  const btn = document.getElementById('saveCard');
+  const err = document.getElementById('cardErr');
+  btn.addEventListener('click', async function(){
+    btn.disabled = true; err.hidden = true;
+    try {
+      const r = await fetch('{{ request.script_root }}/billing/setup-intent', {method: 'POST',
+        headers: {'X-CSRF': {{ csrf_token()|tojson }}}});
+      const d = await r.json();
+      if (!d.client_secret) throw new Error(d.error || 'Could not start the card setup.');
+      const res = await stripe.confirmCardSetup(d.client_secret, {payment_method: {card: el}});
+      if (res.error) throw new Error(res.error.message);
+      const f = new FormData();
+      f.append('payment_method', res.setupIntent.payment_method);
+      f.append('csrf_token', {{ csrf_token()|tojson }});
+      const save = await fetch('{{ request.script_root }}/billing/card', {method: 'POST', body: f});
+      if (!save.ok) throw new Error('The card was set up but could not be saved.');
+      window.location.reload();
+    } catch (e) {
+      err.textContent = e.message; err.hidden = false; btn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

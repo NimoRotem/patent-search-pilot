@@ -1,0 +1,138 @@
+{
+ "n": 3,
+ "pub": "US-2379596-A",
+ "family_id": "24153282",
+ "biblio": {
+  "pub": "US-2379596-A",
+  "label": "U.S. Patent No. 2,379,596",
+  "kind": "patent",
+  "title": "Magnetic lifting device",
+  "country": "US",
+  "inventor": "James W Seamans",
+  "assignee": "Individual",
+  "publication_date": "1945-07-03",
+  "priority_date": "1944-06-12",
+  "filing_date": "1944-06-12",
+  "dates_source": "corpus",
+  "abstract": "",
+  "issue_date_pretty": "July 3, 1945",
+  "priority_date_pretty": "June 12, 1944"
+ },
+ "subject": {
+  "app_no": "19/318,450",
+  "pub_no": "US 2026/0070232 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a magnetic lifting device for manipulating metal plates, which includes a horseshoe magnet with spaced magnetic legs, non-magnetic clips attached to the magnet legs, and a pusher bar for aligning workpieces, where magnetic contact can be broken by a rocking movement.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[c]",
+   "quote_claim": true,
+   "claim_text": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the workpiece contact surface",
+   "claim_paraphrase": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Clips H] are insulated as at H from the bases l2 of the magnet legs 8 and 9 I The clips are preferably made of brass, aluminum, or similar non-magnetic material.",
+   "note": "The reference discloses non-magnetic clips that are attached to the magnet legs and contact the workpiece.",
+   "cites": [
+    "Paragraph [0019]"
+   ],
+   "confidence": 0.4,
+   "_id": 0,
+   "disclosure": "The reference discloses non-magnetic clips H that are insulated as at H from the bases l2 of the magnet legs 8 and 9, and are preferably made of brass, aluminum, or similar non-magnetic material."
+  },
+  {
+   "claim_no": 6,
+   "label": "claim 6[b]",
+   "quote_claim": false,
+   "claim_text": "the first projection and the second projection are adjacent to one another",
+   "claim_paraphrase": "the first projection and the second projection are adjacent to one another",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "a horseshoe magnet 'I, having spaced magnetic legs 8 and 9.",
+   "note": "The reference describes a horseshoe magnet with spaced magnetic legs, which are adjacent.",
+   "cites": [
+    "Paragraph [0019]"
+   ],
+   "confidence": 0.6,
+   "_id": 1,
+   "disclosure": "The reference discloses a horseshoe magnet 'I having spaced magnetic legs 8 and 9."
+  },
+  {
+   "claim_no": 7,
+   "label": "claim 7[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper (10) according to claim 1, wherein the magnetic gripper (10) has a positioning device (56) for positioning the ferromagnetic workpiece (72) on the workpiece contact surface (40, 42",
+   "claim_paraphrase": "The magnetic gripper (10) according to claim 1, wherein the magnetic gripper (10) has a positioning device (56) for positioning the ferromagnetic workpiece (72) on the workpiece …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "As disclosed to advantage in the drawing, the numeral l2 indicates a pusher bar that is adjustably secured at one end as at M to the handle 5, and has the body thereof extending at an angle to the handle",
+   "note": "The reference discloses a pusher bar for aligning workpieces, which is a type of positioning device",
+   "cites": [
+    "Paragraph [0020]"
+   ],
+   "confidence": 0.7,
+   "_id": 2,
+   "disclosure": "The reference discloses a pusher bar l2 that is adjustably secured at one end as at M to the handle 5, and has the body thereof extending at an angle to the handle."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "After the plates have been suitably aligned, as disclosed in Fig. 3, a movement of the device in the direction of the arrow of Fig. 3 will effect a breaking of the magnetic contact occasioned by a rocking of the",
+   "note": "The reference describes a mechanical movement (rocking of clips) to break magnetic contact, which is a form of displacement between gripping and release",
+   "cites": [
+    "Paragraph [0022]"
+   ],
+   "confidence": 0.6,
+   "_id": 3,
+   "disclosure": "The reference discloses that a movement of the device in the direction of the arrow of will effect a breaking of the magnetic contact occasioned by a rocking of the clips."
+  },
+  {
+   "claim_no": 14,
+   "label": "claim 14[a]",
+   "quote_claim": false,
+   "claim_text": "A magnetic gripper system, the magnetic gripper system comprising",
+   "claim_paraphrase": "A magnetic gripper system, the magnetic gripper system comprising",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "This invention relates to a device or apparatus for manipulating metal plate and has particular reference to a hand operated implement for pulling together sheet metal plates, iron, angles, and beams to be tack welded.",
+   "note": "The reference describes a magnetic lifting device for manipulating metal plates, which can be considered a magnetic gripper system.",
+   "cites": [
+    "Paragraph [0009]",
+    "Paragraph [0019]"
+   ],
+   "confidence": 0.7,
+   "_id": 4,
+   "disclosure": "The reference discloses a device or apparatus for manipulating metal plate, which is a hand operated implement for pulling together sheet metal plates, iron, angles, and beams to be tack welded."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "public_prior_art",
+   "blocked": false,
+   "forum": "US"
+  },
+  "quotes": {
+   "checked": 5,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

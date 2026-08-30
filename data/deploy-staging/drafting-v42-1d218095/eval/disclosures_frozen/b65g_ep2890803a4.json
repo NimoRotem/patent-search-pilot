@@ -1,0 +1,209 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b65g_ep2890803a4",
+ "subject_pub": "EP-2890803-A4",
+ "n_claims_source": 44,
+ "claims_source": "family_claims:US-10066339-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 30,
+  "by_kind": {
+   "independent_limitation": 5,
+   "combination": 1,
+   "dependent_limitation": 24
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "An apparatus for processing a biomass material",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A first treatment cell equipped with a first electron beam device",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The first treatment cell irradiates biomass material with electron beams",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A screw conveyor for cooling the biomass material",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A screw conveyor for conveying the biomass material from the first treatment cell",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "An apparatus comprising a first electron beam treatment cell and a screw conveyor for cooling and conveying biomass",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A second treatment cell equipped with a second electron beam device",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The second electron beam device further irradiates the biomass material",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Irradiating with the second electron beam device delivers a dose rate of at least 1 Mrad per second",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The screw conveyor includes interior portions that are cooled",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The interior portions are cooled using a chilled liquid",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The interior portions include a hollow shaft and hollow flight",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "A geothermal ground loop for cooling the chilled liquid",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The interior portions are cooled using water or glycol water mixtures",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The water or glycol water mixtures are chilled by a geothermal ground loop",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Cooling reduces biomass temperature by between 1\u00b0 C. and 110\u00b0 C.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Cooling reduces biomass temperature by between 10\u00b0 C. and 75\u00b0 C.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Cooling reduces biomass temperature by between 10\u00b0 C. and 50\u00b0 C.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "A total dose delivered is between 1 and 200 Mrad",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "A total dose delivered is between 10 Mrad and 50 Mrad",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "A total dose delivered is between 20 Mrad and 40 Mrad",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Biomass temperature during irradiation does not exceed 160\u00b0 C.",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Biomass temperature during irradiation increases by between 75\u00b0 C. and 150\u00b0 C.",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "The biomass includes a lignocellulosic material",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "The biomass is selected from wood, particle board, sawdust, agricultural waste, sewage, silage, grasses, rice hulls, bagasse, cotton, jute, hemp, flax, bamboo, sisal, abaca, straw, corn cobs, corn stover, switchgrass, alfalfa, hay, coconut ",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "The screw conveyor includes two or more screws",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "Irradiating with the first electron beam delivers a dose rate of at least 1 Mrad per second",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "The screw conveyor has a material inlet and a material discharge",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "The temperature difference of biomass between inlet and discharge is less than 110\u00b0 C.",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "The biomass material is comminuted while it is conveyed",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "0ae57edd09e0a04d"
+}

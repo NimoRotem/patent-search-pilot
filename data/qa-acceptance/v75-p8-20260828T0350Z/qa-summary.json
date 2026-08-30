@@ -1,0 +1,298 @@
+{
+  "project_id": 8,
+  "title": "VIBRATION DEVICE FOR BEDDING COVERING ELEMENTS, HELD BY A SUSTAINED PRESSURE DIFFERENTIAL ACROSS A RIGID LOW-FRICTION PERIMETER",
+  "version_no": 5,
+  "ready": true,
+  "blockers": [],
+  "formalities": [],
+  "qa_verdict": "pass",
+  "section_count": 10,
+  "figure_count": 6,
+  "citation_count": 5,
+  "reference_count": 5,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "90073ec698b87dce997fca5bc4af603f61f3eb2bdba78db21e30c37c0dba85b8",
+  "figures": [
+    {
+      "id": 7,
+      "label": "FIG. 1",
+      "active_version": 32,
+      "active_version_matches": 1,
+      "mime": "image/png",
+      "bytes": 26487,
+      "sha256": "6a8e046f7d2bea6ddf5e175582f38574df071f6d1f9a3dcaa0214b411a60ef4f",
+      "expected_sheet_number": "1/6",
+      "detected_sheet_numbers": [
+        "1/6"
+      ],
+      "detected_figure_label": "FIG. 1",
+      "expected_numerals": [
+        "10",
+        "12",
+        "18",
+        "20",
+        "24",
+        "36",
+        "44"
+      ],
+      "detected_numerals": [
+        "44",
+        "18",
+        "20",
+        "10",
+        "12",
+        "24",
+        "36"
+      ],
+      "missing_numerals": [],
+      "unexpected_numerals": [],
+      "duplicate_numerals": [],
+      "expected_section_designations": [],
+      "detected_section_designations": [],
+      "ocr_current": true,
+      "semantic_current": true,
+      "leader_current": true,
+      "specification_hash": "16cf79728675c64e46d042b5e8e638633498f4095f4ebdb145ce8785434e8ebb",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 11,
+      "label": "FIG. 2",
+      "active_version": 43,
+      "active_version_matches": 1,
+      "mime": "image/png",
+      "bytes": 35544,
+      "sha256": "b52077e802ce3fa695b84a0bbab5d74cfe1c8e72fd2af1dc3e29805c98c7aaef",
+      "expected_sheet_number": "2/6",
+      "detected_sheet_numbers": [
+        "2/6"
+      ],
+      "detected_figure_label": "FIG. 2",
+      "expected_numerals": [
+        "12",
+        "14",
+        "20",
+        "22",
+        "24",
+        "36"
+      ],
+      "detected_numerals": [
+        "14",
+        "20",
+        "12",
+        "22",
+        "24",
+        "36"
+      ],
+      "missing_numerals": [],
+      "unexpected_numerals": [],
+      "duplicate_numerals": [],
+      "expected_section_designations": [],
+      "detected_section_designations": [],
+      "ocr_current": true,
+      "semantic_current": true,
+      "leader_current": true,
+      "specification_hash": "b0f1860a8d241ab72a179357a53e074c04ff37a3a02514ab5025e2d1db3a45a8",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 8,
+      "label": "FIG. 3",
+      "active_version": 32,
+      "active_version_matches": 1,
+      "mime": "image/png",
+      "bytes": 20688,
+      "sha256": "3f51494ce76313b10805c60f5bde5d0ddde0d65f4b5ea83ec486510151a3977b",
+      "expected_sheet_number": "3/6",
+      "detected_sheet_numbers": [
+        "3/6"
+      ],
+      "detected_figure_label": "FIG. 3",
+      "expected_numerals": [
+        "16",
+        "24"
+      ],
+      "detected_numerals": [
+        "24",
+        "16"
+      ],
+      "missing_numerals": [],
+      "unexpected_numerals": [],
+      "duplicate_numerals": [],
+      "expected_section_designations": [
+        "2",
+        "4"
+      ],
+      "detected_section_designations": [
+        "2",
+        "2",
+        "4",
+        "4"
+      ],
+      "ocr_current": true,
+      "semantic_current": true,
+      "leader_current": true,
+      "specification_hash": "d0cffdc53eecc1c7d3da246522dffa9464d1c488e3ddbdc078ee0005f3f3d9bd",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 10,
+      "label": "FIG. 4",
+      "active_version": 30,
+      "active_version_matches": 1,
+      "mime": "image/png",
+      "bytes": 43745,
+      "sha256": "08503a11895bf0e4510049d5f7b7daf68e76b0aae7bb15e9a89041fb530ee68b",
+      "expected_sheet_number": "4/6",
+      "detected_sheet_numbers": [
+        "4/6"
+      ],
+      "detected_figure_label": "FIG. 4",
+      "expected_numerals": [
+        "24",
+        "26",
+        "34",
+        "36",
+        "38",
+        "40",
+        "42"
+      ],
+      "detected_numerals": [
+        "26",
+        "34",
+        "38",
+        "40",
+        "24",
+        "42",
+        "36"
+      ],
+      "missing_numerals": [],
+      "unexpected_numerals": [],
+      "duplicate_numerals": [],
+      "expected_section_designations": [],
+      "detected_section_designations": [],
+      "ocr_current": true,
+      "semantic_current": true,
+      "leader_current": true,
+      "specification_hash": "b651a6e54e76abbb50db42fd0b27e7acea39ecf948246d5d60072a52b894695c",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 26,
+      "label": "FIG. 5",
+      "active_version": 10,
+      "active_version_matches": 1,
+      "mime": "image/png",
+      "bytes": 27398,
+      "sha256": "ab686c65508706f370df76ae4424717dca4c473cd17cb7c7c4c7b602632b9560",
+      "expected_sheet_number": "5/6",
+      "detected_sheet_numbers": [
+        "5/6"
+      ],
+      "detected_figure_label": "FIG. 5",
+      "expected_numerals": [
+        "10",
+        "36",
+        "46"
+      ],
+      "detected_numerals": [
+        "46",
+        "36",
+        "10"
+      ],
+      "missing_numerals": [],
+      "unexpected_numerals": [],
+      "duplicate_numerals": [],
+      "expected_section_designations": [],
+      "detected_section_designations": [],
+      "ocr_current": true,
+      "semantic_current": true,
+      "leader_current": true,
+      "specification_hash": "8c295393185270b20992f0ce35eb3b78f653ec8e5d2776df36253f22138f4345",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+      "marked_prompt_version": "figure-anchor-v15-native-pixel-actionable-coordinate-certificate-majority",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 31,
+      "label": "FIG. 6",
+      "active_version": 4,
+      "active_version_matches": 1,
+      "mime": "image/png",
+      "bytes": 17428,
+      "sha256": "040ed4064c1a055a0a499fc6ca73ce770311e8361f7120070d2faba4b2d2ac08",
+      "expected_sheet_number": "6/6",
+      "detected_sheet_numbers": [
+        "6/6"
+      ],
+      "detected_figure_label": "FIG. 6",
+      "expected_numerals": [
+        "10",
+        "48"
+      ],
+      "detected_numerals": [
+        "48",
+        "10"
+      ],
+      "missing_numerals": [],
+      "unexpected_numerals": [],
+      "duplicate_numerals": [],
+      "expected_section_designations": [],
+      "detected_section_designations": [],
+      "ocr_current": true,
+      "semantic_current": true,
+      "leader_current": true,
+      "specification_hash": "260eff0357fe4d3123ca751cb84b9590f3afc428bb1d99cb114802278837d278",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+      "marked_prompt_version": "figure-anchor-v15-native-pixel-actionable-coordinate-certificate-majority",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    }
+  ],
+  "docx": {
+    "bytes": 186595,
+    "sha256": "240f655796da13e3bb75057a9299f6c25e1dbe6346c0ff507aac2b1c6d2f0f2e",
+    "media_files": [
+      "word/media/image1.png",
+      "word/media/image2.png",
+      "word/media/image3.png",
+      "word/media/image4.png",
+      "word/media/image5.png",
+      "word/media/image6.png"
+    ],
+    "has_section_properties": true,
+    "raw_reference_markers": 0,
+    "em_dash_count": 0
+  },
+  "all_drawings_current": true,
+  "docx_media_matches_figures": true,
+  "acceptance_pass": true
+}

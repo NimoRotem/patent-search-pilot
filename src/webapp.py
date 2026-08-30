@@ -8,6 +8,8 @@ endpoint; the agent report is cached to data/reports/<slug>.json and never block
 Per-card drawings/PDF/sections/rationale are enriched lazily via /api/ref.
 """
 from __future__ import annotations
+from config import EMBED_DIM  # noqa: E402
+import dataclasses
 import difflib, json, os, re, queue, secrets, sys, threading, hashlib, time, traceback
 from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
@@ -56,6 +58,9 @@ import retrieval                                  # search_doc_chunks (parallel 
 import img_search                                 # patent-drawing image-similarity channel
 import rerank_listwise                            # listwise agentic reranker (in-context, several at a time)
 from search_modes import require_available, ModeNotAvailable, available_modes
+import billing                                     # card on file, balance, usage ledger
+import entitlements                                # who may do what, in one place
+import search_mode                                 # the two pipelines: fast, and the attack
 import search_profile                              # concept search vs claim attack: kind + budget
 from retrieval import Retriever
 from agent import CoverageAgent, AgentConfig
@@ -406,7 +411,8 @@ def slugify(text):
     return "adhoc-" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
 
-def search_slug(query, mode, *, wide, search_focus, subject=None, doc_token=None, depth="deep"):
+def search_slug(query, mode, *, wide, search_focus, subject=None, doc_token=None, depth="deep",
+                read_top=None, batched=False, local_only=False):
     """Stable cache identity for every input that can change retrieval/report content.
 
     `depth` joined ONLY when it is not "deep", so every pre-existing deep report keeps its slug ,
@@ -415,6 +421,21 @@ def search_slug(query, mode, *, wide, search_focus, subject=None, doc_token=None
              f"subject:{subject or '-'}", f"document:{doc_token or '-'}"]
     if depth != "deep":
         parts.append(f"depth:{depth}")
+    #  A DIFFERENT READ DEPTH IS A DIFFERENT REPORT. Two runs of the same query that read 25 and
+    #  120 references are not the same answer, and sharing a slug would serve whichever finished
+    #  first as though it were both. Joined only when set, so every existing slug is unchanged.
+    if read_top:
+        parts.append(f"read:{int(read_top)}")
+    #  A BATCHED RUN IS A DIFFERENT REPORT for the same reason: it reads a fifth as many documents
+    #  the expensive way and the rest through the tail, so its charts are not the interactive
+    #  run's charts. Sharing a slug would serve whichever finished first as though it were both.
+    if batched:
+        parts.append("batched")
+    #  A run that never asked the outside world is a different search over a different candidate
+    #  pool: on the measured run, 296 families came from nothing but those sources. Sharing a slug
+    #  would serve whichever finished first as though it were both.
+    if local_only:
+        parts.append("localonly")
     return slugify("|".join(parts))
 
 
@@ -435,6 +456,80 @@ def _set_job(slug, **kw):
     #  durable worker the same event is written to search_runs.progress, which is what the SSE
     #  endpoint tails when the run is not in this process at all. No-op with no worker bound.
     runctx.event(slug, ev)
+
+
+#  WHAT IS BEING READ, RIGHT NOW, AND WHAT WAS READ JUST BEFORE.
+#
+#  The report page carried a stage name, a nine-paragraph explanation of the pipeline and a
+#  counter. Every one of those is fixed text: on a five-hour run the only thing that moved was
+#  "batch 130 of 210", against a description of the stage that had been on screen for two hours.
+#  Reported as "it's just stale for a long time; stream exactly what it's doing".
+#
+#  So the message names the reference, and the last few are kept on the job so a browser that
+#  opens the page mid-run is caught up instead of waiting for the next frame. Capped, because the
+#  whole job record is serialised into every event.
+_READ_LOG_MAX = int(os.environ.get("PROGRESS_READ_LOG", "25"))
+
+
+def _reading_line(head, data):
+    """"Reading in full: 132 of 210 · US20210231163A1 · Suction cup assembly · 84k chars"."""
+    bits = []
+    pubs = [str(p).strip() for p in ((data or {}).get("pubs") or []) if str(p).strip()]
+    pub = str((data or {}).get("pub") or "").strip()
+    req = str((data or {}).get("requirement") or "").strip()
+    if req:
+        bits.append(req)
+    if pubs:
+        bits.append(", ".join(pubs[:4]) + (" +%d" % (len(pubs) - 4) if len(pubs) > 4 else ""))
+    elif pub:
+        bits.append(pub)
+    title = str((data or {}).get("title") or "").strip()
+    if title:
+        bits.append(title[:70] + ("…" if len(title) > 70 else ""))
+    chars = int((data or {}).get("chars") or 0)
+    if chars > 0:
+        bits.append(("%dk chars" % round(chars / 1000)) if chars >= 1000 else "%d chars" % chars)
+    if (data or {}).get("reused"):
+        bits.append("from this run's own checkpoint")
+    return "%s: %s of %s%s" % (head, data.get("done"), data.get("total"),
+                              (" · " + " · ".join(bits)) if bits else "…")
+
+
+def _read_log(slug, data):
+    """Append what was just read to the job's rolling log. Newest last; capped.
+
+    Two shapes reach here. The per-document chart sends ONE reference with its title and size;
+    the evidence sweep sends the BATCH it just asked about, with the requirement it asked. Both
+    end up as rows naming a publication, which is what a reader recognises.
+    """
+    d = data or {}
+    n_done = int(d.get("done") or 0)
+    note = str(d.get("requirement") or "").strip()
+    rows = []
+    pubs = [str(p).strip() for p in (d.get("pubs") or []) if str(p).strip()]
+    if pubs:
+        rows = [{"pub": p, "title": "", "chars": 0, "reused": False, "found": True,
+                 "note": note, "n": n_done} for p in pubs]
+    else:
+        pub = str(d.get("pub") or "").strip()
+        if pub:
+            rows = [{"pub": pub, "title": str(d.get("title") or "")[:120],
+                     "chars": int(d.get("chars") or 0), "reused": bool(d.get("reused")),
+                     "found": bool(d.get("found", True)),
+                     "n_features": int(d.get("n_features") or 0), "note": note, "n": n_done}]
+    if not rows:
+        return
+    with _JOB_LOCK:
+        j = _JOBS.setdefault(slug, {})
+        log = j.get("read_log") or []
+        for row in rows:
+            #  A reference is read once for the chart and again in the evidence sweep, so the same
+            #  publication reappears legitimately. Only an exact repeat is dropped.
+            if any(r.get("pub") == row["pub"] and r.get("n") == row["n"]
+                   and r.get("note") == row.get("note") for r in log[-len(rows) - 4:]):
+                continue
+            log.append(row)
+        j["read_log"] = log[-_READ_LOG_MAX:]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -560,6 +655,11 @@ def _job_event(slug, job):
             # the message string, and to keep showing the last known state during the long silent
             # stretch between 'partial' and 'reranking'.
             "detail": job.get("detail") or {},
+            #  WHAT HAS ACTUALLY BEEN READ, newest last.  is merged cumulatively by the
+            #  client, so a publication number in it cannot be told from the one before; this is a
+            #  list and it is the whole rolling window, so a page opened an hour into a run is
+            #  caught up on the last 25 references instead of waiting for the next one.
+            "read_log": job.get("read_log") or [],
             #  LIVE COST AND CLOCK. A search runs for a long time and the page had no way to say
             #  how long or how much. `t0` is set where the job is created; the token figure is the
             #  process-wide counter differenced against its value at that moment, so it is an
@@ -664,7 +764,9 @@ def _write_report(slug, rep):
 
 
 def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
-             search_focus="all_text", depth="deep"):
+             search_focus="all_text", depth="deep", read_top=None, batched=False,
+             then="list", local_only=False, search_mode_name=None, jurisdiction="US",
+             concept_expansions=False):
     """Thread entrypoint: run the generation, then always release the reserved budget slot.
     Kept separate from _generate so _generate's signature stays purely about doing the work."""
     try:
@@ -672,6 +774,21 @@ def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
         # stub _generate with the pre-existing (slug, query, subject, mode, wide) signature keep
         # working for typed deep queries.
         extra = {} if depth == "deep" else {"depth": depth}
+        #  WHICH PIPELINE. Sent only when it is set, so the historical call shapes the tests stub
+        #  against keep working unchanged.
+        if search_mode_name:
+            extra.update({"search_mode_name": search_mode_name, "jurisdiction": jurisdiction,
+                          "concept_expansions": concept_expansions})
+        #  How many references this run was ASKED to read, from the depth chooser on a finished
+        #  find. Only ever passed when it is set, so the historical call shapes above stay intact.
+        if read_top:
+            extra["read_top"] = int(read_top)
+        if batched:
+            extra["batched"] = True
+        if then and then != "list":
+            extra["then"] = then
+        if local_only:
+            extra["local_only"] = True
         if doc_token is None and search_focus == "all_text":
             # Preserve the historical call shape for adapters/tests that wrap _generate.
             _generate(slug, query, subject, mode, wide=wide, **extra)
@@ -1015,7 +1132,9 @@ def _drop_self_family(rep):
 
 
 def _generate(slug, query, subject, mode, wide=False, doc_token=None,
-              search_focus="all_text", depth="deep"):
+              search_focus="all_text", depth="deep", read_top=None, batched=False,
+              then="list", local_only=False, search_mode_name=None, jurisdiction="US",
+              concept_expansions=False):
     """Run one report. Runs fully concurrently with other generations , the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool).
 
@@ -1155,12 +1274,23 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             #  is a claim attack. They were running the same pipeline at the same price. See
             #  search_profile for the measured cost of that and for what each budget cuts.
             profile = search_profile.for_input((doc or {}).get("claims"))
-            run_budget = search_profile.budget_for(profile, depth=depth)
+            run_budget = search_profile.budget_for(profile, depth=depth, read_top=read_top,
+                                                   batched=batched, local_only=local_only)
             rep_profile = search_profile.describe(profile, depth=depth)
             _set_job(slug, kind="profile", detail=rep_profile,
                      msg=f"{rep_profile['label']} , {rep_profile['eta_text']}.")
+            #  WHAT THIS RUN WAS GIVEN, on the run itself. A report is only reproducible if it
+            #  can say what produced it, and the search settings are now changeable from a page
+            #  between one run and the next. Only the knobs NOT at their code default are
+            #  recorded: listing all twelve on every run buries the one that was changed.
+            try:
+                import search_settings as _ss
+                _ss_snap = _ss.snapshot()
+            except Exception:
+                _ss_snap = {}
             print(f"[profile {slug}] {profile.kind} depth={depth} rounds={profile.rounds} "
-                  f"budget={run_budget or 'full'}", flush=True)
+                  f"budget={run_budget or 'full'} "
+                  f"settings={_ss_snap or 'all default'}", flush=True)
             #  A LINK OR UPLOAD SEARCH NAMES NO SUBJECT, so until now it ran with no date cutoff and
             #  no self-exclusion at all. Both are wrong, and measurably so: on the EP 3 707 092
             #  benchmark the subject's OWN family came back at rank 1 of its own results, and because
@@ -1175,12 +1305,31 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 try:
                     subject = external.subject_from_doc(doc["publication_number"])
                     if subject is not None:
+                        #  WHICH LAW DECIDES WHAT COUNTS AS PRIOR ART. 35 U.S.C. 102(a)(2)
+                        #  reaches any application that later published and names the United
+                        #  States, whatever office it was filed at; EPC Art. 54(3) is strict and
+                        #  only counts an earlier EUROPEAN filing against a European application.
+                        #  Asked before the search because it changes which documents are prior
+                        #  art at all, not merely how they rank.
+                        if str(jurisdiction or "US").upper() == "EP":
+                            try:
+                                subject = dataclasses.replace(
+                                    subject, jurisdiction="EP",
+                                    strict_secret_jurisdiction=True)
+                            except Exception:                             # noqa: BLE001
+                                traceback.print_exc()
                         print(f"[subject] recovered from the ingested document: "
-                              f"{subject.number or doc['publication_number']} efd={subject.efd}",
+                              f"{subject.number or doc['publication_number']} "
+                              f"efd={subject.efd} forum={jurisdiction}",
                               flush=True)
                 except Exception:
                     traceback.print_exc()
-            parallel = ["local"] + (["federated", "external"] if wide else [])
+            #  THIRD-PARTY SOURCES, OFF. The knobs in the budget stop the later stages from
+            #  fetching text from outside; this is the other half, and it is not a knob: the
+            #  external and federated channels are simply not in the channel list, so nothing
+            #  plans a query for them and nothing waits on one.
+            parallel = ["local"] + (["federated", "external"]
+                                    if (wide and not local_only) else [])
             if doc and doc.get("chunk_vecs"):
                 parallel.append("docchunks")
             if doc and doc.get("figure_blobs"):
@@ -1215,17 +1364,26 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                     #  first round left thin, which is what a claim ledger asks for; 8-12 concept
                     #  phrases have no ledger asking, and the round was measured at half the local
                     #  channel's 958 s. Quick is one round whatever the kind.
-                    cfg=AgentConfig(mode=mode,
+                    cfg=AgentConfig(**search_mode.agent_kwargs(search_mode_name),
+                                    mode=mode,
                                     #  Quick is the FIND phase: seed + query set + element
                                     #  passes, no agentic round and no cross-encoder head ,
                                     #  both re-added by the phases that render their output.
-                                    max_rounds=(0 if depth == "quick" else profile.rounds),
-                                    final_rerank=(depth != "quick"),
+                                    **({} if search_mode.normalise(search_mode_name)
+                                        == search_mode.FAST else {
+                                            "max_rounds": (0 if depth == "quick"
+                                                           else profile.rounds),
+                                            "final_rerank": (depth != "quick"),
+                                            "elements_per_round": 3, "ground": True}),
                                     find_mode=(depth == "quick"),
-                                    elements_per_round=3, ground=True,
                                     search_config=("claim_agentic" if search_focus == "claims"
                                                    else "agentic"),
-                                    input_claims=list((doc or {}).get("claims") or [])),
+                                    input_claims=list((doc or {}).get("claims") or []),
+                                    #  The document's own text, for the claim construction. An
+                                    #  uploaded document brings it; a search from a publication
+                                    #  number does not, and deep_rank reads it back from the
+                                    #  corpus later. Passing what we have costs nothing.
+                                    input_spec=str((doc or {}).get("full_text") or "")[:400000]),
                     on_event=on_event)
                 if wide:
                     #  PHASE 2a OF THE REBUILD: the App A /api/search channel is OFF by default.
@@ -1239,7 +1397,10 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                     if os.environ.get("FEDERATION_CHANNEL", "0") != "0":
                         futs["federated"] = ex.submit(_timed, "federated", _federate_block,
                                                       query, mode)
-                    futs["external"] = ex.submit(_timed, "external", _external_block, query, doc)
+                    #  The interactive tier waits 25s for the outside world, not 120. Measured:
+                    #  the fan-out was 58.5s of a 73s quick search. See external.TIMEOUT_QUICK.
+                    futs["external"] = ex.submit(_timed, "external", _external_block, query, doc,
+                                                 depth == "quick")
                 if "docchunks" in parallel:
                     futs["docchunks"] = ex.submit(
                         _timed, "docchunks", retrieval.search_doc_chunks,
@@ -1248,6 +1409,19 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                     futs["image"] = ex.submit(_timed, "image", _image_channel, doc["figure_blobs"])
 
                 rep = futs["local"].result()      # the report backbone (raises if the agent failed)
+                #  ON THE REPORT, after rep exists: a reader has to be able to tell why a search
+                #  found less, and the escalation form starts where this run left off. Written
+                #  here rather than beside the budget that set it, which is 115 lines before the
+                #  report is built and is where I first put it: every search failed with
+                #  "cannot access local variable 'rep'".
+                rep["local_only"] = bool(local_only)
+                #  WHICH PIPELINE PRODUCED THIS PAGE. The results page reads it to decide whether a
+                #  claim grid and a submission button belong on it at all.
+                rep["search_mode"] = search_mode.normalise(search_mode_name)
+                rep["jurisdiction"] = str(jurisdiction or "US").upper()
+                rep["search_mode_detail"] = search_mode.describe(
+                    search_mode_name, read_top=read_top, jurisdiction=jurisdiction,
+                    third_party=(not local_only), concept_expansions=concept_expansions)
                 # The cross-encoder is complete once the local future resolves. Stop its heartbeat
                 # immediately; otherwise a slower external API fan-out leaves the page claiming it is
                 # still reranking. Name that wait explicitly so the operator can see the real hold-up.
@@ -1329,7 +1503,10 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
                                         "n": len(img_res.get("families") or [])}
             _attach_query_document(rep, doc)
-            _attach_disclosures(rep, doc, subject, slug=slug)
+            #  THE DISCLOSURE LEDGER IS THE ATTACK'S. It splits the claims into the things a
+            #  reference has to be read against, and a prior-art search reads nothing.
+            if search_mode.runs_deep(search_mode_name):
+                _attach_disclosures(rep, doc, subject, slug=slug)
             if _ORACLE_PLAN:
                 rep["_oracle"] = dict(_ORACLE_PLAN)
             _drop_self_family(rep)
@@ -1375,7 +1552,11 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         # US 2025/0033224 A1 that is US 11,413,727 applied under 102(a)(2) to thirteen claims,
         # plus every one of the five references counsel independently filed. Fail-soft and off
         # without a key: an unreachable USPTO costs its own findings and nothing else.
-        _attach_prosecution(rep, slug=slug)
+        #  AND SO IS THE FILE WRAPPER. It is fetched to change what gets READ; measured at 45
+        #  to 143 wrapper documents over the USPTO ODP API, with 429s and retries, in front of a
+        #  reader who asked for a ranked list.
+        if search_mode.runs_deep(search_mode_name):
+            _attach_prosecution(rep, slug=slug)
 
         # ---- SCREEN WIDE, READ DEEP, RANK ON THE EVIDENCE (deep_rank) ----------------------
         # This is the stage that decides the order of the report. Retrieval hands over a couple of
@@ -1406,9 +1587,9 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                          msg=f"Reading the {data.get('n', 0)} strongest references IN FULL and "
                              f"charting what each one discloses…")
             elif stage == "chart_progress":
+                _read_log(slug, data)
                 _set_job(slug, kind="reading", detail=data,
-                         msg=f"Read {data.get('done')} of {data.get('total')} references in "
-                             f"full…")
+                         msg=_reading_line("Reading in full", data))
             #  The orphan-claim rescue (claim_rescue): a second, claim-driven search for the claims
             #  the whole run found nothing against. It runs after the reading, so without these the
             #  page would sit on "Read 420 of 420" for several more minutes.
@@ -1433,9 +1614,9 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                          msg=f"Evidence sweep: reading {data.get('n', 0)} more references "
                              f"against every requirement, in batches…")
             elif stage == "batch_read_progress":
+                _read_log(slug, data)
                 _set_job(slug, kind="reading", detail=data,
-                         msg=f"Evidence sweep: batch {data.get('done')} of "
-                             f"{data.get('total')}…")
+                         msg=_reading_line("Evidence sweep", data))
             elif stage == "rescue_read_start":
                 _set_job(slug, kind="rescuing", detail=data,
                          msg=f"Reading {data.get('n', 0)} references found for the uncovered "
@@ -1444,33 +1625,51 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 _set_job(slug, kind="rescuing", detail=data,
                          msg=f"Reading rescued references: {data.get('done')} of "
                              f"{data.get('total')}…")
-        try:
+        #  ---- FAST STOPS HERE, and this guard is the whole difference between the two
+        #  products. Everything below is the reading stage and the machinery that exists to feed
+        #  it: the screen, the enrichment of references the corpus holds no full text for, the
+        #  concept expansion per feature, the claim reach, the charting, the orphan-claim rescue.
+        #  Measured, that is 95 s of the 161 s a reader waits before the first document is read,
+        #  and a prior-art search consumes none of its output.
+        #
+        #  A GUARD, NOT A ZEROED BUDGET. `search_profile.FAST_BUDGET` zeroes the read knobs as
+        #  well, but a budget of zero still walks the screen: measured on two runs, "Reading the
+        #  0 strongest references IN FULL" after 35 s of screening. The stage has to not run.
+        if not search_mode.runs_deep(search_mode_name):
             rep["depth"] = depth
-            dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event,
-                               depth=depth, budget=run_budget)
-            if dr:
-                print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['n_candidates']} in "
-                      f"{dr['screen_seconds']}s, read {dr['read_in_full']} in full "
-                      f"({dr['chars_read']:,} chars) in {dr['chart_seconds']}s", flush=True)
-            #  THE READING AND THE COVERAGE LEDGER, checkpointed. Screening and each individual
-            #  reference analysis are checkpointed inside deep_rank, where they happen; these two
-            #  rows close the phase off so a resumed attempt does not re-enter it.
-            runctx.checkpoint(slug, "read", {"summary": dr or {}},
-                              n_out=(dr or {}).get("read_in_full"))
-            _ledger = rep.get("coverage") or rep.get("ledger") or {}
-            runctx.checkpoint(slug, "ledger",
-                              {"n_entries": len(_ledger) if hasattr(_ledger, "__len__") else 0,
-                               "disclosures": rep.get("disclosures_summary")},
-                              n_out=len(rep.get("disclosures") or []))
-            _rescue = (dr or {}).get("rescue") or rep.get("rescue") or {}
-            _rounds = _rescue.get("rounds") if isinstance(_rescue, dict) else None
-            runctx.checkpoint(slug, "rescue", {"summary": _rescue},
-                              n_out=len(_rounds or []))
-            runctx.note_candidates(slug, _final_candidate_rows(dr))
-        except (runctx.DurabilityError, runstore.LeaseLost):
-            raise
-        except Exception:
-            traceback.print_exc()
+            rep["read_in_full"] = 0
+            _set_job(slug, kind="reranking", detail={},
+                     msg="Ranking the strongest references…")
+            print(f"[fast {slug}] {len(rep.get('ranked_families') or [])} families ranked; "
+                  f"nothing read in full, by design", flush=True)
+        else:
+            try:
+                rep["depth"] = depth
+                dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event,
+                                   depth=depth, budget=run_budget)
+                if dr:
+                    print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['n_candidates']} in "
+                          f"{dr['screen_seconds']}s, read {dr['read_in_full']} in full "
+                          f"({dr['chars_read']:,} chars) in {dr['chart_seconds']}s", flush=True)
+                #  THE READING AND THE COVERAGE LEDGER, checkpointed. Screening and each individual
+                #  reference analysis are checkpointed inside deep_rank, where they happen; these two
+                #  rows close the phase off so a resumed attempt does not re-enter it.
+                runctx.checkpoint(slug, "read", {"summary": dr or {}},
+                                  n_out=(dr or {}).get("read_in_full"))
+                _ledger = rep.get("coverage") or rep.get("ledger") or {}
+                runctx.checkpoint(slug, "ledger",
+                                  {"n_entries": len(_ledger) if hasattr(_ledger, "__len__") else 0,
+                                   "disclosures": rep.get("disclosures_summary")},
+                                  n_out=len(rep.get("disclosures") or []))
+                _rescue = (dr or {}).get("rescue") or rep.get("rescue") or {}
+                _rounds = _rescue.get("rounds") if isinstance(_rescue, dict) else None
+                runctx.checkpoint(slug, "rescue", {"summary": _rescue},
+                                  n_out=len(_rounds or []))
+                runctx.note_candidates(slug, _final_candidate_rows(dr))
+            except (runctx.DurabilityError, runstore.LeaseLost):
+                raise
+            except Exception:
+                traceback.print_exc()
 
         rep["run_id"] = run_id
         rep["manifest"] = {"run_id": run_id,
@@ -1548,6 +1747,21 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             {"report_path": str(final_path), "sha256": report_sha,
              "partial": bool(rep.get("partial"))},
             n_out=len(rep.get("ranked_families") or []))
+        #  THE BILL, ONCE, WHERE THE RECEIPT IS WRITTEN. `spend.total_usd` on the receipt is
+        #  what this run cost US in model time, computed from the same per-model prices the app
+        #  charges itself against; billing.charge_run applies the margin and debits the balance.
+        #  Idempotent by (user, slug), so a retry or a second worker bills nothing.
+        try:
+            if owner_user_id:
+                _owner = accounts.get_user(owner_user_id) if hasattr(accounts, "get_user") else None
+                _cost = _spend_usd(slug)
+                if _owner and _cost:
+                    _bill = billing.charge_run(_owner, slug, _cost)
+                    if _bill.get("charged"):
+                        print(f"[billing {slug}] ${_bill['usd']:.4f} charged to user "
+                              f"{owner_user_id}; balance ${_bill.get('balance', 0):.2f}", flush=True)
+        except Exception:
+            traceback.print_exc()
         _set_job(slug, kind="done", status="done", msg="done")
         #  The receipt, written before the notification so a user who opens the mail and clicks
         #  straight through finds the cost already on the page.
@@ -1572,6 +1786,16 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                                           title=(rep.get("query") or "")[:200])
         except Exception:
             traceback.print_exc()
+        #  THE DESTINATION, HONOURED. Somebody who chose "+ the 37 CFR 1.290 submission" before a
+        #  ten-minute read asked for the packet then; making them come back and press a second
+        #  button is asking the same question twice. Started here, on this thread's own tail, so a
+        #  batched run that emails hours later still lands with its papers built.
+        #
+        #  `_concise_autostart` is deliberately quiet and never raises: a packet that will not
+        #  start must not fail the search that produced the evidence, and the button is still on
+        #  the page.
+        if then == "packet":
+            _concise_autostart(slug)
         if "PYTEST_CURRENT_TEST" not in os.environ:
             try:
                 #  ONCE PER RUN, NOT ONCE PER ATTEMPT. A run that is retried three times owes the
@@ -1725,7 +1949,7 @@ def _attach_disclosures(rep, doc, subject, slug=None):
         traceback.print_exc()
 
 
-def _external_block(query, doc):
+def _external_block(query, doc, quick_deadline=False):
     """Run the parallel keyword + semantic fan-out against the external APIs.
 
     Separate from `_federate_block` on purpose, and both run. They answer different questions:
@@ -1736,9 +1960,18 @@ def _external_block(query, doc):
     try:
         brief = query_set.retrieval_text(query or "")
         claims = list((doc or {}).get("claims") or [])
-        specs = query_set.build(query, claims=claims)
-        ext = external.run(specs, brief=brief, claims=claims)
-        print(f"[external] {len(ext.get('aspects') or [])} aspects, "
+        #  THE SAME STRUCTURED READING THE LOCAL SEARCH USES. Cached in `novelty_units` on the
+        #  limitation texts, so the local lane and this one share one model call even though they
+        #  run on different threads. It is what puts the claim's own combinations at the FRONT of
+        #  the fan-out, ahead of the cross-industry analogies and therefore inside MAX_QUERIES.
+        analysis = query_set.novelty_analysis(
+            claims, spec_text=str((doc or {}).get('full_text') or '')[:400000]) if claims else None
+        specs = query_set.build(query, claims=claims, analysis=analysis)
+        #  On the interactive tier this is the whole wall clock. See external.TIMEOUT_QUICK.
+        ext = external.run(specs, brief=brief, claims=claims, analysis=analysis,
+                           timeout=external.TIMEOUT_QUICK if quick_deadline else None)
+        print(f"[external] {len(ext.get('aspects') or [])} aspects "
+              f"({ext.get('n_claim_aspects', 0)} from the claim), "
               f"{len(ext.get('queries') or [])} queries -> {ext.get('n_candidates', 0)} candidates, "
               f"{ext.get('n_families', 0)} families in {ext.get('elapsed', 0)}s "
               f"{ext.get('stats')}", flush=True)
@@ -1757,7 +1990,9 @@ def _espacenet_safe(pub, family_id=None):
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
                   doc_token=None, search_focus="all_text", from_queue=False, depth="deep",
-                  restart_partial=False, owner_user_id=None):
+                  restart_partial=False, owner_user_id=None, read_top=None, batched=False,
+                  then="list", local_only=False, search_mode_name=None, jurisdiction="US",
+                  concept_expansions=False):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. A search that arrives while the gate is full is QUEUED (run_queue) and
     reported as running; 'busy' is only returned to the dispatcher itself (`from_queue=True`),
@@ -1840,7 +2075,10 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
                 pos = run_queue.enqueue(slug, {
                     "query": query, "subject": subject, "mode": mode, "wide": wide,
                     "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
-                    "owner_user_id": owner_user_id})
+                    "read_top": read_top, "batched": batched, "then": then,
+                    "local_only": local_only, "owner_user_id": owner_user_id,
+                    "search_mode_name": search_mode_name, "jurisdiction": jurisdiction,
+                    "concept_expansions": concept_expansions})
                 with _JOB_LOCK:
                     _JOBS[slug] = {"status": "running", "queued": True,
                                    "msg": (f"Queued behind {max(pos - 1, 0)} search(es) , "
@@ -1861,7 +2099,11 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
     run_queue.record_started(slug, {
         "query": query, "subject": subject, "mode": mode, "wide": wide,
         "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
-        "owner_user_id": owner_user_id})
+        #  Same reason as the dispatcher: this row is what a requeue after a restart replays from.
+        "read_top": read_top, "batched": batched, "then": then,
+        "local_only": local_only, "owner_user_id": owner_user_id,
+        "search_mode_name": search_mode_name, "jurisdiction": jurisdiction,
+        "concept_expansions": concept_expansions})
     _QROW_CACHE.pop(slug, None)
     try:
         subj_obj = _subject_obj(subject)
@@ -1871,7 +2113,8 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
         threading.Thread(target=_run_job,
                          args=(slug, query, subj_obj, mode, gated, wide, doc_token, search_focus,
-                               depth),
+                               depth, read_top, batched, then, local_only,
+                               search_mode_name, jurisdiction, concept_expansions),
                          daemon=True).start()
     except Exception:
         # Never leak the reserved slot or leave a phantom "running" claim if we fail to launch.
@@ -2441,21 +2684,149 @@ def index():
         signed_out = auth.accounts_enabled(app) and not auth.current_user() and not auth.is_admin()
     except Exception:
         signed_out = False
-    if signed_out:
-        return render_template("landing.html", corpus=facts)
-    return render_template("index.html", corpus=facts)
+    #  A SIGNED-OUT VISITOR GETS THE SEARCH BOX, not a brochure. The prior-art search is 16
+    #  seconds of our own corpus and no model reading, so it costs almost nothing to give away
+    #  and it is the thing somebody has to be able to try before deciding whether to sign up.
+    #  Everything that spends real money is gated in `entitlements`, in the route AND on the
+    #  form, so an anonymous visitor cannot start a build, read anything in full, reach the
+    #  drafting studio or call the outside APIs. The landing copy is still at /about.
+    return render_template("index.html", corpus=facts,
+                           ent=entitlements.describe(auth.current_user()))
+
+
+# ---------------------------------------------------------------------------------------------
+#  BILLING. Pro is a card on file and a balance, not a plan column: see entitlements.tier_of.
+#  The card itself never reaches this server. Stripe Elements collects it in the browser, a
+#  SetupIntent confirms it for OFF-SESSION use, and all we store is the payment_method id and the
+#  last four digits, because every later charge is made with nobody at the keyboard.
+# ---------------------------------------------------------------------------------------------
+@app.route("/billing")
+def billing_page():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    return render_template("billing.html", user=user,
+                           ent=entitlements.describe(user, billing.balance(user["id"])),
+                           rows=billing.ledger(user["id"]),
+                           pk=billing.STRIPE_PUBLISHABLE,
+                           auto_at=entitlements.AUTO_TOPUP_AT_USD,
+                           msg=request.args.get("msg"), err=request.args.get("err"))
+
+
+@app.route("/billing/webhook", methods=["POST"])
+def billing_webhook():
+    """Stripe's own account of what happened, applied to the ledger.
+
+    NO SESSION, NO CSRF, AND THAT IS DELIBERATE: Stripe has neither. The SIGNATURE is the
+    authentication, checked against STRIPE_WEBHOOK_SECRET over the RAW body, which is why this
+    reads request.get_data() and never request.json: any reserialisation changes the bytes the
+    signature was computed over and every delivery would fail.
+
+    ALWAYS 200 ONCE VERIFIED. Stripe retries a non-2xx for three days, so returning 500 on an
+    event we cannot process turns one bad event into a storm. Failures are recorded on the event
+    row instead. A BAD SIGNATURE is the one thing that gets a 400: that is not a retry, it is a
+    stranger.
+    """
+    ev = billing.verify(request.get_data(), request.headers.get("Stripe-Signature", ""))
+    if ev is None:
+        return jsonify({"error": "signature"}), 400
+    return jsonify(billing.handle_event(ev)), 200
+
+
+@app.route("/billing/setup-intent", methods=["POST"])
+def billing_setup_intent():
+    user = auth.current_user()
+    if not user:
+        return jsonify({"error": "sign in first"}), 401
+    try:
+        return jsonify(billing.setup_intent(user))
+    except Exception as exc:                                              # noqa: BLE001
+        traceback.print_exc()
+        return jsonify({"error": str(exc)[:200]}), 502
+
+
+@app.route("/billing/card", methods=["POST"])
+def billing_card():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    auth.require_csrf()
+    pm = (request.form.get("payment_method") or "").strip()
+    if not pm:
+        return redirect(request.script_root + "/billing?err=No+card+was+returned.")
+    try:
+        billing.attach_payment_method(user, pm)
+    except Exception as exc:                                              # noqa: BLE001
+        traceback.print_exc()
+        return redirect(request.script_root + "/billing?err=" + str(exc)[:160])
+    #  THE FIRST TOP-UP IS PART OF ADDING THE CARD. A card on file with no balance is a Pro
+    #  account that cannot pay for its first run, which fails at the least useful moment.
+    fresh = auth.load_user(user["id"]) if hasattr(auth, "load_user") else dict(
+        user, stripe_payment_method=pm)
+    got = billing.topup(fresh, entitlements.MIN_TOPUP_USD, note="first top-up with the card")
+    if not got.get("ok"):
+        return redirect(request.script_root + "/billing?err=Card+saved,+but+the+charge+failed:+"
+                        + str(got.get("error"))[:140])
+    return redirect(request.script_root + "/billing?msg=Card+saved+and+$%.2f+added."
+                    % got.get("usd", 0))
+
+
+@app.route("/billing/card/remove", methods=["POST"])
+def billing_card_remove():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    auth.require_csrf()
+    billing.remove_payment_method(user)
+    return redirect(request.script_root + "/billing?msg=Card+removed.")
+
+
+@app.route("/billing/topup", methods=["POST"])
+def billing_topup():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    auth.require_csrf()
+    got = billing.topup(user, request.form.get("usd"))
+    if got.get("ok"):
+        return redirect(request.script_root + "/billing?msg=$%.2f+added." % got["usd"])
+    return redirect(request.script_root + "/billing?err=" + str(got.get("error"))[:160])
+
+
+@app.route("/billing/autotopup", methods=["POST"])
+def billing_autotopup():
+    user = auth.current_user()
+    if not user:
+        return redirect(request.script_root + "/login")
+    auth.require_csrf()
+    on = request.form.get("on") == "1"
+    try:
+        usd = float(request.form.get("usd") or entitlements.MIN_TOPUP_USD)
+    except (TypeError, ValueError):
+        usd = entitlements.MIN_TOPUP_USD
+    with db.connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE app_users SET auto_topup_usd=%s WHERE id=%s",
+                    (usd if on else 0, user["id"]))
+        conn.commit()
+    return redirect(request.script_root + "/billing?msg=Saved.")
 
 
 @app.route("/about")
 def about():
-    """What the system is, plus the same scope disclosure the report and the exports carry."""
+    """What the tool does, in the order it does it, and what it will not do.
+
+    This was two pages. /about was a specification sheet naming the database version, the
+    embedding model, the passage count and the machine size; /how-it-works told the same pipeline
+    properly. A reader deciding whether to trust a search needs the second and never the first,
+    and the only person the first served well was a competitor reading the schema.
+    """
     return render_template("about.html", corpus=corpus_facts.facts())
 
 
 @app.route("/how-it-works")
 def how_it_works():
-    """The pipeline in plain language. Public, for the same reason /about is."""
-    return render_template("how_it_works.html", corpus=corpus_facts.facts())
+    """Merged into /about. Kept as a redirect: it is linked from the footer and from e-mails."""
+    return redirect(request.script_root + "/about")
 
 
 def _history_entries(limit=200):
@@ -2520,6 +2891,232 @@ def _inject_lookup_base():
     return {"lookup_base": LOOKUP_BASE}
 
 
+#  ---------------------------------------------------------------- areas withheld from customers
+#  Coverage is an engineering view of what the database holds, and Drafting is unfinished. Both
+#  are hidden from the nav for a non-admin, and hiding a link hides it from a reader and not from
+#  a URL, so both refuse at the door as well.
+#
+#  ONE PREFIX GATE rather than a decorator on two dozen routes: a drafting route added tomorrow is
+#  covered without anybody remembering to add it. Listed as prefixes because /drafts, /draft/<id>,
+#  /draft-studio and the API under them are all the same area.
+ADMIN_ONLY_PREFIXES = ("/corpus", "/factory", "/drafts", "/draft/", "/draft-studio", "/draft_",
+                       "/devsearch",
+                       "/api/factory", "/api/drafts", "/api/draft/")
+
+
+def _is_admin_only(path):
+    p = (path or "").rstrip("/") or "/"
+    return any(p == x.rstrip("/") or p.startswith(x if x.endswith("/") else x + "/")
+               for x in ADMIN_ONLY_PREFIXES)
+
+
+#  ---------------------------------------------------------------- links minted before the move
+#
+#  This app took over the root of nimo.iptorch.com on 2026-08-27. The app that was there still
+#  runs, at /classic/, with its own corpus and 386 finished reports, and every one of those has a
+#  URL somebody may have bookmarked, shared or pasted into an email.
+#
+#  nginx cannot do this handoff. The obvious shape is `proxy_intercept_errors` with
+#  `error_page 404 = @classic`, and it never fires: a report this app does not hold is answered
+#  by the auth gate with a 302 to /login long before any 404 exists to intercept. Intercepting
+#  302 instead would swallow the real login redirects with it.
+#
+#  So the handoff is explicit, it is here, and it runs BEFORE the auth gate: a slug this app has
+#  never heard of is not a private report, it is somebody else's URL, and sending them to a login
+#  page for an account that would not help is the wrong answer twice over.
+CLASSIC_ROOT = Path(os.environ.get(
+    "CLASSIC_REPORTS_DIR", os.path.expanduser("~/patent-search-pilot/data/reports")))
+CLASSIC_PREFIX = os.environ.get("CLASSIC_PREFIX", "/classic")
+_CLASSIC_PATHS = ("/report/", "/shared/")
+
+
+@app.before_request
+def _handoff_to_classic():
+    """A report URL from before the move, handed to the app that still holds it."""
+    if not CLASSIC_PREFIX:
+        return None
+    p = request.path
+    if not any(p.startswith(x) for x in _CLASSIC_PATHS):
+        return None
+    slug = p.split("/")[2] if len(p.split("/")) > 2 else ""
+    #  Slug grammar, not user input: this value is about to be joined onto a filesystem path.
+    if not slug or not re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", slug) or ".." in slug:
+        return None
+    if (REPORTS / ("%s.json" % slug)).exists():
+        return None                                   # ours: nothing to hand off
+    try:
+        if not (CLASSIC_ROOT / ("%s.json" % slug)).exists():
+            return None                               # nobody's: let the normal 404 happen
+    except OSError:
+        return None
+    return redirect(CLASSIC_PREFIX + p + (("?" + request.query_string.decode())
+                                          if request.query_string else ""), code=302)
+
+
+@app.before_request
+def _gate_admin_only_areas():
+    """404, not 403: a customer has no business knowing these exist."""
+    if not _is_admin_only(request.path):
+        return None
+    if not auth.auth_enabled(app):
+        return None                                   # a box with auth off is a development box
+    if auth.is_admin() or auth.is_loopback():
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "not found"}), 404
+    abort(404)
+
+
+@app.route("/devsearch")
+def devsearch_page():
+    """A bench for the cold shard: one query, both corpora, same SQL and same ANN settings.
+
+    Admin-only via ADMIN_ONLY_PREFIXES, so a customer gets a 404 and never learns it exists.
+
+    It deliberately does NOT call shard_manager.register_backend. The cold tier stays inert and a
+    live search still runs exactly as it did: switching customers onto a shard is a decision about
+    everyone's results, not a side effect of adding a test page.
+    """
+    import devsearch
+    q = (request.args.get("q") or "").strip()
+    try:
+        limit = max(1, min(50, int(request.args.get("n") or 10)))
+    except ValueError:
+        limit = 10
+    st = devsearch.shard_status()
+    res = devsearch.compare(q, limit) if q else None
+    return render_template("devsearch.html", q=q, limit=limit, st=st, res=res)
+
+
+@app.route("/settings/search", methods=["GET", "POST"])
+def search_settings_page():
+    """How hard the search works, shown and changeable.
+
+    ADMIN ONLY, and for the same reason as the model page: these are global. One search's budget is
+    every search's budget on this box, so it is not a per-user preference and must not read like
+    one.
+
+    Every knob renders its own explanation behind a (?), and the text comes from the same registry
+    the code reads its values from, so the two cannot drift apart. That pairing is the whole point:
+    a number with no stated effect on time or on quality is a number nobody can set responsibly.
+    """
+    if not auth.is_admin():
+        abort(404)
+    import search_settings
+    saved = error = ""
+    if request.method == "POST":
+        auth.require_csrf()
+        try:
+            if request.form.get("reset"):
+                search_settings.save({})
+            else:
+                search_settings.save({k["key"]: request.form.get(k["key"])
+                                      for k in search_settings.KNOBS
+                                      if request.form.get(k["key"]) is not None})
+            saved = "1"
+        except Exception as exc:                                          # noqa: BLE001
+            traceback.print_exc()
+            error = "Could not save: %s" % str(exc)[:200]
+    return render_template("search_settings.html",
+                           rows=search_settings.page_rows(),
+                           groups=search_settings.GROUPS,
+                           snapshot=search_settings.snapshot(),
+                           saved=saved, error=error, corpus=corpus_facts.facts())
+
+
+@app.route("/settings/models", methods=["GET", "POST"])
+def model_settings_page():
+    """Which model does which part of the work, shown and changeable.
+
+    ADMIN ONLY, because it is global: a tier is shared by every search on the box, so this is not
+    a per-user preference and must not read like one.
+    """
+    if not auth.is_admin():
+        abort(404)
+    import model_pool
+    import model_settings
+    saved = error = ""
+    if request.method == "POST":
+        auth.require_csrf()
+        try:
+            if request.form.get("reset"):
+                model_settings.save({})
+            else:
+                tiers = {}
+                for t in model_settings.TIERS:
+                    primary = (request.form.get("primary_%s" % t) or "").strip()
+                    rest = [x for x in request.form.getlist("fallback_%s" % t) if x != primary]
+                    order = ([primary] if primary else []) + rest
+                    #  A TIER MUST NEVER BE SAVED EMPTY. `providers()` already refuses to hand back
+                    #  nothing, but an empty list here would silently mean "use the code default"
+                    #  and read on the page as a deliberate choice. Keep the resolved order.
+                    tiers[t] = order or [p.name for p in model_pool.providers(t)]
+                stages = {s["key"]: (request.form.get("stage_%s" % s["key"]) or s["tier"])
+                          for s in model_settings.STAGES if not s.get("vision")}
+                model_settings.save({"tiers": tiers, "stages": stages})
+            saved = "1"
+        except Exception as exc:                                          # noqa: BLE001
+            traceback.print_exc()
+            error = "Could not save: %s" % str(exc)[:200]
+
+    import llm
+    #  `?probe=1` asks each provider a trivial question RIGHT NOW. Off by default because it costs
+    #  a few tokens per provider, on by request because a spend-capped key passes every static
+    #  check and still refuses every call, which is the exact failure this page was built for.
+    do_probe = request.args.get("probe") == "1"
+    st = model_pool.stats()
+    provs = []
+    for name, p in model_pool._ALL.items():
+        row = {"name": name, "model": p.model, "tier": p.tier, "env": p.env, "note": p.note,
+               "calls": (st.get(name) or {}).get("calls", 0),
+               "errors": (st.get(name) or {}).get("errors", 0),
+               "last_error": (st.get(name) or {}).get("last_error", ""),
+               "probe": ""}
+        if p.env and not os.environ.get(p.env):
+            row["available"], row["why"] = False, "no %s on this host" % p.env
+        elif (st.get(name) or {}).get("latched"):
+            row["available"], row["why"] = False, "latched off after repeated failures"
+        elif row["errors"] and row["errors"] >= row["calls"]:
+            #  Every call this process made to it failed. Saying "available" here is the lie.
+            row["available"], row["why"] = False, "refusing every call"
+        else:
+            row["available"], row["why"] = p.available(), "unavailable"
+        if do_probe:
+            ok, detail = model_pool.probe(name)
+            row["probe"] = ("OK, " if ok else "FAILED, ") + detail
+            row["available"] = ok
+            if not ok:
+                row["why"] = detail
+        provs.append(row)
+    provs.sort(key=lambda d: (d["tier"], d["name"]))
+
+    tier_what = {
+        "fast": "Volume work, where every answer is checked again downstream.",
+        "read": "Finding a teaching in 90,000 characters and quoting it. A cheaper model here "
+                "costs report cells, not seconds.",
+        "strong": "The passes whose output IS the assertion.",
+    }
+    tiers = []
+    for t in model_settings.TIERS:
+        order = [p.name for p in model_pool.providers(t)]
+        tiers.append({"name": t, "order": order, "what": tier_what.get(t, ""),
+                      "is_default": not (model_settings.load().get("tiers") or {}).get(t)})
+    by_tier = {t["name"]: t["order"] for t in tiers}
+
+    stages = []
+    for s in model_settings.STAGES:
+        tier = model_settings.tier_for(s["key"], s["tier"])
+        if s.get("vision"):
+            resolved = (llm.VISION_STRONG_MODEL if s["tier"] == "strong" else llm.AGENT_MODEL)
+        else:
+            resolved = ", ".join(by_tier.get(tier) or []) or "none"
+        stages.append({**s, "tier": tier, "default_tier": s["tier"], "resolved": resolved})
+
+    return render_template("model_settings.html", providers=provs, tiers=tiers, stages=stages,
+                           saved=saved, error=error,
+                           vision_fast=llm.AGENT_MODEL, vision_strong=llm.VISION_STRONG_MODEL)
+
+
 @app.route("/corpus")
 def corpus_page():
     """What is in our own database, measured.
@@ -2529,8 +3126,29 @@ def corpus_page():
     machines, and what a second field would cost. Cheap to render , catalogue reads plus two
     cached files; the counts that take minutes are snapshotted by `corpus_profile.snapshot`.
     """
-    import corpus_profile
-    return render_template("corpus.html", title="Corpus", p=corpus_profile.profile())
+    #  REBUILT 2026-08-25 on the bench. The old page led with chunk counts, index sizes and the
+    #  cost of widening the corpus. None of that is a decision anybody makes. Two numbers are:
+    #  how many WHOLE patents we hold, and how many of those are searchable. `corpus_status`
+    #  computes both, plus what is collecting them and how fast.
+    import corpus_status, time
+    #  Read the snapshot; measure only when asked. See corpus_status.latest.
+    s = (corpus_status.snapshot() if request.args.get("refresh") == "1"
+         else corpus_status.latest())
+    age = max(0.0, time.time() - s["taken_at"])
+    #  The numbers are measured by a daily job now, not on this render, so the age is hours and
+    #  days as often as it is minutes. "1440 minutes ago" is a number the reader has to divide.
+    if age < 75:
+        s["age_text"] = "just now"
+    elif age < 5400:
+        m = round(age / 60)
+        s["age_text"] = "%d minute%s ago" % (m, "" if m == 1 else "s")
+    elif age < 172800:
+        h = round(age / 3600)
+        s["age_text"] = "%d hour%s ago" % (h, "" if h == 1 else "s")
+    else:
+        d = round(age / 86400)
+        s["age_text"] = "%d days ago" % d
+    return render_template("corpus.html", title="Corpus", s=s)
 
 
 @app.route("/factory")
@@ -2557,6 +3175,36 @@ def factory_pulse_api():
     return jsonify(factory_pulse.view())
 
 
+@app.route("/api/chrome")
+def api_chrome():
+    """The shared masthead, for the sibling app that renders its own pages.
+
+    The register lookup runs in a different process behind the same domain, and it was serving a
+    page with no product header at all: clicking Lookup felt like leaving. Copying the nav into
+    that codebase would put it out of date the first time a link moved, and there are three
+    changes to it in this commit alone, so it fetches the real one instead.
+
+    Rendered against THIS request's session, so the nav a reader sees on the lookup page is the
+    nav their account actually has: a customer gets no Coverage and no Drafting link.
+    """
+    #  WHICH NAV ITEM IS LIT. The partial decides that from `endpoint`, and the endpoint of THIS
+    #  request is api_chrome, so without being told the masthead renders on the lookup page with
+    #  nothing marked as current: it reads as a header borrowed from somewhere else, which is the
+    #  complaint it exists to answer. Only a known endpoint name is honoured, because it is a
+    #  query parameter and it ends up in a class attribute.
+    known = {"index", "history", "patent_lookup", "library", "corpus_page", "about"}
+    active = (request.args.get("active") or "").strip()
+    resp = jsonify({
+        "html": render_template("_chrome.html",
+                                endpoint=active if active in known else ""),
+        "css": url_for("static", filename="style.css", v=ASSET_VERSION),
+        "signed_in": bool(auth.current_user()),
+    })
+    #  Same-origin only. It carries the reader's name and e-mail.
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
+
+
 @app.route("/patentlookup")
 def patent_lookup():
     """The register lookup, inside the search app.
@@ -2565,9 +3213,16 @@ def patent_lookup():
     directly at LOOKUP_BASE. It signs in with this app's own session cookie, so a signed-in reader
     needs nothing further, and a signed-out one is redirected to this app's login by the engine.
     """
+    #  THE PAGE IS THE ENGINE'S. nginx gives `/patentlookup/` to it wholly, so this app has not
+    #  rendered a lookup page since that rule was added and its template has been deleted rather
+    #  than left as a second UI for somebody to fix a bug in by mistake. The route survives for
+    #  the reader who bookmarked it and for the login `next=`.
+    target = LOOKUP_BASE.rstrip("/") + "/"
+    if request.query_string:
+        target += "?" + request.query_string.decode("latin-1")
     if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
-        return render_template("patentlookup.html", title="Patent lookup")
-    return redirect(url_for("auth.login", next=request.script_root + "/patentlookup"))
+        return redirect(target)
+    return redirect(url_for("auth.login", next=target))
 
 
 # --------------------------------------------------------------------------- EU designs
@@ -2591,10 +3246,16 @@ def _design_number_or_404(design_number):
 
 @app.route("/designs")
 def designs_page():
-    """Search EU registered designs by what the product IS."""
+    """Gone as a destination: an EU design is one more thing you look up, so it is a tab there.
+
+    The URL is kept and redirected rather than deleted, because it is in the nav history of
+    anyone who used it and in at least one report page's links. The API underneath it has not
+    moved: the lookup page calls the same `/api/designs`, and the drawings are still proxied
+    through this app because the EUIPO image endpoints need this app's OAuth token.
+    """
     if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
-        return render_template("designs.html", title="EU registered designs")
-    return redirect(url_for("auth.login", next=request.script_root + "/designs"))
+        return redirect(LOOKUP_BASE.rstrip("/") + "/#designs")
+    return redirect(url_for("auth.login", next=LOOKUP_BASE.rstrip("/") + "/#designs"))
 
 
 @app.route("/api/designs")
@@ -2718,6 +3379,22 @@ def api_search_stats(slug):
     })
 
 
+def _spend_usd(slug):
+    """The dollar figure off this search's receipt, or None. Sidecar only: never derives."""
+    if not slug:
+        return None
+    try:
+        p = run_stats.path_for(REPORTS, slug)
+        if not os.path.exists(p):
+            return None
+        with open(p) as fh:
+            sp = (json.load(fh) or {}).get("spend") or {}
+        v = sp.get("total_usd")
+        return float(v) if v is not None else None
+    except Exception:
+        return None
+
+
 @app.route("/history")
 def history():
     """Search history + the frozen gold-set examples, clearly separated.
@@ -2740,6 +3417,14 @@ def history():
     for e in entries:
         try:
             e["concise_built"] = _concise_count(e.get("slug") or "")
+        except Exception:
+            pass
+        #  WHAT IT COST, on the row itself. Read from the receipt sidecar ONLY , never derived from
+        #  the report, because deriving one costs a full report read and this page renders three
+        #  hundred rows. A search whose receipt predates pricing simply has no figure, which is
+        #  honest; it is not shown as $0.00.
+        try:
+            e["spend_usd"] = _spend_usd(e.get("slug") or "")
         except Exception:
             pass
     return render_template("history.html", entries=entries, gold=_gold_cards(),
@@ -2812,17 +3497,39 @@ def run():
     #  find phase, which is minutes, and the report page offers the heavier phases as named,
     #  separate purchases. Before this, every upload with claims bought the full attack: measured
     #  at 3,097 to 7,243 seconds, one at 36,042, whether or not anybody wanted the chart.
-    depth = request.form.get("depth", "").strip() or "quick"
-    if depth not in ("quick", "ledger", "deep"):
+    #  WHICH OF THE TWO SEARCHES THIS IS, and it is the first question the form asks. See
+    #  search_mode: they are separate pipelines, not two depths of one, because the attack's
+    #  queries are derived from claim language the fast search never reads.
+    smode = search_mode.normalise(request.form.get("search_mode"))
+    #  THE TIER GATES, IN THE ROUTE. A limit enforced on the form and not here is not a limit: the
+    #  form is a suggestion and this is the thing that spends the money.
+    _ent = entitlements.check(user, entitlements.SEARCH_ATTACK) if smode == search_mode.ATTACK \
+        else entitlements.OK
+    if not _ent:
+        return _error_response({"error": "account_required", "need": _ent.need,
+                                "detail": _ent.reason}, 402, _ent.reason)
+    _claims_in = (_load_doc_materials(doc_token) or {}).get("claims") or []
+    _refuse = search_mode.refusal(smode, _claims_in)
+    if _refuse:
+        return _error_response({"error": "claims_required", "search_mode": smode,
+                                "detail": _refuse}, 400, _refuse)
+    depth = search_mode.depth_for(smode)
+    if depth not in ("fast", "quick", "ledger", "submission", "deep"):
         return _error_response({"error": "unknown_depth", "depth": depth}, 400,
                                f"Unknown search depth: {depth}")
-    if depth == "deep" and not user and os.environ.get("DEEP_REQUIRES_LOGIN", "0") != "0":
-        #  Public visitors get the quick tier; the multi-hour attack is for accounts. Forcing
-        #  quick (rather than a login wall) keeps the public flow alive and makes the escalate
-        #  button the login prompt.
-        depth = "quick"
-    if depth in ("quick", "ledger"):
+    #  `submission` reads documents in full, so it is a paid depth in every sense `deep` is and
+    #  is gated the same way. Sizing it separately would have let the login wall be walked round
+    #  by asking for the cheaper name.
+    if depth in ("deep", "submission") and not user \
+            and os.environ.get("DEEP_REQUIRES_LOGIN", "0") != "0":
+        #  Public visitors get the fast search; the multi-hour attack is for accounts. Falling
+        #  back (rather than a login wall) keeps the public flow alive.
+        smode, depth = search_mode.FAST, "fast"
+    if depth in ("fast", "quick", "ledger"):
         wide = False                       # local corpus only: no external APIs before phase 3
+    #  A submission run DOES fan out: the packet is only as good as the art it can reach, and the
+    #  external channels measured 60-105 s in parallel with the local ones, so they cost no wall
+    #  clock. What the submission depth cuts is the reading, which is where the 580 s was.
     if not query:
         return redirect(url_for("index"))
     #  OUT-OF-DOMAIN: STILL DETECTED, NO LONGER A GATE.
@@ -2849,19 +3556,94 @@ def run():
     # Every input that changes retrieval or eligibility belongs in the cache identity. Omitting an
     # anchor publication or uploaded-document token can return another search's report/claim grid
     # for the same visible query.
+    #  HOW MANY TO READ, chosen on the finished find rather than fixed in a setting. Absent on
+    #  every other entry point, so nothing else changes shape.
+    try:
+        read_top = int(request.form.get("read_top") or 0) or None
+    except (TypeError, ValueError):
+        read_top = None
+    if read_top:
+        #  The same ceiling the slider draws, from the same constant, or the control asks for a
+        #  depth this silently refuses to honour.
+        read_top = max(10, min(read_top, search_profile.READ_TOP_MAX))
+    #  The cheap, slow reader. Only offered on the depth chooser, so it is absent everywhere else.
+    batched = str(request.form.get("batched") or "") in ("1", "true", "on", "yes")
+    #  THIRD-PARTY SOURCES. A checkbox on the form when it is there, the account-wide setting when
+    #  it is not, so an entry point that never heard of this behaves exactly as it did.
+    if "third_party" in request.form:
+        local_only = str(request.form.get("third_party") or "") not in ("1", "true", "on", "yes")
+        #  PRO ONLY, and enforced here rather than only on the checkbox. The outside APIs are
+        #  billed per call, so a form post that says otherwise must not be able to spend.
+        if not local_only and not entitlements.check(user, entitlements.THIRD_PARTY):
+            local_only = True
+    else:
+        try:
+            import search_settings
+            local_only = not bool(search_settings.get("third_party_sources"))
+        except Exception:                                                 # noqa: BLE001
+            local_only = False
+    #  WHAT THIS RUN IS FOR, chosen before it starts rather than as a second button afterwards.
+    #
+    #  It also decides the depth, which is why the form no longer posts one. "Full grid" and
+    #  "start reading" were two buttons posting two depths to this route with two different read
+    #  budgets, and the depth chooser sat between them applying to only one of the two. One
+    #  question, asked once: how much to read, and what to build out of it.
+    then = (request.form.get("then") or "").strip().lower()
+    if then not in ("list", "grid", "packet"):
+        then = "list"
+    #  `then` was the old two-button escalation and only ATTACK still has anything to escalate to.
+    if request.form.get("then") and smode == search_mode.ATTACK:
+        depth = "deep" if then == "grid" else "submission"
+    #  ---- ATTACK's advanced settings, decided BEFORE the search rather than on the results page.
+    #  Every one of these governs work that starts in the first minute, and every one of them used
+    #  to be asked afterwards or not at all.
+    jurisdiction = search_mode.normalise_jurisdiction(request.form.get("jurisdiction"))
+    concept_expansions = str(request.form.get("concept_expansions") or "") in ("1", "true", "on",
+                                                                              "yes")
+    if smode == search_mode.ATTACK:
+        read_top = search_mode.normalise_read_top(
+            request.form.get("read_top") or search_mode.READ_TOP_DEFAULT)
+        #  CLAMPED, NOT REFUSED. Somebody who asks for 400 on a free account gets 20 and is told
+        #  so on the report, which is a run they can use; a 402 in front of a claim attack they
+        #  were entitled to start is not.
+        _rv = entitlements.check(user, entitlements.READ_IN_FULL, read_top=read_top)
+        if not _rv:
+            read_top = int(_rv.limit or entitlements.FREE_READ_TOP)
+            _read_clamped = _rv.reason
+        else:
+            _read_clamped = ""
+    else:
+        #  FAST reads nothing, so a read budget is not a smaller number, it is a category error.
+        read_top, batched, then = None, False, "list"
+    #  THE MODE AND THE FORUM ARE PART OF THE CACHE IDENTITY. A fast search and an attack over
+    #  the same input are different reports, and so are a US and an EP reading of the same claims:
+    #  the second decides which documents count as prior art at all.
     slug = search_slug(query, mode, wide=wide, search_focus=search_focus,
-                       subject=subject, doc_token=doc_token, depth=depth)
+                       subject=subject, doc_token=doc_token,
+                       depth="%s|%s|%s" % (depth, smode, jurisdiction), read_top=read_top,
+                       batched=batched, local_only=local_only)
     #  restart_partial=True: this is a POST to /run, an explicit request to RUN this search. If
     #  all that is on disk is a partial left by an interrupted run, the honest answer is to start
     #  it again, not to hand back the page that stopped. Viewing the report is a GET and keeps the
     #  default, so a partial still renders with its interrupted banner.
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
                             doc_token=doc_token, search_focus=search_focus, depth=depth,
-                            restart_partial=True,
+                            restart_partial=True, read_top=read_top, batched=batched, then=then,
+                            local_only=local_only, search_mode_name=smode, jurisdiction=jurisdiction,
+                            concept_expansions=concept_expansions,
                             owner_user_id=(user or {}).get("id"))
     if st == "busy":
         return _error_response({"error": "server busy", "detail": why}, 429,
                                f"The server is at capacity , {why}. Please retry shortly.")
+    #  A REPORT THAT ALREADY EXISTS NEVER REACHES THE COMPLETION HOOK.
+    #
+    #  The destination is honoured at the end of `_generate`, and `ensure_report` does not call
+    #  `_generate` for a slug that is already on disk: it returns "ready". "The ranked list only"
+    #  and "+ the 1.290 submission" at the same depth are the SAME search and therefore the same
+    #  slug, so asking for the packet after having run the list would have redirected to a
+    #  finished report and built nothing, silently, which is the worst of the three outcomes.
+    if st == "ready" and then == "packet":
+        _concise_autostart(slug)
     # remember adhoc meta for the report page title (doc_token persisted so a live Re-run keeps the
     # document-chunk + image channels instead of degrading to text-only).
     #  WHAT KIND OF SEARCH THIS IS, on the meta, at the moment it starts. `_generate` decides
@@ -2872,6 +3654,10 @@ def run():
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood,
          "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
+         "search_mode": smode, "jurisdiction": jurisdiction,
+         "search_mode_detail": search_mode.describe(
+             smode, read_top=read_top, jurisdiction=jurisdiction, third_party=(not local_only),
+             concept_expansions=concept_expansions),
          "search_profile": search_profile.describe(_profile, depth=depth)}))
     if user:
         notify = request.form.get("notify_email") == "1"
@@ -3243,6 +4029,13 @@ def report(slug):
     #  `depth` is part of the slug hash, so the Restart control on an interrupted run has to post
     #  it back or the restart mints a NEW slug and the user's url still never finishes.
     view["depth"] = depth
+    #  WHICH PIPELINE PRODUCED THIS PAGE. A prior-art search reads nothing and charts nothing, so
+    #  a claim grid and a submission button on its report are not disabled controls waiting for
+    #  something, they are controls for a search that was never run. `attack` for anything written
+    #  before the split, because that is what those reports actually are.
+    view["search_mode"] = rep.get("search_mode") or "attack"
+    view["jurisdiction"] = rep.get("jurisdiction") or "US"
+    view["search_mode_detail"] = rep.get("search_mode_detail") or {}
     try:
         _write_detail_preview(slug, view)
     except Exception:
@@ -3298,12 +4091,26 @@ def report(slug):
         #  offers: a find report can buy the ledger or the grid, a ledger report can buy the grid.
         view["escalate"] = {"query": query or rep.get("query") or "", "mode": mode,
                             "doc_token": doc_token or "", "search_focus": search_focus,
-                            "next_phases": (["ledger", "deep"] if view["depth"] == "quick"
-                                            else ["deep"])}
+                            "next_phases": (["ledger", "submission", "deep"]
+                                            if view["depth"] == "quick"
+                                            else ["submission", "deep"])}
     #  The filing artefacts belong on the report itself, not only on a share of it: the owner is
     #  the one who builds them and the most likely person to come back for them.
     view["concise_docs"] = _concise_built(slug)
-    view["has_reading"] = _has_reading(slug)
+    #  A COUNT, not a boolean: the page needs to say "3 of 10 read" rather than offer a button
+    #  that builds a packet out of three documents. See `_n_readable`.
+    view["n_readable"] = _has_reading(slug)
+    view["min_readable"] = CONCISE_MIN_READ
+    view["has_reading"] = view["n_readable"] >= CONCISE_MIN_READ
+    #  The SCREENED pool, not the card count. See _n_unread.
+    view["n_unread"] = _n_unread(slug)
+    view["read_more_max"] = _read_more_max()
+    #  The slider must not offer a depth `/run` then clamps: a control that asks for 900 and gets
+    #  400 is a control that lies about what it bought.
+    view["read_top_max"] = search_profile.READ_TOP_MAX
+    #  What THIS report did, so the escalation form's toggle starts where the run it came from
+    #  left it rather than at the global default.
+    view["local_only"] = bool((_load_report(slug) or {}).get("local_only"))
     view["concise_built"] = len(view["concise_docs"])
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
@@ -3690,6 +4497,20 @@ def _build_view_cached(slug, rep, regen=False):
                 #  it stays a permutation and stays deterministic.
                 cards = order_cards_by_evidence(cards)
                 view["ranked_by"] = "deep_rank"
+            elif (rep.get("search_mode") or "attack") == "fast":
+                #  THE SECOND RERANKER, AND THE ONE THAT WAS ACTUALLY THE WAIT.
+                #
+                #  Turning off the cross-encoder took the fast search from 31.5 s to 5.8 s of
+                #  retrieval, and the run still took 48 s: retrieval finished at 9 s and the
+                #  listwise pass held the page from 9.5 s to 48 s. It is an LLM judging the cards
+                #  against one another, several at a time, and it is worth its cost on a report
+                #  somebody is going to read for an hour. It is not worth five sixths of the wall
+                #  clock of a search whose whole promise is that it comes back immediately.
+                #
+                #  The fast search ships the fusion order. The ranking a reader actually acts on
+                #  comes from reading, which is one button away on the results page and is what
+                #  lights up the sort and filter controls.
+                view["ranked_by"] = "fusion"
             elif len(cards) > 1:
                 q = {"brief": query_set.retrieval_text(rep.get("query") or ""),
                      "elements": rep.get("elements") or [],
@@ -4454,7 +5275,7 @@ def _load_report(slug):
 
 def _query_vec(slug, q):
     if slug not in _QCACHE:
-        _QCACHE[slug] = embed.embed_query(q[:8000], 768)
+        _QCACHE[slug] = embed.embed_query(q[:8000], EMBED_DIM)
     return _QCACHE[slug]
 
 
@@ -5277,7 +6098,20 @@ def shared_report(token):
     view["share_token"] = token
     view["read_only"] = True
     view["concise_docs"] = _concise_built(slug)
-    view["has_reading"] = _has_reading(slug)
+    #  A COUNT, not a boolean: the page needs to say "3 of 10 read" rather than offer a button
+    #  that builds a packet out of three documents. See `_n_readable`.
+    view["n_readable"] = _has_reading(slug)
+    view["min_readable"] = CONCISE_MIN_READ
+    view["has_reading"] = view["n_readable"] >= CONCISE_MIN_READ
+    #  The SCREENED pool, not the card count. See _n_unread.
+    view["n_unread"] = _n_unread(slug)
+    view["read_more_max"] = _read_more_max()
+    #  The slider must not offer a depth `/run` then clamps: a control that asks for 900 and gets
+    #  400 is a control that lies about what it bought.
+    view["read_top_max"] = search_profile.READ_TOP_MAX
+    #  What THIS report did, so the escalation form's toggle starts where the run it came from
+    #  left it rather than at the global default.
+    view["local_only"] = bool((_load_report(slug) or {}).get("local_only"))
     return render_template("report.html", v=view, read_only=True, share_token=token,
                            ood=None, corpus=corpus_facts.facts())
 
@@ -5366,7 +6200,20 @@ def public_report_page(slug):
     #  usually the person who needs the papers, and hiding them behind an account defeats the
     #  point of publishing the report at all.
     view["concise_docs"] = _concise_built(slug)
-    view["has_reading"] = _has_reading(slug)
+    #  A COUNT, not a boolean: the page needs to say "3 of 10 read" rather than offer a button
+    #  that builds a packet out of three documents. See `_n_readable`.
+    view["n_readable"] = _has_reading(slug)
+    view["min_readable"] = CONCISE_MIN_READ
+    view["has_reading"] = view["n_readable"] >= CONCISE_MIN_READ
+    #  The SCREENED pool, not the card count. See _n_unread.
+    view["n_unread"] = _n_unread(slug)
+    view["read_more_max"] = _read_more_max()
+    #  The slider must not offer a depth `/run` then clamps: a control that asks for 900 and gets
+    #  400 is a control that lies about what it bought.
+    view["read_top_max"] = search_profile.READ_TOP_MAX
+    #  What THIS report did, so the escalation form's toggle starts where the run it came from
+    #  left it rather than at the global default.
+    view["local_only"] = bool((_load_report(slug) or {}).get("local_only"))
     visit_key = public_report.record_visit(slug, request, unlocked=_public_unlocked(slug))
     resp = make_response(render_template(
         "report.html", v=view, read_only=True, layout="base_public.html", share_token=None,
@@ -5463,6 +6310,29 @@ CONCISE_DIR = REPORTS / "concise"
 _HAS_READING: dict = {}
 
 
+def _read_more_max():
+    """The most one read-in-full request will take on. Read live so the env can move it."""
+    try:
+        import read_more
+        return int(read_more.MAX_PER_CALL)
+    except Exception:                                                     # noqa: BLE001
+        return 120
+
+
+def _n_unread(slug):
+    """How many screened candidates this report has NOT read in full. -> int
+
+    Read from the report rather than counted off the page: the page shows 60 cards and the screen
+    scored 601, and taking the page's number is what made "Read all 60 unread in full" the whole
+    of the offer on a search with ten times that available.
+    """
+    try:
+        rep = _load_report(slug) or {}
+        return len((rep.get("deep_rank") or {}).get("unread") or {})
+    except Exception:                                                     # noqa: BLE001
+        return 0
+
+
 def _has_reading(slug):
     path = REPORTS / ("%s.deep.json" % slug)
     try:
@@ -5473,11 +6343,36 @@ def _has_reading(slug):
     if cached and cached[0] == mtime:
         return cached[1]
     try:
-        verdict = bool((json.loads(path.read_text()).get("references") or []))
+        verdict = _n_readable(json.loads(path.read_text()))
     except Exception:
-        verdict = False
+        verdict = 0
     _HAS_READING[slug] = (mtime, verdict)
     return verdict
+
+
+#  A PACKET IS A SELECTION, AND A SELECTION NEEDS SOMETHING TO SELECT FROM.
+#
+#  `_has_reading` used to answer "does deep.json hold any references at all", which became true
+#  the moment somebody read ONE reference by hand from a card. The submission button then appeared
+#  and the picker built "the ten strongest documents by what the ledger says they kill" out of the
+#  two or three that had been read. Every sentence in that packet was true and the packet was not
+#  a search result; it was those three documents with a ranking claim on top.
+#
+#  So the count is what is exposed, and the button is offered when there is a unit's worth to
+#  choose from. Ten is not arbitrary: 37 CFR 1.290(f) charges per ten items or fraction, so it is
+#  the smallest selection the fee actually buys.
+CONCISE_MIN_READ = int(os.environ.get("CONCISE_MIN_READ", "10"))
+
+
+def _n_readable(deep):
+    """How many references in a deep block were genuinely read end to end."""
+    n = 0
+    for r in ((deep or {}).get("references") or []):
+        if not isinstance(r, dict) or r.get("method") != "llm":
+            continue
+        if int(r.get("n_paragraphs_read") or 0) + int(r.get("n_claims_read") or 0) > 0:
+            n += 1
+    return n
 
 
 def _concise_deep(slug):
@@ -5563,11 +6458,17 @@ def _may_read_report(slug):
 
 
 def _concise_source_text(pub):
-    """The reference's own stored full text, for re-verifying quotations before filing."""
+    """The reference's own stored full text, AS LOCATED PASSAGES, for re-verifying before filing.
+
+    Returns the whole `full_text` record rather than a string. It always did, in fact: the string
+    annotation was wrong and the compliance pass was matching against `str(dict)`, which found the
+    words and could not see the coordinate attached to each passage. A citation is a triple and two
+    thirds of it are in there. See submission_compliance.verify_quotes.
+    """
     try:
-        return deep_analysis.full_text(pub) or ""
+        return deep_analysis.full_text(pub) or {}
     except Exception:
-        return ""
+        return {}
 
 
 def _concise_count(slug):
@@ -5596,7 +6497,11 @@ def _concise_built(slug):
         return []
     by_stem = {}
     for p in sorted(d.iterdir()):
-        if not p.name.startswith("ConciseDescription_") or p.suffix not in (".pdf", ".docx"):
+        #  `.md` too: it is the editable source the DOCX and the PDF are rendered from, and the
+        #  download menu offers it because a practitioner pasting a concise description into a
+        #  house template wants the text and not a laid-out page. It is still kept OUT of the
+        #  filing archive, which is a separate decision made in `_zip_name`.
+        if not p.name.startswith("ConciseDescription_") or p.suffix not in (".pdf", ".docx", ".md"):
             continue
         stem = p.name[:-len(p.suffix)]
         row = by_stem.setdefault(stem, {"n": 0, "pub": "", "label": stem, "rows": None})
@@ -5619,7 +6524,14 @@ def _concise_built(slug):
         try:
             mp = d / ("ConciseDescription_Doc%s_%s.model.json" % (r["n"], r["pub"]))
             if mp.exists():
-                r["notes"] = concise_render.filing_notes(json.loads(mp.read_text()))
+                _model = json.loads(mp.read_text())
+                r["notes"] = concise_render.filing_notes(_model)
+                #  `rows` was initialised to None above and never assigned, so the table said
+                #  "None rows" against every document it had just built. The count is in the
+                #  model.json that is already being opened one line up.
+                _rows = _model.get("rows")
+                if isinstance(_rows, list):
+                    r["rows"] = len(_rows)
         except Exception:
             traceback.print_exc()
     out.sort(key=lambda r: r["n"])
@@ -5734,6 +6646,151 @@ def api_passage():
 
 
 @app.route("/api/build-settings")
+def _concise_run(slug, deep, pubs, subject, rep, identity,
+                 start_at=1, skip_compliance=False, model=None, mode="novelty"):
+    """Build the 1.290 papers for `pubs` and package them. Blocking; run it on a thread.
+
+    LIFTED OUT OF THE ROUTE so it has two callers instead of one. It was a closure inside the
+    POST handler, which meant the only way to build a packet was for a human to be holding a
+    request open. The escalation form can now say "and build: the 1.290 submission" before the
+    reading starts, and that promise is kept by the run that finishes minutes later, on a thread
+    with no session and no request, which could not have called a closure.
+
+    Everything it needs is an argument for the same reason: the worker outlives its caller and may
+    not touch `request`, `session` or `g`.
+    """
+    filing_identity = identity
+    #  LOCAL IMPORTS, and the reason this function had none. It was lifted out of the POST handler,
+    #  which imports both of these itself, and the lift took the body and left the imports behind.
+    #  `submission_compliance` is imported at module level so it survived; these two are not, so
+    #  EVERY packet build has died on its first statement with
+    #      NameError: name 'concise_description' is not defined
+    #  since the lift. It is invisible from the page: the build runs on a thread, the failure lands
+    #  in the job record, and the job record was only rendered while a build was RUNNING. So the
+    #  button appeared to do nothing at all, which is exactly what was reported.
+    #
+    #  `mode` was the same defect one line further down: the POST handler computes it from the
+    #  report meta and it was read here as a global that does not exist. It is a parameter now.
+    import concise_description
+    import concise_render
+    try:
+        docs = concise_description.build(
+            deep, pubs, subject, start_at=start_at, report=rep,
+            model=model,
+            on_progress=lambda n, msg: _concise_set(slug, done=n, msg=msg))
+        blocked, family_notes = [], []
+        if not skip_compliance:
+            _concise_set(slug, done=len(pubs),
+                         msg="Checking prior-art status, families and quotations")
+            facts = concise_description.subject_facts(
+                (deep.get("subject_label") or "").strip())
+            docs, blocked, family_notes = submission_compliance.apply(
+                docs, {"efd": facts.get("efd")}, source_text_for=_concise_source_text,
+                mode=mode, target_assignees=facts.get("assignees") or [])
+        out = CONCISE_DIR / slug
+        out.mkdir(parents=True, exist_ok=True)
+        #  THE PREVIOUS PACKAGE GOES FIRST. Document numbers are assigned per build, so a
+        #  rebuild that selects a different set leaves a stale file wearing a number this one
+        #  has reused , twelve files for a ten-document package, two of them "Document 7",
+        #  and the zip carries both. Measured on adhoc-8dcf2436929a.
+        #  EVERY artefact of the previous build, not only the descriptions. A copy
+        #  or a translation left behind for an item this build no longer lists
+        #  would be filed as part of a submission it does not belong to.
+        #  `Translation_*` and `*_before_filing.txt` are the names an earlier build used. A
+        #  package built before the rename kept them, and they were still going into the zip.
+        for pattern in ("ConciseDescription_*", "*.model.json", "00_*", "01_*",
+                        "40_Copy_*", "50_Translation_*", "Translation_*", "Copy_*",
+                        "*_before_filing.txt", "MANIFEST.csv", "READ_ME_FIRST.txt"):
+            for stale in out.glob(pattern):
+                try:
+                    stale.unlink()
+                except OSError:
+                    traceback.print_exc()
+        for k, d in enumerate(docs, 1):
+            _concise_set(slug, done=len(pubs) + k,
+                         msg="Rendering PDF and DOCX, document %d of %d: %s"
+                             % (k, len(docs), d["pub"]))
+            for fmt, fn in (("pdf", concise_render.to_pdf), ("docx", concise_render.to_docx)):
+                try:
+                    (out / concise_render.filename(d, fmt)).write_bytes(fn(d))
+                except Exception:
+                    traceback.print_exc()
+            try:
+                (out / concise_render.filename(d, "md")).write_text(
+                    concise_md.to_markdown(d), encoding="utf-8")
+            except Exception:
+                traceback.print_exc()
+            #  `default=str`: the document model carries real `datetime.date` values now that
+            #  the corpus returns date columns rather than strings, and an unguarded dumps here
+            #  aborted the WHOLE package build over a debug sidecar whose two siblings, the PDF
+            #  and the DOCX, had already rendered fine inside their own try/except.
+            (out / ("%s.model.json" % concise_render.filename(d, "x")[:-2])).write_text(
+                json.dumps(d, ensure_ascii=False, indent=1, default=str))
+        #  THE REST OF THE SUBMISSION. A folder of concise descriptions is one of the several
+        #  things 1.290(d) asks for, and nothing told the practitioner what the other ones
+        #  were. The non-English translation is the only gap nothing else can close.
+        _concise_set(slug, done=len(pubs) + len(docs),
+                     msg="Building the document list, statements and translations",
+                     blocked=[{"pub": b.get("pub"), "why": b.get("why")}
+                              for b in blocked])
+        findings = _concise_package(out, docs, subject, report=rep,
+                                    identity=filing_identity) or []
+        try:
+            import submission
+            _state, _sentence = submission.verdict(findings)
+            _concise_set(slug, verdict="%s: %s" % (
+                {"ok": "Ready to file", "action": "Ready, with decisions for you",
+                 "blocked": "Not ready to file"}[_state], _sentence))
+        except Exception:
+            traceback.print_exc()
+        n = len(docs)
+        _concise_set(slug, state="done", done=2 * len(pubs) + 1,
+                     msg="%d document%s ready" % (n, "" if n == 1 else "s"))
+    except Exception as exc:
+        traceback.print_exc()
+        _concise_set(slug, state="failed",
+                     error="Could not build the documents: %s" % str(exc)[:200])
+
+
+def _concise_autostart(slug, top=10):
+    """Pick the strongest eligible documents and build the packet. -> True if a build started.
+
+    THE DESTINATION CHOSEN BEFORE THE READING, HONOURED AFTER IT. Somebody who asked for the
+    submission at the start of a ten-minute read should not come back to a button; they asked
+    already. Same selection the one-click package size makes on the concise page: eligible only,
+    best first, capped at one fee unit unless told otherwise.
+
+    Never raises and never blocks the run that calls it: a packet that fails to start must not
+    take the search down with it, and the page still has the button.
+    """
+    try:
+        import concise_description
+        if (_concise_job(slug) or {}).get("state") == "running":
+            return False
+        if _concise_built(slug):
+            return False                      # already has papers; do not spend again
+        rep = _load_report(slug) or {}
+        deep = _concise_deep(slug) or {}
+        cands = concise_description.candidates(rep, deep, limit=200)
+        pubs = [c["pub"] for c in _classify(slug, cands, deep)
+                if c.get("default_include")][:max(1, int(top))]
+        if not pubs:
+            print("[concise-auto] %s: nothing eligible to describe" % slug, flush=True)
+            return False
+        subject = _concise_subject(slug)
+        identity = _filing_identity()
+        with _CONCISE_JOBS_LOCK:
+            _CONCISE_JOBS[slug] = {"state": "running", "done": 0, "total": 2 * len(pubs) + 1,
+                                   "msg": "Starting", "error": None, "t0": time.time()}
+        threading.Thread(target=_concise_run, name="concise-auto", daemon=True,
+                         args=(slug, deep, pubs, subject, rep, identity)).start()
+        print("[concise-auto] %s: building %d documents" % (slug, len(pubs)), flush=True)
+        return True
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return False
+
+
 def api_build_settings():
     """What a rebuild will use, and what it could use instead.
 
@@ -5788,7 +6845,8 @@ def concise_descriptions(slug):
     rep_for_pick = _load_report(slug) or {}
     #  The family's own office actions come FIRST in the picker. They are not prior art and no
     #  search can produce them; they are an examiner's findings on substantially these claims, and
-    #  1.290(b) forbids the submitter from making the argument they already make.
+    #  1.290(d)(2), as construed by MPEP 1134.01, does not permit the submitter to make the
+    #  argument the examiner has already made. (1.290(b) is the timing provision.)
     cands = (concise_description.office_action_candidates(rep_for_pick)
              + concise_description.candidates(rep_for_pick, deep, limit=40))
     subject = _concise_subject(slug, request.form if request.method == "POST" else None)
@@ -5796,25 +6854,49 @@ def concise_descriptions(slug):
         #  The build runs in a thread and the page reloads when it finishes, so what the
         #  build DECIDED has to be read back from the job or it is lost at that reload.
         j = _concise_job(slug) or {}
-        return render_template("concise.html", slug=slug, cands=cands,
-                               docs=_concise_built(slug), subject=subject, error=None,
-                               blocked=j.get("blocked") or [],
-                               building=(j.get("state") == "running"),
-                               verdict=j.get("verdict") or "")
+        #  A FAILED BUILD IS SHOWN, NOT ONLY RECORDED. The job carries its error, and the
+        #  only thing that ever rendered it was the progress panel, which is hidden unless a
+        #  build is RUNNING. So a build that died on its first statement left a page identical
+        #  to the one before the click. Whatever killed it, the person who clicked is told.
+        return _render_picker(report=rep_for_pick, _deep=deep, slug=slug,
+                              cands=_classify(slug, cands, deep),
+                              docs=_concise_built(slug), subject=subject,
+                              error=(j.get("error") if j.get("state") == "failed" else None),
+                              blocked=j.get("blocked") or [],
+                              building=(j.get("state") == "running"),
+                              verdict=j.get("verdict") or _concise_verdict_on_disk(slug))
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
     if not pubs and request.form.get("auto"):
         #  ONE CLICK, THE PACKAGE COUNSEL ASKED FOR: the top documents by what the ledger says
         #  they kill , office actions first, one per family, covering as many claims as the
         #  evidence supports. The picker's order IS the selection logic, fixed 2026-08-20.
+        #  A LOCAL IMPORT, like every other reference to `submission` in this module. Without
+        #  one this raised NameError, which `except (TypeError, ValueError)` does NOT catch, so
+        #  the only button on the page returned 500. Caught in production on 2026-08-27, hours
+        #  after the change, because the packet build had been exercised BEFORE the cap was
+        #  added and not after: `py_compile` proves syntax, never that a name resolves.
+        import submission
         try:
-            top = max(1, min(int(request.form.get("auto")), 20))
+            #  The ceiling is what the fee ladder actually offers, not a magic 20. 1.290(f)
+            #  charges one unit per ten items or fraction, so every step of the picker is one
+            #  more unit and the cap has to move with the ladder rather than sit beside it.
+            _cap = submission.ITEMS_PER_UNIT * len(submission.fee_choices())
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
+            _cap = 50               # five units, the ladder's own ceiling
+        try:
+            top = max(1, min(int(request.form.get("auto")), _cap))
         except (TypeError, ValueError):
             top = 10
-        pubs = [c["pub"] for c in cands[:top]]
+        #  ELIGIBLE ONLY. One click still means one fee unit's worth of documents that are
+        #  actually citable: a candidate the picker flags as not prior art on the dates, or as
+        #  commonly owned, is a deliberate choice and cannot be made by a button.
+        pubs = [c["pub"] for c in _classify(slug, cands, deep) if c.get("default_include")][:top]
     if not pubs:
-        return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
-                               error="Select at least one document."), 400
+        return _render_picker(report=rep_for_pick, _deep=deep, slug=slug, cands=_classify(slug, cands, deep),
+                              docs=_concise_built(slug), subject=subject,
+                              error="Select at least one document."), 400
     #  Only a publication this report actually read can be described: `pubs` is user input that
     #  becomes a document lookup and a filename. Filtering it silently, though, hands back a
     #  success page with nothing on it and no reason, so an unknown one is named and refused.
@@ -5830,10 +6912,29 @@ def concise_descriptions(slug):
     unknown = [p for p in pubs if p not in known]
     pubs = [p for p in pubs if p in known]
     if not pubs:
-        return render_template(
-            "concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
+        return _render_picker(
+            report=rep_for_pick, _deep=deep, slug=slug, cands=cands, docs=_concise_built(slug),
+            subject=subject,
             error=("None of the selected documents carry per-claim evidence in this report: %s"
                    % ", ".join(unknown[:5]))), 400
+    #  UNREADABLE IS A HARD EXCLUSION FROM A FILING SET, whatever it scores. Counsel, 2026-08-26:
+    #  two of the thirteen documents in a real packet were on this search's own "full text still
+    #  unavailable after recovery" list, so everything charted for them rests on an abstract. A
+    #  short text is mapped generously and every cell verifies against the abstract it came from,
+    #  so an unread reference scores HIGH, not low, and the picker's default tick was never what
+    #  put them in. The refusal is here, in front of the person who chose, with the acknowledgement
+    #  that lets somebody who HAS read the document themselves go ahead anyway.
+    acked = set(request.form.getlist("allow_unread"))
+    unread = {c["pub"] for c in cands if c.get("readable") is False}
+    blocked_unread = [p for p in pubs if p in unread and p not in acked]
+    if blocked_unread:
+        return _render_picker(
+            report=rep_for_pick, _deep=deep, slug=slug, cands=_classify(slug, cands, deep),
+            docs=_concise_built(slug), subject=subject,
+            error=("The full text of %s was never read: this corpus holds a title and an abstract "
+                   "and nothing else, so every row filed for it would rest on that abstract. Read "
+                   "the office copy yourself and tick “I have read this document” on its row, or "
+                   "deselect it." % ", ".join(sorted(blocked_unread)[:5]))), 400
     #  EVERYTHING THE THREAD NEEDS IS CAPTURED HERE. The worker outlives this request, so it may
     #  not touch `request` at all.
     start_at = int(request.form.get("start_at") or 1)
@@ -5841,13 +6942,54 @@ def concise_descriptions(slug):
     #  A model the reader picked in the rebuild dialog. Validated here rather than in the worker:
     #  an unknown name must fail the request in front of the person who typed it, not eight
     #  documents into a background build.
+    #  CAPTURED IN THE REQUEST. The build thread has no session, so who signs and at what entity
+    #  size has to be read here and carried in.
+    filing_identity = _filing_identity()
+    #  THE BUDGET IS A CEILING, checked here and not only in the browser. 1.290(f) charges per ten
+    #  items or fraction thereof, so an eleventh document doubles the bill; somebody who chose one
+    #  unit and then hand-posted twelve pubs should be told, not quietly charged twice.
+    import submission as _sub
+    try:
+        #  THE SIZE IS THE BUDGET, on the one-click path. The page carries two controls: a
+        #  package size at the top and a fee budget beside the manual selection below. Picking
+        #  "30 documents, $234" from the first one IS picking three units, and the price was on
+        #  the option that was clicked, so making the reader then find a second control and say
+        #  the same thing again is a form rejecting an answer it already has.
+        #
+        #  It also 400'd rather than explaining, because the budget defaults to one unit: the
+        #  20- and 30-document sizes were unusable from the moment they were added until this.
+        #  The MANUAL path is untouched, and that is where the guard earns its keep: ticking an
+        #  eleventh box there really does double a bill nobody was shown.
+        _auto_n = 0
+        if request.form.get("auto") and not request.form.getlist("pubs"):
+            try:
+                _auto_n = max(0, int(request.form.get("auto")))
+            except (TypeError, ValueError):
+                _auto_n = 0
+        if _auto_n:
+            budget_units = _sub.fee_units(min(_auto_n, len(pubs)) or _auto_n)
+        else:
+            budget_units = max(1, int(request.form.get("fee_units") or 0))
+    except ValueError:
+        budget_units = 0
+    if budget_units and _sub.fee_units(len(pubs)) > budget_units:
+        allowed = budget_units * _sub.ITEMS_PER_UNIT
+        want_units, dollars, _per = _sub.fee_amount(len(pubs), filing_identity["entity_size"])
+        over = ("You chose %d fee unit%s, which pays for up to %d documents, but %d are selected. "
+                "That would cost %d units, $%s at the %s-entity rate. Either raise the fee budget "
+                "or deselect %d."
+                % (budget_units, "" if budget_units == 1 else "s", allowed, len(pubs),
+                   want_units, _sub._money(dollars), filing_identity["entity_size"],
+                   len(pubs) - allowed))
+        return _render_picker(report=rep_for_pick, _deep=deep, slug=slug, cands=_classify(slug, cands, deep),
+                              docs=_concise_built(slug), subject=subject, error=over), 400
     chosen_model = (request.form.get("model") or "").strip() or None
     if chosen_model:
         import model_pool
         ok = {m["name"] for m in model_pool.choices() if m["available"]}
         if chosen_model not in ok:
-            return render_template(
-                "concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
+            return _render_picker(report=rep_for_pick, _deep=deep,
+                slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
                 error=("%s is not a model this host can use right now. Available: %s"
                        % (chosen_model, ", ".join(sorted(ok)) or "none"))), 400
     mode = "novelty"
@@ -5868,79 +7010,10 @@ def concise_descriptions(slug):
         _CONCISE_JOBS[slug] = {"state": "running", "done": 0, "total": 2 * len(pubs) + 1,
                                "msg": "Starting", "error": None, "t0": time.time()}
 
-    def _work():
-        try:
-            docs = concise_description.build(
-                deep, pubs, subject, start_at=start_at, report=rep_for_pick,
-                model=chosen_model,
-                on_progress=lambda n, msg: _concise_set(slug, done=n, msg=msg))
-            blocked, family_notes = [], []
-            if not skip_compliance:
-                _concise_set(slug, done=len(pubs),
-                             msg="Checking prior-art status, families and quotations")
-                facts = concise_description.subject_facts(
-                    (deep.get("subject_label") or "").strip())
-                docs, blocked, family_notes = submission_compliance.apply(
-                    docs, {"efd": facts.get("efd")}, source_text_for=_concise_source_text,
-                    mode=mode, target_assignees=facts.get("assignees") or [])
-            out = CONCISE_DIR / slug
-            out.mkdir(parents=True, exist_ok=True)
-            #  THE PREVIOUS PACKAGE GOES FIRST. Document numbers are assigned per build, so a
-            #  rebuild that selects a different set leaves a stale file wearing a number this one
-            #  has reused , twelve files for a ten-document package, two of them "Document 7",
-            #  and the zip carries both. Measured on adhoc-8dcf2436929a.
-            #  EVERY artefact of the previous build, not only the descriptions. A copy
-            #  or a translation left behind for an item this build no longer lists
-            #  would be filed as part of a submission it does not belong to.
-            for pattern in ("ConciseDescription_*", "*.model.json", "00_*", "01_*",
-                            "40_Copy_*", "50_Translation_*", "MANIFEST.csv",
-                            "READ_ME_FIRST.txt"):
-                for stale in out.glob(pattern):
-                    try:
-                        stale.unlink()
-                    except OSError:
-                        traceback.print_exc()
-            for k, d in enumerate(docs, 1):
-                _concise_set(slug, done=len(pubs) + k,
-                             msg="Rendering PDF and DOCX, document %d of %d: %s"
-                                 % (k, len(docs), d["pub"]))
-                for fmt, fn in (("pdf", concise_render.to_pdf), ("docx", concise_render.to_docx)):
-                    try:
-                        (out / concise_render.filename(d, fmt)).write_bytes(fn(d))
-                    except Exception:
-                        traceback.print_exc()
-                try:
-                    (out / concise_render.filename(d, "md")).write_text(
-                        concise_md.to_markdown(d), encoding="utf-8")
-                except Exception:
-                    traceback.print_exc()
-                (out / ("%s.model.json" % concise_render.filename(d, "x")[:-2])).write_text(
-                    json.dumps(d, ensure_ascii=False, indent=1))
-            #  THE REST OF THE SUBMISSION. A folder of concise descriptions is one of the several
-            #  things 1.290(d) asks for, and nothing told the practitioner what the other ones
-            #  were. The non-English translation is the only gap nothing else can close.
-            _concise_set(slug, done=len(pubs) + len(docs),
-                         msg="Building the document list, statements and translations",
-                         blocked=[{"pub": b.get("pub"), "why": b.get("why")}
-                                  for b in blocked])
-            findings = _concise_package(out, docs, subject, report=rep_for_pick) or []
-            try:
-                import submission
-                _state, _sentence = submission.verdict(findings)
-                _concise_set(slug, verdict="%s: %s" % (
-                    {"ok": "Ready to file", "action": "Ready, with decisions for you",
-                     "blocked": "Not ready to file"}[_state], _sentence))
-            except Exception:
-                traceback.print_exc()
-            n = len(docs)
-            _concise_set(slug, state="done", done=2 * len(pubs) + 1,
-                         msg="%d document%s ready" % (n, "" if n == 1 else "s"))
-        except Exception as exc:
-            traceback.print_exc()
-            _concise_set(slug, state="failed",
-                         error="Could not build the documents: %s" % str(exc)[:200])
-
-    threading.Thread(target=_work, name="concise-build", daemon=True).start()
+    threading.Thread(target=_concise_run, name="concise-build", daemon=True,
+                     args=(slug, deep, pubs, subject, rep_for_pick, filing_identity),
+                     kwargs={"start_at": start_at, "skip_compliance": skip_compliance,
+                             "model": chosen_model, "mode": mode}).start()
     #  Post/Redirect/Get: rendering the result of the POST directly meant a browser refresh
     #  re-submitted the form, and a re-submit AFTER completion silently started a whole new
     #  build over the same directory. The GET shows the running build's progress.
@@ -5984,7 +7057,12 @@ def concise_document(slug, n):
             paths["md"].write_text(md, encoding="utf-8")
             paths["pdf"].write_bytes(concise_render.to_pdf(doc))
             paths["docx"].write_bytes(concise_render.to_docx(doc))
-            paths["model"].write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+            #  `default=str` for the same reason its sibling above has it: the v2 corpus returns
+            #  real `datetime.date` objects where the old shard returned strings, and an
+            #  unguarded dump raises `TypeError: Object of type date is not JSON serializable`
+            #  AFTER the PDF and the DOCX have already rendered inside their own try/except, so
+            #  the whole build aborts with the documents sitting finished on disk.
+            paths["model"].write_text(json.dumps(doc, ensure_ascii=False, indent=1, default=str))
             saved = True
         except concise_md.MarkdownShapeError as e:
             err = str(e)
@@ -5996,7 +7074,174 @@ def concise_document(slug, n):
                            error=err, saved=saved)
 
 
-def _concise_package(out, docs, subject, report=None):
+def _read_model_name():
+    """The model the READ tier currently resolves to, for the progress line. Never raises."""
+    try:
+        import model_settings, model_pool
+        provs = model_pool.providers(model_settings.tier_for("reading", "read"))
+        return (provs[0].model if provs else "") or ""
+    except Exception:                                                     # noqa: BLE001
+        return ""
+
+
+#  Each of these needs its own decorator. Inserting one above another decorated function stacked
+#  both decorators on the new one and left `_inject_read_model` bare, so `read_model` became
+#  Undefined and base.html's `tojson` on it 500'd every page in the app.
+@app.context_processor
+def _inject_third_party_default():
+    """The account-wide default, so the checkbox on any form starts where the setting is."""
+    try:
+        import search_settings
+        return {"third_party_default": bool(search_settings.get("third_party_sources"))}
+    except Exception:                                                     # noqa: BLE001
+        return {"third_party_default": True}
+
+
+@app.context_processor
+def _inject_read_model():
+    return {"read_model": _read_model_name()}
+
+
+def _filing_identity():
+    """Who signs and at what entity size. Small entity unless the profile says otherwise."""
+    user = auth.current_user()
+    if not user:
+        return {"entity_size": "small", "signature_name": "", "signature_title": ""}
+    try:
+        return accounts.filing_identity(user["id"])
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return {"entity_size": "small", "signature_name": "", "signature_title": ""}
+
+
+def _filing_context(report=None):
+    """Everything the picker needs to price, explain and time a selection."""
+    import submission
+    ident = _filing_identity()
+    #  THE COUNTDOWN LIVES HERE, not in the packet. A PDF is written once and read days later, so
+    #  it states the deadline date and nothing else; a page is rendered on the morning somebody
+    #  reads it, so it can count. This is why "18 days" in the packet was a day out.
+    import datetime as _dt
+    win = None
+    if report is not None:
+        try:
+            win = submission.window(*submission.prosecution_dates(report or {}),
+                                    suspect_why=submission.subject_dates_suspect(report or {}))
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
+    return {"identity": ident,
+            "window": win,
+            "today": _dt.date.today().isoformat(),
+            "fee_choices": submission.fee_choices(ident["entity_size"]),
+            "items_per_unit": submission.ITEMS_PER_UNIT,
+            "secret_help": submission.SECRET_HELP,
+            "co_owned_help": submission.CO_OWNED_HELP,
+            "unread_help": submission.UNREAD_HELP,
+            "basis_help": submission.BASIS_HELP}
+
+
+def _render_picker(report=None, **kw):
+    """The one way this page is rendered.
+
+    Three of the eight render sites are error paths, which is exactly where a forgotten context
+    key turns an honest 400 into a 500: adding `identity` to the template broke the unknown
+    publication branch and nothing but a test noticed. So the context is merged here, once, and
+    an explicit argument still wins.
+    """
+    ctx = _filing_context(report)
+    ctx.update(kw)
+    #  WHAT THE SELECTION LEFT OUT, named. Computed here rather than in the template so the reason
+    #  is one testable function and not a chain of Jinja conditions.
+    deep_for_notes = kw.get("_deep")
+    try:
+        import submission
+        wide = _considered(kw.get("slug"), report, deep_for_notes, ctx.get("cands") or []) \
+            if deep_for_notes else (ctx.get("cands") or [])
+        ctx["passed_over"] = submission.passed_over(wide, submission.ITEMS_PER_UNIT)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        ctx["passed_over"] = []
+    #  WHAT THE SEARCH FOUND ABOUT THE CLAIMS THEMSELVES, which is not a filing decision and had
+    #  nowhere to be said: the limitations exactly one document reaches, and the ones nothing
+    #  reaches at all. The second decides whether a claim survives.
+    ctx.setdefault("sole_reach", [])
+    ctx.setdefault("unreached", [])
+    deep = ctx.pop("_deep", None)
+    if deep:
+        try:
+            import concise_description as _cd
+            ctx["sole_reach"] = _cd.sole_reach_notes(deep)
+            ctx["unreached"] = _cd.unreached_limitations(deep, report)
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
+    return render_template("concise.html", **ctx)
+
+
+#  How deep the "considered and not selected" table looks. The picker shows 40, and a document
+#  that is legally the strongest thing in the search can sit well below that: Schunk's
+#  DE 10 2022 135 066 A1 published before the filing date, so it is clean 102(a)(1) art, and it
+#  charts one limitation because nobody quoted the German text. It was nowhere on the page.
+PASSED_OVER_DEPTH = 200
+
+
+def _classify(slug, cands, deep):
+    """Date basis and common ownership for every candidate, before anything is built.
+
+    Both used to surface only on the compliance pass, AFTER a model call had been spent on each
+    document and with no way for the person choosing to see the choice.
+    """
+    import submission
+    try:
+        import concise_description
+        facts = concise_description.subject_facts((deep or {}).get("subject_label") or "") or {}
+        return submission.classify_candidates(cands, facts.get("efd"),
+                                              facts.get("assignees") or [])
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return cands
+
+
+def _considered(slug, report, deep, shown):
+    """Everything the ranking looked at, classified, for the passed-over table. -> [cand]
+
+    A wider list than the picker's on purpose. Whether a document is 102(a)(1) art or only
+    102(a)(2) is not something the coverage ranking can see, and it is frequently the fact that
+    decides: on adhoc-efbf2979420b the strongest document in the search by that measure sat at
+    rank 141 because the reader never quoted its German text, and no page mentioned it.
+    """
+    try:
+        import concise_description
+        wide = concise_description.candidates(report or {}, deep or {},
+                                              limit=PASSED_OVER_DEPTH)
+        picked = {c.get("pub") for c in shown or []}
+        #  The ones already on the picker keep the classification they were given there.
+        rest = [c for c in wide if c.get("pub") not in picked]
+        return list(shown or []) + _classify(slug, rest, deep)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return list(shown or [])
+
+
+def _concise_verdict_on_disk(slug):
+    """The packet's own verdict, read back from READ_ME_FIRST.txt. -> str
+
+    The job dict holds it while the process lives, and a restart empties that dict while the packet
+    sits on disk unchanged: the page then showed no verdict for a package that has one. The note in
+    the packet is the durable copy, so it is the one to read when the job is gone.
+    """
+    try:
+        p = CONCISE_DIR / slug / "READ_ME_FIRST.txt"
+        if not p.exists():
+            return ""
+        lines = [l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+        #  line 0 is the application, line 1 the banner, line 2 the sentence.
+        return ": ".join(lines[1:3]) if len(lines) > 2 else (lines[1] if len(lines) > 1 else "")
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return ""
+
+
+def _concise_package(out, docs, subject, report=None, identity=None):
     """Assemble everything 1.290 requires beside the concise descriptions, then AUDIT the result.
 
     Never raises: a failure here must not lose the descriptions, which are the expensive part and
@@ -6004,10 +7249,18 @@ def _concise_package(out, docs, subject, report=None):
     instead, because a packet that quietly lacks a translation is worse than one that says so.
     """
     import concise_render
+    import copy_repair
     import submission
     import submission_package as sp
 
     copies, translations = {}, {}
+    #  WHAT WAS DONE TO EACH COPY TO MAKE IT FILABLE, for the audit and for the page. A packet
+    #  that silently replaces or re-reads the evidence it attaches is not one anybody should sign.
+    repair_notes = []
+    #  What the normaliser did to somebody else's file, for the audit. A packet that silently
+    #  rewrites the evidence it attaches is not one anybody should sign.
+    import pdf_normalise
+    conform_notes = []
     for d in docs:
         pub, n = d.get("pub"), d.get("n")
         stem = re.sub(r"[^A-Za-z0-9]+", "", pub or "doc")
@@ -6018,7 +7271,39 @@ def _concise_package(out, docs, subject, report=None):
                 traceback.print_exc()
                 blob = b""
             if blob:
-                copies[pub] = True
+                #  NORMALISE BEFORE ANYTHING LOOKS AT IT, so every later check reads the file that
+                #  is actually going to be filed rather than the one the office happened to send.
+                #  That ordering is the point: counsel's finding was that the existence check
+                #  verified quoted TEXT against our stored copy and never against the rendition in
+                #  the envelope. `pdf_normalise` embeds fonts, flattens layers, drops attachments
+                #  and pins the PDF version, and reverts to the original if the rewrite lost text.
+                #  REPAIR BEFORE NORMALISING, because the repair may replace the file
+                #  outright and normalising the one we are about to throw away is wasted work.
+                #
+                #  This is where the audit's seven blocked documents get fixed rather than merely
+                #  reported. Three defects, three remedies, all measured on this packet:
+                #    a page-image scan of the whole specification  -> OCR, so the quotations it is
+                #      cited for can be checked against the paper that will actually be filed;
+                #    a copy stamped "Generated by PDFKit.NET Evaluation" on all twelve or
+                #      thirty-five of its pages -> replaced from EPO OPS, which we stitch here;
+                #    a one-page copy of a five-page publication -> replaced with the FullDocument
+                #      instance, which ops.fetch_facsimile never asked for because it takes the
+                #      first instance and OPS lists Drawing first.
+                #  Every step keeps the old copy unless the new one measures better, so a failed
+                #  fetch or a fruitless OCR leaves the packet exactly as it was.
+                try:
+                    blob, _rnotes = copy_repair.repair(pub, blob)
+                except Exception:                                         # noqa: BLE001
+                    traceback.print_exc()
+                    _rnotes = []
+                for _rn in _rnotes:
+                    repair_notes.append("Doc %s (%s): %s" % (n, pub, _rn))
+                blob, _note = pdf_normalise.normalise(blob, why="copy %s" % pub)
+                if _note:
+                    conform_notes.append("Doc %s (%s): %s" % (n, pub, _note))
+                #  What is IN the copy, not merely that there is one: a drawings-only facsimile
+                #  is present and is not the document. See submission_package.inspect_copy.
+                copies[pub] = sp.inspect_copy(blob)
                 (out / ("40_Copy_Doc%02d_%s.pdf" % (n, stem))).write_bytes(blob)
         if submission.needs_translation(d):
             try:
@@ -6029,23 +7314,34 @@ def _concise_package(out, docs, subject, report=None):
             if got:
                 translations[pub] = got
                 try:
-                    (out / ("50_Translation_Doc%02d_%s.pdf" % (n, stem))).write_bytes(
-                        sp.translation_pdf(d, got, subject))
+                    _tblob, _tnote = pdf_normalise.normalise(
+                        sp.translation_pdf(d, got, subject), why="translation %s" % pub)
+                    if _tnote:
+                        conform_notes.append("Doc %s translation (%s): %s" % (n, pub, _tnote))
+                    (out / ("50_Translation_Doc%02d_%s.pdf" % (n, stem))).write_bytes(_tblob)
                 except Exception:
                     traceback.print_exc()
 
     pub_date, first_rej, noa = submission.prosecution_dates(report or {})
-    win = submission.window(pub_date, first_rej, noa)
+    #  A window computed from a date that cannot be true is worse than no window: printing "the
+    #  window closed" over a bad ingest reported a live filing with 16 days left as dead.
+    win = submission.window(pub_date, first_rej, noa,
+                            suspect_why=submission.subject_dates_suspect(report or {}))
     #  The exemption is only claimed when it is actually available; three or fewer items WITHOUT
     #  the 1.290(g) statement still pays the fee (MPEP 1134.01).
     exemption = submission.exemption_available(len(docs))
-    findings = submission.audit(docs, subject, copies, translations, win,
-                                exemption_claimed=exemption)
+    #  PASSED IN, never read here: this runs on the build thread, which outlives the request and
+    #  has no session to ask who is signing.
+    ident = identity or {"entity_size": "small", "signature_name": "", "signature_title": ""}
+    #  EVERYTHING EXCEPT THE AUDIT ITSELF, WRITTEN FIRST, so the conformance sweep has real files to
+    #  read. Only 00_AUDIT.pdf depends on the findings, and it is built by the same template, the
+    #  same styles and the same embedded faces as the document list, so the document list passing
+    #  is the generator passing. See submission._pdf_findings.
     for name, fn in (
-            ("00_AUDIT.pdf", lambda: submission.audit_pdf(findings, docs, subject, win)),
             ("01_DocumentList_and_Statements.pdf",
              lambda: submission.document_list_and_statements(
-                 docs, subject, copies, translations, win, exemption_claimed=exemption)),
+                 docs, subject, copies, translations, win, exemption_claimed=exemption,
+                 entity_size=ident["entity_size"], identity=ident)),
             ("MANIFEST.csv", lambda: submission.manifest_csv(docs, copies, translations)),
     ):
         try:
@@ -6053,17 +7349,75 @@ def _concise_package(out, docs, subject, report=None):
             (out / name).write_bytes(blob if isinstance(blob, bytes) else blob.encode("utf-8"))
         except Exception:
             traceback.print_exc()
+    pdf_report = {}
+    try:
+        import pdf_conform
+        pdf_report = pdf_conform.check_paths(sorted(out.glob("*.pdf")))
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    findings = submission.audit(docs, subject, copies, translations, win,
+                                exemption_claimed=exemption,
+                                entity_size=ident["entity_size"], identity=ident,
+                                pdf_report=pdf_report)
+    try:
+        (out / "00_AUDIT.pdf").write_bytes(
+            submission.audit_pdf(findings, docs, subject, win))
+    except Exception:
+        traceback.print_exc()
     try:
         state, sentence = submission.verdict(findings)
+        #  WHAT WAS DONE TO THE COPIES, on the face of the packet. These are other people's
+        #  documents, fetched from the offices and then rewritten so Patent Center will accept
+        #  them, and a packet that rewrites its own evidence without saying so is not one anybody
+        #  should sign. Every rewrite is proved not to have lost text before it is kept, and a
+        #  rewrite that lost text is reverted and says that here instead.
+        norm = ("\nWHAT WAS DONE TO THE COPIES\n" + "\n".join("  " + s for s in conform_notes)
+                + "\n\nNothing was added to any of them. Each rewrite was accepted only after "
+                  "its extracted text was compared against the office's own file.\n"
+                ) if conform_notes else ""
+        #  A REPLACED OR RE-READ COPY IS A BIGGER CHANGE THAN A NORMALISED ONE, so it is listed
+        #  separately and first: a reader checking the packet needs to know which of these files
+        #  is not the one the search originally fetched.
+        rep = ("\nWHAT WAS REPAIRED BEFORE FILING\n" + "\n".join("  " + s for s in repair_notes)
+               + "\n\nOCR adds a searchable text layer over the same page image; it changes "
+                 "nothing an examiner sees. A replaced copy is the same publication obtained from "
+                 "EPO OPS, page by page, and stitched here.\n"
+               ) if repair_notes else ""
+        norm = rep + norm
         (out / "READ_ME_FIRST.txt").write_text(
-            "%s\n\n%s\n\n%s\n\nOpen 00_AUDIT.pdf for every requirement of 37 CFR 1.290, the "
+            "%s\n\n%s\n\n%s\n%s\nOpen 00_AUDIT.pdf for every requirement of 37 CFR 1.290, the "
             "paragraph it comes from, and whether this packet satisfies it.\n"
             % (concise_render.running_head(subject).replace("Re: ", ""),
                {"ok": "READY TO FILE", "action": "READY, SUBJECT TO THE DECISIONS IN THE AUDIT",
-                "blocked": "NOT READY TO FILE"}[state], sentence), encoding="utf-8")
+                "blocked": "NOT READY TO FILE"}[state], sentence, norm), encoding="utf-8")
     except Exception:
         traceback.print_exc()
     return findings
+
+
+#  What a filing artefact is called inside the archive, and which files are not filing artefacts.
+#  One function rather than two filters and a rename spread through the route: the pair of them
+#  were redundant, so no test could tell them apart and no defect injection could reach either.
+ZIP_FILING_SUFFIXES = (".pdf", ".docx", ".csv", ".txt")
+
+
+def zip_member_name(name):
+    """-> the name this file takes in the archive, or None if it does not belong in one.
+
+    The archive is what gets filed, so it carries the whole package: the audit, the document list
+    and statements, the descriptions, the copies and the translations. The `.md` and the
+    `.model.json` are working files, and a model.json in an envelope to the Office would be the
+    raw cells behind the paper going out with it.
+    """
+    if name.endswith(".md") or name.endswith(".model.json"):
+        return None
+    if not name.endswith(ZIP_FILING_SUFFIXES):
+        return None
+    if not name.startswith("ConciseDescription_"):
+        return name
+    #  The descriptions sort between the list and the copies, and the document number is padded
+    #  to two digits so they sort among themselves and with the copies, which already are.
+    return "10_" + re.sub(r"_Doc(\d)_", lambda m: "_Doc0%s_" % m.group(1), name)
 
 
 @app.route("/report/<slug>/concise.zip")
@@ -6082,20 +7436,14 @@ def concise_zip(slug):
     import zipfile
     buf = _io.BytesIO()
     n = 0
-    #  THE WHOLE PACKAGE, not only the descriptions: the document list, the statements, the
-    #  translations and the note saying what a human still has to attach. The `.md` and
-    #  `.model.json` are working files and stay out.
+    #  SORT ON THE NAME THE ARCHIVE WILL CARRY, not the one on disk. Prefixing after the sort put
+    #  every description AFTER the copies and the translations, which is the exact opposite of
+    #  what the prefix is for, and an unpadded number put Document 10 in front of Document 1.
+    entries = [(a, p) for a, p in ((zip_member_name(p.name), p) for p in d.iterdir()) if a]
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for p in sorted(d.iterdir()):
-            if p.suffix == ".md" or p.name.endswith(".model.json"):
-                continue
-            if p.suffix in (".pdf", ".docx", ".csv", ".txt"):
-                #  The descriptions sort between the list and the copies rather than
-                #  by their own name, so the archive reads in filing order.
-                arc = ("10_" + p.name) if p.name.startswith("ConciseDescription_") \
-                    else p.name
-                z.write(p, arcname=arc)
-                n += 1
+        for arc, p in sorted(entries):
+            z.write(p, arcname=arc)
+            n += 1
     if not n:
         abort(404)
     buf.seek(0)
@@ -6116,7 +7464,11 @@ def concise_download(slug, name):
     target = d / base
     if not target.is_file() or base.endswith(".model.json"):
         abort(404)
-    return send_from_directory(str(d), base, as_attachment=True)
+    #  `?inline=1` for the preview dialog, which puts the PDF in an iframe: an attachment
+    #  disposition makes the browser download it instead of rendering it, so the preview would
+    #  save a file and show an empty frame.
+    inline = request.args.get("inline") == "1" and base.endswith(".pdf")
+    return send_from_directory(str(d), base, as_attachment=not inline)
 
 
 @app.route("/export", methods=["POST"])
@@ -6302,7 +7654,7 @@ def compare():
     if not rep or not pubs:
         abort(400)
     q = rep.get("query", "")
-    qv = embed.embed_query(q[:8000], 768) if q else None
+    qv = embed.embed_query(q[:8000], EMBED_DIM) if q else None
     cols = []
     with db.cursor() as cur:
         for pub in pubs:
@@ -6370,6 +7722,71 @@ def api_chart(pub):
     except Exception:
         pass
     return jsonify(out)
+
+
+#  ---------------------------------------------------------------- reading more, after the fact
+#
+#  A search reads the head of its screen in full and screens the rest, so an unread card shows a
+#  dash and says "no score until it is read in full". True, and a dead end: the one thing a reader
+#  wants when they disagree with the ranking is to make the system read the document in front of
+#  them, and there was no way to ask. See read_more for why re-scoring EVERY reference afterwards
+#  is the point rather than a side effect.
+@app.route("/api/read-in-full/<slug>", methods=["POST"])
+def api_read_in_full(slug):
+    """Read the named references in full, then re-score the whole page. Owner only: it spends."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
+    if not auth.current_user():
+        return jsonify({"error": "sign in to read references in full"}), 403
+    auth.require_csrf()
+    import read_more
+    if read_more.running(slug):
+        return jsonify(read_more.job(slug) or {"state": "running"})
+    rep = _load_report(slug) or {}
+    dr = rep.get("deep_rank") or {}
+    body = request.get_json(silent=True) or {}
+    if body.get("all"):
+        #  Everything the screen surfaced and the reading did not reach, best-screened first, so a
+        #  capped request still reads the most promising ones.
+        unread = dr.get("unread") or {}
+        pubs = [p for p, _s in sorted(unread.items(), key=lambda kv: -float(kv[1] or 0))]
+        if not pubs:
+            #  NO SCREEN BUCKET IS NOT NO CANDIDATES. A run can finish without writing
+            #  `deep_rank` at all -- adhoc-f4e9c4e96449 has 5,268 ranked families, fifty charts on
+            #  disk and no `deep_rank` in the report -- and this route answered "this search has
+            #  no full-text reading to extend", which was true of the field it looked at and false
+            #  of the search. `ranked_families` is the pool that always exists, in the order
+            #  retrieval left it.
+            for r in (rep.get("ranked_families") or []):
+                p = r.get("pub") if isinstance(r, dict) else None
+                if p:
+                    pubs.append(p)
+    else:
+        pubs = [p for p in (body.get("pubs") or []) if _safe_pub(p)]
+    if not pubs:
+        return jsonify({"error": "this search has no candidates left to read"}), 400
+    #  Never re-read what is already read: it costs the same as the first time and changes nothing.
+    already = {p for p, v in (dr.get("by_pub") or {}).items() if v.get("read_in_full")}
+    pubs = [p for p in pubs if p not in already]
+    if not pubs:
+        return jsonify({"state": "idle", "msg": "Every one of those has already been read in full."})
+    deep_path = REPORTS / ("%s.deep.json" % slug)
+    if not deep_path.exists():
+        return jsonify({"error": "no reading exists for this search yet"}), 400
+    titles = {c.get("pub"): (c.get("title") or "")
+              for c in (rep.get("cards") or []) if isinstance(c, dict) and c.get("pub")}
+    return jsonify(read_more.start(slug, pubs, report_path(slug), deep_path, rep, None, titles)
+                   or {"state": "running"})
+
+
+@app.route("/api/read-in-full/<slug>/progress")
+def api_read_in_full_progress(slug):
+    if not valid_slug(slug) or not _can_access_report(slug):
+        abort(404)
+    import read_more
+    return jsonify(read_more.job(slug) or {"state": "idle"})
 
 
 @app.route("/api/translate/<pub>")
@@ -6556,6 +7973,13 @@ def _structured_drafting_notes(values) -> str:
 
 @app.route("/drafts", strict_slashes=False)
 def drafts_list():
+    #  THE STUDIO IS PRO. It writes and revises a specification with a model, turn by turn, so it
+    #  is billed by what it uses. The gate is on the list because that is the door: every other
+    #  /drafts route is reached through a project this refuses to show.
+    _dv = entitlements.check(auth.current_user(), entitlements.DRAFTING)
+    if not _dv:
+        return render_template("upgrade.html", reason=_dv.reason, need=_dv.need,
+                               ent=entitlements.describe(auth.current_user())), 402
     try:
         user, principal = _draft_identity()
         include_all = bool(principal.is_admin and request.args.get("all") == "1")
@@ -6829,6 +8253,7 @@ def draft_print(project_id):
         if not version_no:
             raise drafting.DraftingNotFound("No draft version is ready to print.")
         version = service.get_version(principal, project_id, version_no)
+        version = {**version, "sections": draft_export.application_sections(version)}
         return render_template("draft_print.html", project=project, version=version,
                                section_order=drafting.SECTION_ORDER,
                                notice=draft_export.WORKING_DRAFT_NOTICE)
@@ -6983,6 +8408,8 @@ def draft_studio_page(project_id):
     try:
         _user, principal = _draft_identity()
         state = _studio().state(principal, project_id)
+    except drafting.DraftingPermissionDenied:
+        return redirect(url_for("auth.login", next=request.path))
     except drafting.DraftingError as exc:
         return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
     #  The page renders itself from exactly the same JSON the poller fetches, so there is one
@@ -7412,12 +8839,15 @@ def _readiness_for(principal, project_id):
 def _filing_figure_images(project):
     """The exact active PNGs that passed both live drawing gates, in filing order."""
     images = []
-    for figure in _figures_for(project):
+    figures = _figures_for(project)
+    for sheet_index, figure in enumerate(figures, 1):
         versions = figure.get("versions") or []
         active = next((row for row in versions
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
-        if not ((active.get("numeral_audit") or {}).get("ok") and
+        if not (draft_figures.current_ocr_audit(
+                    active.get("numeral_audit") or {},
+                    expected_sheet_number=f"{sheet_index}/{len(figures)}") and
                 draft_figures.current_semantic_audit(active.get("semantic_audit") or {}) and
                 draft_figures.current_leader_audit(active.get("leader_audit") or {})):
             raise drafting.DraftingValidationError(
@@ -7642,6 +9072,23 @@ def _queue_launch(slug, payload):
             doc_token=payload.get("doc_token"),
             search_focus=payload.get("search_focus") or "all_text", from_queue=True,
             depth=payload.get("depth") or "deep", restart_partial=True,
+            #  THE DEPTH CHOICE HAS TO SURVIVE THE QUEUE. A submission run that waited in line
+            #  was replayed without these two, so it silently fell back to the settings default:
+            #  a reader who asked for 120 got 45, and a batched run came back interactive, both
+            #  under the slug that says otherwise. They are written by enqueue() above.
+            read_top=payload.get("read_top"), batched=bool(payload.get("batched")),
+            then=payload.get("then") or "list",
+            local_only=bool(payload.get("local_only")),
+            #  AND SO DOES THE PIPELINE, which is exactly the defect the comment above records,
+            #  one axis later. A third-party build that waited in the queue was replayed with no
+            #  mode at all, so the worker read the default, decided it was a prior-art search and
+            #  skipped the reading entirely. Caught end to end on adhoc-77c580d848d1, whose meta
+            #  says attack and EP and whose report came back saying fast and US. The forum is here
+            #  for the same reason: it decides which documents are prior art, so replaying without
+            #  it silently answers a different legal question.
+            search_mode_name=payload.get("search_mode_name"),
+            jurisdiction=payload.get("jurisdiction") or "US",
+            concept_expansions=bool(payload.get("concept_expansions")),
             owner_user_id=payload.get("owner_user_id"))
     except Exception:
         traceback.print_exc()

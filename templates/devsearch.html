@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Dev search | IPtorch{% endblock %}
+{% block body %}
+{#
+  A bench, not a product. One query, both corpora, the same SQL and the same ANN settings on each
+  side, so the only variable is which corpus answered.
+
+  This page does NOT register a shard backend, so nothing here changes what a real search does.
+  Turning the cold tier on for customers is a separate, deliberate decision.
+#}
+
+<h1 style="margin-bottom:.15em">Dev search</h1>
+<p class="small muted" style="margin-top:0">
+  The same question asked of both corpora at once. Left is the new full-text shard; right is what
+  every live search uses today. Same SQL, same <code>ef_search</code>, same timeout on both sides,
+  so what differs is the corpus and not the settings.
+  <b>Nothing on this page changes what a live search does.</b>
+</p>
+
+<div class="card" style="margin:1em 0;padding:1em">
+  <form method="get" action="{{ url_for('devsearch_page') }}">
+    <textarea name="q" rows="4" style="width:100%;font:inherit;padding:.5em"
+      placeholder="Paste a claim, a description of the invention, or a sentence of prior art.">{{ q or '' }}</textarea>
+    <div style="margin-top:.6em;display:flex;gap:.8em;align-items:center;flex-wrap:wrap">
+      <label class="small">results
+        <input type="number" name="n" min="1" max="50" value="{{ limit }}" style="width:5em">
+      </label>
+      <button type="submit">Search both</button>
+      <span class="small muted">
+        shard <b>{{ st.shard }}</b> on {{ st.publications|default(0)|int }} publications,
+        {% if st.reachable %}state <b>{{ st.state }}</b>, {{ '{:,}'.format(st.chunks or 0) }} passages
+        {% else %}<b>unreachable</b>: {{ st.error }}{% endif %}
+      </span>
+    </div>
+  </form>
+</div>
+
+{% if not st.reachable %}
+  <p class="small"><b>The shard is not answering.</b> It is normally TERMINATED to save money and
+  takes about 25 seconds to wake. Start it with
+  <code>ops/shards/shardctl.sh start {{ st.shard }}</code>.</p>
+{% elif st.state != 'ready' %}
+  <p class="small"><b>The shard is up but its index state is "{{ st.state }}", not "ready".</b>
+  It will not be treated as hot, and it should not be: an empty answer and a genuine miss look
+  identical downstream. {{ st.note }}</p>
+{% endif %}
+
+{% if res and res.query %}
+<div class="card" style="margin:1em 0;padding:1em">
+  <div class="hxgrid">
+    <div><span class="fldl">Query embedded in</span> <b>{{ res.embed_ms }} ms</b></div>
+    <div><span class="fldl">Shard</span>
+      {% if res.shard.ms is not none %}<b>{{ res.shard.ms }} ms</b>{% else %}&mdash;{% endif %}</div>
+    <div><span class="fldl">Hot corpus</span>
+      {% if res.hot.ms is not none %}<b>{{ res.hot.ms }} ms</b>{% else %}&mdash;{% endif %}</div>
+    <div><span class="fldl">Speed-up</span>
+      {% if res.shard.ms and res.hot.ms and res.shard.ms > 0 %}
+        <b>{{ (res.hot.ms / res.shard.ms)|round(1) }}&times;</b>
+      {% else %}&mdash;{% endif %}</div>
+  </div>
+  <p class="small muted" style="margin:.55em 0 0">
+    Retrieval time only, and it excludes the {{ res.embed_ms }} ms both sides spent waiting for the
+    same query embedding. A full report does far more than this one query: it reads references end
+    to end, so do not read these milliseconds as report time.
+  </p>
+</div>
+
+<div class="factorycols" style="display:grid;grid-template-columns:1fr 1fr;gap:1em">
+  {% for side, label, sub in [
+      ('shard', 'New full-text shard', 'claims AND descriptions, index fits in RAM'),
+      ('hot',   'Live corpus today',   '4,984,254 publications, 16% with parsed claims')] %}
+  <div class="card" style="padding:1em">
+    <h2 style="margin-top:0">{{ label }}</h2>
+    <p class="small muted" style="margin-top:0">{{ sub }}</p>
+    {% if res[side].error %}
+      <p class="small"><b>Failed:</b> {{ res[side].error }}</p>
+    {% elif not res[side].rows %}
+      <p class="small muted">No rows.</p>
+    {% else %}
+      <table class="tbl" style="margin-top:.5em">
+        <thead><tr><th>#</th><th>Publication</th><th>Score</th></tr></thead>
+        <tbody>
+        {% for r in res[side].rows %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>
+              <b>{{ r.publication_number }}</b>
+              <span class="cc">{{ r.kind }}</span><br>
+              <span class="small">{{ r.title[:110] }}</span><br>
+              <span class="small muted">{{ r.passage[:260] }}</span>
+            </td>
+            <td>{{ r.score }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% set a = res.shard.rows | map(attribute='publication_number') | list %}
+{% set b = res.hot.rows | map(attribute='publication_number') | list %}
+{% if a and b %}
+<p class="small muted" style="margin-top:1em">
+  {% set overlap = a | select('in', b) | list %}
+  <b>{{ overlap|length }} of {{ a|length }}</b> documents appear on both sides. The ones only the
+  shard found are documents the live corpus either does not hold or holds without the text that
+  matched.
+</p>
+{% endif %}
+{% endif %}
+{% endblock %}

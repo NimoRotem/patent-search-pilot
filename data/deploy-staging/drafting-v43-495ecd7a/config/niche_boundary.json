@@ -1,0 +1,81 @@
+{
+ "boundary_version": 1,
+ "release_prefix": "niche",
+ "frozen_at": "2026-08-22",
+ "note": "The niche corpus boundary. docs/niche_boundary.md is the method, ops/niche_boundary.py re-derives this file from the extraction cache, and src/corpus_niche.Boundary is the predicate. Edit HERE, never in code.",
+
+ "core_subclasses": ["B25B", "B25J", "B65G", "B66C", "B66F", "F16B"],
+ "core_rationale": "The six CPC subclasses this corpus already holds at 100.0% of patents-public-data (measured 2026-08-22). All eight SEED_CPC subgroups sit inside them, their seed-parent main groups carry evidence density 0.115 to 1.222, and no main group outside them exceeds 0.069. Four characters, the SAME unit as a shard domain in retrieval.shard_router, so every niche family routes to exactly one shard.",
+
+ "adjacent_groups": ["A01K43", "A43D11", "A43D111", "A43D119", "A47G29", "B07C5", "B23P21",
+                     "B61B3", "B65B21", "B65B23", "B65B33", "B65B35", "B65B43", "B65B5",
+                     "B65B69", "B65H3", "B65H41", "C03B33", "C03B35", "F04F5", "H05K13",
+                     "H10P72"],
+ "adjacent_rationale": "CPC MAIN groups, not subclasses. Selected by rule: evidence = (publications among the 80,308 SEED_CPC publications carrying the group) + (distinct examiner-cited documents from that field carrying it); admitted when evidence >= min_support AND evidence/world_publications >= min_density. Y section and 2000-series indexing codes are excluded from the boundary and kept in the record. A main group and not a subclass because a subclass costs 10x to 40x more publications for the same evidence: F04F5 is 22,344 world publications against B65B's 520,361.",
+
+ "selection_rule": {
+  "min_support": 100,
+  "min_density": 0.03,
+  "exclude_sections": ["Y"],
+  "exclude_indexing_codes": true,
+  "evidence_sources": ["seed_coclassification", "field_examiner_citations"]
+ },
+
+ "closures": {
+  "family": true,
+  "citation": {
+   "enabled": true,
+   "hops": 1,
+   "direction": "both",
+   "categories": ["SEA", "EXA", "ISR"],
+   "origins": ["X", "Y"]
+  }
+ },
+ "closure_rationale": "A CPC boundary reaches 28.5% of what examiners in this field cite; 35.9% of that art carries no classification at all and 35.5% is classified somewhere a defensible CPC rule cannot follow. The citation closure is the mechanism that reaches it. Restricted to X and Y relevance codes because the unrestricted examiner closure takes the niche to 94.6% of the corpus, which is not a niche: measured 2026-08-22, X/Y adds 505,088 families and all examiner categories adds 2,041,704.",
+
+ "derived": {
+  "measured_at": "2026-08-22",
+  "corpus": {"publications": 4984254, "classified_publications": 3959934, "families": 3409514},
+  "adjacent_evidence": {
+   "A01K43":  {"seed": 164,   "cited": 132,  "world": 5273,   "density": 0.0561, "title": "Testing, sorting or cleaning eggs; Conveying devices; Pick-up devices"},
+   "A43D11":  {"seed": 121,   "cited": 40,   "world": 5073,   "density": 0.0317, "title": "Machines for preliminary treatment or assembling of upper-parts on their lasts"},
+   "A43D111": {"seed": 86,    "cited": 30,   "world": 1998,   "density": 0.0581, "title": "Shoe machines with conveyors for jacked shoes or for shoes or shoe parts"},
+   "A43D119": {"seed": 86,    "cited": 27,   "world": 2148,   "density": 0.0526, "title": "Driving or controlling mechanisms of shoe machines; Frames for shoe machines"},
+   "A47G29":  {"seed": 510,   "cited": 207,  "world": 22210,  "density": 0.0323, "title": "Supports, holders, or containers for household use"},
+   "B07C5":   {"seed": 1501,  "cited": 1511, "world": 91637,  "density": 0.0329, "title": "Sorting according to a characteristic or feature of the articles being sorted"},
+   "B23P21":  {"seed": 445,   "cited": 696,  "world": 28803,  "density": 0.0396, "title": "Machines for assembling a multiplicity of different parts to compose units"},
+   "B61B3":   {"seed": 242,   "cited": 106,  "world": 6286,   "density": 0.0554, "title": "Elevated railway systems with suspended vehicles"},
+   "B65B21":  {"seed": 292,   "cited": 366,  "world": 11008,  "density": 0.0598, "title": "Packaging or unpacking of bottles"},
+   "B65B23":  {"seed": 280,   "cited": 278,  "world": 8042,   "density": 0.0694, "title": "Packaging fragile or shock-sensitive articles other than bottles; Unpacking eggs"},
+   "B65B33":  {"seed": 50,    "cited": 97,   "world": 4408,   "density": 0.0333, "title": "Packaging articles by applying removable coatings"},
+   "B65B35":  {"seed": 1748,  "cited": 1707, "world": 60887,  "density": 0.0567, "title": "Supplying, feeding, arranging or orientating articles to be packaged"},
+   "B65B43":  {"seed": 984,   "cited": 1008, "world": 64147,  "density": 0.0311, "title": "Forming, feeding, opening or setting-up containers in association with packaging"},
+   "B65B5":   {"seed": 921,   "cited": 1002, "world": 40704,  "density": 0.0472, "title": "Packaging individual articles in containers or receptacles"},
+   "B65B69":  {"seed": 633,   "cited": 479,  "world": 20807,  "density": 0.0534, "title": "Unpacking of articles or materials, not otherwise provided for"},
+   "B65H3":   {"seed": 1110,  "cited": 1274, "world": 56908,  "density": 0.0419, "title": "Separating articles from piles"},
+   "B65H41":  {"seed": 82,    "cited": 78,   "world": 3288,   "density": 0.0487, "title": "Machines for separating superposed webs"},
+   "C03B33":  {"seed": 691,   "cited": 634,  "world": 33105,  "density": 0.0400, "title": "Severing cooled glass"},
+   "C03B35":  {"seed": 484,   "cited": 409,  "world": 17138,  "density": 0.0521, "title": "Transporting of glass products during their manufacture"},
+   "F04F5":   {"seed": 385,   "cited": 338,  "world": 22344,  "density": 0.0324, "title": "Jet pumps, i.e. devices in which flow is induced by pressure drop caused by velocity of another fluid flow"},
+   "H05K13":  {"seed": 2050,  "cited": 2108, "world": 87571,  "density": 0.0475, "title": "Apparatus or processes for manufacturing or adjusting assemblages of electric components"},
+   "H10P72":  {"seed": 10729, "cited": 9961, "world": 632815, "density": 0.0327, "title": "Handling or holding of wafers, substrates or devices during manufacture or treatment"}
+  },
+  "measured_and_rejected": {
+   "note": "Named in the workstream brief or in the schmalz reach failure, and rejected by the rule. Recorded so nobody re-proposes them without new evidence.",
+   "F04B37":  {"seed": 62, "cited": 38,  "world": 16959,  "density": 0.0059, "reason": "vacuum pumps: density 5x below the bar"},
+   "B08B5":   {"seed": 516, "cited": 315, "world": 65737, "density": 0.0126, "reason": "air-flow cleaning: 2.4x below the bar"},
+   "B23Q7":   {"seed": 667, "cited": 1028, "world": 61121, "density": 0.0277, "reason": "machine-tool work feeding: just below the bar"},
+   "B65H5":   {"seed": 883, "cited": 625, "world": 55966, "density": 0.0269, "reason": "sheet feeding: just below the bar"},
+   "B21D43":  {"seed": 790, "cited": 1024, "world": 72629, "density": 0.0250, "reason": "sheet-metal feeding: below the bar"},
+   "A47L9":   {"seed": 45, "cited": 111, "world": 132036, "density": 0.0012, "reason": "suction cleaner details: 25x below the bar, and this is where the schmalz reach failure sits"},
+   "F16L55":  {"seed": 47, "cited": 66,  "world": 123131, "density": 0.0009, "reason": "pipe silencers: 33x below the bar"},
+   "B66D1":   {"seed": 54, "cited": 90,  "world": 48655,  "density": 0.0030, "reason": "winches: 10x below the bar"},
+   "B66D3":   {"seed": 111, "cited": 112, "world": 19048, "density": 0.0117, "reason": "hand-operated hoists: 2.6x below the bar"},
+   "F01N1":   {"seed": 0, "cited": 0, "world": 0, "density": 0.0, "reason": "exhaust silencing: below the 100-document support floor entirely"},
+   "G10K11":  {"seed": 0, "cited": 0, "world": 0, "density": 0.0, "reason": "acoustics: below the support floor entirely"},
+   "A47L5":   {"seed": 0, "cited": 0, "world": 0, "density": 0.0, "reason": "suction cleaner structure: below the support floor entirely"},
+   "B25F5":   {"seed": 0, "cited": 0, "world": 0, "density": 0.0, "reason": "portable power tool details: below the support floor entirely"},
+   "F04D25":  {"seed": 0, "cited": 0, "world": 0, "density": 0.0, "reason": "pumping installations, i.e. blowers: below the support floor entirely"}
+  }
+ }
+}

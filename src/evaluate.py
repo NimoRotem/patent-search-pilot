@@ -6,6 +6,7 @@ seeds from the subject's own family, so the answer-key citations can't leak).
 Also compares 768 vs 1024 vs 3072 embedding dimensions on the gold-relevant subset.
 """
 from __future__ import annotations
+from config import EMBED_DIM  # noqa: E402
 import json, statistics
 from datetime import date, datetime
 from pathlib import Path
@@ -221,7 +222,7 @@ def bench_dims():
             qv = embed.embed_query(e["query_text"][:8000], dim)
             got = set(search_bench(table, qv, 50))
             out[dim].append(len(got & gold) / len(gold))
-        qv768 = embed.embed_query(e["query_text"][:8000], 768)
+        qv768 = embed.embed_query(e["query_text"][:8000], EMBED_DIM)
         got = set(search_main(qv768, pubset, 50))
         out[768].append(len(got & gold) / len(gold))
     summary = {d: round(statistics.mean(v), 4) for d, v in out.items() if v}

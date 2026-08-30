@@ -1,0 +1,455 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b27b_ep2153926a1",
+ "subject_pub": "EP-2153926-A1",
+ "n_claims_source": 26,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 71,
+  "by_kind": {
+   "independent_limitation": 39,
+   "combination": 5,
+   "dependent_limitation": 27
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A handsaw comprising a handle and a blade releaseably mountable on the handle.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The handle comprises a lock assembly.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The handle comprises a stabilizing clamp assembly.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The blade comprises a lock engaging region located toward one end thereof.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock assembly includes a lock structure and an engageable actuator.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock structure is movable between a lock position and a release position.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock structure lockingly engages the lock engaging region of the blade in the lock position.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock structure is released from engagement with the lock engaging region in the release position.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The actuator is actuatable to move the lock structure from the lock position to the release position.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The stabilizing clamp assembly moves between a clamp position and a release position.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The clamp assembly applies a clamping force to side surfaces of the blade in the clamp position.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The clamp assembly releases the clamping force in the release position.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock assembly includes a spring biased lock structure.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock structure is biased towards the lock position.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "Translational movement of the blade into engagement with the lock structure moves the lock structure against the spring bias.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock structure locks with the lock engaging region of the blade after moving against the spring bias.",
+   "kind": "independent_limitation",
+   "source": "claim 22",
+   "weight": 1.0
+  },
+  {
+   "text": "The handle has a slot and internal guide surfaces.",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "The guide surfaces guide the lock engaging region of the blade into locking engagement with the lock structure.",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "The guiding occurs when the blade is moved translationally into the slot.",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "A saw blade comprising a cutting edge with a plurality of cutting teeth.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "The saw blade comprises a locking engaging region constructed and arranged to be locked to a handle.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock engaging region comprises a plurality of cam surfaces disposed in spaced relation to one another.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "The spaced cam surfaces include an upper cam surface and a lower cam surface.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "Each cam surface engages a lock element of a lock structure.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "Each cam surface comprises a recess disposed forwardly thereof.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "The cam surfaces and recesses are shaped and positioned to enable translational movement of the lock elements toward the blade.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "The cam surfaces and recesses enable forced engagement with the cam surfaces.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock elements ride along the cam surfaces during continued movement.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock elements ride over the cam surfaces and into the recesses.",
+   "kind": "independent_limitation",
+   "source": "claim 25",
+   "weight": 1.0
+  },
+  {
+   "text": "A saw blade comprising a cutting edge having teeth.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "The saw blade comprises a lock engagement region disposed at a proximal end portion of the blade.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock engagement region is opposite a distal end portion of the blade.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "The lock engaging region comprises an upper lock structure and a lower lock structure.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "The upper lock structure and the lower lock structure each comprise an opening leading to a recess.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "As the recess extends away from the opening, it extends at an angle that extends away from the teeth.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "The recess angle extends towards the distal end portion of the blade.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one of the lock structures comprises a curved cam surface.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "As the curved cam surface extends towards the recess, it extends in a direction towards the teeth.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "The curved cam surface extends towards the distal end portion.",
+   "kind": "independent_limitation",
+   "source": "claim 26",
+   "weight": 1.0
+  },
+  {
+   "text": "A handsaw comprising a handle with a lock assembly and a stabilizing clamp assembly, and a blade with a lock engaging region; the lock assembly having a lock structure movable between a lock position engaging the blade's lock engaging regio",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A handsaw comprising a handle with a lock assembly and a blade with a lock engaging region; the lock assembly having a spring biased lock structure movable between a lock position engaging the blade's lock engaging region and a release posi",
+   "kind": "combination",
+   "source": "claim 22",
+   "weight": 0.9
+  },
+  {
+   "text": "A handsaw comprising a handle with a lock assembly, a slot, and internal guide surfaces, and a blade with a lock engaging region; the lock assembly having a spring biased lock structure movable between a lock position engaging the blade's l",
+   "kind": "combination",
+   "source": "claim 23",
+   "weight": 0.9
+  },
+  {
+   "text": "A saw blade comprising a cutting edge with teeth and a locking engaging region to be locked to a handle; the lock engaging region having spaced upper and lower cam surfaces, each with a forward recess, shaped to allow translational movement",
+   "kind": "combination",
+   "source": "claim 25",
+   "weight": 0.9
+  },
+  {
+   "text": "A saw blade comprising a cutting edge with teeth and a lock engagement region at a proximal end; the lock engaging region having upper and lower lock structures, each with an opening leading to a recess that angles away from the teeth and t",
+   "kind": "combination",
+   "source": "claim 26",
+   "weight": 0.9
+  },
+  {
+   "text": "The lock engaging region comprises a pair of recesses.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The lock structure comprises a pair of pins.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The pins engage with the recesses on the blade to lock the blade to the handle.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The lock structure comprises a spring.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The spring biases the lock structure toward the lock position.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The lock assembly moves linearly to disengage the pins from the recesses.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The handle comprises a first portion and a second portion joined to each other.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The joined portions define a slot therebetween.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The slot receives the blade therein.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The clamp assembly comprises an eccentric cam rotatable about a pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The stabilizing clamp assembly includes a connecting member connected to the eccentric cam.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The connecting member passes through an opening in the blade.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The connecting member engages with a securing member.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The securing member engages with the second portion of the handle.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The first portion includes a notch therein.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The notch receives a portion of the stabilizing clamp assembly.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The notch receives the clamp member and the connecting member.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The stabilizing clamp assembly further comprises a spring.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The spring applies or enhances the clamping force to the side surfaces of the blade.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Movement of the clamp assembly from release to clamp position rotates the eccentric cam.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The rotated eccentric cam causes a portion of the stabilizing clamp assembly to bear against the blade side surfaces.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The bearing action applies clamping force to the blade.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The blade includes an alignment mark located on the blade.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The alignment mark provides an indication whether the handle is accurately positioned on the blade.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The lock structure is linearly movable between the lock and release positions.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The spring returns the lock structure to the lock position.",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "Linear translational movement of the blade into engagement with the lock structure moves it against the spring bias.",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "1e779bc967e57dc2"
+}

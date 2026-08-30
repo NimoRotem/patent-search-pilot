@@ -1,0 +1,49 @@
+{
+  "project_id": 13,
+  "title": "SINGLE-HANDLE SYNCHRONIZED EQUIPMENT PLATFORM WITH INDEPENDENT CORNER LOAD LOCKS",
+  "version_no": 2,
+  "ready": false,
+  "blockers": [
+    {
+      "title": "The independent review did not pass",
+      "detail": "I traced every claim limitation, every numbered part, and every structural/relational assertion in the specification and the six figure briefs back to input/disclosure.md (which is reproduced verbatim as the sole USER turn in input/conversation.md), and found no untraced matter and no internal contradiction. I am therefore returning an empty findings list.\n\nSOURCE LEDGER (all traced to the disclosure): rectangular base frame 10, equipment deck 12 parallel to it, four upright guide towers 14 near the corners, four corner posts 16 sliding vertically in them, rack 18 along the inward-facing side, pinion 20 in each tower, front/rear transverse shafts 22/24 with two pinions each, front/rear sprockets 26/28, one endless synchronizing chain 30, worm input shaft 32 and worm wheel 34 fixed to the front shaft, removable hand crank 36 and crank socket 38, pivoting locking pawl 40 (pawl pivot 42 follows from \"each guide tower \u2026 carries a locking pawl that pivots\"), compression spring 44, four release cables 46, release balance bar 48 mounted on the base frame, its pivotal connection to the release handle 52 (balance bar pivot 50; disclosure: \"can pivot slightly relative to the release handle\"), locked-state flag 54, window 56, mechanical interlock 58 on the crank socket, removable cover 60, cable adjusters 62, support surface 64. Variants (toothed belt, gear train, motor on the same worm input shaft, three or more than four towers) match the disclosure's variant paragraph word for word in substance. Claims 1-20 recite nothing the description lacks; the \"at least three guide towers\" generalization is expressly disclosed, and claims 2-12, 14-15, 17-20 each map to a described feature.\n\nCITATIONS: prior_art/INDEX.md lists \"(none)\", and the draft contains no [REF:...] citation anywhere. Nothing to verify, and nothing is attributed to a document.\n\nTERMINOLOGY/LOGIC: every numeral labels exactly one part, matching numerals.md at each of the ~250 occurrences; the brief's preserved terms are used consistently; the Brief Description of the Drawings matches each figure brief's content and numeral list; every \"Referring to FIG. n\" sentence names only parts that brief carries. FIG. 1 (crank inserted, handle pulled) and FIG. 6 (same states) agree with the interlock sequence. Abstract is 139 words, single paragraph.\n\nWHAT I COULD NOT VERIFY: figures/ contains only the six Markdown briefs - there is no rendered-*.png for any sheet, and review/figure-audit-evidence.json does not exist. Pixel-level checks (printed numerals, leader terminals, hatch angles, OCR, cutting-plane arrow endpoints) were therefore impossible; this is the same condition the two mechanical checks report, so I have not filed it again as a finding. At brief level the section geometry does hold together: FIG. 2's line 4-4 runs front-to-rear at the lower-left tower with a matching \"4-4\" designation and an arrow at each endpoint pointing left (no numeral leader on the designation), and viewing leftward puts the platform's rear on the image right - which is exactly where FIG. 4 places the interior-facing rack 18, pawl 40 and window 56. The plane is offset along shaft 22 from pinion 20, consistent with FIG. 4 showing no pinion.",
+      "items": ""
+    },
+    {
+      "title": "Every specification numeral appears in a drawing",
+      "detail": "28 reference numeral(s) are used in the specification but absent from every drawing. Add each missing numeral to an appropriate focused sheet or redistribute the existing drawing plan. Do not remove a disclosed part, numeral definition, or supporting text to silence this check.",
+      "items": "10; 12; 14; 16; 18; 20"
+    },
+    {
+      "title": "Each described figure has a drawing sheet",
+      "detail": "A figure is described in the specification but no drawing has been prepared for it. Every described figure is required before the package can be published.",
+      "items": "FIG. 1; FIG. 2; FIG. 3; FIG. 4; FIG. 5; FIG. 6"
+    },
+    {
+      "title": "6 figure(s) are described but no drawing sheet exists",
+      "detail": "35 USC 113 requires a drawing where one is necessary to understand the invention. Drawings may be filed informally and corrected later, but they must be filed.",
+      "items": ""
+    },
+    {
+      "title": "The drawing set does not match the application text",
+      "detail": "Every described figure must have exactly one checked sheet, with no obsolete or extra sheet.",
+      "items": "missing FIG. 1; missing FIG. 2; missing FIG. 3; missing FIG. 4; missing FIG. 5; missing FIG. 6"
+    }
+  ],
+  "formalities": [],
+  "qa_verdict": "fail",
+  "section_count": 10,
+  "figure_count": 0,
+  "citation_count": 0,
+  "reference_count": 0,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "97135a90e913e446ab053794a79c8fc54af1ec2535879b33371b57e332cb6c80",
+  "figures": [],
+  "docx": {},
+  "all_drawings_current": false,
+  "docx_media_matches_figures": false,
+  "acceptance_pass": false
+}

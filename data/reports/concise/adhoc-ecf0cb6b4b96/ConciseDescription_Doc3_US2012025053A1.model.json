@@ -1,0 +1,84 @@
+{
+ "n": 3,
+ "pub": "US-2012025053-A1",
+ "family_id": "42115107",
+ "biblio": {
+  "pub": "US-2012025053-A1",
+  "label": "U.S. Patent Application Publication No. US 2012/0025053 A1",
+  "kind": "publication",
+  "title": "Suction cup having replaceable sealing surfaces",
+  "country": "US",
+  "inventor": "Peter Tell",
+  "assignee": "Piab AB",
+  "publication_date": "2012-02-02",
+  "priority_date": "2009-03-27",
+  "filing_date": "2010-02-02",
+  "dates_source": "corpus",
+  "abstract": "A suction cup for a tool driven by vacuum is presented, the suction cup in a first or upper end arranged to be brought into fluid flow communication with a vacuum source and in its opposite end arranged to be brought tightly into contact with the surface of an object to be handled. The suction cup is in its lower end arranged to be coupled to a sealing ring having a sealing surface arranged between an outer periphery and a through-opening defined by an inner periphery, and the sealing ring in the region of its inner periphery having a lip arranged to engage with the suction cup, to which purpose the suction cup in its lower end has a circumferentially running groove) in which the peripheral region and the lip of the sealing ring is insertable under form fitting engagement and in a radially overlapping relation between the groove and the lip in the region (r) of engagement.",
+  "issue_date_pretty": "February 2, 2012",
+  "priority_date_pretty": "March 27, 2009"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a suction cup for a tool driven by vacuum, where the suction cup is coupled to a sealing ring, and elements can be combined using coupling means.",
+ "rows": [
+  {
+   "claim_no": 9,
+   "label": "claim 9[b]",
+   "quote_claim": false,
+   "claim_text": "said suction plate comprising a carrier plate and a seal, which is fastened to the carrier plate and extends around the carrier plate; and",
+   "claim_paraphrase": "said suction plate comprising a carrier plate and a seal, which is fastened to the carrier plate and extends around the carrier plate; and",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The suction cup is in its lower end arranged to be coupled to a sealing ring having a sealing surface arranged between an outer periphery and a through-opening defined by an inner periphery",
+   "note": "The reference describes a suction cup (carrier plate) coupled to a sealing ring (seal) that extends around it.",
+   "cites": [
+    "Abstract",
+    "Paragraph [0001]"
+   ],
+   "confidence": 0.9,
+   "_id": 0,
+   "disclosure": "The reference discloses a suction cup that is coupled to a sealing ring having a sealing surface."
+  },
+  {
+   "claim_no": 10,
+   "label": "claim 10[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The elements comprises coupling means of complementary shape formed integrally therewith, preferably having rotational symmetrical shape, and arranged for a form fitting engagement between coupled elements, whereby the elements can be combined as desired since the coupling means of all",
+   "note": "This passage describes coupling means that allow elements to be combined as desired, implying a releasable connection.",
+   "cites": [
+    "Paragraph [0006]"
+   ],
+   "confidence": 0.8,
+   "_id": 1,
+   "disclosure": "The reference discloses that elements comprise coupling means of complementary shape arranged for a form fitting engagement between coupled elements, whereby the elements can be combined as desired."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 2,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

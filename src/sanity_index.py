@@ -39,7 +39,7 @@ with conn.cursor() as c:
 print(f"testing {len(samples)} OPS-added claim chunks from gold families\n")
 ok = 0
 for s in samples:
-    qv = _vec(embed.embed_query(s['text'][:2000], 768))
+    qv = _vec(embed.embed_query(s['text'][:2000], EMBED_DIM))
     with conn.cursor() as c:
         c.execute("SELECT c.publication_id, 1-(c.embedding <=> %s::vector) score "
                   "FROM chunks c WHERE c.embedding IS NOT NULL "

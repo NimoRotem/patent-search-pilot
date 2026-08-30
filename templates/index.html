@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Search prior art | Rotem Patents{% endblock %}
+{% block title %}Search prior art | IPtorch{% endblock %}
 {% block body %}
 {#  THE SEARCH PAGE IS THE SEARCH FIELD.
 
@@ -12,14 +12,38 @@
 
     The same disclosure on the RESULTS page and in every exported PDF/DOCX is deliberately
     untouched. That is the point where somebody decides what a result means, and it stays there.  #}
+{% from "_qhelp.html" import qhelp with context %}
 <div class="wrap searchpage">
   <header class="searchintro">
-    <p class="eyebrow">Prior art search</p>
-    <h1>Search prior art</h1>
-    <p>Describe the invention or begin with a patent, PDF, or document.</p>
+    {#  One heading, and the subtitle carries the (?) rather than a third line of prose. #}
+    <h1>Agentic Patent Search</h1>
+    <p>Describe an invention or use an existing document or link
+      {{ qhelp("what you can start from", "THREE WAYS IN, and the page tells them apart itself.
+
+DESCRIBE IT. Type or paste a description in plain language. The search reduces it to a handful of
+short queries and looks for the closest art. Nothing has to be a patent.
+
+A LINK OR A NUMBER. Paste a publication number or a Google Patents / Espacenet URL. The document
+is fetched, its claims and drawings are extracted, and the search runs over the document itself as
+well as over the text: its own passages retrieve their neighbours and its figures are matched
+against the corpus figure index.
+
+A FILE. Drop a PDF, txt or docx onto the box, up to 30 MB. A draft that has never been filed works
+exactly the same way, and nothing you upload is published or shared.
+
+WHY IT MATTERS WHICH. A third-party build needs claims, so it is only available once a document
+with claims has been read. A description alone can always run a prior-art search.") }}</p>
   </header>
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {#  WHICH OF THE TWO SEARCHES, and it is the first question because it is the only one that
+        changes what the run is. They are separate pipelines: the attack derives its queries from
+        claim language the prior-art search never reads, so it is not a deeper version of it.
+
+        Measured, and this is why the choice exists rather than a depth knob: a prior-art search
+        used to wait 161 s before anything was read, of which ~85 s was the claim ledger, the file
+        wrapper, concept expansion, claim reach and enrichment, none of which it consumes. #}
     <div class="field">
       <label for="qbox">What is the invention?</label>
       {#  Set by the extract step: points at the stashed full-text chunk vectors + drawing images so
@@ -31,15 +55,51 @@
           its own button) asked the user to classify their own input before the page would take it;
           the page can tell the difference perfectly well by itself.  #}
       <textarea name="query" id="qbox" rows="5" required autofocus
-        placeholder="Describe the invention in plain language, drop a patent PDF here, or paste a patent link or number.&#10;&#10;e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
+        placeholder="Describe the invention in plain language, drop a patent PDF here, or paste a patent link or number."></textarea>
       <p class="small muted qhint">
         <label for="fileinput" class="vh">Upload a patent PDF, text or Word document</label>
         <input type="file" id="fileinput" class="vh"
                accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-        Drop a PDF on the box above, <button type="button" class="linklike" id="browsebtn">browse to
-        upload</button>, or paste a patent link or number — PDF, .txt or .docx, up to 30&nbsp;MB.
+        Drop a file, <button type="button" class="linklike" id="browsebtn">browse</button>, or
+        paste a patent link. <span class="muted">PDF, txt, docx &middot; 30&nbsp;MB</span>
       </p>
     </div>
+
+    {#  WHICH SEARCH, directly under the box it applies to. It was two cards above the input,
+        which put the choice before the thing being chosen for. A select because the difference
+        between them is one line each and a paragraph behind the (?), not a layout. #}
+    <div class="moderow">
+      <label class="lab" for="searchModeSel">Search</label>
+      <select id="searchModeSel" name="search_mode" class="input">
+        <option value="fast" selected>Prior-art search</option>
+        <option value="attack" id="modeAttackOpt"
+                data-needs-account="{{ '0' if ent.can_attack else '1' }}">Third-party build{% if not ent.can_attack %} &middot; account needed{% endif %}</option>
+      </select>
+      {{ qhelp("the two searches", "PRIOR-ART SEARCH. Any input: a description, a draft, a
+published patent. It reduces what you gave it to a handful of short queries, searches every
+channel of the corpus at once, fuses the results and hands back the closest art ranked.
+ABOUT 15 TO 20 SECONDS. Nothing is read end to end and no claim is charted, so there is no claim
+grid and no submission on the results page. This is the one to reach for when the question is
+\"what is out there\".
+
+THIRD-PARTY BUILD. Needs a document that carries claims, and refuses to start without one. It
+derives its queries from the claims themselves, their separate limitations and the combinations
+that carry the novelty; retrieves wide; then READS the strongest references end to end and charts
+what each one discloses against each claim, with a verbatim quotation behind every cell. It then
+builds the 37 CFR 1.290 papers.
+FROM ABOUT THREE MINUTES TO OVER AN HOUR, depending on how many references you ask it to read.
+That is the one to reach for when the question is \"can this claim be attacked, and with what\".
+
+THEY ARE NOT A LADDER. The build does not resume a prior-art search; it starts from the claims and
+does its own retrieval, because the queries it needs come from claim language the fast search
+never looks at.") }}
+      <span class="small muted eta" id="etaLine"></span>
+    </div>
+    {#  The build cannot start without claims, and saying so here is cheaper than a 400 after the
+        click. `setKind` already knows whether the extract found any; this reads its result. #}
+    <p class="small warn attackgate" id="attackGate" hidden style="margin:.4em 0 0;padding:.5em .7em">
+      A third-party build works from the claims of a specific application. Paste a patent number
+      or upload the document and wait for its claims to be extracted.</p>
 
     {#  DOCUMENT / PATENT-LINK INPUT.
         Three ways in besides typing: drop a file, browse to upload, or paste a patent link.
@@ -59,7 +119,9 @@
           <span id="exProgTime" class="muted">0s</span>
         </div>
       </div>
-      <div id="extractstatus" class="ex-status small" role="status" aria-live="polite"></div>
+      {#  `hidden` from the start: an empty status still drew its padding, border and background,
+          which is the box that sat under the form doing nothing. setStatus un-hides it. #}
+      <div id="extractstatus" class="ex-status small" role="status" aria-live="polite" hidden></div>
 
       {#  REVIEW PANEL — the text the search will actually run on, and it is EDITABLE.
           A prior-art search is only as good as its query, and everything below is machine-read
@@ -85,8 +147,6 @@
         <details class="exsec" id="exClaimsSec" open>
           <summary><span class="exsum">Claims</span>
             <span class="exmeta" id="exClaimsMeta"></span></summary>
-          <p class="small muted exhint">Each claim is searched on its own and drives the
-            claim&nbsp;&times;&nbsp;reference grid on the report. Fix anything the reader got wrong.</p>
           <div id="exClaims" class="exclaims"></div>
           <button type="button" class="btn ghost sm" id="exAddClaim">+ Add a claim</button>
         </details>
@@ -131,6 +191,11 @@
     <input type="hidden" name="mode" value="novelty">
     <input type="hidden" name="search_focus" id="search-focus" value="all_text">
 
+    {#  THIRD-PARTY SOURCES, ON THE FORM, because it is the single biggest lever on how long a
+        search takes and it is a per-search decision, not a preference buried in settings. The
+        checked state comes from the account-wide setting, so the toggle starts where the default
+        is and moving it applies to this search only. #}
+
     {#  WHICH SEARCH THIS WILL BE, before it is started.
 
         Two very different searches leave from this one button. A description with no claims is a
@@ -144,43 +209,267 @@
         The badge is driven by the same fact the engine uses (does the input carry claims), so it
         cannot disagree with what actually runs. Server-rendered default, flipped by the extract
         step the moment a document turns out to have claims.  #}
-    {#  Hidden, not deleted (owner call 2026-08-23): the caveat narration came off the page,
-        but the extract step's script still writes here and a missing node would throw.  #}
-    <div class="kindbadge" id="kindBadge" data-kind="concept" hidden>
-      <span class="kindname" id="kindName">Concept search</span>
-      <span class="kindeta" id="kindEta">about 12-30 minutes</span>
-      <span class="kindwhat small muted" id="kindWhat">Breaks the description into its distinct
-        technical concepts and searches each one, then reads the strongest references in full.</span>
-    </div>
+    {#  WHICH SEARCH IS ABOUT TO RUN, and how long it takes. Two facts, because a typed paragraph
+        and an uploaded document with claims start genuinely different work at genuinely different
+        cost. The sentence explaining WHY moved behind the (?), which is where an explanation of a
+        thing you can already see belongs.
 
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        Hidden until the extract step decides: `kindWhat` is still written by that script, so the
+        node stays even though it is no longer rendered as prose. #}
+    {#  The tier badge is gone from this page. It named the search you were about to start and
+        quoted a range for it, above a button that says what it does; on the report, where the
+        tier is a fact rather than a forecast, it stays. The nodes remain hidden and empty so the
+        extract script that still writes into them does not have to change. #}
+    {#  The tier badge is gone from this page, element and all. Emptying it was not enough:
+        `setKind` did `badge.hidden = false` on every extract, so a grid container 814px wide and
+        20px tall was un-hidden with all three of its children still display:none. That is the
+        empty box under the form, and it was there because I removed the contents and left the
+        container. #}
+
+    {#  ONE BUTTON AND A (?). The paragraph that used to sit beside it said what the search does,
+        how long the first results take and that they are cached: all true, all worth knowing
+        once, none of it worth reading every time somebody starts a search. #}
+    {#  STICKY. Once a document is broken down this page is long, and the button that starts the
+        search was at the bottom of it. It now rides the bottom of the viewport. #}
+    <div class="gostick">
       <button class="btn" type="submit" id="gobtn">Search prior art</button>
-      <span class="small muted">Searches the local corpus and external patent APIs. First matches
-        usually appear within a minute. Cached afterwards.</span>
+      {#  TWO OPT-INS, ONE ROW. They were in two, one on this bar and one in a block of its own
+          underneath, which read as two unrelated decisions. Both are off by default and both are
+          for signed-in accounts only: the outside APIs are metered and an email needs somebody to
+          send it to. Ticking either while signed out opens the registration prompt instead. #}
+      <label class="toggle tpsrc"><input type="checkbox" name="third_party" value="1"
+               {% if not ent.can_third_party %}data-needs="{{ 'free' if ent.tier == 'anon' else 'pro' }}"{% endif %}>
+        Use additional sources</label>
+      {{ qhelp("third-party sources", "ON asks seven outside patent APIs as well as our own
+corpus: PQAI, Google Patents through BigQuery, SerpApi, the USPTO keyword search and the rest. OFF
+searches nothing but the corpus on this box, and nothing in the later stages calls out either: a
+reference we cannot read here stays unread rather than being fetched from a paid source.
+
+MEASURED on one real run. The outside sources produced 319 of 3,470 candidate families and cost
+58.5 of the 65 seconds retrieval took. Our own corpus produced the other 3,151 in about six
+seconds. So turning this off makes the finding stage roughly ten times faster.
+
+WHAT IT COSTS, and it is not nothing: 296 of those 319 families were found by NO other channel.
+A local-only search cannot see art that is not in the 354,986 publications we hold, and it cannot
+recover the full text of a reference the corpus has only an abstract for. Use it when the answer
+is expected to be in our niche, and turn it back on before anything is filed.") }}
+      <label class="toggle notifyopt"><input type="checkbox" name="notify_email" value="1"
+               {% if ent.tier == 'anon' %}data-needs="free"{% endif %}>
+        Email me when done</label>
+      {{ qhelp("email when done", "A third-party build can run for an hour, and you do not have to
+sit with it: the search keeps going whether or not the tab is open, and this sends one message to
+the address on your account the moment the report is ready.
+
+It is off every time, deliberately. A saved preference used to decide it, so somebody who ticked
+it once was opted into an email for every search afterwards without being asked again.
+
+Signed-in accounts only, because there has to be somewhere to send it.") }}
+
+      {#  ONE (?) ON THIS BAR. There were two side by side, indistinguishable: this one, which
+          explained the button, and the third-party one above, which explains the checkbox beside
+          it. A question mark that is not next to the thing it explains is noise, and two in a row
+          is worse. The button's label says what it does; what the search covers is on the scope
+          line at the foot of the card. #}
     </div>
 
-    {% if current_user %}
-    <div class="notifychoice">
-      <div><b>How should this finish?</b><span>You can keep watching live results or leave the search running in your account.</span></div>
-      <label class="notifyopt"><input type="checkbox" name="notify_email" value="1"
-        {% if current_user.email_on_completion %}checked{% endif %}>
-        Email {{ current_user.email }} when the final report is ready</label>
-    </div>
-    {% else %}
-    <p class="small muted notifyopt"><a href="{{ request.script_root }}/login">Sign in</a> to save the search, leave it running, and receive a report-ready email.</p>
-    {% endif %}
 
-    {#  The one line that replaces the wall. Every number is live from the DB via
-        corpus_facts.facts() — never hardcoded — so it cannot state a corpus size or a date
-        ceiling the tool no longer has. #}
-    <p class="scope-line small muted">{{ disc.one_line() }} ·
-      <a href="{{ request.script_root }}/about">about this tool and its limits</a></p>
+    {#  WHAT THIS LINE USED TO BE: "Bounded corpus: 4,984,254 pubs · 8 CPC classes · current to
+        2026-08-18 · measured recall 19% @10". Every number was live and correct, and all four
+        are engineering telemetry that means nothing to the person about to type a description
+        and quite a lot to a competitor. The limit that a reader actually has to know is one
+        sentence, and it is here; the measurements are on the admin Coverage page. #}
+    {#  ADVANCED, COLLAPSED. Only options this form genuinely posts and `/run` genuinely reads:
+        anything else here would be a control that looks like it does something. The rest of the
+        knobs live on the settings page, which is linked rather than duplicated. #}
+    {#  THE ATTACK'S SETTINGS, ASKED BEFORE IT STARTS. Every one of these governs work that
+        begins in the first minute of a run that can last hours, and every one of them used to be
+        asked afterwards, on the results page, or not at all. Hidden for the fast search, where
+        none of them means anything. #}
+    {#  ONE ADVANCED BLOCK, ONE LINE, AND ONLY WHAT APPLIES. There were two: this one and a
+        general one whose single control was "Search over: all patent text / claims only". Every
+        search runs over the whole text, so that control chose between one real option and one
+        nobody should pick, and it sat under a second "Advanced" summary for a reader who had
+        already opened the first. #}
+    <details class="advopts attackonly" id="attackAdv" hidden>
+      <summary>Advanced</summary>
+      <div class="advline">
+        {#  THE LADDER STOPS WHERE THE TIER STOPS. A free account reads 20 in full, which is
+            a real trial of the claim attack; past that the run is billed for what it spends, so
+            the options are shown and disabled rather than hidden. Somebody has to be able to see
+            what they would be buying. The route clamps too: a form is a suggestion. #}
+        <label>Read
+          <select name="read_top" id="advReadTop">
+            {% for n in [20, 45, 100, 200, 400] %}
+            <option value="{{ n }}"
+              {{ ' selected' if n == (20 if (ent.read_limit == 20) else 45) }}
+              {% if ent.read_limit is not none and n > ent.read_limit %}disabled{% endif %}
+              >top {{ n }}{% if ent.read_limit is not none and n > ent.read_limit %} &middot; Pro{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Law
+          <select name="jurisdiction">
+            <option value="US" selected>US &middot; 102</option>
+            <option value="EP">EP &middot; Art. 54</option>
+          </select>
+        </label>
+        {{ qhelp("which law decides", "This is not a filter on where documents come from. It
+decides which documents are PRIOR ART at all.
+
+UNITED STATES. 35 U.S.C. 102(a)(2) reaches an application that was filed before the priority date
+and published after it, whatever office it was filed at, as long as it later names the United
+States. Secret prior art is broad here.
+
+EUROPEAN. EPC Art. 54(3) is strict: an unpublished earlier filing only counts against a European
+application if it is itself a European filing. Fewer documents qualify, and a document that would
+be citable in a US submission may not be citable in an EP one.
+
+Published art (102(a)(1) / Art. 54(2)) is the same either way.") }}
+        <label class="toggle"><input type="checkbox" name="concept_expansions" value="1"
+                 id="advConcept"> Concept expansion</label>
+        {{ qhelp("concept expansion", "Before reading, the tool asks a model for other ways each
+claim requirement could be worded, and searches those too. It finds art that describes the same
+thing in different words, and it costs one model call per requirement plus the searches.
+
+OFF is the default because it is measured at 43 to 60 seconds on a claim set of the size this
+tool usually sees, in front of a reader who has not seen a result yet. Turn it on when the
+vocabulary of the field is unusually varied.") }}
+        <label class="toggle"><input type="checkbox" name="batched" value="1"
+                 id="advBatched"> Batched reader</label>
+        {{ qhelp("batched reader", "Reads several references against one requirement in a single
+call instead of one reference against every requirement. Cheaper and faster on a large read set;
+each cell is held to exactly the same grounding bar either way.") }}
+      </div>
+    </details>
+
+
+    <p class="scope-line small muted">Evidence, not a clearance opinion &mdash; every finding is
+      tied to its passage. <a href="{{ request.script_root }}/about">What this covers</a></p>
   </form>
+
+  {#  Shown when a signed-out visitor ticks an account-only option. One sentence, one link, and
+      the option is un-ticked before the dialog opens so the form can never post something the
+      account cannot do. #}
+  <dialog id="needAccountDlg" class="qhelpdlg">
+    <div class="qhelphead"><b>This one needs an account</b>
+      <form method="dialog" style="margin-left:auto">
+        <button class="btn ghost sm" value="close">Close</button></form></div>
+    <div class="qhelpbody" id="needAccountBody"></div>
+  </dialog>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
 const searchForm = document.getElementById('searchform');
+
+/*  THE MODE DRIVES THE FORM. The build's settings only exist for the build, and the build only
+    exists once the extract has produced claims. `window.__hasClaims` is set by setKind when a
+    document comes back with them; until then the option is disabled and the line under the box
+    says why. A SELECT now, not two radio cards: the difference between the two searches is a
+    paragraph each and it lives behind the (?), not in the layout. */
+(function modePicker(){
+  const sel = document.getElementById('searchModeSel');
+  const adv = document.getElementById('attackAdv');
+  const gate = document.getElementById('attackGate');
+  if (!sel || !adv) return;
+  const opt = sel.querySelector('option[value="attack"]');
+  function paint(){
+    const ok = !!window.__hasClaims;
+    if (opt) opt.disabled = !ok;
+    //  A disabled option cannot stay selected: fall back rather than post a mode /run refuses.
+    if (!ok && sel.value === 'attack') sel.value = 'fast';
+    const on = sel.value === 'attack';
+    adv.hidden = !on;
+    //  The explanation appears when the build is unavailable, and only then. It used to also
+    //  show while the build was SELECTED, which is exactly when it is not needed.
+    if (gate) gate.hidden = ok;
+    const go = document.getElementById('gobtn');
+    if (go) go.textContent = on ? 'Build the third-party attack' : 'Search prior art';
+    if (window.__etaRepaint) window.__etaRepaint();
+  }
+  sel.addEventListener('change', paint);
+  window.__modeRepaint = paint;
+  paint();
+})();
+
+/*  THE ESTIMATE, RECOMPUTED AS THE SETTINGS MOVE. A range, not a number: measured runs of the
+    same shape differ by two to three times, and a single figure would be wrong in one direction
+    every time. The coefficients are this tool's own measurements:
+      fast search ................. 16 s end to end, first results at 4 s
+      build, fixed cost ........... ~160 s of retrieval, screening and enrichment
+      per reference read .......... ~10 s one at a time, ~4 s batched
+      concept expansion ........... +45 s, one model call per claim requirement           */
+(function eta(){
+  const sel = document.getElementById('searchModeSel');
+  const line = document.getElementById('etaLine');
+  if (!sel || !line) return;
+  function fmt(s){
+    if (s < 90) return Math.round(s / 5) * 5 + ' seconds';
+    if (s < 5400) return Math.round(s / 60) + ' minutes';
+    const h = s / 3600;
+    return (h < 1.6 ? 'about an hour' : Math.round(h) + ' hours');
+  }
+  function paint(){
+    if (sel.value !== 'attack'){ line.textContent = 'about 15 to 20 seconds'; return; }
+    const n = parseInt((document.getElementById('advReadTop') || {}).value, 10) || 45;
+    const batched = !!(document.getElementById('advBatched') || {}).checked;
+    const concept = !!(document.getElementById('advConcept') || {}).checked;
+    const secs = 160 + n * (batched ? 4 : 10) + (concept ? 45 : 0);
+    line.textContent = fmt(secs * 0.7) + ' to ' + fmt(secs * 1.5);
+  }
+  ['searchModeSel', 'advReadTop', 'advBatched', 'advConcept'].forEach(function (id){
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', paint);
+  });
+  window.__etaRepaint = paint;
+  paint();
+})();
+
+/*  BOTH OPT-INS NEED AN ACCOUNT. The outside APIs are metered and an email needs an address, so
+    a signed-out visitor who ticks either gets told once, plainly, with the way to fix it, rather
+    than a checkbox that silently does nothing on submit. */
+(function accountGate(){
+  /*  ONE DIALOG, TWO REASONS. A control can be out of reach because there is no account at all
+      or because the account is not Pro, and those want different words and different links, so
+      the control carries which one it needs. The route enforces the same thing either way: this
+      is what stops somebody submitting a form that would be refused. */
+  const dlg = document.getElementById('needAccountDlg');
+  const body = document.getElementById('needAccountBody');
+  const COPY = {
+    free: {t: 'This one needs an account',
+           b: 'Reading references in full, building a third-party submission and emailing you ' +
+              'when a run finishes all cost model time, so they run against an account. ' +
+              'Registration is free, and the prior-art search never needs one.',
+           a: '{{ request.script_root }}/register', al: 'Create a free account'},
+    pro:  {t: 'This one is Pro',
+           b: 'Searching the outside patent APIs is billed per call, and reading more than ' +
+              '{{ ent.read_limit or 20 }} references in one run is billed for the model time it ' +
+              'spends. Pro is a card on file and a $10 minimum of credit, charged for what a run ' +
+              'actually uses. It is not a subscription.',
+           a: '{{ request.script_root }}/billing', al: 'Add a card'}
+  };
+  function open(need){
+    const c = COPY[need] || COPY.free;
+    if (!dlg || !dlg.showModal){ window.location.href = c.a; return; }
+    dlg.querySelector('.qhelphead b').textContent = c.t;
+    body.innerHTML = '<p>' + c.b + '</p><p><a class="btn sm" href="' + c.a + '">' + c.al +
+                     '</a> <a class="btn ghost sm" href="{{ request.script_root }}/login">Sign in</a></p>';
+    dlg.showModal();
+  }
+  document.querySelectorAll('input[data-needs]').forEach(function (box){
+    box.addEventListener('change', function (){
+      if (!box.checked) return;
+      box.checked = false;
+      open(box.getAttribute('data-needs'));
+    });
+  });
+  const sel = document.getElementById('searchModeSel');
+  if (sel) sel.addEventListener('change', function (){
+    const o = sel.options[sel.selectedIndex];
+    if (o && o.getAttribute('data-needs-account') === '1'){ sel.value = 'fast'; open('free');
+      if (window.__modeRepaint) window.__modeRepaint(); }
+  });
+})();
 const searchButton = document.getElementById('gobtn');
 searchForm.addEventListener('submit', e => {
   const q = document.getElementById('qbox');
@@ -213,8 +502,11 @@ window.addEventListener('pageshow', () => {
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
   function setStatus(msg, kind){
+    //  An empty message must not leave a styled box behind. Setting the text to '' still left
+    //  the padding, the border and the background: an orange rectangle with nothing in it.
     statusEl.textContent = msg || '';
     statusEl.className = 'ex-status small ' + (kind || 'muted');
+    statusEl.hidden = !msg;
   }
   function setBusy(on, msg){
     busy = on;
@@ -248,25 +540,29 @@ window.addEventListener('pageshow', () => {
   function currentKind(){
     return (doc && currentClaims().length) ? 'claims' : 'concept';
   }
+  //  setKind is now a no-op: the badge it wrote into was removed. Kept as a function because
+  //  three call sites still invoke it, and a no-op is a smaller change than proving none of them
+  //  matters. Which search is about to run is still decided by `currentKind`, which the form
+  //  reads; it is simply no longer announced above the button.
   function setKind(kind){
-    const badge = $('kindBadge');
-    if(!badge) return;
-    badge.dataset.kind = kind;
-    const k = (KINDS || []).find(x => x.kind === kind);
-    if(!k) return;
-    $('kindName').textContent = k.label;
-    $('kindEta').textContent = k.eta_text;
-    $('kindWhat').textContent = k.summary;
+    //  THE ONE PLACE THAT KNOWS. Three call sites invoke this whenever the extract lands or the
+    //  reviewer edits a claim, so it is where the mode picker learns whether a third-party build
+    //  is even possible. The tier badge it used to write is gone; this is not the badge.
+    window.__hasClaims = (kind === 'claims');
+    if (window.__modeRepaint) window.__modeRepaint();
   }
 
   function claimRow(c, i){
     const row = document.createElement('div');
     row.className = 'exclaim' + (c.independent ? ' indep' : '');
     row.innerHTML =
+      //  ONE LINE, NOT TWO STACKED. The number sat above its own IND/dep tag in a column, so
+      //  every claim cost three rows of height before its text: twenty claims was a screen of
+      //  numbering. One chip, and the textarea starts at one row and grows.
       `<div class="exclaimno"><span class="exno">${i+1}</span>` +
       `<span class="extag-ind" title="${c.independent?'Independent claim':'Dependent claim'}">` +
       `${c.independent?'IND':'dep'}</span></div>` +
-      `<textarea class="exta exclaimta" rows="3" aria-label="Claim ${i+1}"></textarea>` +
+      `<textarea class="exta exclaimta clamp3" rows="1" aria-label="Claim ${i+1}"></textarea>` +
       `<button type="button" class="exdel" title="Remove this claim" aria-label="Remove claim ${i+1}">×</button>`;
     row.querySelector('textarea').value = c.text || '';
     row.querySelector('.exdel').addEventListener('click', () => {
@@ -353,14 +649,31 @@ window.addEventListener('pageshow', () => {
     if(d.claims_source && d.claims_source !== 'none' && (d.claims||[]).length)
       $('exClaimsMeta').textContent += ` · read from the ${esc(d.claims_source)}`;
 
+    {
+      /*  Three lines each until asked. The abstract and twenty claims in full were several
+          screens of scrolling between the breakdown and the button that acts on it. */
+      const ab = $('exAbstract');
+      if (ab) { ab.classList.add('clamp3'); }
+      document.querySelectorAll('#exClaims textarea, #exClaims .exclaim')
+        .forEach(el => el.classList.add('clamp3'));
+    }
     $('exVision').textContent = d.vision || '';
     $('exFigSec').hidden = !d.vision;
     $('exVisionMeta').textContent = d.vision ? 'folded into the query text' : '';
 
+    /*  SAY WHICH NUMBER IS WHICH. The meta read "27,000 characters extracted" over a box
+        holding a 600-character snippet, so the figure looked like a description of what was on
+        screen. Both facts, named: how much was read out of the document, and how much of it this
+        panel is showing. What the SEARCH does with it is a third thing again -- the abstract,
+        every claim and the strongest passages, capped at 48 embedded chunks -- and that is in
+        the (?) rather than on the line. */
     $('exText').textContent = (d.text_snippet||'') + (d.text_chars>600 ? '…' : '');
+    $('exText').classList.add('clamp3');
     $('exTextSec').hidden = !d.text_snippet;
     $('exTextMeta').textContent = d.text_chars
-      ? `${Number(d.text_chars).toLocaleString()} characters extracted` : '';
+      ? `${Number(d.text_chars).toLocaleString()} characters extracted`
+        + (d.text_chars > 600 ? ' · first 600 shown' : '')
+      : '';
 
     const notes = d.notes || [];
     $('exNotes').innerHTML = notes.map(n => `<li>${esc(n)}</li>`).join('');
@@ -457,7 +770,10 @@ window.addEventListener('pageshow', () => {
       if(d.n_claims) bits.push(`${d.n_claims} claim${d.n_claims===1?'':'s'}`);
       if(d.abstract) bits.push('an abstract');
       bits.push('a search brief');
-      setStatus(`Read ${bits.join(', ')}. Check them below, then press “Search prior art”.`, 'good');
+      /*  The status line said "Read 20 claims, an abstract, a search brief. Check them below,
+          then press Search prior art" above a panel showing exactly those things and a button
+          reading exactly that. The counts are on each section's own summary. */
+      setStatus('', 'good');
       gobtn.focus();
     }catch(err){
       setStatus('Could not read that document: ' + ((err && err.message) || 'network error') +

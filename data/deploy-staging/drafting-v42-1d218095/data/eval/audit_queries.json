@@ -1,0 +1,27 @@
+{
+ "handheld_lifter": {
+  "slug": "adhoc-c603fc0bc21f",
+  "mode": "novelty",
+  "query": "A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump that keeps running to hold grip on rough or porous surfaces, and a pressure sensor th"
+ },
+ "robotic_eoat": {
+  "slug": "adhoc-a9f6bc2b1114",
+  "mode": "inventive_step",
+  "query": "A robotic end-of-arm vacuum gripper for depalletizing cardboard boxes, with an array of independently valved suction cups, a venturi vacuum generator, and a controller that maps which cups to activate"
+ },
+ "suction_pnp": {
+  "slug": "adhoc-f7ee7d708d59",
+  "mode": "novelty",
+  "query": "A suction-cup gripper for a pick-and-place machine handling smooth plastic parts, with a bellows-style elastomer cup and a check valve that holds vacuum when power is lost."
+ },
+ "broad_vacuumgripper": {
+  "slug": "adhoc-b9edaa69dda8",
+  "mode": "novelty",
+  "query": "vacuum gripper"
+ },
+ "narrow_multifeature": {
+  "slug": "adhoc-69be53deb741",
+  "mode": "novelty",
+  "query": "A vacuum gripper with a self-cleaning porous sintered-metal contact face, an integrated Venturi ejector, a proportional vacuum control valve, and a capacitive part-presence sensor that distinguishes a"
+ }
+}

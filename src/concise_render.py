@@ -15,6 +15,8 @@ import html as _html
 import io
 import re
 
+import pdf_fonts
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import letter
@@ -23,12 +25,57 @@ from reportlab.lib.units import inch
 from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph, Table,
                                 TableStyle)
 
-HEADING = ("CONCISE DESCRIPTION OF RELEVANCE — THIRD-PARTY SUBMISSION "
+HEADING = ("CONCISE DESCRIPTION OF RELEVANCE: THIRD-PARTY SUBMISSION "
            "UNDER 37 CFR § 1.290")
 
 
 def _esc(s):
-    return _html.escape(str(s or ""))
+    """Escape for reportlab's Paragraph markup, and keep every glyph drawable.
+
+    The second half matters as much as the first. Asked for a character the current face has no
+    glyph for, reportlab silently substitutes ZapfDingbats, and a Chinese name printed on a filed
+    document list as two solid black squares. Runs outside the Latin face are wrapped in a span
+    pointing at an embedded fallback, so the paper says what it means or the render fails loudly.
+
+    Every caller feeds a Paragraph. The running head goes to canvas.drawString and does NOT come
+    through here, which is why this can return markup.
+    """
+    return pdf_fonts.with_fallback(_html.escape(str(s or "")))
+
+
+def is_latin(name):
+    """True when every letter can be typeset by the filing font. U+2E80 starts the CJK blocks."""
+    return all(ord(c) < 0x2E80 for c in str(name or ""))
+
+
+def printable_party(biblio):
+    """Who to name on the paper for this document, and what to call them. -> (label, value)
+
+    1.290(e)(3) identifies a foreign document by "the applicant, patentee, or first named
+    inventor", and that OR is the way out of a problem this hit twice. The filing font has no CJK
+    glyphs, so a Chinese or Japanese personal name with no Latin form in the record printed as a
+    row of solid black boxes on a paper filed at the USPTO: CN 216190291 U went out identifying its
+    inventor as "■■".
+
+    Preferring a romanisation is not always possible, because a romanisation is not always in the
+    record: for that CN document all seven inventors are Chinese-only and nothing carries a Latin
+    form. Transliterating is not an option either, since a name nobody verified does not belong on
+    a filing. The applicant does carry a Latin name, and the rule accepts it, so the paper names
+    the applicant and says so.
+
+    Falls back to the unprintable name only when there is no Latin alternative at all, and the
+    audit fails the packet in that case rather than filing boxes.
+    """
+    b = biblio or {}
+    inventor = str(b.get("inventor") or "").strip()
+    if inventor and is_latin(inventor):
+        return "First Named Inventor", inventor
+    applicant = str(b.get("assignee") or "").strip()
+    #  An assignee field can hold several, comma-joined. The first is the one to name.
+    first = applicant.split(",")[0].strip() if applicant else ""
+    if first and is_latin(first):
+        return "Applicant", first
+    return "First Named Inventor", inventor
 
 
 def running_head(subject):
@@ -66,7 +113,7 @@ def subject_line(subject):
         tail.append("“%s”" % subject["title"])
     if subject.get("inventor"):
         tail.append(subject["inventor"])
-    return " — ".join([x for x in [head] + tail if x])
+    return ", ".join([x for x in [head] + tail if x])
 
 
 def _left_cell(row, pub_no_label):
@@ -127,6 +174,14 @@ def filing_notes(doc_model):
     sc = c.get("self_collision") or {}
     if sc.get("note"):
         out.append(("Common ownership", sc["note"]))
+    #  AN EXCLUSION IS ABOUT ONE PUBLICATION AND A FAMILY IS MANY. Where the sweep found a member
+    #  that published earlier, that is the most valuable line on this page: the disclosure is
+    #  available even though this publication of it is not. See family_sweep.
+    sib = c.get("sibling") or {}
+    if sib.get("best"):
+        out.append(("An earlier member of this family", sib.get("note") or ""))
+    elif sib.get("checked") is False and sib.get("note"):
+        out.append(("Family", sib["note"]))
     tr = c.get("translation") or {}
     if tr.get("translated"):
         out.append(("Translation", "%d relied-on passage%s machine-translated into English; the "
@@ -135,6 +190,26 @@ def filing_notes(doc_model):
                        "A verified human translation may be required before filing.")))
     elif tr.get("note"):
         out.append(("Translation", tr["note"]))
+    else:
+        #  A FROZEN NOTE CANNOT LEARN. This block is read back from a model.json written when the
+        #  description was generated, so a document built before an office was added to the
+        #  non-English list keeps saying nothing about its language for ever, while the packet
+        #  beside it correctly attaches a translation. That is exactly how the page came to list
+        #  SU1296407A1 with a copy and no translation note under an audit line that said every
+        #  non-English item had one. Derived live, from the same list the audit uses, so the next
+        #  office added is right on documents that already exist.
+        try:
+            import submission_compliance
+            lang = submission_compliance.source_language(doc_model.get("pub"))
+        except Exception:                                                 # noqa: BLE001
+            lang = ""
+        if lang:
+            out.append(("Translation",
+                        "This is a %s-language document. The passages relied on are quoted from an "
+                        "English translation held in the search corpus, not from the original "
+                        "text, and that translation is what is attached to the packet. A verified "
+                        "translation of the relied-on portions should accompany the filing."
+                        % lang))
     qz = c.get("quotes") or {}
     if qz.get("note"):
         out.append(("Quotations", qz["note"]))
@@ -149,16 +224,16 @@ def filing_notes(doc_model):
 
 
 def _styles():
-    base = ParagraphStyle("cd", fontName="Times-Roman", fontSize=11, leading=13.5,
+    base = ParagraphStyle("cd", fontName=pdf_fonts.font(pdf_fonts.SERIF), fontSize=11, leading=13.5,
                           alignment=TA_LEFT, spaceAfter=0)
     return {
-        "h": ParagraphStyle("h", parent=base, fontName="Times-Bold", fontSize=11.5, leading=14,
+        "h": ParagraphStyle("h", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=11.5, leading=14,
                             spaceAfter=6),
-        "app": ParagraphStyle("app", parent=base, fontName="Times-Italic", spaceAfter=8),
-        "doc": ParagraphStyle("doc", parent=base, fontName="Times-Bold", spaceAfter=3),
+        "app": ParagraphStyle("app", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_ITALIC), spaceAfter=8),
+        "doc": ParagraphStyle("doc", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), spaceAfter=3),
         "bib": ParagraphStyle("bib", parent=base, leftIndent=20, spaceAfter=1),
         "body": ParagraphStyle("body", parent=base, spaceBefore=6, spaceAfter=9),
-        "th": ParagraphStyle("th", parent=base, fontName="Times-Bold", fontSize=10.5, leading=13),
+        "th": ParagraphStyle("th", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=10.5, leading=13),
         "td": ParagraphStyle("td", parent=base, fontSize=10.5, leading=13),
         "cite": ParagraphStyle("cite", parent=base, fontSize=10.5, leading=13, leftIndent=10,
                                bulletIndent=2, spaceBefore=1),
@@ -175,7 +250,7 @@ def to_pdf(doc_model) -> bytes:
 
     def _page(canv, docobj):
         canv.saveState()
-        canv.setFont("Times-Roman", 9.5)
+        canv.setFont(pdf_fonts.font(pdf_fonts.SERIF), 9.5)
         canv.setFillColor(colors.HexColor("#333333"))
         canv.drawString(inch, letter[1] - 0.62 * inch, running)
         canv.drawString(inch, 0.62 * inch, running)
@@ -183,7 +258,7 @@ def to_pdf(doc_model) -> bytes:
 
     tmpl = BaseDocTemplate(buf, pagesize=letter, leftMargin=inch, rightMargin=inch,
                            topMargin=0.95 * inch, bottomMargin=0.95 * inch,
-                           title="Concise Description of Relevance — %s" % doc_model["pub"],
+                           title="Concise Description of Relevance: %s" % doc_model["pub"],
                            author="Third-party submission under 37 CFR 1.290")
     frame = Frame(inch, 0.95 * inch, letter[0] - 2 * inch, letter[1] - 1.9 * inch, id="f")
     tmpl.addPageTemplates([PageTemplate(id="p", frames=[frame], onPage=_page)])
@@ -199,7 +274,7 @@ def to_pdf(doc_model) -> bytes:
     #  priority date were neither required nor safe to print: assignment changes hands over
     #  time and these values come from a cache that does not always match the current public
     #  record, so the paper asserted ownership facts it had no need to assert.
-    for lbl, val in (("First Named Inventor", b.get("inventor")),
+    for lbl, val in (printable_party(b),
                      ("Issue Date" if b.get("kind") == "patent" else "Publication Date",
                       b.get("issue_date_pretty")),
                      ("Title", b.get("title"))):
@@ -225,6 +300,10 @@ def to_pdf(doc_model) -> bytes:
     w = letter[0] - 2 * inch
     tbl = Table(data, colWidths=[w * 0.46, w * 0.54], repeatRows=1)
     tbl.setStyle(TableStyle([
+        #  A Table whose cells are Paragraphs STILL emits its own default cell font, and
+        #  that default is an unembedded Helvetica. Naming it here is what keeps a base-14
+        #  resource out of a paper Patent Center validates.
+        ("FONTNAME", (0, 0), (-1, -1), pdf_fonts.font(pdf_fonts.SERIF)),
         ("GRID", (0, 0), (-1, -1), 0.6, colors.HexColor("#444444")),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFEFEF")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -280,7 +359,7 @@ def to_docx(doc_model) -> bytes:
     dp.add_run("Document %s: %s (“Document %s”)" % (
         doc_model["n"], b["label"], doc_model["n"])).bold = True
     #  Identification fields only. See the note in to_pdf.
-    for lbl, val in (("First Named Inventor", b.get("inventor")),
+    for lbl, val in (printable_party(b),
                      ("Issue Date" if b.get("kind") == "patent" else "Publication Date",
                       b.get("issue_date_pretty")),
                      ("Title", b.get("title"))):

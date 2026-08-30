@@ -226,9 +226,21 @@ def read(pubs, items, kind="claim", emit=None, log=print, workers=WORKERS):
                 if prev is None or _RANK.get(row["verdict"], 0) > _RANK.get(prev["verdict"], 0):
                     out[pub][label] = row
             done[0] += 1
-            if emit and (done[0] % 10 == 0 or done[0] == len(jobs)):
-                emit("batch_read_progress", done=done[0], total=len(jobs))
+            #  WHICH DOCUMENTS AND WHICH REQUIREMENT, not only how many calls. A job here is one
+            #  BATCH OF DOCUMENTS asked about ONE requirement, so "batch 130 of 210" names neither
+            #  the documents nor the question, and it is the line that sits on screen for hours.
+            #
+            #  `pubs_in` is the batch, which is the answer. NOT `pub`: that is the loop variable
+            #  from the row loop just above, so it is whichever document the model happened to
+            #  answer about last, and it is UNBOUND when the model returned no usable rows at all.
+            if emit:
+                seen.extend(pubs_in)
+                if done[0] % 5 == 0 or done[0] == len(jobs):
+                    fresh, seen[:] = list(dict.fromkeys(seen))[-6:], []
+                    emit("batch_read_progress", done=done[0], total=len(jobs), pubs=fresh,
+                         requirement=str(label)[:90])
 
+    seen = []                      # appended and drained only under `lock`, above
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(jobs)))) as ex:
         list(ex.map(one, jobs))
 

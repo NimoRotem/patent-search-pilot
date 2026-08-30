@@ -77,7 +77,11 @@ _OPEN_ENDPOINTS = {"healthz", "index", "about", "how_it_works",
                    "public_report_page", "public_report_unlock", "public_report_beacon",
                    # An invitee has no account yet; a verification link may be opened from a mail
                    # client with no session. Both are single-use, expiring, hashed tokens.
-                   "auth.accept_invitation", "auth.verify_email"}
+                   "auth.accept_invitation", "auth.verify_email",
+                   #  Stripe posts here with no session and no CSRF token, because it has
+                   #  neither. The signature over the raw body is the authentication and it is
+                   #  checked inside the view; an unsigned delivery is refused there, not here.
+                   "billing_webhook"}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -124,7 +128,26 @@ def _peer_is_trusted_proxy(peer):
 
 
 def is_loopback():
-    return (request.environ.get("REMOTE_ADDR", "") or "") in _LOOPBACK
+    """Did this request come from a process ON this box, rather than through the front door?
+
+    IT USED TO READ REMOTE_ADDR, and behind nginx REMOTE_ADDR is 127.0.0.1 for every request that
+    has ever arrived. So `is_loopback()` was true for the entire internet, and eleven routes are
+    gated on `current_user() or is_loopback()`. Measured 2026-08-25 against the live site with no
+    session and no credentials: `/api/designs?q=gripper` returned EUIPO rows, `/api/factory/pulse`
+    returned the build status. Both were meant to require a sign-in.
+
+    The distinction that actually holds: nginx sets X-Forwarded-For on everything it proxies, and
+    a local caller connecting straight to the port sets nothing. So loopback means a loopback peer
+    AND no proxy header, which is exactly the draft worker, a cron on this box, and a developer
+    with curl on the machine. A forged X-Forwarded-For can only take this privilege AWAY from its
+    sender, which is the safe direction for a header the caller controls.
+    """
+    peer = request.environ.get("REMOTE_ADDR", "") or ""
+    if peer not in _LOOPBACK:
+        return False
+    return not (request.headers.get("X-Forwarded-For")
+                or request.headers.get("X-Real-IP")
+                or request.headers.get("X-Forwarded-Proto"))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -577,7 +600,7 @@ def _after_login_target(nxt):
 # Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
 _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Slow down | Rotem Patents</title>
+<title>Slow down | IPtorch</title>
 <style>
  body{font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
       display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
@@ -746,6 +769,21 @@ def account():
                     preferred_jurisdiction=request.form.get("preferred_jurisdiction", "US"))
                 g.patent_user = user
                 message = "Account preferences saved."
+            elif action == "filing":
+                #  Both of these end up on a paper filed at the USPTO: the entity size sets the
+                #  fee and the signature is applied under 37 CFR 1.4(d)(2). Set once, used every
+                #  time, so nobody retypes them into a filing.
+                user = accounts.set_filing_identity(
+                    user["id"],
+                    entity_size=request.form.get("entity_size", "small"),
+                    signature_name=request.form.get("signature_name", ""),
+                    signature_title=request.form.get("signature_title", ""),
+                    #  An unticked checkbox posts nothing, which is exactly the semantics wanted:
+                    #  consent is affirmative or it is absent, and it is re-affirmed every time
+                    #  these details are saved.
+                    signature_consent=bool(request.form.get("signature_consent")))
+                g.patent_user = user
+                message = "Filing details saved."
             elif action == "share":
                 #  ONE password for every link this account publishes. Set once here, copied onto
                 #  each report at publish time, never shown again. Clearing it also stops anything

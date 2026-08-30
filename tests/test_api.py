@@ -23,23 +23,31 @@ def test_home_is_just_the_search(app_client):
     assert r.status_code == 200
     html = r.get_data(as_text=True)
     assert "invention" in html.lower()             # free-text box
-    assert "Rotem Patents" in html                 # masthead / title
+    assert "IPtorch" in html                       # masthead / title
     assert "exchip" not in html                    # example chips are gone
     assert GOLD not in html                        # gold grid moved to /history
     assert "Search scope and measured reliability" not in html   # wall moved to /about
     assert 'name="wide"' not in html               # federation is unconditional, no checkbox
     assert "/about" in html                        # one compact line links to the relocated content
-    assert "First matches" in html                 # distinguish useful partials from final refinement
+    #  The paragraph that said this moved behind the (?) beside the button: the same fact, one
+    #  click away, instead of on the page every time somebody starts a search.
+    assert 'class="qmark"' in html
+    assert "First results usually appear" in html
     assert "pageshow" in html                      # BFCache restore re-enables the submit button
 
 
-def test_about_holds_the_relocated_disclosure(app_client):
+def test_about_states_the_limit_without_the_measurements(app_client):
+    """The wall of telemetry that used to live here (a recall figure, a class count, three
+    audited error rates) is on the admin Coverage page now. What a reader has to know is not a
+    number, it is that a short result list is not a clear field."""
     r = app_client.get("/about")
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    assert "Search scope and measured reliability" in html
-    assert "Absence of results is not evidence of absence" in html
-    assert "What is and is not indexed" in html
+    assert "not a clearance search" in html
+    assert "A short result list is not a clear field" in html
+    assert "Check the citations" in html
+    for telemetry in ("measured recall", "recall@100", "% @100", "CPC classes"):
+        assert telemetry not in html, "the measurements are back on a customer page: %s" % telemetry
 
 
 def test_history_lists_examples_and_past_searches(app_client):
@@ -71,8 +79,8 @@ def test_the_scope_disclosure_is_not_on_the_report(app_client):
     assert "Outside indexed field" not in html
 
     body = app_client.get("/about").get_data(as_text=True)
-    assert "Search scope and measured reliability" in body
-    assert "Absence of results is not evidence of absence" in body
+    assert "not a clearance search" in body
+    assert "A short result list is not a clear field" in body
 
 
 def test_gold_report_renders(app_client):

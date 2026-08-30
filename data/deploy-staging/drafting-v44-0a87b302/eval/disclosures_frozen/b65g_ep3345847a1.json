@@ -1,0 +1,191 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b65g_ep3345847a1",
+ "subject_pub": "EP-3345847-A1",
+ "n_claims_source": 15,
+ "claims_source": "family_claims:US-9284128-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 27,
+  "by_kind": {
+   "independent_limitation": 10,
+   "combination": 2,
+   "dependent_limitation": 15
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "a ball transfer unit support comprising a top ring",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the support comprises an upper portion adjacent to the top ring",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the support comprises a lower portion",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the support comprises a shoulder between the upper portion and the lower portion",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the shoulder is configured to support a tapered neck of a canister of a ball transfer unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a ball transfer unit system comprising a ball panel comprising an aperture",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "a ball transfer unit support located within the aperture",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "the ball transfer unit support comprises a shoulder",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "a ball transfer unit located within the ball transfer unit support",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "a tapered neck of a canister of the ball transfer unit is supported by the shoulder of the ball transfer unit support",
+   "kind": "independent_limitation",
+   "source": "claim 9",
+   "weight": 1.0
+  },
+  {
+   "text": "A ball transfer unit support comprising a top ring, an upper portion adjacent to the top ring, a lower portion, and a shoulder between the upper portion and the lower portion, wherein the shoulder is configured to support a tapered neck of ",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A ball transfer unit system comprising a ball panel with an aperture, a ball transfer unit support with a shoulder located within the aperture, and a ball transfer unit located within the support, wherein a tapered neck of the ball transfer",
+   "kind": "combination",
+   "source": "claim 9",
+   "weight": 0.9
+  },
+  {
+   "text": "the top ring comprises a truncated circle",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the shoulder is configured to support a J-082269-6 ball transfer unit",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "a diameter of the upper portion is greater than a diameter of the lower portion",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "the top ring comprises a retaining lip",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "the retaining lip is configured to contact a bottom surface of a top skin of a ball panel",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the support further comprises a ball transfer unit located within the ball transfer unit support",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "the top ring is configured to prevent rotation of the ball transfer unit support",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "the ball panel comprises a top skin, a bottom skin, and a corrugation",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "the ball transfer unit support is configured to transfer load from the ball transfer unit to a bottom section of the corrugation",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "the aperture comprises a truncated circle",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "the ball transfer unit support comprises a top ring including a retaining lip",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the retaining lip is configured to snap into the aperture",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "a clearance between a ball in the ball transfer unit and a top skin of the ball panel is greater than 0.25 inches (0.64 cm)",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the ball transfer unit support comprises a top ring comprising a truncated circle",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "the aperture and a top ring of the ball transfer unit support comprise an anti-rotation feature",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "b20bacad8f7232c8"
+}

@@ -1,0 +1,137 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b08b_ep2028290a1",
+ "subject_pub": "EP-2028290-A1",
+ "n_claims_source": 6,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 18,
+  "by_kind": {
+   "independent_limitation": 12,
+   "combination": 2,
+   "dependent_limitation": 4
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "secondary descaling of metal strips",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "descaling during hot rolling",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "spraying water on the surface",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "using watering ramps with nozzles",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "nozzles fed with water under pressure",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "nozzles fed under low hydraulic pressure",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "pressure not exceeding 30 bar",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "nozzles adjusted to deliver surface water flow similar to high-pressure practice",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "nozzles adjusted so heat flow density extracted from the strip is similar to high-pressure practice",
+   "kind": "independent_limitation",
+   "source": "claim 2",
+   "weight": 1.0
+  },
+  {
+   "text": "equipment for secondary descaling of metal strips",
+   "kind": "independent_limitation",
+   "source": "claim 6",
+   "weight": 1.0
+  },
+  {
+   "text": "equipment comprising spray booms with water spray nozzles",
+   "kind": "independent_limitation",
+   "source": "claim 6",
+   "weight": 1.0
+  },
+  {
+   "text": "equipment includes a low-pressure unit for supplying water to nozzles",
+   "kind": "independent_limitation",
+   "source": "claim 6",
+   "weight": 1.0
+  },
+  {
+   "text": "method of secondary descaling metal strips during hot rolling by spraying water using nozzles fed under low hydraulic pressure not exceeding 30 bar, and adjusting nozzles to deliver surface water flow similar to high-pressure practice",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "equipment for secondary descaling metal strips comprising spray booms with water spray nozzles and a low-pressure unit for supplying water to nozzles",
+   "kind": "combination",
+   "source": "claim 6",
+   "weight": 0.9
+  },
+  {
+   "text": "nozzles fed with hydraulic pressure less than 10 bar",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "nozzles fed with hydraulic pressure not below 4 bar",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "descaling conducted upstream of finishing stands of a hot rolling mill",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "descaling conducted upstream of roughing cages of a hot rolling mill",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "1ec7b77ed0645deb"
+}

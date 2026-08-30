@@ -336,6 +336,15 @@ _SCREEN_SYS = (
 )
 
 
+def _stage_tier(key, default):
+    """Which tier this stage asks for. Settings page first, then the code default."""
+    try:
+        import model_settings
+        return model_settings.tier_for(key, default)
+    except Exception:
+        return default
+
+
 def _tokens(s):
     return {w for w in re.findall(r"[a-z]{5,}", (s or "").lower()) if w not in _STOP}
 
@@ -597,7 +606,8 @@ def screen(rows, brief, on_progress=None, sys_prompt=None, header="TARGET INVENT
         body = "\n".join(f"[{j + 1}] {c['title']}\n  {c['text']}" for j, c in enumerate(batch))
         out = llm.chat_json(sys_prompt or _SCREEN_SYS,
                             f"{header}:\n{brief[:6000]}\n\nCANDIDATES:\n{body}",
-                            max_tokens=1600) or {}
+                            max_tokens=1600,
+                            tier=_stage_tier("screening", "fast")) or {}
         got = {}
         for x in (out.get("results") or []):
             if not isinstance(x, dict):
@@ -736,8 +746,19 @@ def read_wave(chosen, features, claim_items, hints, scores, slug, emit=None, wor
                 done[0] += 1
                 if not fresh:
                     reused[0] += 1
-                if done[0] % 5 == 0 or done[0] == len(chosen):
-                    emit("chart_progress", done=done[0], total=len(chosen), pub=pub)
+                #  ONE EVENT PER DOCUMENT, and it says WHICH document. It fired every fifth read
+                #  and carried only the publication number of whichever one happened to be fifth,
+                #  so the page showed a counter moving against a stage description that had not
+                #  changed in two hours. Reading is the longest stage of the run by a wide margin;
+                #  what is worth watching is the reference going past, not the count.
+                #
+                #  The cost is one SSE frame per reference: 210 frames over 20 minutes.
+                emit("chart_progress", done=done[0], total=len(chosen), pub=pub,
+                     title=(ref.get("title") or row.get("title") or "")[:120],
+                     chars=int(ref.get("chars") or 0), reused=(not fresh),
+                     found=bool(ref.get("found")),
+                     n_features=len([f for f in (ref.get("features") or [])
+                                     if (f or {}).get("verdict") in ("disclosed", "partial")]))
             return ref
 
     n = min(int(workers or CHART_WORKERS), max(1, len(chosen)))
@@ -1159,7 +1180,18 @@ def _llm_spend(before):
         calls = int(cur.get("calls", 0)) - int(prev.get("calls", 0))
         errors = int(cur.get("errors", 0)) - int(prev.get("errors", 0))
         if calls or errors:
-            providers[name] = {"calls": calls, "errors": errors}
+            providers[name] = {
+                "calls": calls, "errors": errors,
+                #  DIFFERENCED PER PROVIDER, so the tokens can be priced at the rate the model
+                #  that produced them actually charges. A single total covering models 30x apart
+                #  is an average of things nobody bought.
+                "prompt_tokens": max(0, int(cur.get("prompt_tokens", 0))
+                                     - int(prev.get("prompt_tokens", 0))),
+                "completion_tokens": max(0, int(cur.get("completion_tokens", 0))
+                                         - int(prev.get("completion_tokens", 0))),
+                "cached_tokens": max(0, int(cur.get("cached_tokens", 0))
+                                     - int(prev.get("cached_tokens", 0))),
+            }
     out["providers"] = providers
     #  Of `prompt_tokens`, how many were served from a provider-side cache at 0.25x. This is the
     #  only number that answers "did the payload reorder actually work"; `prompt_tokens` counts
@@ -1167,6 +1199,30 @@ def _llm_spend(before):
     out["cached_prompt_tokens"] = max(
         0, int(now.get("cached_tokens") or 0) - int(before.get("cached_tokens") or 0))
     return out
+
+
+def _subject_spec(qd):
+    """The application's OWN specification, for the claim construction. -> str
+
+    An uploaded document brings its full text with it. A search started from a publication number
+    does not, and that is the case the whole construction pass exists for: the Schmalz claim whose
+    "170° to 190°" is defined as "at least substantially parallel to the displacement direction"
+    one paragraph away arrived as a corpus publication, not as an upload. Read it back from the
+    corpus rather than construing on the claims alone. Never raises: no spec means the geometry
+    rule still runs and the lexicography does not.
+    """
+    text = str((qd or {}).get("disclosure_text") or "")
+    if len(text) > 400:
+        return text[:400000]
+    pub = str((qd or {}).get("publication_number") or "").strip()
+    if not pub:
+        return text
+    try:
+        got = deep_analysis.full_text(pub) or {}
+        return " ".join(str(p.get("text") or "") for p in (got.get("passages") or []))[:400000]
+    except Exception:
+        traceback.print_exc()
+        return text
 
 
 def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", budget=None):
@@ -1237,6 +1293,22 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
         except Exception:
             traceback.print_exc()
         if lims:
+            #  CONSTRUE BEFORE RETRIEVING. A numeric range is searched as the geometry it encodes
+            #  as well as the number it is written as, and the applicant's own "i.e." definition is
+            #  searched as well as the claim's words. Counsel, 2026-08-26: claim 1's "contact
+            #  surface angle ranges in size from 170° to 190°" was reported disclosed by 0 of 232
+            #  references, and 170 to 190 degrees means "parallel", which is the defining
+            #  architecture of the switchable magnet chuck and has been in the art since the 1930s.
+            #  Deterministic and free, so it runs before anything is spent. See claim_construction.
+            try:
+                import claim_construction
+                lims = claim_construction.construe_all(lims, _subject_spec(qd))
+                report["claim_construction"] = {
+                    l["id"]: l["construction"] for l in lims
+                    if isinstance(l, dict) and l.get("construction")
+                    and not l["construction"].get("words_alone")}
+            except Exception:
+                traceback.print_exc()
             #  The reader charts the limitations INSTEAD of the whole claims. Same machinery, same
             #  grounding and refutation gates; a better question. The label is the ledger key.
             claim_items = limmod.as_chart_items(lims)
@@ -2021,6 +2093,7 @@ def card_fields(report, pub):
                 "deep_features": hit.get("n_features", 0),
                 "deep_covered": hit.get("covered") or [],
                 "deep_chars": hit.get("chars_read", 0),
+                "deep_no_text": bool(hit.get("no_text")),
                 "deep_screen": hit.get("screen")}
     s = (dr.get("unread") or {}).get(pub)
     if s is None:

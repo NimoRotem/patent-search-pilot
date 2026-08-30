@@ -1,0 +1,8 @@
+{#  A run of ranked references and nothing else — no page, no header, no scripts.
+
+    Rendered by /api/cards/<slug> so an open report can take delivery of the references the agent
+    has found since it last asked. It exists only because a Jinja macro cannot be rendered by
+    render_template() directly; the markup itself is the shared one in _refcard.html, so a card
+    that streams in is byte-for-byte the card that would have been there at first paint.  #}
+{% from "_refcard.html" import refcard with context %}
+{%- for c in cards %}{{ refcard(c, partial) }}{% endfor -%}

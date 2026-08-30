@@ -1,0 +1,695 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b08b_ep2295158a1",
+ "subject_pub": "EP-2295158-A1",
+ "n_claims_source": 19,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 111,
+  "by_kind": {
+   "independent_limitation": 15,
+   "combination": 3,
+   "dependent_limitation": 93
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Cleaning device for curved profile surfaces",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Surfaces are curved transverse to the direction of progress",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least two cantilever arms",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A cleaning head is at the free end of each arm",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Cleaning head has a curved contour in the direction of progress",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Cleaning device with at least one cantilever arm",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Cleaning head has multiple rotating brushes",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Cleaning head has three rotating brushes",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Brush rotation axes are parallel to the tangential direction of the surface",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Brush rotation axes are inclined relative to each other",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Brushes overlap each other in their direction of travel",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Bristle length is at least 12% of the distance from the trough bottom to the central tube",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Bristle length is at least 25% of the distance from the trough bottom to the central tube",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Bristle length is at least 30% of the distance from the trough bottom to the central tube",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Method for cleaning curved surfaces using rotating brushes",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "Cleaning device with at least two cantilever arms, each with a cleaning head at its free end, where the cleaning head has a curved contour in the direction of progress, for cleaning curved profile surfaces transverse to the direction of pro",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Cleaning device for curved profile surfaces with at least one cantilever arm and a cleaning head at its free end, where the cleaning head comprises multiple rotating brushes whose rotation axes are parallel to the tangential direction of th",
+   "kind": "combination",
+   "source": "claim 4",
+   "weight": 0.9
+  },
+  {
+   "text": "Method for cleaning curved surfaces using rotating brushes, where the surfaces are curved transverse to the direction of progress",
+   "kind": "combination",
+   "source": "claim 16",
+   "weight": 0.9
+  },
+  {
+   "text": "Cantilever arm is telescopic",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Cantilever arm consists of two or three articulated arm parts",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Arm parts are telescopically extendable in their longitudinal direction",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Actuating cylinder near the joint adjusts the angular position between arm parts",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Actuating cylinder is on the outside of the arm parts",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning head's inclination is adjustable at the free end of the arm",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning head is pivotable by 180\u00b0 around the longitudinal axis of the arm",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Intermediate angle between rotation axes is adjustable",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Middle brush is fixed or articulated to the cantilever arm",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Middle brush's angular position is automatically adjustable during operation",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Other two brushes are adjustably fixed to the middle brush's holder",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Other two brushes are cantilevered on one side",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Each brush is driven by its own hydraulic motor",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Hydraulic motors are connected in series",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Base body of at least one outer brush is pivotable on a cantilever arm",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Base body is pivotable by a hydraulic cylinder",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Pivoting occurs in the axis plane defined by the brush rotation axes",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Cantilever arm is part of a parallelogram with four articulated struts",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Two hinge points of one short side of the parallelogram are rotatably attached to the middle brush's holder",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Opposite short side of the parallelogram is formed by the extended base body of the outer brush",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Cantilever arm is pivotable by a hydraulic cylinder supported by the middle brush's frame",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray bar is upstream of the brushes in the direction of progress",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray bar extends across the entire width of the cleaning head",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray bar has multiple outlet openings for cleaning fluid",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Outlet openings spray cleaning fluid onto rotating bristles when behind brushes",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Outlet openings spray cleaning fluid onto the surface when in front of brushes",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Cantilever arm is attached at the outer edge of the trough or in the center of the cleaning head",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning head has only a single brush",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Rotating brush has a convex contour adapted to the surface",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Central body of the brush consists of two parts connected by a universal joint",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Ends of the brush parts are connected by a U-shaped support frame",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Brush ends are adjustable in distance via an actuating cylinder in the bracket",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning head includes a squeegee lip behind the brushes",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Squeegee lip removes cleaning fluid from the surface",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Squeegee lip is oblique to the direction of progress",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Upper end of the squeegee lip is further forward than the lower end",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Brush rotation axes are oblique to the direction of progress",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Upper ends of brush axes are further forward in the direction of progress than lower ends",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning head has a cleaning device for the central tube",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray bar has an outlet opening directed at the central tube",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Central body of the brush is convex in side view",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Bristle trim is a spirally wound flexible bristle support plate",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Bristle support plate is wound and fixed to the central body",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Bristle support plate is screwed to the central body",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Brushes are cylindrical with constant bristle length along their length",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Brushes have varying bristle lengths along their length",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning head includes a central body curved according to the surface contour",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Cup brushes are offset along the curved central body",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Cup brushes have rotation axes perpendicular to the cleaning surface",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Cup brush rotation direction at the front edge is towards the lower edge of the surface",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Each cleaning head has at least one spaced sensor",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Each cleaning head has two spaced sensors in the transverse direction",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Sensors are non-contact (optical, ultrasonic, or radar)",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Sensors detect a prominent longitudinal contour",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Sensors detect the outer edges of the surface",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning device base has at least one sensor on each side",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Base sensor detects the distance from the edge of the surface",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Each cleaning head has a pre-cleaning unit for rough cleaning",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Pre-cleaning unit has compressed air outlets",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Pre-cleaning unit has suction air inlets",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Pre-cleaning unit has vibrators (ultrasonic vibrators)",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction air inlets have compressed air ejectors as a suction air source",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Lower cleaning head has a collection device for cleaning fluid",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Collection device includes a collection channel",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Collection channel includes a vacuum connection",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning device has a reprocessing plant for dirty washing liquid",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Reprocessing plant includes a dirt filter",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Reprocessing plant includes an intermediate tank for dirty cleaning liquid",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning device includes a control unit",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Control unit automatically controls arm telescoping and inclination",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Control unit automatically controls cleaning head inclination",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Control unit automatically controls cleaning head distance from surface based on sensor signals",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning device has an E-field generator",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Each cleaning head has an E-field generator",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "E-field generator produces an electric field of at least 50 V/m",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "E-field generator produces an electric field of at least 200 V/m",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "E-field generator reduces surface tension of cleaning fluid",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "E-field generator includes at least one Tesla coil",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "E-field generator includes a radiator electrically connected to the Tesla coil's hot end",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Radiator is a spherical radiator",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "E-field generator is near the cleaning fluid supply lines to the cleaning heads",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning fluid supply line passes through the eye of the Tesla coil",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Cleaning device includes a cleaning vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Front working cantilever arm is in front of the vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Front working cantilever arm is long",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Rear working cantilever arm is behind the driver's cab",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Rear working cantilever arm is shorter",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Rear working cantilever arm is at the rear of the vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Vehicle has a suspension locking device effective on at least one side",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Suspension locking device is a lockable torsional auxiliary frame",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Suspension locking device is a lockable vertical axle support on the unsteered axle",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Vehicle includes a camera directed at the rear cleaning head",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Vehicle includes a monitor in the driver's cab connected to the camera",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "216410c2ab067508"
+}

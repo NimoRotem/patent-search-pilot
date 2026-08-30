@@ -1,0 +1,227 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "f16b_ep3640485a1",
+ "subject_pub": "EP-3640485-A1",
+ "n_claims_source": 15,
+ "claims_source": "family_claims:US-11787125-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 33,
+  "by_kind": {
+   "independent_limitation": 12,
+   "combination": 2,
+   "dependent_limitation": 19
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "arranging a first component on a tool surface",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "arranging a second component, which comprises a cutout, on the first component",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "an adhesive is between the first component and the second component",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "placing an auxiliary body covering the cutout onto the second component",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "covering the second component, the auxiliary body and at least one closure region of the first component with a vacuum film",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the vacuum film directly contacts each of the second component, the auxiliary body, and the first component",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the at least one closure region surrounds the second component",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "evacuating a space surrounded by the first component and the vacuum film with a pressure of less than 1.0 bar",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "hardening the adhesive without an autoclave",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "removing the vacuum film once the adhesive has hardened",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the second component comprises a flange which protrudes perpendicularly to a body of the second component",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the auxiliary body is placed onto the flange",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a method for connecting two components comprising arranging a first component on a tool surface, arranging a second component with a cutout on the first component with adhesive between them, placing an auxiliary body covering the cutout ont",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "a system for connecting two components comprising a mold with a tool surface, an auxiliary body, a vacuum film, a vacuum source providing no more than 1.0 bar, and an adhesive, where the auxiliary body covers a cutout of a second component,",
+   "kind": "combination",
+   "source": "claim 10",
+   "weight": 0.9
+  },
+  {
+   "text": "heating a space between the first component and the second component where the adhesive is situated",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "introducing a reinforcing element between the first component and the second component",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the adhesive is trapped between the first component and the reinforcing element and between the reinforcing element and the second component",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the first component comprises a first cutout",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "the second component comprises a second cutout",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "the second component is placed onto the first component such that the first cutout and the second cutout are oriented in alignment with one another",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "clamping the auxiliary body on a mold by means of an element exerting a tensile force or a compressive force",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "clamping includes screwing-in a bolt through an opening arranged in the auxiliary body",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "clamping includes pressing the auxiliary body onto the second component with an actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "the actuator is coupled with a vacuum source used for evacuation",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "the flange runs around the cutout at least in regions",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the auxiliary body comprises a slidable coating",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "a surface of the mold comprises a threaded bore",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the auxiliary body comprises an opening which aligns with the threaded bore",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the system additionally comprises a bolt with a thread corresponding to the threaded bore for clamping the auxiliary body to the mold",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the system additionally comprises an actuator for pressing the auxiliary body onto the second component",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the system additionally comprises a force regulating unit coupled with the actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "the force regulating unit identifies a force acting on the auxiliary body by the actuator and adjusts it to a predetermined value",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "the auxiliary body includes a groove adapted to a form of the flange",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "dcc8a3df8a512fcb"
+}

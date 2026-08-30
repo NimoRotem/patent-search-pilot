@@ -1,0 +1,185 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b66c_ep2133469a3",
+ "subject_pub": "EP-2133469-A3",
+ "n_claims_source": 6,
+ "claims_source": "family_claims:US-8006624-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 26,
+  "by_kind": {
+   "independent_limitation": 15,
+   "combination": 1,
+   "dependent_limitation": 10
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A gantry includes a main body",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Two side branches extend downward from the main body",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Side branches are supported on a pair of side caterpillar tracks",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A pair of adjustable clamps, each with a pair of clamp arms",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Clamp arms are configured to hold a rail",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Two first hydraulic cylinders interconnect clamp arms to close onto a rail web",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Two vertical support rods extend vertically through the main body",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Lower end of each rod supports one adjustable clamp",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Upper end of each rod includes a screw threaded portion",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Upper end of each rod includes a nut",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Upper end of each rod includes a counter locking nut",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Screw threaded portion, nut, and counter locking nut form a mechanism for vertical adjustment of the clamp",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Two second hydraulic cylinders have one end attached to a vertical support rod",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Other end of second hydraulic cylinders attached to one of the side branches",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Second hydraulic cylinders laterally adjust the vertical support rod and adjustable clamp",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A machine for unloading and positioning a plurality of rails on a plurality of crossties in railway tracks, comprising: a gantry including a main body; two side branches extending downwardly from the main body and supported on a pair of sid",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Each adjustable clamp is connected to a vertical support rod through a deformable parallelogram",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Deformable parallelogram is actuated by an elevation hydraulic cylinder",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Deformable parallelogram maintains the adjustable clamp in a horizontal arrangement regardless of height",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Side branches are located outside of the crossties",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Caterpillar tracks are configured to move on a track ballast",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Protective plates are provided to cover the caterpillar tracks",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Second hydraulic cylinders adjust clamps to different track gauges",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Adjustable clamps unload rails from a rail transport vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Adjustable clamps deposit rails on a railway track in correctly aligned positions",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Rail transport vehicle is a rail carrier train",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "3d1c5c9b659853b9"
+}

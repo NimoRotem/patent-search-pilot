@@ -5,6 +5,7 @@ enrich_display (drawings, PDF, rich biblio, legal status) + the rationale cache.
 local: drawing images are the files already downloaded under data/figures/<pub>/.
 """
 from __future__ import annotations
+from config import EMBED_DIM  # noqa: E402
 import json
 from datetime import date
 from pathlib import Path
@@ -284,7 +285,7 @@ def assemble(slug, selected_pubs, top_n=25, include_text=False, include_drawings
     selected += [p for p in want if p not in set(selected)]    # append the rest (still exported)
 
     query = report.get("query", "")
-    qvec = embed.embed_query(query[:8000], 768) if query else None
+    qvec = embed.embed_query(query[:8000], EMBED_DIM) if query else None
 
     conn = db.connect(); conn.autocommit = True
     cur = conn.cursor()

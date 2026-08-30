@@ -290,6 +290,37 @@ def _one_sample(payload, ids):
         return out.get("limitations") or []
 
 
+def _construed_reading(lim, readings):
+    """The reading that searches what a limitation MEANS, not what it says. -> reading | None
+
+    Built from `lim["construction"]` (see claim_construction), which is deterministic and free: the
+    structural relationship a numeric range encodes, plus the applicant's own "i.e." definition of
+    the same requirement. The PLACE facet is borrowed from the model's own best reading, because
+    the construction changes what is being looked for and not where.
+
+    Records `searched` on the construction itself, so the report can tell a limitation whose
+    concept was searched and not found from one whose concept was never searched. That distinction
+    is what makes "no reference discloses this" worth printing.
+    """
+    c = lim.get("construction") if isinstance(lim, dict) else None
+    if not isinstance(c, dict) or c.get("words_alone") or not c.get("terms"):
+        return None
+    thing = _terms(c["terms"])
+    if not thing:
+        return None
+    place = next((r.get("place") for r in readings if r.get("place")), [])
+    if not place:
+        #  Nothing to put the thing IN. Fall back to the limitation's own nouns, which is weaker
+        #  than the model's reading and better than a disjunction with no subject.
+        place = _terms(re.findall(r"[a-z][a-z-]{3,}", str(lim.get("text") or "").lower()))
+    if not place:
+        return None
+    apparatus = next((r.get("apparatus") for r in readings if r.get("apparatus")), [])
+    c["searched"] = True
+    c["terms_used"] = thing
+    return {"thing": thing, "place": place, "apparatus": apparatus, "construed": True}
+
+
 def facets_for(limitations, brief="", title="", samples=None, log=print):
     """{lim id: {"readings", "cpc", "why", …}} — the conjunctions to search for.
 
@@ -355,10 +386,20 @@ def facets_for(limitations, brief="", title="", samples=None, log=print):
                         and c4 not in cpc):
                     cpc.append(c4)
             why = why or " ".join(str(raw.get("why") or "").split())[:200]
+        #  THE CONSTRUED READING, before the cut. A limitation that encodes a geometry or that the
+        #  applicant defined in his own words is searched for BOTH, because the art writes the
+        #  concept and the claim writes the number. Counsel, 2026-08-26: "the contact surface angle
+        #  ranges in size from 170° to 190°" was reported disclosed by 0 of 232 references, and
+        #  170 to 190 degrees is "parallel", which GB 874,600 claims outright and which this very
+        #  search had already selected. It goes FIRST, so `MAX_READINGS_TOTAL` can never cut it: a
+        #  reading the model would have written anyway is a cheaper thing to lose.
+        construed = _construed_reading(lim, readings)
+        if construed:
+            readings = [construed] + readings
+        readings = readings[:MAX_READINGS_TOTAL]
         if not readings:
             log(f"[limq] {lim['id']}: no subject facet returned, skipped")
             continue
-        readings = readings[:MAX_READINGS_TOTAL]
         plan[lim["id"]] = {
             #  `readings` is what build_sql uses; thing/place/apparatus mirror the first one so a
             #  caller that only wants the primary reading does not have to know about the rest.
@@ -366,6 +407,9 @@ def facets_for(limitations, brief="", title="", samples=None, log=print):
             "thing": readings[0]["thing"], "place": readings[0]["place"],
             "apparatus": readings[0]["apparatus"], "cpc": cpc[:8],
             "why": why,
+            #  Provenance for the zero-coverage gate: what this limitation was construed to mean,
+            #  and whether that construction was actually put into the portfolio.
+            "construction": (lim.get("construction") or {}) if isinstance(lim, dict) else {},
             "text": str(lim.get("text") or "")[:400],
             "claim_label": lim.get("claim_label") or "",
         }

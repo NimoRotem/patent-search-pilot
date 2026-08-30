@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ project.title }} | Rotem Patents draft{% endblock %}
+{% block title %}{{ project.title }} | IPtorch draft{% endblock %}
 {% block body %}
 <div class="wrap draftpage" data-draft-id="{{ project.id }}" data-draft-status="{{ project.status }}">
   <div class="drafthead">
@@ -136,19 +136,14 @@
 
       {#  PATENT FIGURES.
 
-          The specification already says what each drawing shows and numbers every part; those
-          two facts are what the model is given, so the numerals on the figure are the draft's
-          own rather than invented. Every generation is kept as a version because the workflow
-          that actually works is generate -> look -> adjust -> compare, and a drawing that is
-          replaced the moment the next one arrives cannot be compared.
-
-          These are drafting aids. 37 CFR 1.84 governs sheet size, margins, line weight, shading
-          and lettering for a FORMAL drawing and nothing here checks any of it.  #}
+          The specification says what each drawing shows and numbers every part. The geometry is
+          generated from that source, then the filing overlay and sheet numbering are applied
+          deterministically. Only versions that pass the pixel gates can enter an export. #}
       <section class="panel draftpanel" id="figures">
         <h2>Patent figures</h2>
-        <p class="small muted">Generated from this draft's own drawing descriptions and reference
-          numerals. Drafting aids only, not formal drawings under 37&nbsp;CFR&nbsp;1.84. Check
-          every numeral against the specification before filing.</p>
+        <p class="small muted">Generated from this draft's drawing descriptions and reference
+          numerals. Filing export requires exact OCR, semantic geometry, pixel grounding, leader
+          placement, independent endpoint, and consecutive sheet-number checks.</p>
 
         {% if figure_suggestions %}
         <div class="figsuggest">

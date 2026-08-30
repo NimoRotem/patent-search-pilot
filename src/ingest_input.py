@@ -50,7 +50,8 @@ THUMB_W = 240                     # px — keep the preview payload light
 MAX_QUERY_CHUNKS = 48             # cap on embedded query chunks (see build_query_chunks docstring)
 IMG_MAX = 6                       # full-res figure images exposed (base64) to the image channel
 MIN_PARA_CHARS = 80               # a body paragraph shorter than this is header/footer noise
-EMBED_DIM = 768                   # MUST match the corpus embedding dim (config.EMBED_DIM / embed.py)
+from config import EMBED_DIM   # the corpus width is declared ONCE, in config, and
+                              # a second copy here is a second thing to forget.py)
 
 
 # ---------------------------------------------------------------------------
@@ -495,9 +496,39 @@ def _build(text: str, figures: list[bytes], source: str, label: str, notes: list
     #  merged into one description, not as narration appended after it. The raw narration is kept
     #  as `figure_descriptions` for audit, and the images themselves still go to the
     #  image-similarity channel untouched.
-    brief = _fuse_figures(disclosure, vision, title) if vision else disclosure
-    if vision:
+    #  VISION DOES NOT WRITE THE BRIEF WHEN THE DOCUMENT CAN SPEAK FOR ITSELF.
+    #
+    #  MEASURED 2026-08-27 on US 2026/0070232 A1, six independent extractions of the same link:
+    #  six of six briefs asserted structure the publication does not contain. Fabricated across
+    #  runs: gripper arm, jaw, cam, cam surface, cam follower, spring, pivot, chamfer, pole piece,
+    #  processor, memory, control unit, controller, power source. In every run the invention was
+    #  already present in the VISION output, so the figure reader is the source and the fuser only
+    #  launders it into prose. Concretely, numerals 26 and 28 are pole shoes and 68 is a
+    #  manipulator interface; vision turned them into "a first gripper arm 26 and a second gripper
+    #  arm 28, pivotally connected", driven by "a cam surface, a cam follower, and a spring".
+    #
+    #  The brief is the ONLY text the whole retrieval cascade searches with, so that fiction is
+    #  not cosmetic: it sent one run into G06F (digital computers) and G05B (programmable
+    #  controllers) looking for a magnetic gripper.
+    #
+    #  So: when the document has its own claims or a real written summary, the brief comes from
+    #  the document's words. When it has NEITHER, which is a drawings-only scan with no text
+    #  layer, the drawings are the only description that exists and vision still writes the brief,
+    #  because the alternative there is searching for nothing at all. The narration is kept as
+    #  `figure_descriptions` either way, the images still go to the image-similarity channel
+    #  untouched, and the figure viewer is unaffected.
+    have_own_words = bool((struct or {}).get("claims")) or len(disclosure or "") >= 400
+    vision_mode = os.environ.get("BRIEF_VISION", "auto").strip().lower()
+    use_vision = bool(vision) and (vision_mode == "on" or
+                                   (vision_mode == "auto" and not have_own_words))
+    brief = _fuse_figures(disclosure, vision, title) if use_vision else disclosure
+    if vision and use_vision:
         notes.append("figures read and their structure merged into the description")
+    elif vision:
+        notes.append("figures read for the viewer and the image channel, and deliberately kept "
+                     "OUT of the search brief: the document has its own claims, and a figure "
+                     "reading that names a part wrongly becomes a search for a part that does "
+                     "not exist")
     brief = (brief or "").strip()
 
     # Nothing usable ONLY if there is neither query text NOR any figure to image-search.
@@ -593,7 +624,22 @@ def extract_upload(data: bytes, filename: str, on_stage=None) -> dict:
     """File upload / drag-drop -> the search + review material, or {ok:False, error, status}.
 
     ``on_stage(key, message)`` reports each phase so the caller can drive a progress bar; a
-    64-page grant takes the better part of a minute and most of it is model time."""
+    64-page grant takes the better part of a minute and most of it is model time.
+
+    CACHED ON THE BYTES, for the same reason `extract_link` is cached on the publication number:
+    re-uploading the file you uploaded yesterday is the same document and the same answer.
+    """
+    import ingest_cache
+    _ckey = ingest_cache.key_for_bytes(data, filename)
+    _hit = ingest_cache.get(_ckey)
+    if _hit:
+        if on_stage:
+            try:
+                on_stage("read", "this file has been read before; using the stored breakdown")
+            except Exception:                                             # noqa: BLE001
+                pass
+        print("[ingest_cache] hit upload %s (%s)" % (filename, _ckey), flush=True)
+        return _hit
 
     def stage(key, msg):
         if on_stage:
@@ -645,8 +691,10 @@ def extract_upload(data: bytes, filename: str, on_stage=None) -> dict:
     if analysis.get("n_claims"):
         notes.append("%d claim(s) extracted, %d independent"
                      % (analysis["n_claims"], analysis.get("n_independent", 0)))
-    return _build(text=text, figures=figures, source="upload", label=label, notes=notes,
-                  analysis=analysis, on_stage=on_stage)
+    #  upload cache write. Same rule as the link path: only a good answer is stored.
+    return ingest_cache.put(
+        _ckey, _build(text=text, figures=figures, source="upload", label=label, notes=notes,
+                      analysis=analysis, on_stage=on_stage))
 
 
 def rebuild_from_edits(abstract: str = "", claims=None, brief: str = "", title: str = "",
@@ -684,31 +732,118 @@ def rebuild_from_edits(abstract: str = "", claims=None, brief: str = "", title: 
             "n_independent": sum(1 for c in records if c["independent"])}
 
 
+#  LOCAL FIRST. The corpus holds 353,426 publications with their claims and description, and going
+#  to Google Patents for one of them is a network round trip to fetch text we already have. On a
+#  measured link extraction the lookup and the drawings fetch were most of the ~25 seconds; the
+#  local read is a few milliseconds.
+#
+#  IT IS GATED ON CLAIM QUALITY AND THAT GATE IS NOT OPTIONAL. Roughly one publication in seven
+#  (50,549 of 353,426) has its whole claim set stored as ONE row with the claim numbering stripped,
+#  and neither `patent_text.split_claims` nor `patent_doc.split_claims` can recover numbers that
+#  are not in the text. Measured on US20260070232A1: the corpus row splits to 1 claim where the
+#  network path gives 16. Taking that locally would not be a faster search, it would be a search
+#  whose claim ledger silently collapsed from 16 limitations to 1. So: local when the corpus has
+#  properly separated claims, network otherwise, and the fallback is invisible to the caller.
+LOCAL_FIRST = os.environ.get("EXTRACT_LOCAL_FIRST", "1") not in ("0", "false", "no")
+
+
+def local_document(pub: str) -> dict | None:
+    """This publication out of our own corpus, or None to fall through to the network path."""
+    if not LOCAL_FIRST or not pub:
+        return None
+    try:
+        import db
+        import pubnorm
+        keys = sorted({re.sub(r"[^A-Z0-9]", "", v.upper()) for v in pubnorm.variants(pub)} |
+                      {re.sub(r"[^A-Z0-9]", "", pub.upper())})
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT id, publication_number, title, abstract FROM publications "
+                " WHERE replace(upper(publication_number),'-','') = ANY(%s) "
+                " ORDER BY length(publication_number) DESC LIMIT 1", (keys,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            cur.execute("SELECT claim_no, text FROM claims WHERE publication_id=%s "
+                        " ORDER BY claim_no", (row["id"],))
+            claims = [r for r in cur.fetchall() if (r["text"] or "").strip()]
+            #  THE GATE. One row means the numbering was lost at ingest, not that the patent has
+            #  one claim: a single claim would not be 4,500 characters. Fall through.
+            if len(claims) < 2:
+                return None
+            cur.execute("SELECT text FROM chunks WHERE publication_id=%s AND kind='paragraph' "
+                        " ORDER BY id", (row["id"],))
+            paras = [r["text"] for r in cur.fetchall() if (r["text"] or "").strip()]
+            cur.execute("SELECT text FROM chunks WHERE publication_id=%s AND kind='figure_caption'"
+                        " ORDER BY id", (row["id"],))
+            caps = [r["text"] for r in cur.fetchall() if (r["text"] or "").strip()]
+    except Exception:
+        traceback.print_exc()
+        return None
+    if not (row["abstract"] or paras):
+        return None
+    return {"pub": row["publication_number"], "title": row["title"] or "",
+            "abstract": row["abstract"] or "",
+            "claims": [str(c["text"]) for c in claims],
+            "paragraphs": paras, "figure_captions": caps}
+
+
 def extract_link(raw: str, on_stage=None) -> dict:
     """Google Patents / Espacenet URL or bare pub number -> search object built from the patent's
     text + its drawings (with multi-source OPS/Espacenet recovery). The abstract + each claim are
-    chunked for full-text query-by-example, in addition to the summary brief."""
+    chunked for full-text query-by-example, in addition to the summary brief.
+
+    CACHED ON THE PUBLICATION NUMBER. What this returns is a pure function of the document, and it
+    is the whole of the wait before a search starts: fetch, segment, split the claims, condense a
+    brief, embed every chunk. The same patent was paying for all of that on every search over it.
+    """
     pub = parse_patent_ref(raw)
     if not pub:
         return {"ok": False,
                 "error": "could not find a valid patent number in that input", "status": 400}
+    import ingest_cache
+    _ckey = ingest_cache.key_for_pub(pub)
+    _hit = ingest_cache.get(_ckey)
+    if _hit:
+        if on_stage:
+            try:
+                on_stage("read", "%s has been read before; using the stored breakdown" % pub)
+            except Exception:                                             # noqa: BLE001
+                pass
+        print("[ingest_cache] hit %s (%s)" % (pub, _ckey), flush=True)
+        return _hit
     import enrich_display
     if on_stage:
         try:
             on_stage("read", f"looking up publication {pub}")
         except Exception:
             pass
-    try:
-        disp = enrich_display.enrich_for_display(pub) or {}
-    except Exception:
-        disp = {}
-    title = disp.get("title") or ""
-    abstract = disp.get("abstract") or ""
-    claims = disp.get("claims")
-    claims_list = [str(c) for c in claims] if isinstance(claims, list) else (
-        [str(claims)] if claims else [])
+    loc = local_document(pub)
+    disp = {}
+    if loc:
+        if on_stage:
+            try:
+                on_stage("read", "found %s in our own corpus" % pub)
+            except Exception:
+                pass
+    else:
+        try:
+            disp = enrich_display.enrich_for_display(pub) or {}
+        except Exception:
+            disp = {}
+    title = (loc or {}).get("title") or disp.get("title") or ""
+    abstract = (loc or {}).get("abstract") or disp.get("abstract") or ""
+    if loc:
+        claims_list = list(loc["claims"])
+    else:
+        claims = disp.get("claims")
+        claims_list = [str(c) for c in claims] if isinstance(claims, list) else (
+            [str(claims)] if claims else [])
     claims_txt = "\n".join(claims_list)
-    text = "\n\n".join(x for x in (title, abstract, claims_txt) if x).strip()
+    #  The description goes into `text` too when it came from the corpus: it is the part the
+    #  network path never had, and the brief is written from `text`.
+    body = "\n\n".join((loc or {}).get("paragraphs") or [])
+    text = "\n\n".join(x for x in (title, abstract, claims_txt, body) if x).strip()
 
     figblobs: list[bytes] = []
     figdir = enrich_display.FIGDIR / pub
@@ -722,9 +857,23 @@ def extract_link(raw: str, on_stage=None) -> dict:
                 figblobs.append(p.read_bytes())
         except Exception:
             pass
+    #  ON THE LOCAL PATH THERE IS NO `disp` TO LIST THE IMAGES, so read the drawing cache off disk.
+    #  A publication enriched by any earlier search keeps its drawings, and the image-similarity
+    #  channel keeps working, without this path making the network call it exists to avoid.
+    if not figblobs:
+        try:
+            for f in sorted(figdir.glob("*.png"))[:IMG_MAX]:
+                figblobs.append(f.read_bytes())
+        except Exception:
+            pass
 
     ds = disp.get("drawings_source")
     notes = [f"resolved publication {pub}"]
+    if loc:
+        notes.append("read from our own corpus, not fetched: %d claims, %d description "
+                     "paragraph(s)%s" % (len(claims_list), len((loc or {}).get("paragraphs") or []),
+                                         ", %d cached drawing(s)" % len(figblobs) if figblobs
+                                         else ", no cached drawings"))
     if ds:
         notes.append(f"drawings source: {ds}")
 
@@ -809,10 +958,13 @@ def extract_link(raw: str, on_stage=None) -> dict:
         analysis["keywords"] = brief.get("keywords") or []
         if brief.get("title"):
             analysis["title"] = analysis["title"] or brief["title"]
-    struct = {"title": title, "abstract": abstract, "claims": claims_list, "figure_captions": []}
+    struct = {"title": title, "abstract": abstract, "claims": claims_list,
+              "figure_captions": (loc or {}).get("figure_captions") or []}
     res = _build(text=text, figures=figblobs, source="link", label=pub, notes=notes,
                  pub=pub, drawings_source=ds, struct=struct, analysis=analysis, on_stage=on_stage)
     if res.get("ok"):
         res["google_patents"] = disp.get("google_patents")
         res["espacenet"] = disp.get("espacenet")
-    return res
+    #  Store only a good answer: a failed fetch cached for thirty days is a patent that can never
+    #  be searched again until somebody notices.
+    return ingest_cache.put(_ckey, res)

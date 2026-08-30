@@ -1,0 +1,606 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "suction_chuck",
+ "subject_pub": "WO-2012144120-A1",
+ "n_claims_source": 23,
+ "claims_source": "corpus_claims",
+ "description_chars": 17682,
+ "description_source": "corpus_paragraphs",
+ "summary": {
+  "n": 96,
+  "by_kind": {
+   "independent_limitation": 13,
+   "combination": 1,
+   "dependent_limitation": 33,
+   "potential_claim": 49
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A suction chuck for attracting and holding a thin flat workpiece in a non-contact state.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A flat plate-shaped body with a compressed gas flow path formed inside.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A facing surface on the side of the body facing the workpiece.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The facing surface has multiple recesses as suction elements that generate negative pressure by ejecting compressed gas.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The facing surface is configured to completely encompass the shape of the workpiece when viewed perpendicularly.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The facing surface is similar in shape to the workpiece or offset outward from the workpiece shape.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "All recesses are arranged to be encompassed within the shape of the workpiece when viewed perpendicularly.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A workpiece transfer device comprising the suction chuck and a compressed gas source.",
+   "kind": "independent_limitation",
+   "source": "claim 19",
+   "weight": 1.0
+  },
+  {
+   "text": "The amount of compressed gas ejected from recesses in the center of the facing surface is greater than from recesses at the ends.",
+   "kind": "independent_limitation",
+   "source": "claim 19",
+   "weight": 1.0
+  },
+  {
+   "text": "The device separates the top workpiece from a stacked bundle and holds it with the suction chuck.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "Compressed gas is supplied to recesses at the ends of the facing surface first.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "Then, compressed gas is supplied to recesses in the center of the facing surface.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "This sequence holds the top workpiece of the bundle.",
+   "kind": "independent_limitation",
+   "source": "claim 20",
+   "weight": 1.0
+  },
+  {
+   "text": "A suction chuck for holding a thin flat workpiece, comprising a flat body with internal compressed gas flow paths, and a facing surface with multiple recesses for generating negative pressure, where the facing surface encompasses the workpi",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "The facing surface and workpiece shape are right-angled quadrilaterals when viewed perpendicularly.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Exhaust holes are opened in the facing surface around the recesses to exhaust compressed gas.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "All exhaust holes are arranged to be encompassed within the workpiece shape when viewed perpendicularly.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Multiple recesses are arranged in alignment parallel to the sides of the facing surface when viewed perpendicularly.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The recesses are cylindrical.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The body includes ejection flow paths that eject compressed gas along the inner wall of the recesses.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The ejection flow paths are formed parallel to the facing surface.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Multiple ejection flow paths are formed for one recess.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The body is formed by joining multiple plates in the thickness direction.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The plates include a first plate with the facing surface and a second plate connected to a compressed gas source.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The first plate has opening holes forming at least part of the recesses, opening to the facing surface.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The ejection flow paths are located between the facing surface and the second plate.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The second plate has a connection port for the compressed gas source on the side opposite the first plate.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The second plate has supply grooves on the first plate-facing side, forming supply flow paths to guide compressed gas to the ejection flow paths.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "An intermediate plate is placed between the first and second plates.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The intermediate plate has slits forming the ejection flow paths, penetrating in the thickness direction.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "A third plate is placed between the first and second plates.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The third plate has connection holes to connect the ejection flow paths and the supply grooves.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "One side of the third plate in the thickness direction forms part of the inner wall of the ejection flow path.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The other side of the third plate in the thickness direction closes the open side of the supply groove, forming the supply flow path.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one supply flow path is connected to multiple ejection flow paths.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Multiple supply flow paths are provided.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Combinations of connection ports and ejection flow paths connected by each supply flow path are independent.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "All multiple plates are made of metal.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The body is formed by diffusion bonding all stacked plates.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The multiple plates are made of stainless steel, aluminum alloy, or titanium alloy.",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "All multiple plates are made of the same metal material.",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one of the recesses or ejection flow paths is formed by etching.",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one of the recesses or ejection flow paths is formed by machining.",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one of the connection ports or supply grooves is formed by machining.",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "A blowing device is provided to blow compressed gas towards the side surface of the workpiece bundle.",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "A parallel mechanism is provided to move the workpiece held by the suction chuck.",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "A SCARA arm is provided to move the workpiece held by the suction chuck.",
+   "kind": "dependent_limitation",
+   "source": "claim 23",
+   "weight": 0.7
+  },
+  {
+   "text": "The suction chuck is a Bernoulli chuck.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The workpiece is a solar cell wafer, fuel cell, secondary battery electrode, or separator.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The suction chuck is lightweight.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The suction chuck prevents workpiece damage from contact with the chuck edge during suction or release.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The facing surface is a rectangular flat surface.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The facing surface is a square flat surface.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The body is a plate laminate.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The plate laminate comprises a surface plate, a nozzle plate, a connection plate, and a distribution plate.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The surface plate has circular holes for ejecting swirling flow.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The nozzle plate has circular holes, elongated linear slits, and circular inflow holes.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Two slits and inflow holes are provided for each circular hole in the nozzle plate.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The connection plate has small circular connection holes.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The distribution plate has multiple circular connection ports and distribution grooves.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The compressed gas source can be a liquefied nitrogen tank.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The recesses are formed by the circular holes of the surface plate and nozzle plate, closed by the connection plate.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The distribution flow path is formed by the distribution groove closed by the connection plate.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The nozzle flow path is formed by the slit in the nozzle plate, closed by the surface plate and connection plate.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The nozzle flow path is parallel to the facing surface.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The exhaust holes allow air ejected from the recesses to escape upwards.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The plates are made of stainless steel.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The recesses are arranged in a 2x4 grid on the facing surface.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The exhaust holes are located between adjacent recesses in the vertical direction.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Each recess has two nozzle flow paths connected tangentially to its inner wall.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The two nozzle flow paths for one recess are 180 degrees out of phase.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Adjacent recesses have nozzle flow paths that create opposite swirling directions.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The suction chuck has 8 distribution flow paths, each corresponding to a 2x4 divided area of the facing surface.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Each distribution flow path connects one connection port and 8 recesses.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Compressed air is supplied to connection ports at one end of the facing surface first, then to central connection ports.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The timing of compressed air supply is controlled by electromagnetic valves.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The workpiece is held by peeling it up from the end.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Compressed air is supplied sequentially from one end recess, to central recesses, then to the other end recesses.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Compressed air is supplied sequentially from one corner recess to the other three corners.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Compressed air is supplied simultaneously to recesses at both ends, then to central recesses.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Multiple guide members are fixed to the edge of the body, spaced apart.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "Two guide members are placed on each side of the rectangular body.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The guide members are perpendicular to the flat body.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The lower ends of the guide members protrude below the facing surface.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The guide members regulate relative movement of the workpiece parallel to the facing surface.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The workpiece supply device includes a support base, a lifting stage, a linear actuator, and an air nozzle.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The lifting stage supports a cassette containing stacked workpieces.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The air nozzle has a hollow cylindrical body with multiple blow-out holes.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The blow-out holes are arranged in a line at equal intervals along the cylinder axis.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The air nozzle body is positioned at approximately the same height as the cassette.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The air nozzle body is supported to be rotatable around its axis.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The air nozzle blows air to the side of the workpiece bundle.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The air blowing from the air nozzle is used in conjunction with time-lagged suction.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The suction chuck is mounted on a parallel mechanism robot.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The suction chuck is mounted on a SCARA arm robot.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  },
+  {
+   "text": "The transfer robot can randomly access workpieces in a cassette by inserting the SCARA arm.",
+   "kind": "potential_claim",
+   "source": "DESCRIPTION",
+   "weight": 0.55
+  }
+ ],
+ "content_hash": "4ba3e61cbca984ac"
+}

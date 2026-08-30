@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}About | Rotem Patents{% endblock %}
+{% block body %}
+{#  PUBLIC. The scope panel is the same _scope.html include the RESULTS page and every export use,
+    so this page and the disclosure a user reads at the point of decision can never drift apart.
+    The system description below is deliberately specific: a reader should be able to tell what
+    the tool is actually doing without being sold to.  #}
+<div class="hero">
+  <div class="wrap">
+    <h1>About</h1>
+    <p class="lede">A prior-art search engine that reads the references it returns. Built on our
+      own corpus of
+      {% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }} publications{% else %}patent publications{% endif %}
+      in Postgres with pgvector, an agentic retrieval cascade, and a full-text reading stage that
+      grounds every statement it makes in a verbatim quote.</p>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <section class="panel">
+    <h2>The system, in one page</h2>
+    <div class="deftable">
+      <div><b>Database</b></div>
+      <div>PostgreSQL 17 with the pgvector extension, on a dedicated 8-core, 64&nbsp;GB machine.
+        Not a vector database product: an ordinary relational database that also holds embeddings,
+        so a single query can combine semantic similarity, full-text search, CPC classification,
+        citation edges and legal dates. One HNSW index over the passage embeddings.</div>
+
+      <div><b>What is indexed</b></div>
+      <div>{% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}Millions of{% endif %}
+        publications{% if corpus.chunks %}, split into {{ '{:.1f} million'.format(corpus.chunks / 1000000) }} separately
+        embedded passages{% endif %}: each claim on its own, each claim again with its parent folded in,
+        each description paragraph, each figure caption, the abstract, and the whole document.
+        Chunking per claim is what lets a result cite "claim 7" rather than "this document looks
+        similar". Coverage by office and by text depth is in the scope panel below.</div>
+
+      <div><b>Embeddings</b></div>
+      <div>Google Vertex AI <code>gemini-embedding-001</code> at 768 dimensions. Benchmarked
+        against 1024 and 3072 on the same evaluation set: identical scores, so the larger vectors
+        buy nothing here and are not paid for.</div>
+
+      <div><b>Where the data comes from</b></div>
+      <div>Bulk ingest from Google's <code>patents-public-data</code> on BigQuery, refreshed
+        weekly{% if corpus.max_date_str %}; the corpus currently runs to {{ corpus.max_date_str }}{% endif %}.
+        Text and drawings that Google lacks for DE, EP and WO documents are recovered from the
+        European Patent Office's OPS service.</div>
+
+      <div><b>External sources</b></div>
+      <div>Every search also fans out live to SerpApi Google Patents, BigQuery, PQAI, EPO OPS,
+        USPTO ODP, Lens.org, OpenAlex and IP Australia. Each reports its own state on the report
+        page, and a source that fails or times out degrades the search rather than breaking it.
+        External sources supply breadth and display detail; ranking is always done here, because
+        ranking needs the full text and most APIs return only bibliography.</div>
+
+      <div><b>Reading and ranking</b></div>
+      <div>Retrieval produces a few thousand candidate families. Roughly 600 are screened by a
+        language model, the strongest ~180 are read in full, and the ranking is computed from what
+        each was measured to disclose: a verbatim quote per feature, located by code, refuted by
+        an independent pass, and weighted by how rare that disclosure is across the references
+        actually read. <a href="{{ request.script_root }}/how-it-works">The step-by-step version</a>.</div>
+
+      <div><b>Language models</b></div>
+      <div>Gemini 2.5 Flash on Vertex AI for extraction, query expansion, screening, reading and
+        refutation. A <code>bge-reranker-v2-m3</code> cross-encoder orders the shortlist. Dates,
+        filtering, deduplication, quote grounding and quote location are deterministic code, never
+        a model.</div>
+    </div>
+  </section>
+
+  {% with variant='search' %}{% include "_scope.html" %}{% endwith %}
+
+  <section class="panel" aria-labelledby="honesty-h" style="margin-top:16px">
+    <h2 id="honesty-h">What this is not</h2>
+    <p>A prior-art retrieval and drafting aid. Not a search opinion, not a freedom-to-operate
+      clearance, not legal advice. It does not state a conclusion about novelty, inventive step,
+      validity or infringement, and the report says so on its face and in every export.</p>
+    <p>A filled cell in the element by reference chart means a passage of that reference was
+      quoted verbatim, located, and survived a pass asked to refute it. It does not mean the
+      element is anticipated. That judgement is the reader's.</p>
+  </section>
+
+  <div class="ctarow" style="margin:18px 0 40px">
+    {% if current_user %}
+    <a class="btn" href="{{ request.script_root }}/">Start a search</a>
+    {% else %}
+    <a class="btn" href="{{ request.script_root }}/register">Create a free account</a>
+    <a class="btn ghost" href="{{ request.script_root }}/how-it-works">How it works</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

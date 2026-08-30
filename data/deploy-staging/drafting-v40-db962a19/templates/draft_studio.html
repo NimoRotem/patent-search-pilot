@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ project.title }} | Rotem Patents drafting{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='draft_studio.css', v=asset_version) }}">
+{% endblock %}
+{% block body %}
+<div class="studio" data-project="{{ project.id }}">
+  <header class="studiohead">
+    <div class="studiotitle">
+      <div class="draftcrumb"><a href="{{ request.script_root }}/drafts">Drafts</a></div>
+      <h1 id="stTitle">{{ project.title }}</h1>
+      <div class="studiometa">
+        <span class="statuspill status-{{ project.status }}" id="stStatus">{{ project.status }}</span>
+        {#  No version number over the application. Every revision is the one draft that would
+            be filed today; the numbering is bookkeeping and belongs in History. #}
+        <span id="stVersion">{% if not project.latest_version_no %}no draft yet{% endif %}</span>
+        <span id="stVerdict"></span>
+        {% if project.search_slug %}
+        <a href="{{ request.script_root }}/report/{{ project.search_slug }}">prior-art search ↗</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="studioactions">
+      {# The tier the drafting agent runs on, per project. A wording change to one section does not
+         need the model a first draft needs, and this is where that is chosen. #}
+      <label class="modelpick" for="stModel">
+        <span class="modelpicklabel">Model</span>
+        <select id="stModel" aria-label="Model the drafting agent runs on">
+          <option value="">Server default</option>
+          {% for model in state.agent.models or [] %}
+          <option value="{{ model.id }}" title="{{ model.detail }}"
+            {% if project.draft_model == model.id %}selected{% endif %}>{{ model.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <a class="btn ghost sm" id="stDownloadMd"
+         href="{{ request.script_root }}/drafts/{{ project.id }}/download/md">Markdown</a>
+      <a class="btn ghost sm" id="stDownloadDocx"
+         href="{{ request.script_root }}/drafts/{{ project.id }}/download/docx">Word</a>
+      <button class="btn sm" id="stFileBtn" type="button">Prepare to file</button>
+    </div>
+  </header>
+
+  {% if created %}
+  <div class="formsuccess" role="status">Project created. The drafting agent is writing the first
+    version now. It will publish only after the text and every drawing pass all checks.</div>
+  {% endif %}
+  {% if not state.agent.ok %}
+  <div class="formerror" role="alert"><b>The drafting agent is not available on this server.</b>
+    {{ state.agent.reason }}</div>
+  {% endif %}
+
+  <div class="studiobody">
+    <!-- ── conversation ───────────────────────────────────────────────────── -->
+    <section class="studiochat" aria-label="Conversation with the drafting agent">
+      <div class="chatfeed" id="chatFeed" aria-live="polite"></div>
+
+      <div class="chatstatus" id="chatStatus" hidden>
+        <span class="spin" aria-hidden="true"></span>
+        <span id="chatStage">working…</span>
+        {#  What it has cost so far, while it is costing it. #}
+        <span class="chatspend small muted" id="chatSpend" hidden></span>
+        <button type="button" class="btn ghost xs" id="chatCancel">Stop</button>
+      </div>
+
+      <form class="chatcompose" id="chatForm">
+        <div class="chatattached" id="chatAttached" hidden></div>
+        <textarea id="chatInput" rows="3" maxlength="20000"
+          placeholder="Ask for a change, add a fact, or ask a question. For example: “Claim 1 is too narrow; the seal does not have to be annular.”"></textarea>
+        <div class="chatbar">
+          <label class="chatattach" title="Attach prior art or other material">
+            <input type="file" id="chatFiles" accept=".pdf,.docx,.txt" multiple hidden>
+            <span>Attach</span>
+          </label>
+          <button type="button" class="chatmode" id="chatModeBtn" data-kind="revise"
+                  title="Switch between asking for a change and asking a question">Revise the draft</button>
+          <span class="grow"></span>
+          <span class="small muted" id="chatHint">Enter to send · Shift+Enter for a new line</span>
+          <button class="btn sm" type="submit" id="chatSend">Send</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ── the draft ──────────────────────────────────────────────────────── -->
+    <section class="studiodraft" aria-label="The draft">
+      <nav class="studiotabs" role="tablist">
+        <button class="stab on" data-pane="draft" role="tab">Draft</button>
+        <button class="stab" data-pane="review" role="tab">Review <span class="tabbadge" id="tabReview"></span></button>
+        <button class="stab" data-pane="figures" role="tab">Drawings <span class="tabbadge" id="tabFigures"></span></button>
+        <button class="stab" data-pane="sources" role="tab">Sources <span class="tabbadge" id="tabSources"></span></button>
+        <button class="stab" data-pane="history" role="tab">History</button>
+        <button class="stab" data-pane="filing" role="tab">Filing</button>
+      </nav>
+
+      <div class="spane on" id="pane-draft"><div class="draftbody" id="draftBody"></div></div>
+      <div class="spane" id="pane-review"><div id="reviewBody"></div></div>
+      <div class="spane" id="pane-figures"><div id="figuresBody"></div></div>
+      <div class="spane" id="pane-sources"><div id="sourcesBody"></div></div>
+      <div class="spane" id="pane-history"><div id="historyBody"></div></div>
+      <div class="spane" id="pane-filing"><div id="filingBody"></div></div>
+    </section>
+  </div>
+</div>
+
+<script id="studioState" type="application/json">{{ payload|tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='draft_studio.js', v=asset_version) }}"></script>
+{% endblock %}
