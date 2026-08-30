@@ -768,6 +768,11 @@ def _figure_checks(sections: Mapping[str, str],
     for index, figure in enumerate(figures, 1):
         caption = str(figure.get("caption") or "")
         label = str(figure.get("label") or f"FIG. {index}")
+        if not caption.strip():
+            brief_issues.append(
+                f"{label}: empty drawing brief. Describe the complete visible geometry, each "
+                "process or decision shape, every required relationship and route, and the "
+                "target feature for every listed reference numeral before rendering.")
         verbal_labels = _verbal_drawing_labels(caption)
         if verbal_labels:
             brief_issues.append(
