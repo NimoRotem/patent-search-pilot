@@ -172,6 +172,14 @@ def test_a_numeral_used_but_never_defined_is_caught():
     assert any(item.startswith("22") for item in check["items"])
 
 
+def test_first_use_numeral_check_ignores_figure_labels():
+    check = draft_qa._first_use_introduces(
+        "FIG. 10 is a detail view of the reset mechanism. A container lid 10 supports the body.",
+        {"10": "container lid"})
+
+    assert check["status"] == "pass"
+
+
 def test_two_numerals_for_the_same_part_are_caught():
     numerals = NUMERALS + [{"numeral": "24", "part": "sealing ring"}]
     broken = dict(GOOD)

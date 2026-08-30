@@ -8611,6 +8611,35 @@ def test_marked_endpoint_spec_does_not_treat_section_arrows_as_part_targets():
     assert parts["70"]["target"] == "On the visible second guide carriage geometry."
 
 
+def test_marked_endpoint_spec_keeps_owned_targets_that_clear_cutting_planes():
+    caption = (
+        "A first guide carriage 50 and a second guide carriage 70 rest on the rail 10. "
+        "A clamp knob 58 is on the first guide carriage 50 and a clamp knob 78 is on the "
+        "second guide carriage 70. The leader for numeral 50 targets the body of the first "
+        "guide carriage, well to the left of the vertical cutting-plane line A-A. The leader "
+        "for numeral 58 targets the first clamp knob, well to the left of the vertical "
+        "cutting-plane line A-A. The leader for numeral 70 targets the body of the second "
+        "guide carriage, well to the right of the vertical cutting-plane line B-B. The leader "
+        "for numeral 78 targets the second clamp knob, well to the right of the vertical "
+        "cutting-plane line B-B. A broken cutting-plane line A-A is drawn vertically through "
+        "the first guide carriage 50, with viewing arrows pointing to the right. A broken "
+        "cutting-plane line B-B is drawn vertically through the second guide carriage 70, "
+        "with viewing arrows pointing to the right."
+    )
+
+    specification = json.loads(draft_figures._marked_endpoint_specification(
+        "FIG. 2", caption,
+        ["10 = rail", "50 = first guide carriage",
+         "58 = clamp knob of the first guide carriage", "70 = second guide carriage",
+         "78 = clamp knob of the second guide carriage"]))
+    parts = {item["numeral"]: item for item in specification["parts"]}
+
+    assert "well to the left" in parts["50"]["target"]
+    assert "well to the left" in parts["58"]["target"]
+    assert "well to the right" in parts["70"]["target"]
+    assert "well to the right" in parts["78"]["target"]
+
+
 def test_marked_endpoint_spec_keeps_a_following_target_sentence_in_the_same_bullet():
     caption = (
         "- The vibration device 10 is the whole rectangular assembly. "
