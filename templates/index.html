@@ -14,10 +14,11 @@
     untouched. That is the point where somebody decides what a result means, and it stays there.  #}
 <div class="wrap searchpage">
   <header class="searchintro">
-    <p class="eyebrow">Prior art search</p>
-    <h1>Search prior art</h1>
+    {#  One heading. "Prior art search" over "Search prior art" was the same three words twice. #}
+    <h1>Prior art search</h1>
     <p>Describe the invention or begin with a patent, PDF, or document.</p>
   </header>
+{% from "_qhelp.html" import qhelp with context %}
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field">
@@ -31,13 +32,13 @@
           its own button) asked the user to classify their own input before the page would take it;
           the page can tell the difference perfectly well by itself.  #}
       <textarea name="query" id="qbox" rows="5" required autofocus
-        placeholder="Describe the invention in plain language, drop a patent PDF here, or paste a patent link or number.&#10;&#10;e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
+        placeholder="Describe the invention in plain language, drop a patent PDF here, or paste a patent link or number."></textarea>
       <p class="small muted qhint">
         <label for="fileinput" class="vh">Upload a patent PDF, text or Word document</label>
         <input type="file" id="fileinput" class="vh"
                accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-        Drop a PDF on the box above, <button type="button" class="linklike" id="browsebtn">browse to
-        upload</button>, or paste a patent link or number — PDF, .txt or .docx, up to 30&nbsp;MB.
+        Drop a file, <button type="button" class="linklike" id="browsebtn">browse</button>, or
+        paste a patent link. <span class="muted">PDF, txt, docx &middot; 30&nbsp;MB</span>
       </p>
     </div>
 
@@ -59,7 +60,9 @@
           <span id="exProgTime" class="muted">0s</span>
         </div>
       </div>
-      <div id="extractstatus" class="ex-status small" role="status" aria-live="polite"></div>
+      {#  `hidden` from the start: an empty status still drew its padding, border and background,
+          which is the box that sat under the form doing nothing. setStatus un-hides it. #}
+      <div id="extractstatus" class="ex-status small" role="status" aria-live="polite" hidden></div>
 
       {#  REVIEW PANEL — the text the search will actually run on, and it is EDITABLE.
           A prior-art search is only as good as its query, and everything below is machine-read
@@ -85,8 +88,6 @@
         <details class="exsec" id="exClaimsSec" open>
           <summary><span class="exsum">Claims</span>
             <span class="exmeta" id="exClaimsMeta"></span></summary>
-          <p class="small muted exhint">Each claim is searched on its own and drives the
-            claim&nbsp;&times;&nbsp;reference grid on the report. Fix anything the reader got wrong.</p>
           <div id="exClaims" class="exclaims"></div>
           <button type="button" class="btn ghost sm" id="exAddClaim">+ Add a claim</button>
         </details>
@@ -131,6 +132,11 @@
     <input type="hidden" name="mode" value="novelty">
     <input type="hidden" name="search_focus" id="search-focus" value="all_text">
 
+    {#  THIRD-PARTY SOURCES, ON THE FORM, because it is the single biggest lever on how long a
+        search takes and it is a per-search decision, not a preference buried in settings. The
+        checked state comes from the account-wide setting, so the toggle starts where the default
+        is and moving it applies to this search only. #}
+
     {#  WHICH SEARCH THIS WILL BE, before it is started.
 
         Two very different searches leave from this one button. A description with no claims is a
@@ -151,33 +157,58 @@
 
         Hidden until the extract step decides: `kindWhat` is still written by that script, so the
         node stays even though it is no longer rendered as prose. #}
-    <div class="kindbadge" id="kindBadge" data-kind="concept" hidden>
-      <span class="kindname" id="kindName">Concept search</span>
-      <span class="kindeta" id="kindEta">about 12-30 minutes</span>
-      <button type="button" class="qmark" id="kindHelp" aria-label="What this kind of search does"
-        data-title="Concept search"
-        data-help="Breaks the description into its distinct technical concepts and searches each one, then reads the strongest references in full. No claims exist yet, so there is no claim-by-claim chart.">?</button>
-      <span class="kindwhat small muted" id="kindWhat" hidden></span>
-    </div>
+    {#  The tier badge is gone from this page. It named the search you were about to start and
+        quoted a range for it, above a button that says what it does; on the report, where the
+        tier is a fact rather than a forecast, it stays. The nodes remain hidden and empty so the
+        extract script that still writes into them does not have to change. #}
+    {#  The tier badge is gone from this page, element and all. Emptying it was not enough:
+        `setKind` did `badge.hidden = false` on every extract, so a grid container 814px wide and
+        20px tall was un-hidden with all three of its children still display:none. That is the
+        empty box under the form, and it was there because I removed the contents and left the
+        container. #}
 
     {#  ONE BUTTON AND A (?). The paragraph that used to sit beside it said what the search does,
         how long the first results take and that they are cached: all true, all worth knowing
         once, none of it worth reading every time somebody starts a search. #}
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    {#  STICKY. Once a document is broken down this page is long, and the button that starts the
+        search was at the bottom of it. It now rides the bottom of the viewport. #}
+    <div class="gostick">
       <button class="btn" type="submit" id="gobtn">Search prior art</button>
-      <button type="button" class="qmark" data-title="What happens when you press this"
-        aria-label="What happens when you press Search prior art"
-        data-help="Your description is broken into its distinct technical ideas and each one is searched separately, against our own patent database and against the public registers. The strongest references are then read in full, not just their abstracts, and every statement in the report is tied to the passage it came from.
+      {#  The one per-search choice that changes what the search costs and how long it takes,
+          so it rides the bar with the button rather than sitting up the page. #}
+      {#  gostick .qmark rides with its own control. The (?) was left behind up the page when the
+          label moved down here, so the form carried a lone question mark over a gap. #}
+      <label class="toggle tpsrc"><input type="checkbox" name="third_party" value="1"
+               {{ 'checked' if third_party_default }}>
+        Third-party sources</label>
+      {{ qhelp("third-party sources", "ON asks seven outside patent APIs as well as our own
+corpus: PQAI, Google Patents through BigQuery, SerpApi, the USPTO keyword search and the rest. OFF
+searches nothing but the corpus on this box, and nothing in the later stages calls out either: a
+reference we cannot read here stays unread rather than being fetched from a paid source.
 
-First results usually appear within a minute and the reading continues after that. You can leave the page; the search keeps running and the finished report waits for you.">?</button>
+MEASURED on one real run. The outside sources produced 319 of 3,470 candidate families and cost
+58.5 of the 65 seconds retrieval took. Our own corpus produced the other 3,151 in about six
+seconds. So turning this off makes the finding stage roughly ten times faster.
+
+WHAT IT COSTS, and it is not nothing: 296 of those 319 families were found by NO other channel.
+A local-only search cannot see art that is not in the 354,986 publications we hold, and it cannot
+recover the full text of a reference the corpus has only an abstract for. Use it when the answer
+is expected to be in our niche, and turn it back on before anything is filed.") }}
+
+      {#  ONE (?) ON THIS BAR. There were two side by side, indistinguishable: this one, which
+          explained the button, and the third-party one above, which explains the checkbox beside
+          it. A question mark that is not next to the thing it explains is noise, and two in a row
+          is worse. The button's label says what it does; what the search covers is on the scope
+          line at the foot of the card. #}
     </div>
 
     {% if current_user %}
-    <div class="notifychoice">
-      <div><b>How should this finish?</b><span>You can keep watching live results or leave the search running in your account.</span></div>
+    <div class="notifychoice slim">
+      {#  One row: the sentence explaining that you may leave was three lines above a checkbox
+          that says the same thing in six words. #}
       <label class="notifyopt"><input type="checkbox" name="notify_email" value="1"
         {% if current_user.email_on_completion %}checked{% endif %}>
-        Email {{ current_user.email }} when the final report is ready</label>
+        Email me when it is ready</label>
     </div>
     {% else %}
     <p class="small muted notifyopt"><a href="{{ request.script_root }}/login">Sign in</a> to save the search, leave it running, and receive a report-ready email.</p>
@@ -188,9 +219,36 @@ First results usually appear within a minute and the reading continues after tha
         are engineering telemetry that means nothing to the person about to type a description
         and quite a lot to a competitor. The limit that a reader actually has to know is one
         sentence, and it is here; the measurements are on the admin Coverage page. #}
-    <p class="scope-line small muted">A search here is evidence, not a clearance opinion. Every
-      finding is tied to the passage it came from, and every one of them is worth checking.
-      <a href="{{ request.script_root }}/about">What this covers</a></p>
+    {#  ADVANCED, COLLAPSED. Only options this form genuinely posts and `/run` genuinely reads:
+        anything else here would be a control that looks like it does something. The rest of the
+        knobs live on the settings page, which is linked rather than duplicated. #}
+    <details class="advopts">
+      <summary>Advanced</summary>
+      <div class="advgrid">
+        {#  NO `name` HERE. The form already posts `search_focus` from a hidden input the
+            extract step writes; a second field of the same name would post two values and the
+            one that wins is whichever the browser serialises last. This drives the hidden field
+            instead, so there is still exactly one answer. #}
+        <label>Search over
+          <select id="search-focus-adv" onchange="document.getElementById('search-focus').value=this.value">
+            <option value="all_text" selected>all patent text</option>
+            <option value="claims">claims only</option>
+          </select>
+        </label>
+        <label>Read in full
+          <select name="depth">
+            <option value="quick" selected>nothing yet &mdash; find first</option>
+            <option value="submission">the strongest 45 as part of this run</option>
+          </select>
+        </label>
+        <span class="advmore small muted">Retrieval knobs, the external deadline and the
+          third-party default are on <a href="{{ request.script_root }}/settings/search">search
+          settings</a>.</span>
+      </div>
+    </details>
+
+    <p class="scope-line small muted">Evidence, not a clearance opinion &mdash; every finding is
+      tied to its passage. <a href="{{ request.script_root }}/about">What this covers</a></p>
   </form>
 </div>
 {% endblock %}
@@ -229,8 +287,11 @@ window.addEventListener('pageshow', () => {
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
   function setStatus(msg, kind){
+    //  An empty message must not leave a styled box behind. Setting the text to '' still left
+    //  the padding, the border and the background: an orange rectangle with nothing in it.
     statusEl.textContent = msg || '';
     statusEl.className = 'ex-status small ' + (kind || 'muted');
+    statusEl.hidden = !msg;
   }
   function setBusy(on, msg){
     busy = on;
@@ -264,34 +325,23 @@ window.addEventListener('pageshow', () => {
   function currentKind(){
     return (doc && currentClaims().length) ? 'claims' : 'concept';
   }
-  function setKind(kind){
-    const badge = $('kindBadge');
-    if(!badge) return;
-    badge.dataset.kind = kind;
-    const k = (KINDS || []).find(x => x.kind === kind);
-    if(!k) return;
-    $('kindName').textContent = k.label;
-    $('kindEta').textContent = k.eta_text;
-    $('kindWhat').textContent = k.summary;
-    //  The summary is the honest explanation of which search this is and it is not short. It
-    //  goes behind the (?) beside the badge rather than as a third line of prose above the box.
-    const help = $('kindHelp');
-    if(help){
-      help.setAttribute('data-title', k.label);
-      help.setAttribute('data-help', k.summary || '');
-      help.setAttribute('aria-label', 'What ' + k.label.toLowerCase() + ' does');
-    }
-    badge.hidden = false;
-  }
+  //  setKind is now a no-op: the badge it wrote into was removed. Kept as a function because
+  //  three call sites still invoke it, and a no-op is a smaller change than proving none of them
+  //  matters. Which search is about to run is still decided by `currentKind`, which the form
+  //  reads; it is simply no longer announced above the button.
+  function setKind(kind){ /* the tier badge was removed from this page */ }
 
   function claimRow(c, i){
     const row = document.createElement('div');
     row.className = 'exclaim' + (c.independent ? ' indep' : '');
     row.innerHTML =
+      //  ONE LINE, NOT TWO STACKED. The number sat above its own IND/dep tag in a column, so
+      //  every claim cost three rows of height before its text: twenty claims was a screen of
+      //  numbering. One chip, and the textarea starts at one row and grows.
       `<div class="exclaimno"><span class="exno">${i+1}</span>` +
       `<span class="extag-ind" title="${c.independent?'Independent claim':'Dependent claim'}">` +
       `${c.independent?'IND':'dep'}</span></div>` +
-      `<textarea class="exta exclaimta" rows="3" aria-label="Claim ${i+1}"></textarea>` +
+      `<textarea class="exta exclaimta clamp3" rows="1" aria-label="Claim ${i+1}"></textarea>` +
       `<button type="button" class="exdel" title="Remove this claim" aria-label="Remove claim ${i+1}">×</button>`;
     row.querySelector('textarea').value = c.text || '';
     row.querySelector('.exdel').addEventListener('click', () => {
@@ -378,14 +428,31 @@ window.addEventListener('pageshow', () => {
     if(d.claims_source && d.claims_source !== 'none' && (d.claims||[]).length)
       $('exClaimsMeta').textContent += ` · read from the ${esc(d.claims_source)}`;
 
+    {
+      /*  Three lines each until asked. The abstract and twenty claims in full were several
+          screens of scrolling between the breakdown and the button that acts on it. */
+      const ab = $('exAbstract');
+      if (ab) { ab.classList.add('clamp3'); }
+      document.querySelectorAll('#exClaims textarea, #exClaims .exclaim')
+        .forEach(el => el.classList.add('clamp3'));
+    }
     $('exVision').textContent = d.vision || '';
     $('exFigSec').hidden = !d.vision;
     $('exVisionMeta').textContent = d.vision ? 'folded into the query text' : '';
 
+    /*  SAY WHICH NUMBER IS WHICH. The meta read "27,000 characters extracted" over a box
+        holding a 600-character snippet, so the figure looked like a description of what was on
+        screen. Both facts, named: how much was read out of the document, and how much of it this
+        panel is showing. What the SEARCH does with it is a third thing again -- the abstract,
+        every claim and the strongest passages, capped at 48 embedded chunks -- and that is in
+        the (?) rather than on the line. */
     $('exText').textContent = (d.text_snippet||'') + (d.text_chars>600 ? '…' : '');
+    $('exText').classList.add('clamp3');
     $('exTextSec').hidden = !d.text_snippet;
     $('exTextMeta').textContent = d.text_chars
-      ? `${Number(d.text_chars).toLocaleString()} characters extracted` : '';
+      ? `${Number(d.text_chars).toLocaleString()} characters extracted`
+        + (d.text_chars > 600 ? ' · first 600 shown' : '')
+      : '';
 
     const notes = d.notes || [];
     $('exNotes').innerHTML = notes.map(n => `<li>${esc(n)}</li>`).join('');
@@ -482,7 +549,10 @@ window.addEventListener('pageshow', () => {
       if(d.n_claims) bits.push(`${d.n_claims} claim${d.n_claims===1?'':'s'}`);
       if(d.abstract) bits.push('an abstract');
       bits.push('a search brief');
-      setStatus(`Read ${bits.join(', ')}. Check them below, then press “Search prior art”.`, 'good');
+      /*  The status line said "Read 20 claims, an abstract, a search brief. Check them below,
+          then press Search prior art" above a panel showing exactly those things and a button
+          reading exactly that. The counts are on each section's own summary. */
+      setStatus('', 'good');
       gobtn.focus();
     }catch(err){
       setStatus('Could not read that document: ' + ((err && err.message) || 'network error') +
