@@ -57,8 +57,8 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph, Spacer, Table,
-                                TableStyle)
+from reportlab.platypus import (BaseDocTemplate, Frame, KeepTogether, PageTemplate, Paragraph,
+                                Spacer, Table, TableStyle)
 
 import concise_render
 import pdf_conform                           # will Patent Center accept the papers we just wrote
@@ -1295,6 +1295,41 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False,
                        "1.8 does not apply to this deadline. The submission has to be RECEIVED by "
                        "the Office inside the window, so file electronically and do not rely on a "
                        "mailing date."))
+
+    # -- 1.4(d)(2): how the paper came to be signed ----------------------------------------------
+    #  THE EXECUTION LOG, and the reason this finding exists. The document list used to carry a
+    #  sentence saying the signature "was applied from the signer's own stored signature at the
+    #  signer's instruction". That is a fact about how a paper was produced, printed on the paper
+    #  itself, where the only reader who needs it is one who doubts it. It belongs here.
+    _sig_name = signature_name(identity or {})
+    _consent = str((identity or {}).get("signature_consent_at") or "")
+    if _sig_name:
+        out.append(Finding(
+            "SIGNATURE", "1.4(d)(2)", "The papers are signed", OK,
+            "An S-signature /%s/ was inserted on the authority the signer recorded%s. 1.4(d)(2) "
+            "makes inserting it the signer's own act, so nothing was signed on the signer's "
+            "behalf." % (_sig_name, " on " + _consent[:10] if _consent else "")))
+    else:
+        out.append(Finding(
+            "SIGNATURE", "1.4(d)(2)", "The papers are signed", ACTION,
+            "Unsigned, which is the default: a stored name is a name, not an instruction. Record "
+            "signature authorisation in the profile and rebuild, or sign the printed papers by "
+            "hand. 1.4 requires a signature before this is filed."))
+
+    # -- our own bar: no internal workflow language on a paper going to the Office ----------------
+    #  A FILING PAPER IS NOT A REPORT ABOUT ONE. The generators are supposed to leave none of this
+    #  behind; `_sanitised` records what slipped through, and this surfaces it where a human looks.
+    _leaks = []
+    try:
+        import failclosed as _fc
+        _leaks = [r for r in _fc.used() if r.get("kind") == "filing_leak"]
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    out.append(Finding(
+        "FILING-CLEAN", "beyond the rule",
+        "The filed papers carry no internal workflow language", OK if not _leaks else ACTION,
+        "Nothing in the papers explains the process that produced them." if not _leaks
+        else "Move to this audit: %s" % "; ".join(str(r.get("reason"))[:160] for r in _leaks[:4])))
     return out
 
 
@@ -1407,6 +1442,69 @@ def _identification(doc):
             ("Publisher and place", b.get("publisher") or "")]
 
 
+#  ---- the final sanitation pass -------------------------------------------------------------
+#  Phrases that mean the software has started explaining itself on a paper going to the Office.
+#  Each is a real sentence that reached a filed PDF, or the shape of one. This is a BACKSTOP: the
+#  generators above are supposed to leave none of it behind, and this is what notices when a new
+#  paragraph quietly reintroduces some.
+FILING_LEAK_TERMS = (
+    "check the rate", "rate has not moved", "before filing", "read this", "read them",
+    "so they can be read", "reproduced here", "stored signature", "at the signer's instruction",
+    "at your instruction", "machine checked", "machine verified", "decision required",
+    "you decide", "consider whether", "this tool", "the tool", "the software", "audit",
+    "window may extend", "file before", "is due for every", "at the small-entity rate",
+    "at the large-entity rate", "micro-entity discount", "from the schedule of",
+    "paid in patent center", "is available if", "upload", "check it", "check every",
+)
+#  Words that are ordinary filing language and must not be caught by the substrings above.
+FILING_LEAK_ALLOW = (
+    "the party making this submission",
+)
+
+
+def filing_leaks(text) -> list:
+    """Every internal-workflow phrase found in text meant for a filed paper. [] is the good case."""
+    low = " ".join(str(text or "").lower().split())
+    for ok in FILING_LEAK_ALLOW:
+        low = low.replace(ok, " ")
+    return sorted({t for t in FILING_LEAK_TERMS if t in low})
+
+
+def story_text(story) -> str:
+    """The visible text of a reportlab story, flattened, for the sanitation pass."""
+    out = []
+    stack = list(story or [])
+    while stack:
+        f = stack.pop(0)
+        inner = getattr(f, "_content", None) or getattr(f, "_flowables", None)
+        if isinstance(inner, (list, tuple)):
+            stack = list(inner) + stack
+            continue
+        t = getattr(f, "text", None)
+        if isinstance(t, str):
+            out.append(re.sub(r"<[^>]+>", " ", t))
+    return " ".join(out)
+
+
+def _sanitised(blob, story, name):
+    """Return the built PDF, having recorded any internal-workflow language left on it.
+
+    It does NOT rewrite the paper. A silent edit to a document about to be filed is worse than the
+    phrase it removes: the fix belongs in the generator, and this is how the generator is told.
+    In benchmark mode `failclosed.fallback` raises, so a test can assert the packet is clean.
+    """
+    hits = filing_leaks(story_text(story))
+    if hits:
+        try:
+            import failclosed
+            failclosed.fallback("submission.filing_paper:%s" % name,
+                                "internal workflow language on a filed paper: %s"
+                                % "; ".join(hits), None, kind="filing_leak")
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
+    return blob
+
+
 def signature_name(identity):
     """The name that may go between the slashes, or "" if none may.
 
@@ -1429,38 +1527,70 @@ def signature_name(identity):
 
 
 def signature_block(story, st, identity):
-    """The 37 CFR 1.4(d)(2) S-signature, or a line to sign by hand.
+    """The 37 CFR 1.4(d)(2) S-signature, or a line to sign by hand. Nothing else.
 
-    An S-signature is the signer's own name between forward slashes. It is inserted here because
-    the signer told this tool to insert it, which is the same posture as any e-filing form: the
-    paper says so, so nobody can read it as the machine having signed anything.
+    A SIGNATURE IS AN ACT, NOT A DECORATION, and this block prints only what the act consists of:
+    the S-signature, the signer's typed name, the title and the date. It used to carry a sentence
+    underneath saying the signature "was applied from the signer's own stored signature at the
+    signer's instruction". That sentence was written to make the provenance visible, and it does
+    the opposite of what a signature block is for: it is the software describing its own process
+    on a paper filed at the Office, and a reader who needs it is a reader who doubts the paper. The
+    provenance is now an audit finding and an execution log line, which is where a fact about how a
+    document was produced belongs.
+
+    Consent is still the gate, and it is upstream: `signature_name` returns "" unless the signer
+    has recorded consent with a timestamp, so a stored name alone never signs anything.
+
+    KEPT TOGETHER. `KeepTogether` around the whole block, because a signature stranded at the foot
+    of one page with the signer's identity on the next is a filing whose meaning depends on where
+    the page happened to break. It did break, on the packet for application 19/318,450: "/Nimo
+    Rotem/" ended page 2 and "Nimo Rotem, Director" opened page 3.
     """
     ident = identity or {}
     name = signature_name(ident)
     title = str(ident.get("signature_title") or "").strip()
-    story.append(Paragraph("SIGNATURE", st["h2"]))
+    block = [Paragraph("SIGNATURE", st["h2"])]
     if name:
-        story.append(Paragraph("/%s/" % _esc(name), st["sig"]))
-        story.append(Paragraph("%s%s<br/>Date: %s"
+        block.append(Paragraph("/%s/" % _esc(name), st["sig"]))
+        block.append(Paragraph("%s%s<br/>Date: %s"
                                % (_esc(name), (", " + _esc(title)) if title else "",
                                   datetime.date.today().isoformat()), st["body"]))
-        story.append(Paragraph(
-            "Signed under 37 CFR 1.4(d)(2). The signature above was applied from the signer's own "
-            "stored signature at the signer's instruction; the statements above are the signer's.",
-            st["note"]))
     else:
-        story.append(Paragraph("/______________________________/", st["sig"]))
-        story.append(Paragraph("Printed name: ______________________________<br/>"
+        block.append(Paragraph("/______________________________/", st["sig"]))
+        block.append(Paragraph("Printed name: ______________________________<br/>"
+                               "Title: ______________________________<br/>"
                                "Date: ______________________________", st["body"]))
-        story.append(Paragraph(
-            "NOT SIGNED. 37 CFR 1.4 requires a signature. Set one in your profile so it is applied "
-            "here, or sign this paper before filing.", st["note"]))
+    story.append(KeepTogether(block))
 
 
 def document_list_and_statements(docs, subject, copies, translations, win,
                                  exemption_claimed=False, entity_size="small",
                                  identity=None) -> bytes:
-    """1.290(d)(1)+(e) and 1.290(d)(5)+(g), on one paper, in the shape PTO/SB/429 asks for."""
+    """1.290(d)(1)+(e) and 1.290(d)(5)+(g), on one paper, in the shape PTO/SB/429 asks for.
+
+    A FILING PAPER, NOT A REPORT ABOUT ONE. What was removed from it, and where each piece went:
+
+      the fee paragraph          $156, 2 units, the small-entity rate, the schedule date and
+                                 "check the rate has not moved". A fee is paid in Patent Center;
+                                 a paragraph describing one satisfies nothing, 1.290(f) does not
+                                 ask for it, and every number in it goes stale on its own. It is
+                                 the FEE finding in the audit, which is computed at build time and
+                                 has to be re-checked at filing time either way.
+      the timing paragraph       the 1.290(b) deadline, the six-month arithmetic and the 1.8
+                                 point. Calculated deadlines depend on events outside this paper,
+                                 including a rejection that may be mailed tomorrow. TIMING and
+                                 NO-CERT-MAILING findings in the audit.
+      the compliance note        "37 CFR 1.290(d)(3) requires one for every listed item other
+                                 than...". A filing does not argue that it complies; COPIES and
+                                 DESCRIPTION findings in the audit say whether it does.
+      the exemption advisory     "the exemption is available IF...". An instruction to the filer.
+      "reproduced here so they   an instruction to the filer, on the filed paper, about the filed
+      can be read and checked"   paper.
+      the signature provenance   see `signature_block`.
+
+    What stays is what a filer would have typed: the list, the two 1.290(d)(5) statements, the
+    1.290(g) statement when it is claimed, and a signature. `_sanitised` is the backstop.
+    """
     st = _styles()
     buf = io.BytesIO()
     tmpl = _template(buf, subject, "Third-party submission under 37 CFR 1.290: document list")
@@ -1497,68 +1627,39 @@ def document_list_and_statements(docs, subject, copies, translations, win,
                         concise_render.printable_party(d["biblio"])[1],
                         d["biblio"].get("issue_date_pretty") or "",
                         "; ".join(filter(None, [
-                            "copy attached" if copies.get(d["pub"]) else "COPY OUTSTANDING",
+                            "copy attached" if copies.get(d["pub"])
+                            else "copy not attached",
                             ("translation attached" if translations.get(d["pub"])
-                             else "TRANSLATION OUTSTANDING") if needs_translation(d) else ""]))])
+                             else "translation not attached")
+                            if needs_translation(d) else ""]))])
 
-    story.append(Paragraph(
-        "A legible copy is filed for each item in Section B: 37 CFR 1.290(d)(3) requires one for "
-        "every listed item other than a U.S. patent or a U.S. patent application publication. A "
-        "concise description of the asserted relevance of each item above is filed with this "
-        "list, one paper per item, as 1.290(d)(2) requires.", st["note"]))
+    # ---- the statements. Required substance, in the governing terminology, and nothing around it.
+    story.append(KeepTogether([
+        Paragraph("STATEMENTS UNDER 37 CFR &sect; 1.290(d)(5)", st["h2"]),
+        Paragraph(
+            "<b>(i)</b> The party making this submission is not an individual who has a duty to "
+            "disclose information with respect to the above-identified application under 37 CFR "
+            "1.56.", st["body"]),
+        Paragraph(
+            "<b>(ii)</b> This submission complies with the requirements of 35 U.S.C. 122(e) and 37 "
+            "CFR 1.290.", st["body"])]))
 
-    # ---- the statements
-    story.append(Paragraph("STATEMENTS UNDER 37 CFR &sect; 1.290(d)(5)", st["h2"]))
-    story.append(Paragraph(
-        "<b>(i)</b> The party making this submission is not an individual who has a duty to "
-        "disclose information with respect to the above-identified application under 37 CFR 1.56.",
-        st["body"]))
-    story.append(Paragraph(
-        "<b>(ii)</b> This submission complies with the requirements of 35 U.S.C. 122(e) and 37 "
-        "CFR 1.290.", st["body"]))
-
+    #  THE 1.290(g) STATEMENT IS SUBSTANCE AND STAYS. It is the statement the rule requires from a
+    #  party claiming the exemption, so it is filed, in the rule's own words. What went with it and
+    #  does not stay is the arithmetic: see `document_list_and_statements.__doc__`.
     n = len(docs)
-    units, dollars, per = fee_amount(n, entity_size)
-    story.append(Paragraph("FEE", st["h2"]))
     if exemption_claimed and exemption_available(n):
-        story.append(Paragraph(
-            "<b>Statement under 37 CFR 1.290(g).</b> To the knowledge of the person signing this "
-            "statement after making reasonable inquiry, this submission is the first and only "
-            "submission under 35 U.S.C. 122(e) filed in this application by the party making the "
-            "submission or by a party in privity with that party. This submission lists %d item%s, "
-            "which is three or fewer, so no fee is required." % (n, "" if n == 1 else "s"),
-            st["body"]))
-    else:
-        story.append(Paragraph(
-            "This submission lists <b>%d item%s</b>. Under 37 CFR 1.290(f) the fee set by 37 CFR "
-            "1.17(o) is due for every ten items or fraction thereof, so <b>%d unit%s</b> of that "
-            "fee applies: <b>$%s</b> at the %s-entity rate of $%s a unit, from the schedule of %s. "
-            "A third party is not eligible for the micro-entity discount. It is paid in Patent "
-            "Center; check the rate has not moved."
-            % (n, "" if n == 1 else "s", units, "" if units == 1 else "s", _money(dollars),
-               entity_size, _money(per), FEE_SCHEDULE_DATE),
-            st["body"]))
-        if exemption_available(n):
-            story.append(Paragraph(
-                "This submission lists three or fewer items, so the 37 CFR 1.290(g) exemption is "
-                "available IF this is the first and only submission under 35 U.S.C. 122(e) in "
-                "this application by you or by a party in privity with you. Claiming it requires "
-                "the statement to that effect; three or fewer items without the statement still "
-                "pays the fee.", st["note"]))
+        story.append(KeepTogether([
+            Paragraph("STATEMENT UNDER 37 CFR &sect; 1.290(g)", st["h2"]),
+            Paragraph(
+                "To the knowledge of the person signing this statement after making reasonable "
+                "inquiry, this submission is the first and only submission under 35 U.S.C. 122(e) "
+                "filed in this application by the party making the submission or by a party in "
+                "privity with that party.", st["body"])]))
 
-    story.append(Paragraph(
-        "These statements are made by the party filing the submission. They are reproduced here "
-        "so they can be read and checked before they are adopted in Patent Center.", st["note"]))
     signature_block(story, st, identity)
-
-    if win.get("deadline"):
-        story.append(Paragraph(
-            "<b>Timing.</b> Under 37 CFR 1.290(b) this submission must be filed before %s. %s "
-            "37 CFR 1.290(i) excludes 37 CFR 1.8, so a certificate of mailing does not preserve "
-            "the date and the submission must reach the Office inside the window."
-            % (win["deadline"], _esc(win.get("basis") or "")), st["note"]))
     tmpl.build(story)
-    return buf.getvalue()
+    return _sanitised(buf.getvalue(), story, "01_DocumentList_and_Statements.pdf")
 
 
 def audit_pdf(findings, docs, subject, win) -> bytes:
@@ -1591,8 +1692,10 @@ def audit_pdf(findings, docs, subject, win) -> bytes:
     rows.append([Paragraph("00_AUDIT.pdf", st["td"]), Paragraph("This paper", st["td"]),
                  Paragraph("not a filing", st["td"])])
     rows.append([Paragraph("01_DocumentList_and_Statements.pdf", st["td"]),
-                 Paragraph("The document list, the two statements and the fee position", st["td"]),
-                 Paragraph("(d)(1), (e), (d)(5), (f)/(g)", st["td"])])
+                 Paragraph("The document list, the two statements, and the 1.290(g) statement "
+                           "where it is claimed. The fee and the deadline are in this audit, not "
+                           "on the filed paper", st["td"]),
+                 Paragraph("(d)(1), (e), (d)(5), (g)", st["td"])])
     rows.append([Paragraph("10_ConciseDescription_*.pdf", st["td"]),
                  Paragraph("One concise description of asserted relevance per item", st["td"]),
                  Paragraph("(d)(2)", st["td"])])
