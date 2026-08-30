@@ -1839,10 +1839,25 @@ function createProgress(mount, opts){
   const DONE_RANK = STAGES[STAGES.length - 1].rank;   // was hardcoded 6; the list is longer now
   const state = { rank: 0, detail: {}, since: Date.now(), started: Date.now(), msg: '',
                   tokens: 0, elapsed: 0, elapsedTotal: 0, attempt: 0 };
-  mount.innerHTML = '<ul class="stages">' + stages.map(s =>
-    '<li data-rank="' + s.rank + '"><span class="ico" aria-hidden="true">✓</span>' +
-    '<span class="txt"><span class="st-name">' + s.name + '</span>' +
-    '<span class="st-note">' + s.note + '</span></span></li>').join('') + '</ul>' +
+  /*  ONE LINE, NOT NINE ROWS. The checklist made sense when a stage could hold the page for two
+      hours: the list told you where you were in a long run. The search is fast now, so the list
+      is nine paragraphs of text that never change wrapped around one that does, and the reader
+      has to find the live row to learn anything. This renders only the CURRENT stage, which is
+      the only row that was ever carrying information. */
+  /*  AND ONE LINE MEANS ONE LINE. It still rendered the stage NAME and then the stage NOTE
+      underneath it, and the note is two sentences of explanation plus the counters plus the
+      running clock, which wrapped to three more. Stacked with the banner's own message and title
+      that was five lines of moving text above a results list.
+
+      What a person watching a search needs on the page is one line: what is happening now, with
+      its numbers and how long it has been going. Everything else is worth exactly one click, so
+      it is behind one: the stage's explanation and the whole run narrative, every stage with its
+      own note, which is the checklist this used to be.  */
+  mount.innerHTML = '<div class="stagenow">' +
+    '<button type="button" class="st-toggle" aria-expanded="false">' +
+      '<span class="st-chev" aria-hidden="true"></span>' +
+      '<span class="st-line"></span></button>' +
+    '<div class="st-detail" hidden><p class="st-note"></p><ol class="st-all"></ol></div></div>' +
     /* The overall clock lives INSIDE the component: the generating page has its own #elapsed
        footer, but most of a long run is watched from the report page's refining banner, which
        had no counter at all — "no overall time and token counter" was reported verbatim. */
@@ -1853,30 +1868,67 @@ function createProgress(mount, opts){
     if (d.elements) out.push(d.elements + ' element' + (d.elements !== 1 ? 's' : '') + ' identified');
     if (d.families) out.push(d.families.toLocaleString() + ' candidate families');
     if (d.round) out.push('round ' + d.round);
+    /*  WHAT IS DOING THE WORK AND HOW FAST. Reading is 97% of the bill and the only stage that
+        scales, so while it runs the line names the model and the measured rate rather than only
+        counting documents. The rate is this run's own tokens over its own elapsed time, so it is
+        what the search is actually getting rather than a quoted figure. */
+    if (state.rank >= 6 && state.rank <= 7) {
+      if (window.READ_MODEL) { out.push(window.READ_MODEL); }
+      var secs = state.elapsed || Math.round((Date.now() - state.started) / 1000);
+      if (state.tokens > 0 && secs > 5) {
+        out.push(Math.round(state.tokens / secs).toLocaleString() + ' tok/s');
+      }
+    }
     if (state.rank <= 3 && d.search_done) {
       out.push(d.search_done + ' of up to ' + d.search_max + ' retrieval passes');
       if (d.search_seconds != null) out.push('last pass ' + Number(d.search_seconds).toFixed(1) + 's');
     }
     return out;
   }
-  function paint(){
-    stages.forEach(s => {
-      const li = mount.querySelector('li[data-rank="' + s.rank + '"]');
-      if (!li) return;
-      li.classList.toggle('done', s.rank < state.rank);
-      li.classList.toggle('active', s.rank === state.rank && state.rank < DONE_RANK);
-      const el = li.querySelector('.st-note');
-      if (s.rank === state.rank){
-        const bits = facts();
-        // Only the ACTIVE stage carries the counters and a running clock, so a quiet server still
-        // shows movement. Finished stages fall back to their plain description — leaving a frozen
-        // "Running 12s" on a completed row reads as a hang, which is the bug this replaced.
-        el.textContent = s.note + (bits.length ? ' ' + bits.join(' · ') + '.' : '') +
-          (s.rank < DONE_RANK ? ' Running ' + fmtDur(Date.now() - state.since) + '.' : '');
-      } else {
-        el.textContent = s.note;
-      }
+  const tog = mount.querySelector('.st-toggle');
+  if (tog){
+    tog.addEventListener('click', function(){
+      const box = mount.querySelector('.st-detail');
+      const open = tog.getAttribute('aria-expanded') === 'true';
+      tog.setAttribute('aria-expanded', open ? 'false' : 'true');
+      if (box) box.hidden = open;
     });
+  }
+
+  function paint(){
+    //  Only the stage actually running is drawn. Its own clock keeps ticking so a quiet server
+    //  still shows movement rather than reading as a hang.
+    const cur0 = stages.find(s => s.rank === state.rank) || stages[stages.length - 1];
+    const lineEl = mount.querySelector('.stagenow .st-line');
+    const noteEl = mount.querySelector('.stagenow .st-note');
+    const allEl  = mount.querySelector('.stagenow .st-all');
+    if (lineEl){
+      /*  The server's own message when there is one: "Screening candidates: batch 8 of 25" says
+          more than "Screening the candidates" and is the same length. The stage name is the
+          fallback, not the headline. */
+      const bits = facts();
+      const head = (state.msg && state.msg !== 'done') ? state.msg : cur0.name;
+      lineEl.textContent = head +
+        (bits.length ? ' · ' + bits.join(' · ') : '') +
+        (cur0.rank < DONE_RANK ? ' · ' + fmtDur(Date.now() - state.since) : '');
+    }
+    if (noteEl) noteEl.textContent = cur0.note;
+    if (allEl && allEl.childElementCount !== stages.length){
+      allEl.innerHTML = stages.map(s =>
+        '<li data-k="' + s.key + '"><b></b><span></span></li>').join('');
+      stages.forEach((s, i) => {
+        const li = allEl.children[i];
+        li.querySelector('b').textContent = s.name;
+        li.querySelector('span').textContent = s.note;
+      });
+    }
+    if (allEl){
+      stages.forEach((s, i) => {
+        const li = allEl.children[i];
+        if (li) li.className = s.rank < state.rank ? 'done'
+                             : (s.rank === state.rank ? 'now' : '');
+      });
+    }
     const live = mount.parentElement && mount.parentElement.querySelector('[data-progress-live]');
     if (live){
       const cur = stages.find(s => s.rank === state.rank) || stages[stages.length - 1];
@@ -2383,23 +2435,29 @@ async function streamNewCards(){
   var pwState = document.getElementById('publishPwState');
   var state = document.getElementById('publishState');
   var save = document.getElementById('publishSave');
-  var revoke = document.getElementById('publishRevoke');
   var clearPw = document.getElementById('publishClearPw');
+  var tog = document.getElementById('publishToggle');
+  var togLab = document.getElementById('publishToggleLab');
 
   function paint() {
     var live = btn.dataset.published === 'true';
     var hasPw = btn.dataset.haspassword === 'true';
-    out.value = live ? location.origin + url : '';
-    out.placeholder = live ? '' : 'not published yet';
-    save.textContent = live ? 'Update' : 'Publish';
-    revoke.hidden = !live;
+    /*  The address is shown either way. See the dialog's comment: it is derived from the slug,
+        not minted, so hiding it until publication only stopped the owner reading what they were
+        about to hand out. The toggle is the access control; the field is just the address. */
+    out.value = location.origin + url;
+    out.classList.toggle('dim', !live);
+    tog.checked = live;
+    togLab.textContent = live ? 'Published' : 'Not published';
+    save.hidden = !live;
+    save.textContent = hasPw ? 'Change password' : 'Set password';
     clearPw.hidden = !(live && hasPw);
-    pwState.textContent = hasPw
-      ? 'A password is set. Type a new one to change it, or remove it below.'
-      : 'No password — anyone with the link can open it.';
+    pwState.textContent = !live ? ''
+      : (hasPw ? 'A password is set. Type a new one to change it, or remove it below.'
+               : 'No password — anyone with the link can open it.');
     state.textContent = live
-      ? 'Anyone with this link can read the report. No account needed, and nothing on the public page can change or re-run the search.'
-      : 'Publishing creates a link that opens without an account. Until then the address does not resolve at all.';
+      ? 'Live. Anyone with this link can read the report, with no account, and nothing on the public page can change or re-run the search.'
+      : 'The address above does not resolve. Turn this on and anyone holding it can read the report without an account.';
     btn.textContent = live ? 'Public link ✓' : 'Export';
   }
 
@@ -2411,12 +2469,45 @@ async function streamNewCards(){
     }).then(function (r) { return r.json(); });
   }
 
-  btn.addEventListener('click', function () { paint(); dlg.showModal(); });
+  btn.addEventListener('click', function () {
+    /*  The button now lives inside the More options menu, so the menu has to shut behind it:
+        a <details> left open under a modal is a panel the reader has to close twice. */
+    var menu = btn.closest('details.moreops');
+    if (menu) menu.open = false;
+    paint();
+    dlg.showModal();
+  });
+
+  /*  ONE SWITCH, BOTH DIRECTIONS. Publish and Revoke were two buttons that were never both
+      available, which is a toggle wearing a disguise. Revoking still asks, because a link that
+      has been sent to somebody stops working; publishing does not, because it is undoable by
+      the same switch. On failure the checkbox is put back where it was, so what is drawn is
+      never ahead of what the server did. */
+  tog.addEventListener('change', function () {
+    var want = tog.checked;
+    if (!want && !confirm('Un-publish? Anyone holding the link will get a 404. The viewer log is kept.')) {
+      tog.checked = true;
+      return;
+    }
+    tog.disabled = true;
+    post(want ? {password: pw.value || ''} : {revoke: true}).then(function (d) {
+      tog.disabled = false;
+      if (!d || !d.ok) {
+        tog.checked = !want;
+        state.textContent = (d && d.error) || 'That did not work. Try again.';
+        return;
+      }
+      btn.dataset.published = want ? 'true' : 'false';
+      if (want) { btn.dataset.haspassword = d.has_password ? 'true' : 'false'; pw.value = ''; }
+      paint();
+    }).catch(function () { tog.disabled = false; tog.checked = !want; });
+  });
+
   save.addEventListener('click', function () {
     save.disabled = true;
     post({password: pw.value || ''}).then(function (d) {
       save.disabled = false;
-      if (!d || !d.ok) { pwState.textContent = 'Could not publish. Try again.'; return; }
+      if (!d || !d.ok) { pwState.textContent = 'Could not save the password. Try again.'; return; }
       btn.dataset.published = 'true';
       btn.dataset.haspassword = d.has_password ? 'true' : 'false';
       pw.value = '';
@@ -2426,12 +2517,6 @@ async function streamNewCards(){
   clearPw.addEventListener('click', function () {
     post({clear_password: true}).then(function (d) {
       if (d && d.ok) { btn.dataset.haspassword = 'false'; paint(); }
-    });
-  });
-  revoke.addEventListener('click', function () {
-    if (!confirm('Revoke the public link? Anyone holding it will get a 404. The viewer log is kept.')) return;
-    post({revoke: true}).then(function (d) {
-      if (d && d.ok) { btn.dataset.published = 'false'; paint(); }
     });
   });
   document.getElementById('publishCopy').addEventListener('click', function () {
@@ -2763,10 +2848,143 @@ async function streamNewCards(){
     d.showModal();
   }
 
+  /*  THE OTHER CONVENTION, which had no handler at all.
+
+      The 1.290 picker carries four question marks written as `<span class="qhelp"
+      data-help="secret">` with the text in a hidden `<div id="helpSecret" class="qhelp-body">`
+      beside them. `.qhelp` is a STYLE rule in style.css and nothing was ever bound to it, so all
+      four rendered as a question mark that did nothing when clicked. They are the four
+      explanations that decide whether a document goes in an envelope filed at the USPTO.
+
+      They keep their markup, because their text is rich (it carries <b> lead-ins) and stuffing
+      rich text into a data-help attribute would flatten it: `open()` escapes, on purpose. So
+      this resolves the LINKED HIDDEN BODY instead and hands its markup to the same dialog.  */
+  function openLinked(b) {
+    var key = b.getAttribute('data-help') || '';
+    var el = document.getElementById('help' + key.charAt(0).toUpperCase() + key.slice(1));
+    if (!el) { return; }
+    var d = ensure();
+    if (!d.showModal) { return; }
+    d.querySelector('[data-t]').textContent =
+      b.getAttribute('data-title') || b.getAttribute('aria-label') || 'About this';
+    d.querySelector('[data-b]').innerHTML = el.innerHTML;
+    d.showModal();
+  }
+
   document.addEventListener('click', function (ev) {
-    var b = ev.target.closest && ev.target.closest('.qmark');
-    if (!b) { return; }
-    ev.preventDefault();
-    open(b);
+    if (!ev.target.closest) { return; }
+    var b = ev.target.closest('.qmark');
+    if (b) { ev.preventDefault(); open(b); return; }
+    var q = ev.target.closest('.qhelp[data-help]');
+    if (q) { ev.preventDefault(); openLinked(q); }
+  });
+
+  //  `.qhelp` is a <span role="button" tabindex="0">, so the browser does not press it on Enter
+  //  or Space the way it would a real <button>. Without this the four are keyboard-dead as well.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') { return; }
+    if (!ev.target.closest) { return; }
+    var q = ev.target.closest('.qhelp[data-help]');
+    if (q) { ev.preventDefault(); openLinked(q); }
   });
 })();
+
+/*  THE ETA HAS TO FOLLOW BOTH CONTROLS.
+    The depth select carries a data-eta measured for the interactive reader. Batched is about four
+    times the wall clock for the same coverage (6.7 pairs/s against 26.8, measured), so a page that
+    kept showing the interactive figure beside a batched run would be quoting a time it cannot
+    meet. The multiplier is applied here, in one place, and the email checkbox is forced on with
+    it: a run nobody is watching has to be able to tell you it finished. */
+(function readDepthEta() {
+  var sel = document.getElementById('readTop');
+  var mode = document.getElementById('readBatched');
+  var dest = document.getElementById('readThen');
+  var out = document.getElementById('readEta');
+  if (!sel || !out) return;
+  var mail = document.querySelector('.readdepth input[name="notify_email"]');
+
+  function scale(text, factor) {
+    /*  The ETA is prose ("about 6 minutes", "8 to 12 minutes"), so every number in it is scaled
+        rather than the string being re-derived: that keeps whatever wording the server chose. */
+    return text.replace(/\d+(?:\.\d+)?/g, function (n) {
+      var v = parseFloat(n) * factor;
+      /*  Whole minutes from three up. "about 7.5 to 17 minutes" is false precision on an
+          estimate whose own range is a factor of two. */
+      return String(v >= 3 ? Math.round(v) : Math.round(v * 10) / 10);
+    });
+  }
+
+  /*  Each control multiplies the same base, so the line under them is one number rather than
+      three that have to be added up by the reader.
+
+      Batched: 4x, measured (6.7 pairs a second against 26.8 per-document).
+      Grid:    the per-requirement sweep goes from 3 documents a limitation to 12, and the sweep
+               is calls, so the run is about half again as long at the same read depth.
+      Packet:  one further model call per document after the reading, which is a minute or two on
+               a ten-document packet and is named rather than folded into the number. */
+  /*  The estimate for an arbitrary N, since a slider is not a list of seven rungs any more.
+      Same shape the server quotes: a fixed cost for retrieval, screening and the external
+      fan-out, plus about 2.5 seconds a document read, and a range because a document's length
+      is the variance. Kept here rather than round-tripped so the number moves with the thumb. */
+  function etaFor(n) {
+    var lo = Math.round((90 + n * 2.0) / 60);
+    var hi = Math.round((180 + n * 4.5) / 60);
+    if (hi <= lo) { hi = lo + 1; }
+    return 'about ' + lo + ' to ' + hi + ' minutes';
+  }
+
+  function paint() {
+    var done = parseInt(sel.dataset.done || '0', 10) || 0;
+    var want = parseInt(sel.value, 10) || 0;
+    var add = Math.max(0, want - done);
+    var base = etaFor(add);
+    var count = document.getElementById('readCount');
+    if (count) {
+      /*  What the number MEANS, which is not the same as the number. On a fresh search it is
+          "read 45"; on one that has already read 100 it is "125 in total, 25 more than the 100
+          already read", because the 100 are not read again and are not paid for again. */
+      count.textContent = done
+        ? want + ' in total · ' + add + ' more than the ' + done + ' already read'
+        : 'the strongest ' + want;
+    }
+    var batched = mode && mode.value === '1';
+    var want = dest ? dest.value : 'list';
+    var factor = (batched ? 4 : 1) * (want === 'grid' ? 1.5 : 1);
+    var text = base && factor !== 1 ? scale(base, factor) : base;
+    if (text && want === 'packet') { text += ', then the papers'; }
+    if (text && batched) { text += ' · emailed'; }
+    out.textContent = text;
+    out.classList.toggle('rdeta-batched', !!batched);
+    if (batched && mail) { mail.checked = true; }
+    var go = document.getElementById('startReading');
+    if (go) {
+      go.textContent = want === 'list' ? 'Start reading'
+                     : want === 'grid' ? 'Read and build the grid'
+                     : 'Read and build the submission';
+    }
+  }
+  sel.addEventListener('change', paint);
+  sel.addEventListener('input', paint);          /* while dragging, not only on release */
+  if (mode) mode.addEventListener('change', paint);
+  if (dest) dest.addEventListener('change', paint);
+  paint();
+})();
+
+
+/*  clamp3 toggle: click a clamped block to open it, click again to close. Delegated, so blocks
+    the extract step writes after this script ran are covered too. A textarea cannot be clamped
+    this way (it is a form control, not a box of text), so it gets a row cap instead. */
+(function clampToggle() {
+  document.addEventListener('click', function (ev) {
+    var el = ev.target.closest && ev.target.closest('.clamp3');
+    if (!el || el.tagName === 'TEXTAREA') { return; }
+    el.classList.toggle('open');
+  });
+  document.addEventListener('focusin', function (ev) {
+    var t = ev.target;
+    if (t && t.tagName === 'TEXTAREA' && t.classList.contains('clamp3')) {
+      t.classList.add('open');
+    }
+  });
+})();
+
