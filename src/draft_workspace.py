@@ -70,13 +70,21 @@ LEGACY_SECTION_FILES = (
 )
 SECTION_BY_KEY = {key: (name, heading) for key, name, heading in SECTION_FILES}
 NUMERALS_FILE = "numerals.md"
+CANONICAL_DRAFT_FILES = frozenset(
+    {name for _key, name, _heading in SECTION_FILES} | {NUMERALS_FILE})
 
 MAX_REFERENCE_CHARS = 24_000
 MAX_TOTAL_REFERENCE_CHARS = 900_000
 MAX_DOCUMENT_CHARS = 120_000
+MAX_CONVERSATION_CHARS = 32_000
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _NUMERAL_CELL_RE = re.compile(r"^\d{1,4}[a-zA-Z]?$", re.IGNORECASE)
+_PLAIN_NUMERAL_ROW_RE = re.compile(
+    r"^\s*(?:[-*+]\s+)?(?P<numeral>\d{1,4}[a-zA-Z]?)\s*"
+    r"(?:[:,]\s*|\s+-\s+)(?P<part>\S(?:.*\S)?)\s*$",
+    re.IGNORECASE,
+)
 
 
 def root() -> Path:
@@ -116,6 +124,7 @@ def _clean(text: Any, limit: int = 400_000) -> str:
 def write_sections(workspace: Path, sections: Mapping[str, str]) -> None:
     draft = Path(workspace) / "draft"
     draft.mkdir(parents=True, exist_ok=True)
+    _remove_noncanonical_draft_entries(draft)
     for key, name, heading in SECTION_FILES:
         body = _clean(sections.get(key), 400_000)
         _write(draft / name, body)
@@ -130,6 +139,42 @@ def _remove_legacy_section_files(draft: Path) -> None:
                 (draft / name).unlink()
             except FileNotFoundError:
                 pass
+
+
+def _noncanonical_draft_entries(draft: Path) -> list[Path]:
+    if not draft.is_dir():
+        return []
+    return sorted(
+        (entry for entry in draft.iterdir() if entry.name not in CANONICAL_DRAFT_FILES),
+        key=lambda entry: entry.name,
+    )
+
+
+def _remove_noncanonical_draft_entries(draft: Path) -> list[str]:
+    removed = []
+    for entry in _noncanonical_draft_entries(draft):
+        removed.append(entry.name)
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink(missing_ok=True)
+    return removed
+
+
+def _reject_noncanonical_draft_entries(draft: Path) -> None:
+    removed = _remove_noncanonical_draft_entries(draft)
+    if not removed:
+        return
+    allowed = ", ".join(sorted(CANONICAL_DRAFT_FILES))
+    detail = (
+        "Removed noncanonical application files created during the drafting turn: "
+        + ", ".join(removed)
+        + ". Use 09-claims.md for claims and only these canonical draft files: "
+        + allowed
+        + "."
+    )
+    error_type = drafting.DraftingValidationError if drafting is not None else ValueError
+    raise error_type(detail)
 
 
 def _migrate_legacy_section_files(workspace: Path) -> bool:
@@ -162,6 +207,7 @@ def read_sections(workspace: Path) -> dict[str, str]:
     """
     _migrate_legacy_section_files(workspace)
     draft = Path(workspace) / "draft"
+    _reject_noncanonical_draft_entries(draft)
     out: dict[str, str] = {}
     for key, name, heading in SECTION_FILES:
         path = draft / name
@@ -215,12 +261,19 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
         return []
     out: list[dict[str, str]] = []
     for line in raw.splitlines():
-        if not line.strip().startswith("|"):
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+            numeral, part = cells[0], cells[1]
+        else:
+            match = _PLAIN_NUMERAL_ROW_RE.fullmatch(line)
+            if not match:
+                continue
+            numeral, part = match.group("numeral"), match.group("part")
+        if not _NUMERAL_CELL_RE.fullmatch(numeral):
             continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 2 or not _NUMERAL_CELL_RE.fullmatch(cells[0]):
-            continue
-        numeral, part = cells[0], cells[1]
         if not numeral or part.lower() in ("part", "---", "") or set(part) <= {"-", " "}:
             continue
         out.append({"numeral": numeral, "part": part})
@@ -230,26 +283,125 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------------------------
+_RENDERED_FIGURE_FILE_RE = re.compile(
+    r"^rendered-[A-Za-z0-9][A-Za-z0-9-]*\.png$", re.IGNORECASE)
+_FIGURE_ORDER_RE = re.compile(
+    r"\bFIG(?:URE)?\.?\s*(\d{1,3})([A-Za-z]?)\b", re.IGNORECASE)
+
+
+def _figure_order_key(value: Any) -> tuple[int, int, str, str]:
+    label = str(value or "").strip()
+    match = _FIGURE_ORDER_RE.search(label)
+    if not match:
+        return (1, 0, "", label.casefold())
+    return (0, int(match.group(1)), match.group(2).upper(), label.casefold())
+
+
+def figure_filename(label: Any, index: int = 0) -> str:
+    """Return the one workspace filename that belongs to a figure heading."""
+    clean_label = _clean(label, 240)
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", clean_label[:60]).strip("-").upper()
+    if not slug and index:
+        slug = f"FIG-{int(index)}"
+    return f"{slug}.md" if slug else ""
+
+
+def figure_heading(markdown: Any) -> str:
+    lines = str(markdown or "").splitlines()
+    if not lines or not lines[0].lstrip().startswith("#"):
+        return ""
+    return lines[0].lstrip().lstrip("#").strip()
+
+
+def _noncanonical_figure_entries(directory: Path) -> list[tuple[Path, str]]:
+    if not directory.is_dir():
+        return []
+    invalid = []
+    for entry in sorted(directory.iterdir(), key=lambda item: item.name):
+        if (entry.is_file() and not entry.is_symlink() and
+                _RENDERED_FIGURE_FILE_RE.fullmatch(entry.name)):
+            continue
+        expected = ""
+        if entry.is_file() and not entry.is_symlink() and entry.suffix.lower() == ".md":
+            try:
+                expected = figure_filename(figure_heading(
+                    entry.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                expected = ""
+            if expected and entry.name == expected:
+                continue
+        invalid.append((entry, expected))
+    return invalid
+
+
+def _reject_noncanonical_figure_entries(directory: Path) -> None:
+    """Put every figure file on its canonical name, and refuse only what cannot be placed.
+
+    A MIS-NAMED file is renamed, not deleted. The canonical name is derived from the file's own
+    ``# FIG.`` heading, so a file that has a heading already carries the answer and there is
+    nothing to ask anybody. Deleting it instead - which is what this did - threw away a drafting
+    agent's six finished figure briefs on its first publish and made it write them again, over a
+    filename convention it had no way to know. That is the wrong trade whichever way you read it:
+    the name is recoverable and the work is not.
+
+    What is still removed and still refuses the publish: a directory, a symlink, a non-Markdown
+    file, and a Markdown file with no figure heading to derive a name from. Those cannot be placed
+    and would be read back as figures that do not exist.
+    """
+    invalid = _noncanonical_figure_entries(directory)
+    if not invalid:
+        return
+    problems = []
+    for entry, expected in invalid:
+        if expected:
+            target = entry.parent / expected
+            #  A collision means two files claim one heading, which is a real conflict rather
+            #  than a naming slip: keep the one already on the canonical name.
+            if target.exists():
+                problems.append(
+                    f"{entry.name} duplicates {expected}, which already exists")
+                entry.unlink(missing_ok=True)
+                continue
+            entry.rename(target)
+            continue
+        problems.append(f"{entry.name} is not a Markdown figure specification with a "
+                        f"# FIG. heading")
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink(missing_ok=True)
+    if not problems:
+        return
+    detail = (
+        "Removed figure files that could not be placed: " + "; ".join(problems)
+        + ". Every file in figures/ must be Markdown opening with its own # FIG. heading, or a "
+          "rendered-*.png sheet."
+    )
+    error_type = drafting.DraftingValidationError if drafting is not None else ValueError
+    raise error_type(detail)
+
+
 def write_figures(workspace: Path, figures: Sequence[Mapping[str, Any]]) -> None:
     directory = Path(workspace) / "figures"
     directory.mkdir(parents=True, exist_ok=True)
     for existing in directory.iterdir():
         if existing.is_file() or existing.is_symlink():
             existing.unlink()
+        elif existing.is_dir():
+            shutil.rmtree(existing)
     for index, figure in enumerate(figures, 1):
         label = _clean(figure.get("label") or f"FIG. {index}", 240)
-        slug = (re.sub(r"[^A-Za-z0-9]+", "-", label[:60]).strip("-").upper() or
-                f"FIG-{index}")
         body = [f"# {label}", "", _clean(figure.get("caption"), 4000)]
         numerals = figure.get("numerals") or []
         if numerals:
             body += ["", "## Numerals shown on this figure", ""]
             body += [f"- {_clean(n, 200)}" for n in numerals]
-        _write(directory / f"{slug}.md", "\n".join(body))
+        _write(directory / figure_filename(label, index), "\n".join(body))
 
 
 def read_figures(workspace: Path) -> list[dict[str, Any]]:
     directory = Path(workspace) / "figures"
+    _reject_noncanonical_figure_entries(directory)
     out = []
     for path in sorted(directory.glob("*.md")):
         try:
@@ -281,7 +433,7 @@ def read_figures(workspace: Path) -> list[dict[str, Any]]:
             numerals = sorted(draft_qa.numerals_used(raw), key=lambda n: int(re.sub(r"\D", "", n) or 0))
         out.append({"label": label or path.stem, "caption": body,
                     "numerals": numerals, "file": path.name})
-    return out
+    return sorted(out, key=lambda item: _figure_order_key(item.get("label")))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -300,15 +452,6 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
     (workspace / "figures").mkdir(parents=True, exist_ok=True)
     (workspace / "review").mkdir(parents=True, exist_ok=True)
 
-    #  Drawing evidence is written by the image pipeline, which no longer runs inside a drafting
-    #  turn. Left on disk it is both stale and expensive: one project carried 31,000 characters of
-    #  figure audit JSON that every run could read and none should have believed.
-    for stale in (workspace / "review").glob("figure-*"):
-        try:
-            stale.unlink()
-        except OSError:
-            pass
-
     _write(workspace / "input" / "brief.md", _brief(project))
     _write(workspace / "input" / "disclosure.md", _disclosure(project))
     _write(workspace / "input" / "conversation.md", _conversation(conversation))
@@ -319,6 +462,7 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
     install_tools(workspace, src_dir)
 
     _migrate_legacy_section_files(workspace)
+    _remove_noncanonical_draft_entries(workspace / "draft")
 
     if sections is not None:
         write_sections(workspace, sections)
@@ -378,36 +522,38 @@ def _disclosure(project: Mapping[str, Any]) -> str:
     return header + "\n" + _clean(project.get("disclosure_text"), 400_000)
 
 
-#  How much of the conversation the agent is given. It is a REMINDER of what has been asked, not
-#  an archive: at turn 55 of one project this file had reached 38,000 characters and every word of
-#  it was re-read on every run of every round. What decides the draft is the disclosure, the
-#  current text and the review; older exchanges are already reflected in all three.
-MAX_CONVERSATION_MESSAGES = max(4, int(os.environ.get("DRAFT_CONVERSATION_MESSAGES", "12")))
-MAX_CONVERSATION_CHARS = max(2000, int(os.environ.get("DRAFT_CONVERSATION_CHARS", "12000")))
-
-
 def _conversation(messages: Sequence[Mapping[str, Any]]) -> str:
     if not messages:
         return "# Conversation\n\n(this is the first turn)"
-    elided = max(0, len(messages) - MAX_CONVERSATION_MESSAGES)
-    messages = list(messages)[-MAX_CONVERSATION_MESSAGES:]
-    lines = ["# Conversation so far", ""]
-    if elided:
-        lines += [f"_{elided} earlier message(s) are not reproduced here. What they settled is in "
-                  "input/disclosure.md, in the current draft, and in review/previous-qa.md._", ""]
+    blocks = []
     for message in messages:
         role = str(message.get("role") or "user")
         who = {"user": "USER", "agent": "YOU (the drafting agent)",
                "qa": "REVIEWER", "system": "SYSTEM"}.get(role, role.upper())
-        lines += [f"### {who}", "", _clean(message.get("body"), 2_000), ""]
-    out = "\n".join(lines)
-    if len(out) > MAX_CONVERSATION_CHARS:
-        #  A single agent message can be thousands of words of reasoning. Keep the end, which is
-        #  what was most recently asked and answered, and say plainly that the start was cut.
-        out = ("# Conversation so far\n\n_The earlier part of this conversation is not "
-               "reproduced. What it settled is in input/disclosure.md, in the current draft, and "
-               "in review/previous-qa.md._\n\n" + out[-MAX_CONVERSATION_CHARS:])
-    return out
+        blocks.append("\n".join([
+            f"### {who}", "", _clean(message.get("body"), 12_000), "",
+        ]))
+
+    selected = []
+    selected_chars = 0
+    for block in reversed(blocks):
+        additional = len(block) + 1
+        if selected and selected_chars + additional > MAX_CONVERSATION_CHARS:
+            break
+        selected.append(block)
+        selected_chars += additional
+    selected.reverse()
+
+    lines = ["# Conversation so far", ""]
+    omitted = len(blocks) - len(selected)
+    if omitted:
+        lines += [
+            f"{omitted} earlier conversation message(s) are not reproduced here. The current "
+            "draft and review files contain the durable state needed for this turn.",
+            "",
+        ]
+    lines.extend(selected)
+    return "\n".join(lines)
 
 
 def _write_materials(workspace: Path, documents: Sequence[Mapping[str, Any]]) -> None:
@@ -725,87 +871,3 @@ def snapshot(workspace: Path) -> dict[str, Any]:
 def iter_section_texts(sections: Mapping[str, str]) -> Iterable[tuple[str, str, str]]:
     for key, _name, heading in SECTION_FILES:
         yield key, heading, str(sections.get(key) or "")
-
-
-# =================================================================================================
-# Handing a reviewer its material instead of sending it to look for it
-# =================================================================================================
-#  A reviewer used to be given a LIST OF SIXTEEN FILE PATHS and told to read them. Measured on
-#  project 8: that review took 27 internal model turns and put 458,000 tokens through the model to
-#  judge a draft whose entire text is 16,000. The arithmetic is not subtle. Every Read is another
-#  model turn, and every model turn re-reads the whole conversation so far, so the cost of fetching
-#  a workspace one file at a time is quadratic in the number of files while the workspace itself is
-#  a constant. Handing the same bytes over in the prompt costs them exactly once.
-#
-#  There is a second reason, and it is the one that matters for correctness: an agent that fetches
-#  its own material decides how much of it to read. "Read draft/ in full - every section, not a
-#  sample" is in the prompt because it stopped doing that. A reviewer that is HANDED the sections
-#  cannot skim eleven of them.
-#  ORDERED SO THE UNCHANGING PART COMES FIRST, because a prompt cache is a PREFIX match: the
-#  first byte that differs from the last call throws away everything after it. Within one turn the
-#  draft is rewritten up to six times while the disclosure, the brief, the conversation and the
-#  figure briefs do not move, so putting draft/ last is the difference between six cache writes
-#  and one write plus five reads of the same 12,000 tokens.
-MATERIAL_DIRECTORIES = ("input", "figures", "draft")
-#  Same reasoning inside input/: the disclosure is fixed for the life of the project, the request
-#  is written fresh every turn.
-MATERIAL_ORDER = ("input/disclosure.md", "input/brief.md", "input/conversation.md",
-                  "input/request.md")
-MATERIAL_SUFFIXES = frozenset({".md", ".txt", ".json"})
-#  Above this, inlining stops being the cheap option and the tool-driven path is honest again.
-#  A cap that silently truncated would be worse than either: the reviewer would report on a draft
-#  it had only been shown part of, and say nothing about the part it never saw.
-MAX_MATERIAL_CHARS = max(20_000, int(os.environ.get("DRAFT_MATERIAL_CHARS", "400000")))
-
-
-def text_materials(workspace: Path,
-                   directories: Sequence[str] = MATERIAL_DIRECTORIES) -> dict[str, str]:
-    """Every text file a reviewer is told to read, keyed by workspace-relative path.
-
-    Directory order is the reading order the prompts always asked for, and within a directory the
-    files sort by name, which is why the section files are numbered.
-    """
-    found: dict[str, str] = {}
-    root = Path(workspace)
-    for name in directories:
-        directory = root / name
-        if not directory.is_dir():
-            continue
-        for path in sorted(directory.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in MATERIAL_SUFFIXES:
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            found[str(path.relative_to(root))] = text
-    out: dict[str, str] = {}
-    for name in MATERIAL_ORDER:
-        if name in found:
-            out[name] = found.pop(name)
-    out.update(found)
-    return out
-
-
-def render_materials(materials: Mapping[str, str]) -> str:
-    """The material as one block, delimited so a model can quote a path back precisely."""
-    blocks = []
-    for path, text in materials.items():
-        blocks.append(f"===== BEGIN {path} =====\n{text.rstrip()}\n===== END {path} =====")
-    return "\n\n".join(blocks)
-
-
-def material_block(workspace: Path,
-                   directories: Sequence[str] = MATERIAL_DIRECTORIES) -> tuple[str, list[str]]:
-    """The rendered material and the paths it covers, or ('', []) if it is too large to inline.
-
-    An empty return is not an error and is not a truncation: it means this workspace is big enough
-    that the caller should keep its file tools and let the agent fetch what it needs. The caller
-    must SAY which of the two happened, because the two paths have different failure modes.
-    """
-    materials = text_materials(workspace, directories)
-    if not materials:
-        return "", []
-    if sum(len(text) for text in materials.values()) > MAX_MATERIAL_CHARS:
-        return "", []
-    return render_materials(materials), list(materials)

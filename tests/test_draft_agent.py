@@ -5,23 +5,73 @@ import pytest
 import draft_agent
 
 
-@pytest.fixture(autouse=True)
-def one_known_subscription(monkeypatch):
-    """No test reaches this host's real credential, and none of them calls Vertex for real.
+def test_api_auth_environment_does_not_inject_the_subscription_token(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "stale-token")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
 
-    Without this a failure case falls through to `_with_vertex_fallback`, which is a live
-    Gemini call: the suite took 104 seconds and billed a project before this fixture existed.
-    """
-    monkeypatch.setattr(draft_agent, "_CACHED_TOKEN", None)
-    monkeypatch.setattr(draft_agent, "VERTEX_FALLBACK", False)
-    monkeypatch.delenv("DRAFT_AGENT_TOKEN_FILES", raising=False)
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "plan-token")
-    monkeypatch.setattr(draft_agent, "token_files", list)
-    yield
-    draft_agent._CACHED_TOKEN = None
+    environment = draft_agent._environment(tmp_path, auth_mode="api")
+
+    assert environment["ANTHROPIC_API_KEY"] == "api-key"
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in environment
+
+
+def test_auto_auth_continues_a_resumed_run_through_api_after_subscription_limit(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
+    monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", False)
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    calls = []
+
+    def run_once(**values):
+        calls.append(values)
+        if values["auth_mode"] == "subscription":
+            return draft_agent.AgentRun(
+                session_id="existing-session", model="opus",
+                error="You've hit your weekly limit, resets soon", duration_ms=25)
+        return draft_agent.AgentRun(
+            ok=True, session_id=values["session_id"], model="opus",
+            result={"action": "revised"}, duration_ms=75)
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="repair", system_prompt="system", schema={},
+        session_id="existing-session", resume=True)
+
+    assert result.ok is True
+    assert [(call["auth_mode"], call["resume"], call["session_id"]) for call in calls] == [
+        ("subscription", True, "existing-session"),
+        ("api", True, "existing-session"),
+    ]
+    assert result.duration_ms == 100
+    assert draft_agent._SUBSCRIPTION_UNAVAILABLE is True
+
+
+def test_auto_auth_skips_known_limited_subscription_on_later_runs(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
+    monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", True)
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    calls = []
+
+    def run_once(**values):
+        calls.append(values)
+        return draft_agent.AgentRun(ok=True, session_id=values["session_id"], model="opus")
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="repair", system_prompt="system", schema={},
+        session_id="existing-session", resume=True)
+
+    assert result.ok is True
+    assert [call["auth_mode"] for call in calls] == ["api"]
 
 
 def test_api_rate_limit_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRY_SECONDS", 65)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
@@ -50,15 +100,16 @@ def test_api_rate_limit_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp
 
     assert result.ok is True
     assert waits == [65]
-    assert [(call["token"], call["resume"], call["session_id"]) for call in calls] == [
-        ("plan-token", False, "review-session"),
-        ("plan-token", False, "retry-session"),
+    assert [(call["auth_mode"], call["resume"], call["session_id"]) for call in calls] == [
+        ("api", False, "review-session"),
+        ("api", False, "retry-session"),
     ]
     assert result.duration_ms == 100
     assert any("rate limit" in step["text"].lower() for step in result.steps)
 
 
 def test_api_overload_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRY_SECONDS", 65)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
@@ -95,6 +146,7 @@ def test_api_overload_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp_p
 
 
 def test_connection_loss_mid_response_retries_from_the_saved_workspace(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
     monkeypatch.setattr(draft_agent, "new_session_id", lambda: "retry-session")
@@ -126,6 +178,7 @@ def test_connection_loss_mid_response_retries_from_the_saved_workspace(monkeypat
 
 
 def test_api_rate_limit_retry_keeps_a_resumed_drafting_session(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
     monkeypatch.setattr(
@@ -157,6 +210,7 @@ def test_api_rate_limit_retry_keeps_a_resumed_drafting_session(monkeypatch, tmp_
 
 def test_resumed_run_restarts_from_workspace_when_conversation_is_missing(
         monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "subscription")
     monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
     monkeypatch.setattr(draft_agent, "new_session_id", lambda: "replacement-session")
     calls = []
@@ -195,156 +249,348 @@ def test_structured_cli_error_details_are_not_discarded():
     }) == "No conversation found with session ID: missing-session"
 
 
-# =============================================================================================
-# Subscriptions only, in order, and never the billed API
-# =============================================================================================
-def test_a_capped_subscription_moves_to_the_next_one_not_to_the_api(monkeypatch, tmp_path):
-    """On 2026-08-26 at 20:33 UTC the subscription reported its weekly limit and every run after
-    that continued through the billed API key, silently, carrying 600,000 tokens each."""
-    monkeypatch.setattr(draft_agent, "subscription_tokens", lambda: ["first", "second"])
-    seen = []
-
-    def fake(common, *, token=""):
-        seen.append(("subscription", token))
-        if token == "first":
-            return draft_agent.AgentRun(
-                ok=False, error="You've hit your weekly limit \u00b7 resets Aug 31, 6am (UTC)")
-        return draft_agent.AgentRun(ok=True, result={"action": "revised"})
-
-    monkeypatch.setattr(draft_agent, "_run_with_rate_limit_retries", fake)
-    out = draft_agent.run(workspace=tmp_path, prompt="p", system_prompt="s", schema={})
-
-    assert out.ok
-    assert [mode for mode, _ in seen] == ["subscription", "subscription"], (
-        "a capped subscription reached for metered billing")
-    assert [tok for _, tok in seen] == ["first", "second"]
+def test_provider_quota_detector_matches_the_live_plural_usage_limit_error():
+    assert draft_agent._provider_quota_error(
+        "API Error: 400 You have reached your specified API usage limits. "
+        "You will regain access on 2026-09-01 at 00:00 UTC."
+    ) is True
 
 
-def test_when_every_subscription_is_capped_the_run_stops_rather_than_spending(
+def test_vertex_agent_takes_over_after_revoked_subscription_and_api_quota(
         monkeypatch, tmp_path):
-    monkeypatch.setattr(draft_agent, "subscription_tokens", lambda: ["a", "b"])
-    monkeypatch.setattr(
-        draft_agent, "_run_with_rate_limit_retries",
-        lambda common, *, token="": draft_agent.AgentRun(
-            ok=False, error="You've hit your weekly limit"))
-
-    out = draft_agent.run(workspace=tmp_path, prompt="p", system_prompt="s", schema={})
-
-    assert not out.ok
-    assert any("not a fallback" in str(step.get("text") or "") for step in out.steps), (
-        "the run did not say why it stopped instead of spending")
-
-
-def test_a_host_with_no_subscription_refuses_rather_than_finding_a_key(monkeypatch, tmp_path):
-    monkeypatch.setattr(draft_agent, "subscription_tokens", lambda: [])
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-should-never-be-used")
-    with pytest.raises(draft_agent.AgentUnavailable, match="deliberately not a fallback"):
-        draft_agent.run(workspace=tmp_path, prompt="p", system_prompt="s", schema={})
-
-
-def test_a_failure_that_is_not_a_quota_limit_does_not_burn_the_other_subscription(
-        monkeypatch, tmp_path):
-    """A malformed answer is not a reason to spend a second account's quota on the same work."""
-    monkeypatch.setattr(draft_agent, "subscription_tokens", lambda: ["first", "second"])
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
+    monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", False)
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "revoked-subscription-token")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
     calls = []
 
-    def fake(common, *, token=""):
-        calls.append(token)
-        return draft_agent.AgentRun(ok=False, error="did not return valid structured output")
-
-    monkeypatch.setattr(draft_agent, "_run_with_rate_limit_retries", fake)
-    draft_agent.run(workspace=tmp_path, prompt="p", system_prompt="s", schema={})
-    assert calls == ["first"]
-
-
-def test_the_token_list_is_read_in_priority_order(monkeypatch, tmp_path):
-    first = tmp_path / "primary"
-    second = tmp_path / "fallback"
-    first.write_text("sk-ant-oat01-primary")
-    second.write_text("sk-ant-oat01-fallback")
-    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    monkeypatch.setattr(draft_agent, "token_files",
-                        lambda: [Path(item) for item in
-                                 f"{first}:{second}".split(":")])
-    assert draft_agent.subscription_tokens() == [
-        "sk-ant-oat01-primary", "sk-ant-oat01-fallback"]
-
-
-def test_a_missing_fallback_file_is_not_an_error(monkeypatch):
-    """A host with only one subscription is the normal case, not a misconfiguration."""
-    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    monkeypatch.setattr(draft_agent, "token_files",
-                        lambda: [Path("/nonexistent/a"), Path("/nonexistent/b")])
-    assert draft_agent.subscription_tokens() == []
-
-
-def test_adding_a_fallback_credential_does_not_wait_for_a_restart(monkeypatch, tmp_path):
-    """The 300-second cache is keyed on what was asked for, not on nothing."""
-    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    first = tmp_path / "primary"
-    first.write_text("sk-ant-oat01-primary")
-    monkeypatch.setattr(draft_agent, "token_files", lambda: [first])
-    assert draft_agent.subscription_tokens() == ["sk-ant-oat01-primary"]
-    second = tmp_path / "fallback"
-    second.write_text("sk-ant-oat01-fallback")
-    monkeypatch.setattr(draft_agent, "token_files", lambda: [first, second])
-    assert draft_agent.subscription_tokens() == [
-        "sk-ant-oat01-primary", "sk-ant-oat01-fallback"]
-
-
-def test_a_dead_credential_moves_on_instead_of_ending_the_turn(monkeypatch, tmp_path):
-    """A mirrored rotating credential is revoked the moment its own host refreshes it. Measured
-    live on 2026-08-27: the fallback answered 401 and the turn died with a working rung left."""
-    monkeypatch.setattr(draft_agent, "subscription_tokens", lambda: ["dead", "good"])
-    seen = []
-
-    def fake(common, *, token=""):
-        seen.append(token)
-        if token == "dead":
+    def run_once(**values):
+        calls.append(values["auth_mode"])
+        if values["auth_mode"] == "subscription":
             return draft_agent.AgentRun(
-                ok=False,
-                error="Failed to authenticate. API Error: 401 OAuth access token has been revoked.")
-        return draft_agent.AgentRun(ok=True, result={"action": "revised"})
+                model="opus",
+                error=("Failed to authenticate. API Error: 401 OAuth access token has been "
+                       "revoked."))
+        return draft_agent.AgentRun(
+            model="opus", error="You have reached your specified API usage limits.")
 
-    monkeypatch.setattr(draft_agent, "_run_with_rate_limit_retries", fake)
-    out = draft_agent.run(workspace=tmp_path, prompt="p", system_prompt="s", schema={})
-
-    assert out.ok and seen == ["dead", "good"]
-    assert any("dead or revoked" in str(step.get("text") or "") for step in out.steps), \
-        "it reported a revoked credential as an exhausted quota"
-
-
-def test_a_dead_credential_is_not_reported_as_an_exhausted_plan(monkeypatch, tmp_path):
-    monkeypatch.setattr(draft_agent, "subscription_tokens", lambda: ["dead"])
-    monkeypatch.setattr(
-        draft_agent, "_run_with_rate_limit_retries",
-        lambda common, *, token="": draft_agent.AgentRun(
-            ok=False, error="API Error: 401 OAuth access token has been revoked."))
-    out = draft_agent.run(workspace=tmp_path, prompt="p", system_prompt="s", schema={})
-    text = " ".join(str(step.get("text") or "") for step in out.steps)
-    assert "could not be presented" in text and "out of quota" not in text
-
-
-def test_when_every_subscription_is_dead_vertex_takes_over(monkeypatch, tmp_path):
-    class AllowedSpend:
-        degraded = False
-        allowed = True
-
-    monkeypatch.setattr(draft_agent, "VERTEX_FALLBACK", True)
-    monkeypatch.setattr(draft_agent, "subscription_tokens", lambda: ["dead"])
-    monkeypatch.setattr(
-        draft_agent, "_run_with_rate_limit_retries",
-        lambda common, *, token="": draft_agent.AgentRun(
-            ok=False,
-            error="Failed to authenticate. API Error: 401 OAuth access token has been revoked."))
-    monkeypatch.setattr(draft_agent._SPEND, "status", lambda: AllowedSpend())
-    monkeypatch.setattr(draft_agent._SPEND, "record", lambda **_values: None)
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
     monkeypatch.setattr(
         draft_agent, "_run_vertex_once",
         lambda **_values: draft_agent.AgentRun(
             ok=True, model="vertex/gemini-2.5-pro", result={"summary": "reviewed"}))
 
-    out = draft_agent.run(workspace=tmp_path, prompt="p", system_prompt="s", schema={})
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="review", system_prompt="system", schema={})
 
-    assert out.ok is True
-    assert out.model == "vertex/gemini-2.5-pro"
+    assert result.ok is True
+    assert result.model == "vertex/gemini-2.5-pro"
+    assert calls == ["subscription", "api"]
+    assert draft_agent._SUBSCRIPTION_UNAVAILABLE is True
+
+
+def test_vertex_agent_takes_over_after_subscription_and_api_quota_exhaustion(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
+    monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", False)
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    calls = []
+
+    def run_once(**values):
+        calls.append(values["auth_mode"])
+        return draft_agent.AgentRun(
+            session_id="claude-session", model="opus", duration_ms=20,
+            error=("API Error: 400 You have reached your specified API usage limits. "
+                   "You will regain access on 2026-09-01 at 00:00 UTC."))
+
+    def run_vertex(**values):
+        assert values["workspace"] == Path(tmp_path)
+        return draft_agent.AgentRun(
+            ok=True, session_id="vertex-session", model="vertex/gemini-2.5-pro",
+            result={"action": "revised"}, duration_ms=60,
+            tokens={"input": 100, "output": 20, "cache_read": 0, "cache_write": 0})
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+    monkeypatch.setattr(draft_agent, "_run_vertex_once", run_vertex)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="repair", system_prompt="system", schema={},
+        session_id="claude-session", resume=True)
+
+    assert result.ok is True
+    assert calls == ["subscription", "api"]
+    assert result.model == "vertex/gemini-2.5-pro"
+    assert result.duration_ms == 100
+    assert result.tokens["input"] == 100
+    assert any("vertex" in step["text"].lower() for step in result.steps)
+
+
+def test_vertex_agent_takes_over_when_explicit_api_route_exhausts_quota(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    monkeypatch.setattr(
+        draft_agent, "_run_once",
+        lambda **_values: draft_agent.AgentRun(
+            model="opus", duration_ms=15,
+            error="You have reached your specified API usage limits."))
+    monkeypatch.setattr(
+        draft_agent, "_run_vertex_once",
+        lambda **_values: draft_agent.AgentRun(
+            ok=True, model="vertex/gemini-2.5-pro", result={"summary": "reviewed"},
+            duration_ms=35))
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="review", system_prompt="system", schema={})
+
+    assert result.ok is True
+    assert result.duration_ms == 50
+
+
+def test_vertex_workspace_tools_are_confined_and_only_edit_filing_files(tmp_path):
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "input").mkdir()
+    (tmp_path / "input" / "disclosure.md").write_text("authority", encoding="utf-8")
+
+    written, attachments = draft_agent._vertex_tool(
+        tmp_path, "write_file", {"path": "draft/01-title.md", "content": "A title"},
+        writable=True)
+
+    assert written["ok"] is True
+    assert attachments == []
+    assert (tmp_path / "draft" / "01-title.md").read_text(encoding="utf-8") == "A title"
+    with pytest.raises(ValueError, match="Only draft/ and figures/"):
+        draft_agent._vertex_tool(
+            tmp_path, "write_file",
+            {"path": "input/disclosure.md", "content": "changed"}, writable=True)
+    with pytest.raises(ValueError, match="leaves the drafting workspace"):
+        draft_agent._vertex_tool(
+            tmp_path, "write_file", {"path": "draft/../../outside", "content": "x"},
+            writable=True)
+    with pytest.raises(ValueError, match="canonical application files"):
+        draft_agent._vertex_tool(
+            tmp_path, "write_file", {"path": "draft/08-claims.md", "content": "wrong"},
+            writable=True)
+    assert (tmp_path / "input" / "disclosure.md").read_text(encoding="utf-8") == "authority"
+
+
+def test_vertex_workspace_tool_requires_a_figure_filename_derived_from_its_heading(tmp_path):
+    (tmp_path / "figures").mkdir()
+    content = "# FIG. 1: System Overview\n\nA block diagram.\n"
+
+    with pytest.raises(ValueError, match="canonical figure filename"):
+        draft_agent._vertex_tool(
+            tmp_path, "write_file", {"path": "figures/FIG-1.md", "content": content},
+            writable=True)
+
+    written, _attachments = draft_agent._vertex_tool(
+        tmp_path, "write_file",
+        {"path": "figures/FIG-1-SYSTEM-OVERVIEW.md", "content": content}, writable=True)
+
+    assert written["ok"] is True
+    path = tmp_path / "figures" / "FIG-1-SYSTEM-OVERVIEW.md"
+    assert path.exists()
+    with pytest.raises(ValueError, match="canonical figure filename"):
+        draft_agent._vertex_tool(
+            tmp_path, "replace_text", {
+                "path": "figures/FIG-1-SYSTEM-OVERVIEW.md",
+                "old_text": "# FIG. 1: System Overview",
+                "new_text": "# FIG. 2: System Overview",
+            }, writable=True)
+    assert path.read_text(encoding="utf-8") == content
+
+
+def test_vertex_workspace_tool_can_delete_only_a_canonical_figure_specification(tmp_path):
+    (tmp_path / "figures").mkdir()
+    (tmp_path / "draft").mkdir()
+    figure = tmp_path / "figures" / "FIG-2.md"
+    figure.write_text("# FIG. 2\n\nA sectional view.\n", encoding="utf-8")
+    claim = tmp_path / "draft" / "09-claims.md"
+    claim.write_text("1. A device.", encoding="utf-8")
+
+    deleted, _attachments = draft_agent._vertex_tool(
+        tmp_path, "delete_figure", {"path": "figures/FIG-2.md"}, writable=True)
+
+    assert deleted == {"ok": True, "path": "figures/FIG-2.md", "deleted": True}
+    assert not figure.exists()
+    with pytest.raises(ValueError, match="Only figure specifications may be deleted"):
+        draft_agent._vertex_tool(
+            tmp_path, "delete_figure", {"path": "draft/09-claims.md"}, writable=True)
+    assert claim.exists()
+
+
+def test_vertex_image_read_attaches_pixels_without_exposing_raw_bytes_in_json(tmp_path):
+    (tmp_path / "figures").mkdir()
+    image = b"\x89PNG\r\n\x1a\nnot-a-real-image"
+    (tmp_path / "figures" / "rendered-FIG-1.png").write_bytes(image)
+
+    result, attachments = draft_agent._vertex_tool(
+        tmp_path, "read_file", {"path": "figures/rendered-FIG-1.png"}, writable=False)
+
+    assert result["pixels_attached"] is True
+    assert result["bytes"] == len(image)
+    assert attachments == [(image, "image/png")]
+    assert image not in str(result).encode()
+
+
+def test_vertex_structured_result_validator_rejects_missing_and_extra_fields():
+    schema = {
+        "type": "object",
+        "properties": {"summary": {"type": "string"}},
+        "required": ["summary"],
+        "additionalProperties": False,
+    }
+
+    assert draft_agent._schema_problem({"summary": "done"}, schema) == ""
+    assert "required" in draft_agent._schema_problem({}, schema)
+    assert "unexpected" in draft_agent._schema_problem(
+        {"summary": "done", "notes": "no"}, schema)
+
+
+def test_vertex_agent_does_not_replay_an_invalid_or_empty_model_role(monkeypatch, tmp_path):
+    """A blank Vertex candidate once poisoned the next request with an invalid history role."""
+    from google.genai import types
+
+    calls = []
+
+    def generate(_client, *, model, contents, config, deadline, cancel):
+        del model, config, deadline, cancel
+        calls.append(list(contents))
+        if len(calls) == 1:
+            return type("Response", (), {
+                "candidates": [type("Candidate", (), {
+                    "content": types.Content(role="assistant", parts=[]),
+                })()],
+                "usage_metadata": None,
+            })()
+        roles = [str(getattr(item, "role", "") or "") for item in contents]
+        if any(role not in {"user", "model"} for role in roles):
+            raise RuntimeError("Please use a valid role: user, model.")
+        return type("Response", (), {
+            "candidates": [type("Candidate", (), {
+                "content": types.Content(
+                    role="model", parts=[types.Part.from_text(text='{"action":"ready"}')]),
+            })()],
+            "usage_metadata": None,
+        })()
+
+    monkeypatch.setattr(draft_agent, "_vertex_client", lambda: object())
+    monkeypatch.setattr(draft_agent, "_vertex_generate", generate)
+    result = draft_agent._run_vertex_once(
+        workspace=tmp_path, prompt="finish", system_prompt="system",
+        schema={
+            "type": "object",
+            "properties": {"action": {"type": "string"}},
+            "required": ["action"],
+            "additionalProperties": False,
+        }, timeout=30)
+
+    assert result.ok is True and result.result == {"action": "ready"}
+    assert len(calls) == 2
+    assert [item.role for item in calls[1]] == ["user", "user"]
+
+
+def test_vertex_agent_forces_submit_result_after_repeated_prose_only_finishes(
+        monkeypatch, tmp_path):
+    from google.genai import types
+
+    calls = []
+
+    def generate(_client, *, model, contents, config, deadline, cancel):
+        del model, contents, deadline, cancel
+        calls.append(config)
+        if len(calls) <= 3:
+            parts = [types.Part.from_text(text="The requested edits are complete.")]
+        else:
+            function_config = config.tool_config.function_calling_config
+            assert function_config.mode == types.FunctionCallingConfigMode.ANY
+            assert function_config.allowed_function_names == ["submit_result"]
+            parts = [types.Part.from_function_call(
+                name="submit_result", args={"action": "ready"})]
+        return type("Response", (), {
+            "candidates": [type("Candidate", (), {
+                "content": types.Content(role="model", parts=parts),
+            })()],
+            "usage_metadata": None,
+        })()
+
+    monkeypatch.setattr(draft_agent, "_vertex_client", lambda: object())
+    monkeypatch.setattr(draft_agent, "_vertex_generate", generate)
+    result = draft_agent._run_vertex_once(
+        workspace=tmp_path, prompt="finish", system_prompt="system",
+        schema={
+            "type": "object",
+            "properties": {"action": {"type": "string"}},
+            "required": ["action"],
+            "additionalProperties": False,
+        }, timeout=30)
+
+    assert result.ok is True and result.result == {"action": "ready"}
+    assert len(calls) == 4
+
+
+def test_vertex_agent_reads_every_authoritative_input_before_its_first_write(
+        monkeypatch, tmp_path):
+    """A fallback must not draft an unrelated invention from ungrounded model state."""
+    from google.genai import types
+
+    required = [
+        "input/brief.md",
+        "input/disclosure.md",
+        "input/conversation.md",
+        "input/request.md",
+        "review/previous-qa.md",
+    ]
+    for relative in required:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"authority from {relative}\n", encoding="utf-8")
+    (tmp_path / "draft").mkdir()
+    calls = []
+
+    def generate(_client, *, model, contents, config, deadline, cancel):
+        del model, config, deadline, cancel
+        calls.append(list(contents))
+        if len(calls) == 1:
+            # Function calls in one model response are concurrent intentions. Reading source and
+            # writing a draft in the same batch is still ungrounded because the model has not yet
+            # received any of the read results.
+            parts = [types.Part.from_function_call(
+                name="read_file", args={"path": relative}) for relative in required]
+            parts.append(types.Part.from_function_call(
+                name="write_file",
+                args={"path": "draft/01-title.md", "content": "UNRELATED FISHING LURE"}))
+        elif len(calls) == 2:
+            responses = [part.function_response.response for part in contents[-1].parts]
+            assert all(response["ok"] for response in responses[:-1])
+            assert responses[-1]["ok"] is False
+            assert "authoritative input" in responses[-1]["error"]
+            parts = [types.Part.from_function_call(
+                name="write_file",
+                args={"path": "draft/01-title.md", "content": "PRESSURE RELIEF CARTRIDGE"})]
+        else:
+            parts = [types.Part.from_function_call(
+                name="submit_result", args={"action": "ready"})]
+        return type("Response", (), {
+            "candidates": [type("Candidate", (), {
+                "content": types.Content(role="model", parts=parts),
+            })()],
+            "usage_metadata": None,
+        })()
+
+    monkeypatch.setattr(draft_agent, "_vertex_client", lambda: object())
+    monkeypatch.setattr(draft_agent, "_vertex_generate", generate)
+    result = draft_agent._run_vertex_once(
+        workspace=tmp_path, prompt="finish", system_prompt="system",
+        schema={
+            "type": "object",
+            "properties": {"action": {"type": "string"}},
+            "required": ["action"],
+            "additionalProperties": False,
+        }, tools="Read,Write", timeout=30)
+
+    assert result.ok is True and result.result == {"action": "ready"}
+    assert (tmp_path / "draft" / "01-title.md").read_text(encoding="utf-8") == \
+        "PRESSURE RELIEF CARTRIDGE"
+    assert len(calls) == 3

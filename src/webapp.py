@@ -45,7 +45,6 @@ import drafting, draft_export, draft_worker
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
 import draft_novelty, draft_research                # re-search rounds and their reading
 import draft_studio, draft_studio_service, draft_uspto, draft_workspace
-import figure_compiler, figure_compiler_service       # deterministic filing-drawing compiler
 import claim_chart, translate, drawings          # ported per-card enrichment
 import ingest_input                                # front-door document / patent-link -> search brief
 import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
@@ -4803,6 +4802,15 @@ def api_flags(slug):
 
 
 # ---- patent figures for a draft: generate, edit, keep every version -------------------------
+def _figures_for(project):
+    """This project's drawings, or [] if the store is unavailable: never break the page."""
+    try:
+        return draft_figures.listing(project["id"], project["user_id"])
+    except Exception:
+        traceback.print_exc()
+        return []
+
+
 def _figure_project(principal, project_id):
     """The project, checked against this principal , figures inherit the draft's permissions."""
     return _drafting_service().get_project(principal, project_id)
@@ -4814,57 +4822,6 @@ def _figure_in_project(user_id, project_id, figure_id):
     if not figure or int(figure.get("project_id") or 0) != int(project_id):
         abort(404)
     return figure
-
-
-@app.route("/drafts/<int:project_id>/figures", methods=["POST"])
-def draft_figure_generate(project_id):
-    """Generate a new figure, or apply a change to an existing one.
-
-    Synchronous on purpose: one image is ~5 s, which is inside a request, and a job queue for it
-    would add a status-polling surface for something the user is watching happen.
-    """
-    try:
-        user, principal = _draft_identity()
-    except drafting.DraftingError as exc:
-        return _error_response({"error": str(exc)}, _draft_error_status(exc), str(exc))
-    auth.require_csrf()
-    try:
-        project = _figure_project(principal, project_id)
-    except drafting.DraftingError as exc:
-        return _error_response({"error": str(exc)}, _draft_error_status(exc), str(exc))
-
-    body = request.get_json(silent=True) or request.form.to_dict() or {}
-    label = str(body.get("label") or "").strip()[:80]
-    caption = str(body.get("caption") or "").strip()[:400]
-    instruction = str(body.get("instruction") or "").strip()[:1000]
-    figure_id = body.get("figure_id")
-    figure_id = int(figure_id) if str(figure_id or "").isdigit() else None
-    if not figure_id and not (label or caption):
-        return jsonify({"ok": False, "error": "describe the figure first"}), 400
-    if not figure_id and not label:
-        label = "FIG. %d" % (len(_figures_for(project)) + 1)
-
-    version = None
-    try:
-        version = _drafting_service().get_project(principal, project_id, include_versions=True)
-        latest = int(version.get("latest_version_no") or 0)
-        sections = next((v.get("sections") or {} for v in version.get("versions", [])
-                         if int(v.get("version_no") or 0) == latest), {})
-    except Exception:
-        sections = {}
-    try:
-        out = draft_figures.render_figure(
-            project["id"], project["user_id"], label=label, caption=caption, sections=sections,
-            instruction=instruction, figure_id=figure_id,
-            #  Before the specification is generated the inventor's disclosure is the ONLY place
-            #  the reference numerals exist, and it is usually where they originated.
-            disclosure=str(project.get("disclosure_text") or "")[:40000])
-    except draft_figures.FigureError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 502
-    except Exception as exc:
-        traceback.print_exc()
-        return jsonify({"ok": False, "error": f"could not draw that: {str(exc)[:180]}"}), 500
-    return jsonify({"ok": True, **out})
 
 
 @app.route("/drafts/<int:project_id>/figures/<int:figure_id>.png")
@@ -4882,31 +4839,28 @@ def draft_figure_png(project_id, figure_id):
 
 @app.route("/drafts/<int:project_id>/figures/<int:figure_id>/activate", methods=["POST"])
 def draft_figure_activate(project_id, figure_id):
-    user, principal = _draft_identity()
+    """Go back to an earlier sheet the user uploaded for this figure.
+
+    The gate that used to stand here checked a version's stored pixel audit against a hash of the
+    current drawing specification, which made sense while this product generated its own sheets
+    and inspected them. It no longer does: a sheet is whatever the person drew, and choosing which
+    of their own uploads is the live one is their decision, not a check to pass.
+    """
+    _user, principal = _draft_identity()
     auth.require_csrf()
-    project = _figure_project(principal, project_id)
-    figure = _figure_in_project(user["id"], project_id, figure_id)
     body = request.get_json(silent=True) or request.form.to_dict() or {}
+    #  Parsed BEFORE the try, because every drafting error is itself a ValueError: a "not yours"
+    #  raised inside the service would otherwise be caught by the malformed-input branch and
+    #  answered 400 "which version?", which is both the wrong status and a lie about the cause.
     try:
-        n = int(body.get("version_no"))
+        version_no = int(body.get("version_no"))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "which version?"}), 400
-    current_no = int(project.get("latest_version_no") or 0)
-    current = next((item for item in (project.get("versions") or [])
-                    if int(item.get("version_no") or 0) == current_no), None) or {}
-    spec = next((item for item in (current.get("figure_specs") or [])
-                 if draft_figures.figure_key(item.get("label")) ==
-                 draft_figures.figure_key(figure.get("figure_label"))), None)
-    if not spec:
-        return jsonify({"ok": False, "error": "that drawing is not in the current draft"}), 409
-    expected = draft_figures.expected_entries(spec, current.get("numerals") or [])
-    expected_hash = draft_figures.specification_hash(
-        spec.get("label"), spec.get("caption"), expected)
-    if not draft_figures.set_active(
-            figure_id, user["id"], n, expected_specification_hash=expected_hash):
-        return jsonify({"ok": False,
-                        "error": "that version did not pass the current drawing specification"}), 409
-    return jsonify({"ok": True, "version_no": n})
+    try:
+        return jsonify({"ok": True, "version_no": _studio().activate_figure_version(
+            principal, project_id, figure_id, version_no)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
 
 
 @app.route("/drafts/<int:project_id>/figures/<int:figure_id>/delete", methods=["POST"])
@@ -6496,54 +6450,6 @@ def draft_new():
     return redirect(url_for("draft_start", **target))
 
 
-def _draft_detail_context(principal, project_id):
-    service = _drafting_service()
-    project = service.get_project(principal, project_id, include_versions=True)
-    chosen_no = request.args.get("version", type=int) or int(project.get("latest_version_no") or 0)
-    version = next((v for v in project.get("versions", [])
-                    if int(v.get("version_no") or 0) == chosen_no), None)
-    version_diff = ""
-    if version:
-        previous = next((v for v in project.get("versions", [])
-                         if int(v.get("version_no") or 0) == int(version["version_no"]) - 1), None)
-        if previous:
-            chunks = []
-            for key, heading in drafting.SECTION_ORDER:
-                before = str((previous.get("sections") or {}).get(key) or "").splitlines()
-                after = str((version.get("sections") or {}).get(key) or "").splitlines()
-                if before != after:
-                    chunks.extend(difflib.unified_diff(
-                        before, after, fromfile=f"v{previous['version_no']} {heading}",
-                        tofile=f"v{version['version_no']} {heading}", lineterm=""))
-            version_diff = "\n".join(chunks)[:60_000]
-    try:
-        report_view = _draft_report_loader(principal, project["search_slug"], project["user_id"])
-    except drafting.DraftingError:
-        report_view = {"cards": []}
-    selected_pubs = {r["publication_number"] for r in project.get("references", [])}
-    jobs = project.get("jobs") or []
-    return {"project": project, "version": version,
-            "latest_job": jobs[0] if jobs else None,
-            "report_cards": report_view.get("cards") or [], "selected_pubs": selected_pubs,
-            "section_order": drafting.SECTION_ORDER, "version_diff": version_diff,
-            "generation_key": secrets.token_urlsafe(24),
-            "error": request.args.get("error", ""), "message": request.args.get("message", ""),
-            "created": request.args.get("created") == "1",
-            #  Figures live beside the draft, not inside a version: a drawing survives a
-            #  regeneration of the text, which is what makes iterating on it worth doing.
-            "figures": _figures_for(project),
-            "figure_suggestions": draft_figures.figures_from_draft((version or {}).get("sections") or {})}
-
-
-def _figures_for(project):
-    """This project's figures, or [] if the store is unavailable , never break the draft page."""
-    try:
-        return draft_figures.listing(project["id"], project["user_id"])
-    except Exception:
-        traceback.print_exc()
-        return []
-
-
 @app.route("/drafts/<int:project_id>")
 def draft_detail(project_id):
     """Retire the unreviewed section editor without breaking saved links."""
@@ -6585,11 +6491,9 @@ def draft_generate(project_id):
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
-        idem = request.form.get("idempotency_key") or secrets.token_urlsafe(18)
         message = str(request.form.get("instructions") or "").strip() or (
             "Finalize the current application into a complete filing-ready draft.")
-        _studio().start_turn(
-            principal, project_id, message=message, kind="revise", idempotency_key=idem)
+        _studio().send_to_agent(principal, project_id, message)
         return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
@@ -6600,10 +6504,10 @@ def draft_retry(project_id, job_id):
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
-        _studio().start_turn(
+        _studio().send_to_agent(
             principal, project_id,
-            message="Finalize the current application and repair every filing gate failure.",
-            kind="qa_fix", idempotency_key=f"legacy-retry-{job_id}-{secrets.token_urlsafe(8)}")
+            "Finalize the current application and repair every filing gate failure. "
+            "Read review/previous-qa.md first.")
         return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
@@ -6754,7 +6658,6 @@ def draft_print(project_id):
 #  The classic page above edits a draft section by section. This is the product: the user talks to
 #  a drafting agent, the agent edits the application, and a reviewer checks every iteration.
 _STUDIO_SERVICE = None
-_FIGURE_COMPILER_SERVICE = None
 
 
 def _studio():
@@ -6762,14 +6665,6 @@ def _studio():
     if _STUDIO_SERVICE is None:
         _STUDIO_SERVICE = draft_studio_service.StudioService(_drafting_service())
     return _STUDIO_SERVICE
-
-
-def _figure_compiler():
-    global _FIGURE_COMPILER_SERVICE
-    if _FIGURE_COMPILER_SERVICE is None:
-        _FIGURE_COMPILER_SERVICE = figure_compiler_service.FigureCompilerService(
-            _drafting_service())
-    return _FIGURE_COMPILER_SERVICE
 
 
 def _turn_runner():
@@ -6780,14 +6675,6 @@ def _turn_runner():
 def _studio_error(exc):
     error = str(draft_studio.human_text(str(exc)))
     return jsonify({"ok": False, "error": error}), _draft_error_status(exc)
-
-
-def _figure_compiler_error(exc):
-    status = 409 if isinstance(
-        exc, (figure_compiler.ApprovalRequired, figure_compiler.CompilationBlocked)) else \
-        _draft_error_status(exc)
-    error = str(draft_studio.human_text(str(exc)))
-    return jsonify({"ok": False, "error": error}), status
 
 
 def _uploads_from_request(default_kind="prior_art"):
@@ -6999,116 +6886,146 @@ def api_draft_studio_poll(project_id):
         return _studio_error(exc)
 
 
-# ---- deterministic filing drawings ----------------------------------------------------------
-@app.route("/api/drafts/<int:project_id>/figure-compiler")
-def api_draft_figure_compiler(project_id):
-    try:
-        _user, principal = _draft_identity()
-        return jsonify({"ok": True, "compiler": _figure_compiler().state(principal, project_id)})
-    except (drafting.DraftingError, figure_compiler.FigureCompilerError) as exc:
-        return _figure_compiler_error(exc)
-
-
-def _compiler_action(project_id, action):
-    """One authenticated response shape for every explicit compiler gate."""
-    try:
-        _user, principal = _draft_identity()
-        return jsonify({"ok": True, "compiler": action(principal)})
-    except (drafting.DraftingError, figure_compiler.FigureCompilerError) as exc:
-        return _figure_compiler_error(exc)
-
-
-@app.route("/drafts/<int:project_id>/figure-compiler/start", methods=["POST"])
-def draft_figure_compiler_start(project_id):
-    auth.require_csrf()
-    body = request.get_json(silent=True) or request.form
-    return _compiler_action(project_id, lambda principal: _figure_compiler().start(
-        principal, project_id, version_no=body.get("version_no", type=int)
-        if hasattr(body, "get") and not isinstance(body, dict) else body.get("version_no"),
-        ruleset=str(body.get("ruleset") or "uspto-letter-2026.1")))
-
-
-@app.route("/drafts/<int:project_id>/figure-compiler/model/approve", methods=["POST"])
-def draft_figure_compiler_model_approve(project_id):
-    auth.require_csrf()
-    return _compiler_action(project_id, lambda principal:
-                            _figure_compiler().approve_model(principal, project_id))
-
-
-@app.route("/drafts/<int:project_id>/figure-compiler/model/resolve", methods=["POST"])
-def draft_figure_compiler_model_resolve(project_id):
-    auth.require_csrf()
-    body = request.get_json(silent=True) or request.form
-    return _compiler_action(project_id, lambda principal:
-                            _figure_compiler().resolve_model_conflict(
-                                principal, project_id,
-                                conflict_id=str(body.get("conflict_id") or ""),
-                                choice=str(body.get("choice") or "")))
-
-
-@app.route("/drafts/<int:project_id>/figure-compiler/manifest/approve", methods=["POST"])
-def draft_figure_compiler_manifest_approve(project_id):
-    auth.require_csrf()
-    return _compiler_action(project_id, lambda principal:
-                            _figure_compiler().approve_manifest(principal, project_id))
-
-
-@app.route("/drafts/<int:project_id>/figure-compiler/compile", methods=["POST"])
-def draft_figure_compiler_compile(project_id):
-    auth.require_csrf()
-    return _compiler_action(project_id, lambda principal:
-                            _figure_compiler().compile(principal, project_id))
-
-
-@app.route("/drafts/<int:project_id>/figure-compiler/patch", methods=["POST"])
-def draft_figure_compiler_patch(project_id):
-    auth.require_csrf()
-    body = request.get_json(silent=True) or request.form
-    patch = dict(body) if hasattr(body, "items") else {}
-    return _compiler_action(project_id, lambda principal:
-                            _figure_compiler().patch(principal, project_id, patch))
-
-
-@app.route("/drafts/<int:project_id>/figure-compiler/approve", methods=["POST"])
-def draft_figure_compiler_approve(project_id):
-    auth.require_csrf()
-    return _compiler_action(project_id, lambda principal:
-                            _figure_compiler().approve_final(principal, project_id))
-
-
-@app.route("/drafts/<int:project_id>/figure-compiler/export.<format_name>")
-def draft_figure_compiler_export(project_id, format_name):
-    if format_name not in {"svg", "pdf"}:
-        abort(404)
-    try:
-        _user, principal = _draft_identity()
-        sheet = max(1, request.args.get("sheet", 1, type=int))
-        output = _figure_compiler().export(
-            principal, project_id, format_name, sheet=sheet)
-        suffix = f"-sheet-{sheet}" if format_name == "svg" else ""
-        return Response(
-            output, mimetype="image/svg+xml" if format_name == "svg" else "application/pdf",
-            headers={"Content-Disposition":
-                     f'attachment; filename="draft-{project_id}-figures{suffix}.{format_name}"'})
-    except (drafting.DraftingError, figure_compiler.FigureCompilerError) as exc:
-        return _figure_compiler_error(exc)
-
-
 @app.route("/drafts/<int:project_id>/studio/message", methods=["POST"])
 def draft_studio_message(project_id):
+    """Type a message into this draft's agent, exactly as if it had been typed in the terminal."""
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
         body = request.get_json(silent=True) or request.form
-        turn = _studio().start_turn(
-            principal, project_id, message=str(body.get("message") or ""),
-            kind=str(body.get("kind") or "revise"),
-            section_key=str(body.get("section_key") or ""),
-            idempotency_key=str(body.get("idempotency_key") or "") or None)
-        return jsonify({"ok": True, "turn": {"id": turn["id"], "turn_no": turn["turn_no"],
-                                             "status": turn["status"]}})
+        return jsonify({"ok": True, **_studio().send_to_agent(
+            principal, project_id, str(body.get("message") or ""))})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
+
+
+# ---- the drafting agent's terminal -----------------------------------------------------------
+#
+#  The page reads the pane on a one-second poll and types into it. Everything here is scoped to
+#  one project and re-checks ownership in the service, because a drafting terminal is a shell
+#  with somebody's unfiled application open in it.
+@app.route("/api/drafts/<int:project_id>/terminal")
+def api_draft_terminal(project_id):
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, **_studio().terminal_state(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/terminal/tail")
+def api_draft_terminal_tail(project_id):
+    try:
+        _user, principal = _draft_identity()
+        return jsonify(_studio().terminal_tail(
+            principal, project_id,
+            known_lines=request.args.get("known_lines", type=int) or 0,
+            last_hash=str(request.args.get("last_hash") or "")))
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/terminal/start", methods=["POST"])
+def draft_terminal_start(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form or {}
+        return jsonify({"ok": True, **_studio().start_terminal(
+            principal, project_id, restart=bool(body.get("restart")),
+            fresh=bool(body.get("fresh")))})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/terminal/keys", methods=["POST"])
+def draft_terminal_keys(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or {}
+        keys = body.get("keys")
+        if not isinstance(keys, (list, tuple)):
+            raise drafting.DraftingValidationError("Which keys?")
+        return jsonify({"ok": True, "keys": _studio().terminal_keys(
+            principal, project_id, [str(key) for key in keys])})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/terminal/interrupt", methods=["POST"])
+def draft_terminal_interrupt(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True,
+                        "interrupted": _studio().interrupt_terminal(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/terminal/model", methods=["POST"])
+def draft_terminal_model(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form
+        return jsonify({"ok": True, "model": _studio().set_terminal_model(
+            principal, project_id, str(body.get("model") or ""))})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/terminal/effort", methods=["POST"])
+def draft_terminal_effort(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form
+        return jsonify({"ok": True, "effort": _studio().set_terminal_effort(
+            principal, project_id, str(body.get("effort") or ""))})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/terminal/stop", methods=["POST"])
+def draft_terminal_stop(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, "stopped": _studio().stop_terminal(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/workspace/publish", methods=["POST"])
+def api_draft_workspace_publish(project_id):
+    """The agent publishing its own work. NOT a browser route.
+
+    No session and no CSRF, because the caller is ``tools/publish.py`` running inside the draft's
+    own workspace with no cookie jar. Its capability is the per-project token this server wrote
+    into that workspace's private agent home, and the request has to arrive on the loopback
+    interface - the agent runs on this box, so a request from anywhere else is not it.
+    """
+    #  auth.is_loopback(), not a REMOTE_ADDR test of our own: behind nginx REMOTE_ADDR is
+    #  127.0.0.1 for every request that has ever arrived, so the obvious check is true for the
+    #  whole internet. That predicate also requires the absence of an X-Forwarded-For, which only
+    #  nginx sets and which a caller can therefore only use to take the privilege away from
+    #  itself. Eleven routes on this app were open for weeks on exactly this mistake.
+    if not auth.is_loopback():
+        return jsonify({"ok": False, "error": "This endpoint is loopback-only."}), 403
+    token = request.headers.get("X-Draft-Agent-Token") or ""
+    body = request.get_json(silent=True) or {}
+    try:
+        return jsonify(_studio().publish_workspace(
+            project_id, token, note=str(body.get("note") or ""),
+            check=bool(body.get("check"))))
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # noqa: BLE001 - the agent reads this
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"{type(exc).__name__}: {str(exc)[:300]}"}), 500
 
 
 @app.route("/drafts/<int:project_id>/studio/section", methods=["POST"])
@@ -7250,29 +7167,6 @@ def draft_studio_settings(project_id):
         return _studio_error(exc)
 
 
-@app.route("/drafts/<int:project_id>/studio/drawings", methods=["POST"])
-def draft_studio_drawings(project_id):
-    """Reconcile the sheets with the published text, without running a drafting agent."""
-    auth.require_csrf()
-    try:
-        _user, principal = _draft_identity()
-        return jsonify({"ok": True, **_studio().reconcile_drawings(principal, project_id)})
-    except drafting.DraftingError as exc:
-        return _studio_error(exc)
-
-
-@app.route("/drafts/<int:project_id>/studio/model", methods=["POST"])
-def draft_studio_model(project_id):
-    auth.require_csrf()
-    try:
-        _user, principal = _draft_identity()
-        body = request.get_json(silent=True) or request.form
-        return jsonify({"ok": True, **_studio().set_model(
-            principal, project_id, str(body.get("model") or ""))})
-    except drafting.DraftingError as exc:
-        return _studio_error(exc)
-
-
 @app.route("/drafts/<int:project_id>/studio/upload", methods=["POST"])
 def draft_studio_upload(project_id):
     auth.require_csrf()
@@ -7372,45 +7266,25 @@ def draft_studio_document_delete(project_id, document_id):
         return _studio_error(exc)
 
 
-@app.route("/drafts/<int:project_id>/studio/figure", methods=["POST"])
-def draft_studio_figure(project_id):
-    """Draw one of the draft's own figures. Synchronous: it takes about five seconds."""
-    auth.require_csrf()
-    try:
-        _user, principal = _draft_identity()
-        body = request.get_json(silent=True) or request.form
-        region = body.get("region")
-        if region is not None and (not isinstance(region, (list, tuple)) or len(region) != 4):
-            raise drafting.DraftingValidationError("Select one rectangular area to edit.")
-        drawn = _studio().draw_figure(
-            principal, project_id, label=body.get("label") or "",
-            caption=body.get("caption") or "", instruction=body.get("instruction") or "",
-            figure_id=int(body["figure_id"]) if body.get("figure_id") else None,
-            region=region)
-        return jsonify({"ok": True, "figure": drawn})
-    except drafting.DraftingError as exc:
-        return _studio_error(exc)
-    except Exception as exc:                                # noqa: BLE001 - the image model
-        traceback.print_exc()
-        return jsonify({"ok": False, "error": f"Could not draw that: {str(exc)[:200]}"}), 502
-
-
-@app.route("/drafts/<int:project_id>/studio/figure/<int:figure_id>/manual", methods=["POST"])
-def draft_studio_figure_manual(project_id, figure_id):
-    """Store a flattened browser-canvas edit as a new figure version."""
+@app.route("/drafts/<int:project_id>/studio/figure/upload", methods=["POST"])
+def draft_studio_figure_upload(project_id):
+    """Store a finished drawing the user made themselves. The only way a sheet enters a draft."""
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
         storage = request.files.get("image")
-        if not storage:
-            raise drafting.DraftingValidationError("The edited drawing was not received.")
-        png = storage.read(draft_figures.MAX_PNG_BYTES + 1)
-        if len(png) > draft_figures.MAX_PNG_BYTES:
-            raise drafting.DraftingValidationError("The edited drawing is too large.")
-        saved = _studio().save_figure(
-            principal, project_id, figure_id, png,
-            instruction=request.form.get("instruction") or "Manual drawing edit")
-        return jsonify({"ok": True, "figure": saved})
+        if not storage or not storage.filename:
+            raise drafting.DraftingValidationError("Choose a drawing file first.")
+        data = storage.read(draft_figures.MAX_SOURCE_BYTES + 1)
+        if len(data) > draft_figures.MAX_SOURCE_BYTES:
+            raise drafting.DraftingValidationError(
+                f"Choose an image smaller than "
+                f"{draft_figures.MAX_SOURCE_BYTES // (1024 * 1024)} MB.")
+        figure_id = request.form.get("figure_id")
+        return jsonify({"ok": True, "figure": _studio().upload_figure(
+            principal, project_id, image=data, content_type=storage.mimetype or "",
+            label=request.form.get("label") or "", caption=request.form.get("caption") or "",
+            figure_id=int(figure_id) if str(figure_id or "").isdigit() else None)})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
 
@@ -7424,33 +7298,6 @@ def draft_studio_figure_delete(project_id, figure_id):
         return jsonify({"ok": True})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
-
-
-@app.route("/drafts/<int:project_id>/studio/photo-to-sketch", methods=["POST"])
-def draft_studio_photo_to_sketch(project_id):
-    """Convert an uploaded product/part photo into a patent drawing."""
-    auth.require_csrf()
-    try:
-        _user, principal = _draft_identity()
-        storage = request.files.get("image")
-        if not storage or not storage.filename:
-            raise drafting.DraftingValidationError("Choose a product or part image first.")
-        data = storage.read(draft_figures.MAX_SOURCE_BYTES + 1)
-        if len(data) > draft_figures.MAX_SOURCE_BYTES:
-            raise drafting.DraftingValidationError(
-                f"Choose an image smaller than "
-                f"{draft_figures.MAX_SOURCE_BYTES // (1024 * 1024)} MB.")
-        drawn = _studio().photo_to_sketch(
-            principal, project_id, image=data, content_type=storage.mimetype or "",
-            label=request.form.get("label") or "", caption=request.form.get("caption") or "",
-            instruction=request.form.get("instruction") or "")
-        return jsonify({"ok": True, "figure": drawn})
-    except drafting.DraftingError as exc:
-        return _studio_error(exc)
-    except Exception as exc:                                  # image provider boundary
-        traceback.print_exc()
-        return jsonify({"ok": False,
-                        "error": f"Could not convert that image: {str(exc)[:200]}"}), 502
 
 
 @app.route("/drafts/<int:project_id>/studio/cancel", methods=["POST"])

@@ -101,7 +101,14 @@ _OPEN_ENDPOINTS = {"healthz", "index", "about", "how_it_works",
                    "public_report_page", "public_report_unlock", "public_report_beacon",
                    # An invitee has no account yet; a verification link may be opened from a mail
                    # client with no session. Both are single-use, expiring, hashed tokens.
-                   "auth.accept_invitation", "auth.verify_email"}
+                   "auth.accept_invitation", "auth.verify_email",
+                   # A drafting agent publishing its own work back into the studio. It runs on
+                   # this box with no session and no cookie jar; its capability is the
+                   # per-project token this server wrote into its workspace, and the view checks
+                   # both that AND is_loopback() before it does anything. Open here rather than
+                   # relying on AUTH_TRUST_LOOPBACK, which is a knob somebody may reasonably turn
+                   # off one day and would take every drafting agent's publish with it.
+                   "api_draft_workspace_publish"}
 
 
 # ---------------------------------------------------------------------------------------------

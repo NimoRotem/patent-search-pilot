@@ -101,23 +101,22 @@ def test_an_answer_with_no_edits_is_refused():
 
 def test_an_em_dash_never_survives_a_patch():
     out = draft_studio.apply_section_edits("The tool - a gripper - lifts.", {
-        "edits": [], "replacement": "The tool — a gripper — lifts."})
-    assert "—" not in out
+        "edits": [], "replacement": "The tool \u2014 a gripper \u2014 lifts."})
+    assert "\u2014" not in out
 
 
 # =============================================================================================
 # The prompt that carries the scope
 # =============================================================================================
 def test_the_section_prompt_names_the_one_file_and_quotes_its_current_text():
-    prompt, patched = draft_studio.build_section_edit_prompt("field", GOOD)
-    assert not patched, "there was no workspace to take material from"
+    prompt = draft_studio.build_section_edit_prompt("field", GOOD)
     assert "Field of the Disclosure" in prompt
     assert "draft/04-field.md" in prompt
     assert GOOD["field"] in prompt
 
 
 def test_an_empty_section_is_described_rather_than_quoted_as_nothing():
-    prompt, _ = draft_studio.build_section_edit_prompt("field", {"field": "   "})
+    prompt = draft_studio.build_section_edit_prompt("field", {"field": "   "})
     assert "(this section is empty)" in prompt
 
 
@@ -128,14 +127,14 @@ def test_a_section_key_that_is_not_a_section_is_refused():
 
 def test_every_section_of_the_application_can_be_edited_on_its_own():
     for key, filename, heading in draft_workspace.SECTION_FILES:
-        prompt, _ = draft_studio.build_section_edit_prompt(key, GOOD)
+        prompt = draft_studio.build_section_edit_prompt(key, GOOD)
         assert filename in prompt and heading in prompt
 
 
 def test_the_section_agent_is_told_it_may_not_widen_the_request():
     assert "THE SCOPE IS ABSOLUTE" in draft_studio.SECTION_EDIT_SYSTEM
     assert "exactly one section" in draft_studio.SECTION_EDIT_SYSTEM
-    assert "—" not in draft_studio.SECTION_EDIT_SYSTEM
+    assert "\u2014" not in draft_studio.SECTION_EDIT_SYSTEM
 
 
 def test_the_patch_schema_forbids_anything_it_did_not_ask_for():
@@ -475,8 +474,8 @@ def test_a_scoped_edit_leaves_every_other_section_byte_for_byte(monkeypatch, tmp
     """The first live run turned an em dash into a hyphen in two sections nobody had named. A house
     rule doing the right thing in the wrong place is still a rewrite the user did not ask for."""
     untouched = {**GOOD,
-                 "background": "Handheld lifters — the older sort — are known.  ",
-                 "detailed_description": GOOD["detailed_description"] + "—"}
+                 "background": "Handheld lifters \u2014 the older sort \u2014 are known.  ",
+                 "detailed_description": GOOD["detailed_description"] + "\u2014"}
     runner, repository, _agent, _workspace = _section_edit_runner(monkeypatch, tmp_path, REVISED)
     monkeypatch.setattr(runner, "_load", lambda _pid: {
         "project": {"user_id": 91}, "references": [{"publication_number": ALLOWED[0]}],
@@ -490,256 +489,3 @@ def test_a_scoped_edit_leaves_every_other_section_byte_for_byte(monkeypatch, tmp
     assert changed == ["field"]
     assert saved["background"] == untouched["background"]
     assert saved["detailed_description"] == untouched["detailed_description"]
-
-
-# =================================================================================================
-# The repair round returns a patch, and a patch that misses is refused whole
-# =================================================================================================
-def _repair_workspace(tmp_path):
-    (tmp_path / "draft").mkdir()
-    (tmp_path / "figures").mkdir()
-    (tmp_path / "input").mkdir()
-    (tmp_path / "input" / "disclosure.md").write_text("The inventor disclosed a gripper.")
-    (tmp_path / "draft" / "09-claims.md").write_text(
-        "1. A device comprising a body and a seal.\n\n2. The device of claim 1, wherein the "
-        "seal is elastomeric.\n")
-    (tmp_path / "draft" / "numerals.md").write_text("| 10 | body |\n| 12 | seal |\n")
-    return tmp_path
-
-
-def test_a_repair_patch_changes_only_what_it_names(tmp_path):
-    ws = _repair_workspace(tmp_path)
-    before = (ws / "draft" / "numerals.md").read_text()
-
-    touched = draft_studio.apply_repair_patches(ws, {
-        "patches": [{"path": "draft/09-claims.md", "find": "a body and a seal",
-                     "replace": "a body 10 and a seal 12", "why": "numerals"}]})
-
-    assert touched == ["draft/09-claims.md"]
-    assert "a body 10 and a seal 12" in (ws / "draft" / "09-claims.md").read_text()
-    assert "wherein the seal is elastomeric" in (ws / "draft" / "09-claims.md").read_text()
-    assert (ws / "draft" / "numerals.md").read_text() == before, "it touched a file it did not name"
-
-
-def test_one_patch_that_misses_refuses_the_whole_set(tmp_path):
-    """Applying the ones that fit would publish a draft nobody wrote and nobody read back, and the
-    miss would surface at the next gate looking like a fresh defect."""
-    ws = _repair_workspace(tmp_path)
-    before = (ws / "draft" / "09-claims.md").read_text()
-
-    with pytest.raises(draft_studio.RepairPatchError, match="not in draft/09-claims.md"):
-        draft_studio.apply_repair_patches(ws, {"patches": [
-            {"path": "draft/09-claims.md", "find": "a body and a seal",
-             "replace": "a body 10 and a seal 12", "why": "numerals"},
-            {"path": "draft/09-claims.md", "find": "a hydraulic actuator",
-             "replace": "an actuator", "why": "not in this draft at all"}]})
-
-    assert (ws / "draft" / "09-claims.md").read_text() == before
-
-
-def test_an_ambiguous_patch_is_refused_rather_than_applied_to_the_first_match(tmp_path):
-    ws = _repair_workspace(tmp_path)
-    with pytest.raises(draft_studio.RepairPatchError, match="appears 2 times"):
-        draft_studio.apply_repair_patches(ws, {"patches": [
-            {"path": "draft/09-claims.md", "find": "device", "replace": "apparatus",
-             "why": "x"}]})
-
-
-def test_a_wrapped_quote_still_applies_when_it_is_unambiguous(tmp_path):
-    """The usual near miss: a paragraph quoted back with its line breaks collapsed."""
-    ws = _repair_workspace(tmp_path)
-    (ws / "draft" / "05-background.md").write_text("A known gripper\nloses suction on a rough\nface.")
-    draft_studio.apply_repair_patches(ws, {"patches": [
-        {"path": "draft/05-background.md",
-         "find": "A known gripper loses suction on a rough face.",
-         "replace": "A known gripper loses vacuum on a rough face.", "why": "wording"}]})
-    assert "loses vacuum" in (ws / "draft" / "05-background.md").read_text()
-
-
-def test_a_repair_may_not_write_outside_the_draft_and_the_figures(tmp_path):
-    ws = _repair_workspace(tmp_path)
-    for path in ("input/disclosure.md", "../../etc/passwd", "prior_art/US-1.md"):
-        with pytest.raises(draft_studio.RepairPatchError):
-            draft_studio.apply_repair_patches(ws, {"rewrites": [
-                {"path": path, "text": "anything", "why": "x"}]})
-    assert (ws / "input" / "disclosure.md").read_text() == "The inventor disclosed a gripper."
-
-
-def test_a_rewrite_may_not_empty_a_file(tmp_path):
-    ws = _repair_workspace(tmp_path)
-    with pytest.raises(draft_studio.RepairPatchError, match="would empty"):
-        draft_studio.apply_repair_patches(ws, {"rewrites": [
-            {"path": "draft/09-claims.md", "text": "   ", "why": "x"}]})
-
-
-def test_a_repair_that_returns_nothing_is_a_failure_not_a_no_op(tmp_path):
-    ws = _repair_workspace(tmp_path)
-    with pytest.raises(draft_studio.RepairPatchError, match="no change to apply"):
-        draft_studio.apply_repair_patches(ws, {"patches": [], "rewrites": []})
-
-
-def test_the_repair_prompt_carries_the_material_and_the_report(tmp_path):
-    ws = _repair_workspace(tmp_path)
-    prompt, patched = draft_studio.build_repair_prompt(ws, {
-        "checks": [{"name": "Numerals", "status": "fail", "detail": "10 undefined",
-                    "items": ["10"]},
-                   {"name": "Claims", "status": "pass", "detail": "fine", "items": []}],
-        "findings": [{"title": "Claim 2 lacks antecedent basis", "where": "draft/09-claims.md",
-                      "detail": "the seal", "evidence": "claim 2", "fix": "add it"}]})
-
-    assert patched
-    assert "wherein the seal is elastomeric" in prompt, "the draft did not travel with the prompt"
-    assert "The inventor disclosed a gripper." in prompt
-    assert "10 undefined" in prompt and "Claim 2 lacks antecedent basis" in prompt
-    assert "Claims: fine" not in prompt, "it spent tokens on the checks that passed"
-
-
-def test_a_workspace_too_large_to_hand_over_keeps_the_old_repair(tmp_path, monkeypatch):
-    ws = _repair_workspace(tmp_path)
-    monkeypatch.setattr(draft_workspace, "MAX_MATERIAL_CHARS", 10)
-    prompt, patched = draft_studio.build_repair_prompt(ws, {})
-    assert not patched and prompt == ""
-
-
-# =================================================================================================
-# A revision turn is a patch too
-# =================================================================================================
-def test_a_revision_is_handed_the_application_and_the_request(tmp_path):
-    ws = _repair_workspace(tmp_path)
-    (ws / "input" / "request.md").write_text("Make claim 1 broader.")
-
-    prompt, patched = draft_studio.build_revision_prompt(ws)
-
-    assert patched
-    assert "Make claim 1 broader." in prompt
-    assert "wherein the seal is elastomeric" in prompt, "the draft did not travel with the prompt"
-    assert "The inventor disclosed a gripper." in prompt
-    assert "the last review of this draft" not in prompt, "it invented a review that never ran"
-
-
-def test_a_revision_carries_the_previous_review_when_there_was_one(tmp_path):
-    ws = _repair_workspace(tmp_path)
-    (ws / "input" / "request.md").write_text("Shorten the background.")
-    prompt, patched = draft_studio.build_revision_prompt(ws, {
-        "checks": [{"name": "Numerals", "status": "fail", "detail": "10 undefined",
-                    "items": ["10"]},
-                   {"name": "Claims", "status": "pass", "detail": "fine", "items": []}]})
-    assert patched and "10 undefined" in prompt
-    assert "Claims: fine" not in prompt, "it paid to be told what already passes"
-
-
-def test_a_revision_that_answers_a_question_returns_no_patch(tmp_path):
-    """A question about the draft is not a change to it, and must not touch a file."""
-    ws = _repair_workspace(tmp_path)
-    before = (ws / "draft" / "09-claims.md").read_text()
-    result = {"action": "answered", "answer": "Claim 1 covers the body and the seal.",
-              "patches": [], "rewrites": []}
-    assert result["action"] == "answered"
-    with pytest.raises(draft_studio.RepairPatchError):
-        draft_studio.apply_repair_patches(ws, result)
-    assert (ws / "draft" / "09-claims.md").read_text() == before
-
-
-def test_the_revision_schema_keeps_the_prior_art_strategy_and_drops_the_prose(tmp_path):
-    required = set(draft_studio.REVISION_SCHEMA["required"])
-    assert "prior_art_strategy" in required and "answer" in required
-    assert "reasoning" not in required, "it is paying for prose the per-change why already gives"
-
-
-def test_a_workspace_too_large_to_hand_over_keeps_the_old_revision(tmp_path, monkeypatch):
-    ws = _repair_workspace(tmp_path)
-    monkeypatch.setattr(draft_workspace, "MAX_MATERIAL_CHARS", 10)
-    prompt, patched = draft_studio.build_revision_prompt(ws)
-    assert not patched and prompt == ""
-
-
-# =================================================================================================
-# The material is ordered so a prompt cache can hit
-# =================================================================================================
-def test_the_draft_comes_last_so_the_unchanging_prefix_is_longest(tmp_path):
-    """A prompt cache is a PREFIX match: the first differing byte discards everything after it.
-    Within a turn the draft is rewritten up to six times and nothing else moves."""
-    ws = _repair_workspace(tmp_path)
-    (ws / "input" / "request.md").write_text("do a thing")
-    (ws / "figures" / "FIG-1.md").write_text("a sheet")
-
-    order = list(draft_workspace.text_materials(ws))
-
-    assert order[0] == "input/disclosure.md", "the one file that never changes was not first"
-    assert order.index("input/request.md") < order.index("figures/FIG-1.md")
-    assert all(name.startswith("draft/") for name in order[-2:])
-    assert order.index("figures/FIG-1.md") < order.index("draft/09-claims.md")
-
-
-def test_a_section_edit_with_a_workspace_is_handed_the_whole_application(tmp_path):
-    """It used to open with a reading list: the rest of draft/, the disclosure, the conversation,
-    the prior-art index. Eight or nine tool calls before a word is written."""
-    ws = _repair_workspace(tmp_path)
-    (ws / "input" / "request.md").write_text("Say suction cup, not vacuum cup.")
-    (ws / "draft" / "04-field.md").write_text("This relates to lifting devices.")
-
-    prompt, patched = draft_studio.build_section_edit_prompt(
-        "field", {"field": "This relates to lifting devices."}, ws)
-
-    assert patched
-    assert "Say suction cup, not vacuum cup." in prompt
-    assert "wherein the seal is elastomeric" in prompt, "it cannot see the claims it must not break"
-    assert "The inventor disclosed a gripper." in prompt
-    assert "Read before you write anything" not in prompt, "still sending it to fetch its own files"
-    assert "patent_lookup.py" in prompt, "the one thing not in the prompt was not mentioned"
-
-
-def test_a_workspace_too_large_to_hand_over_keeps_the_reading_list(tmp_path, monkeypatch):
-    ws = _repair_workspace(tmp_path)
-    monkeypatch.setattr(draft_workspace, "MAX_MATERIAL_CHARS", 10)
-    prompt, patched = draft_studio.build_section_edit_prompt("field", GOOD, ws)
-    assert not patched and "Read before you write anything" in prompt
-
-
-# =================================================================================================
-# An advisory is reported, not enforced
-# =================================================================================================
-def test_an_advisory_check_does_not_block_a_turn():
-    """Three checks are advisory on purpose because each is a heuristic that false-positives on
-    correct drafting. Blocking on them made the repair agent rewrite good claim language to
-    satisfy a regex, up to six rounds deep with two reviews between each."""
-    report = {"status": "complete", "checks": [
-        {"name": "Claim terms appear in the description", "status": "warn",
-         "severity": "advisory", "detail": "2 claim words do not appear", "items": ["a", "b"]}]}
-    assert draft_studio.text_blockers(report) == []
-    assert draft_studio.filing_blockers(report) == []
-
-
-def test_a_real_defect_still_blocks():
-    report = {"status": "complete", "checks": [
-        {"name": "Claims are numbered", "status": "fail", "severity": "error",
-         "detail": "claim 3 is missing", "items": []}]}
-    assert draft_studio.text_blockers(report)
-    assert draft_studio.filing_blockers(report)
-
-
-def test_a_check_with_no_severity_still_blocks():
-    """Absent means unknown, and unknown is not permission to publish."""
-    report = {"status": "complete", "checks": [
-        {"name": "Something", "status": "fail", "detail": "x", "items": []}]}
-    assert draft_studio.text_blockers(report)
-
-
-def test_the_three_advisory_checks_are_all_still_advisory():
-    """If one of these stops being advisory it starts blocking again, silently."""
-    import draft_qa
-    advisory = {"Numerals are introduced with their part name",
-                "Antecedent basis in the claims",
-                "Claim terms appear in the description"}
-    checks = draft_qa.run_checks(sections=GOOD, numerals=NUMERALS, figures=FIGURES,
-                                 allowed_references=ALLOWED)
-    seen = {c["name"] for c in checks if str(c.get("severity") or "") == "advisory"}
-    assert advisory <= seen, f"a check stopped being advisory: {advisory - seen}"
-
-
-def test_an_advisory_is_still_reported_so_a_person_can_judge_it():
-    report = {"status": "complete", "checks": [
-        {"name": "Antecedent basis in the claims", "status": "warn", "severity": "advisory",
-         "detail": "claim 4: the flange", "items": ["claim 4"]}]}
-    assert draft_studio.text_blockers(report) == []
-    assert report["checks"][0]["detail"], "the advisory must survive into the report"

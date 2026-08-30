@@ -18,12 +18,6 @@ import draft_studio
 # =============================================================================================
 # A claim chart shaped exactly like the ones webview builds
 # =============================================================================================
-
-def test_studio_schema_bootstrap_includes_research_rounds():
-    names = [path.name for path in draft_studio._MIGRATIONS]
-    assert "020_draft_research_rounds.sql" in names
-    assert names[-1] == "022_draft_turn_spend.sql"
-
 def cell(pub, verdict=None):
     if verdict is None:
         return {"pub": pub, "covered": False}
@@ -41,6 +35,16 @@ def element(name, cells, *, independent=True, preamble=False):
 
 
 PUBS = ["US-1111111-A", "US-2222222-B2", "US-3333333-B1"]
+
+
+def test_studio_schema_bootstrap_includes_research_rounds():
+    names = [path.name for path in draft_studio._MIGRATIONS]
+    assert "020_draft_research_rounds.sql" in names
+    assert "021_draft_project_settings.sql" in names
+    assert names[-2:] == [
+        "022_draft_turn_spend.sql",
+        "023_draft_source_review_cache.sql",
+    ]
 
 
 # =============================================================================================
@@ -276,138 +280,3 @@ def test_a_failure_to_attach_does_not_lose_the_round(monkeypatch):
     assert out["ok"] is True
     assert stored["closest_coverage"] == 1.0
     assert "corpus unavailable" in stored["note"]
-
-
-# =============================================================================================
-# The drawing budget belongs to the turn, not to each repair round
-# =============================================================================================
-def test_a_text_turn_never_waits_on_the_image_pipeline():
-    """Owner's instruction after watching the stage run without end: completely separate the
-    figures from the drafting. A turn that touches the image pipeline can be held by it.
-
-    This used to assert that `_reconcile_drawings` appeared nowhere in `run`, which was true of
-    the design at the time and is no longer the design: drawings happen in their own bounded
-    CONTINUATION turn now, which is a better answer to the same instruction. So the assertion is
-    on the invariant rather than on the spelling. Parsed rather than grepped, because an
-    indentation guess is how a test like this quietly stops checking anything.
-    """
-    import ast
-    import inspect
-    import textwrap
-
-    import draft_studio
-
-    source = textwrap.dedent(inspect.getsource(draft_studio.TurnRunner.run))
-    tree = ast.parse(source)
-    parents = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            parents[child] = node
-
-    def guarded_by_continuation(node):
-        seen = set()
-        while node in parents:
-            node = parents[node]
-            if isinstance(node, ast.If):
-                names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
-                seen |= names
-        return "drawing_continuation" in seen
-
-    calls = [n for n in ast.walk(tree)
-             if isinstance(n, ast.Attribute) and n.attr == "_reconcile_drawings"]
-    assert calls, "the drawing pass is not reachable from a turn at all any more"
-    for call in calls:
-        assert guarded_by_continuation(call), (
-            "the drafting turn draws without the continuation flag; the text will wait on the "
-            "image pipeline")
-    assert "text_blockers(report)" in source, (
-        "publication is gated on drawings again")
-
-
-# =============================================================================================
-# The drawing pass that does not need to run
-# =============================================================================================
-def _figure_store(monkeypatch, *, spec_hash="H", ok=True, inspected=True, labels=("FIG. 1",)):
-    import draft_studio
-    figures = Mock()
-    figures.figure_key.side_effect = lambda value: str(value or "").strip().lower()
-    figures.specification_hash.side_effect = lambda *_a, **_k: "H"
-    figures.expected_entries.side_effect = lambda *_a, **_k: []
-    figures.listing.return_value = [{
-        "figure_label": label, "active_version": 2,
-        "versions": [{"version_no": 2,
-                      "semantic_audit": {"ok": ok, "specification_hash": spec_hash},
-                      "leader_audit": {"ok": ok, "specification_hash": spec_hash},
-                      "numeral_audit": {"ok": ok, "inspected": inspected}}],
-    } for label in labels]
-    monkeypatch.setitem(__import__("sys").modules, "draft_figures", figures)
-    return draft_studio
-
-
-def test_sheets_already_verified_against_this_exact_brief_are_not_redrawn(monkeypatch):
-    """The 53 minutes measured on project 8 were spent re-inspecting sheets whose specification
-    hash had matched all along, because a bumped gate version invalidated every stored audit."""
-    draft_studio = _figure_store(monkeypatch)
-    assert draft_studio.TurnRunner._drawings_already_match(
-        6, 4, [], [{"label": "FIG. 1", "caption": ""}]) is True
-
-
-def test_a_sheet_taken_against_a_different_brief_is_redrawn(monkeypatch):
-    draft_studio = _figure_store(monkeypatch, spec_hash="SOMETHING-ELSE")
-    assert draft_studio.TurnRunner._drawings_already_match(
-        6, 4, [], [{"label": "FIG. 1", "caption": ""}]) is False
-
-
-def test_a_sheet_whose_stored_verdict_was_a_failure_is_redrawn(monkeypatch):
-    """Matching the brief is not enough: the pixels have to have PASSED against it."""
-    draft_studio = _figure_store(monkeypatch, ok=False)
-    assert draft_studio.TurnRunner._drawings_already_match(
-        6, 4, [], [{"label": "FIG. 1", "caption": ""}]) is False
-
-
-def test_a_missing_or_orphaned_sheet_is_never_skipped(monkeypatch):
-    draft_studio = _figure_store(monkeypatch, labels=("FIG. 1",))
-    assert draft_studio.TurnRunner._drawings_already_match(
-        6, 4, [], [{"label": "FIG. 1", "caption": ""},
-                   {"label": "FIG. 2", "caption": ""}]) is False
-    assert draft_studio.TurnRunner._drawings_already_match(6, 4, [], []) is False
-
-
-def test_an_unreadable_drawing_store_runs_the_pass_rather_than_skipping_it(monkeypatch):
-    import draft_studio
-    broken = Mock()
-    broken.listing.side_effect = RuntimeError("store unavailable")
-    broken.figure_key.side_effect = lambda v: str(v)
-    monkeypatch.setitem(__import__("sys").modules, "draft_figures", broken)
-    assert draft_studio.TurnRunner._drawings_already_match(
-        6, 4, [], [{"label": "FIG. 1"}]) is False
-
-
-def test_the_request_forbids_inventing_the_support_for_the_new_feature():
-    """Observed on the first live round: told to distinguish the art, the agent reached for a term
-    the disclosure used once and wrote the sign convention, sensing location and zero-equivalence
-    that would make it work. The source-fidelity review rejected the turn 14 times over it."""
-    reading = {"ok": True, "n_elements": 10, "closest_coverage": 0.3,
-               "closest_pub": "US-2024424646-A1", "closest_title": "Digital display suction cup",
-               "uncovered_elements": ["warning threshold defined relative to load-release vacuum"]}
-    text = draft_research.drafting_request(1, reading, [])
-    assert "DO NOT INVENT SUPPORT" in text
-    assert "input/disclosure.md" in text
-    assert "definition" in text
-    #  And the uncovered elements are labelled as the search's paraphrase, not text to lift.
-    assert "SEARCH's words" in text
-    assert "never as text to import" in text
-
-
-def test_the_request_forbids_a_new_numbered_part_outright():
-    """Hardening the wording alone was not enough. Told not to invent a DEFINITION, the agent
-    invented STRUCTURE instead: a suction passage 24, a sensing passage 34 and a sealed region 18,
-    each numbered and located, none disclosed. The rule has to name the thing it forbids."""
-    text = draft_research.drafting_request(1, {"ok": True, "n_elements": 4,
-                                               "closest_coverage": 0.5, "closest_pub": "US-1-A",
-                                               "closest_title": "", "uncovered_elements": []}, [])
-    assert "NO new numbered part" in text
-    assert "draft/numerals.md" in text
-    #  And declining is offered as a result, not as a failure, or the agent will always invent.
-    assert "THE OPTION THAT IS NOT A FAILURE" in text
-    assert "leave the claims alone" in text
