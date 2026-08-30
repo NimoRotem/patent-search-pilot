@@ -2178,6 +2178,74 @@ def test_deterministic_source_gate_rejects_an_unsupported_close_fit(tmp_path):
     assert draft_qa.deterministic_source_fidelity_findings(tmp_path) == []
 
 
+def test_deterministic_source_gate_rejects_a_review_that_misquotes_inventor_text(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "disclosure.md").write_text(
+        "The poppet returns to the seat after pressure falls below a lower closing pressure.",
+        encoding="utf-8",
+    )
+    (input_dir / "conversation.md").write_text("", encoding="utf-8")
+    report = {
+        "status": "complete",
+        "verdict": "fail",
+        "summary": "The qualifier is an unsupported narrowing.",
+        "checks": [{
+            "name": "Source fidelity is clean before rendering",
+            "status": "fail",
+            "severity": "error",
+            "category": "disclosure_fidelity",
+            "detail": "The qualifier is an unsupported narrowing.",
+            "items": ["Unsupported narrowing of disclosed pressure condition"],
+        }],
+        "findings": [{
+            "severity": "critical",
+            "category": "disclosure_fidelity",
+            "title": "Unsupported narrowing of disclosed pressure condition",
+            "where": "draft/09-claims.md",
+            "detail": "The inventor did not disclose a lower closing pressure.",
+            "evidence": "The source says only a closing pressure.",
+            "fix": (
+                "<edit><search>a lower closing pressure</search>"
+                "<replace>a closing pressure</replace></edit>"
+            ),
+        }],
+        "counts": {},
+    }
+
+    enforced = draft_qa.enforce_deterministic_source_fidelity(report, tmp_path)
+
+    assert enforced["verdict"] == "pass"
+    assert enforced["checks"][0]["status"] == "pass"
+    assert enforced["findings"] == []
+    assert len(enforced["reconciled_findings"]) == 1
+
+
+def test_source_quote_reconciliation_keeps_a_nonverbatim_unsupported_relationship(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "disclosure.md").write_text(
+        "The poppet returns to the seat after pressure falls below a lower closing pressure.",
+        encoding="utf-8",
+    )
+    finding = {
+        "severity": "critical",
+        "category": "disclosure_fidelity",
+        "title": "Unsupported pressure relationship",
+        "detail": "The comparison is unsupported.",
+        "fix": (
+            "<edit><search>a closing pressure lower than the opening pressure</search>"
+            "<replace>a lower closing pressure</replace></edit>"
+        ),
+    }
+
+    kept, reconciled = draft_qa.reconcile_explicit_source_support_findings(
+        tmp_path, [finding])
+
+    assert kept == [finding]
+    assert reconciled == []
+
+
 def test_standard_exports_contain_only_clean_application_text():
     from docx import Document
     version = {"version_no": 1, "sections": GOOD, "status": "approved"}
