@@ -420,6 +420,13 @@ themselves once you publish; none of them can see an unpublished edit.
 
 So: work in the files, keep your replies here short and specific about what you changed and why,
 and publish.
+
+## One housekeeping fact
+
+This session is closed after several hours with nothing happening in it, because it holds real
+memory on a shared machine. Nothing published is affected and the workspace stays where it is; a
+new agent opens on the next message. It does mean an edit you never published is an edit you lose,
+which is the other reason to publish a change once it is coherent rather than at the very end.
 '''
 
 _PUBLISH_TOOL = '''#!/usr/bin/env python3
@@ -688,6 +695,89 @@ def reset(project_id: int, workspace: Path, *, model: str = "") -> dict[str, Any
     kill(project_id)
     shutil.rmtree(agent_home(Path(workspace)), ignore_errors=True)
     return ensure(project_id, workspace, model=model)
+
+
+# =============================================================================================
+# Not leaving them running
+# =============================================================================================
+#  AN IDLE AGENT IS 350 MB THAT NOBODY IS USING. One per draft, never exiting on its own, on a box
+#  the house rules say livelocks silently when memory runs out: twenty parked sessions is seven
+#  gigabytes held for conversations that ended hours ago. So a session whose composer has been
+#  empty and whose screen has not moved for this long is closed. Nothing is lost that was
+#  published, the workspace stays where it is, and the next message opens a new agent.
+IDLE_REAP_SECONDS = max(
+    600, int(float(os.environ.get("DRAFT_TERMINAL_IDLE_HOURS", "6")) * 3600))
+REAP_SWEEP_SECONDS = max(60, int(os.environ.get("DRAFT_TERMINAL_REAP_SWEEP", "600")))
+_IDLE_SINCE: dict[str, tuple[str, float]] = {}
+_REAPER: threading.Thread | None = None
+
+
+def sessions() -> list[str]:
+    try:
+        out = _tmux("list-sessions", "-F", "#{session_name}", timeout=5)
+        if out.returncode != 0:
+            return []
+    except Exception:                                          # noqa: BLE001
+        return []
+    return [line.strip() for line in out.stdout.splitlines()
+            if line.strip().startswith(SESSION_PREFIX)]
+
+
+def reap_idle(max_idle_seconds: float | None = None) -> list[str]:
+    """Close every drafting agent that has been sitting still with nothing to do.
+
+    BUSY IS NOT IDLE and a still screen is not enough on its own: a turn that is thinking paints a
+    ticking counter, and a turn waiting on a slow tool call may paint nothing at all for a minute.
+    So a session is only a candidate when ``activity`` reports it idle AND its visible screen is
+    byte-identical to the one seen a whole sweep ago.
+    """
+    #  `is None`, not `or`: a caller passing 0 means "anything still since the last sweep", and
+    #  falling back to the six-hour default there would make every test of this pass by not
+    #  reaping at all.
+    limit = IDLE_REAP_SECONDS if max_idle_seconds is None else float(max_idle_seconds)
+    closed = []
+    now = time.time()
+    live = set()
+    for name in sessions():
+        live.add(name)
+        try:
+            project_id = int(name[len(SESSION_PREFIX):])
+        except ValueError:
+            continue
+        if activity(project_id).get("status") == "busy":
+            _IDLE_SINCE.pop(name, None)
+            continue
+        digest = visible_hash(project_id)
+        previous = _IDLE_SINCE.get(name)
+        if not previous or previous[0] != digest:
+            _IDLE_SINCE[name] = (digest, now)
+            continue
+        if now - previous[1] >= limit:
+            kill(project_id)
+            _IDLE_SINCE.pop(name, None)
+            closed.append(name)
+    for gone in set(_IDLE_SINCE) - live:
+        _IDLE_SINCE.pop(gone, None)
+    return closed
+
+
+def start_reaper() -> None:
+    """One sweeper for the process. Never raises: a reaper that dies takes nothing with it."""
+    global _REAPER
+    with _LOCK:
+        if _REAPER is not None and _REAPER.is_alive():
+            return
+
+        def loop() -> None:
+            while True:
+                time.sleep(REAP_SWEEP_SECONDS)
+                try:
+                    reap_idle()
+                except Exception:                              # noqa: BLE001
+                    pass
+
+        _REAPER = threading.Thread(target=loop, name="draft-terminal-reaper", daemon=True)
+        _REAPER.start()
 
 
 def kill(project_id: int) -> bool:

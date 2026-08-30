@@ -485,3 +485,63 @@ def test_nothing_is_pressed_when_there_is_no_question(monkeypatch):
 
     assert draft_terminal._confirm_if_prompted(15) is False
     assert not any(call[0] == "send-keys" for call in fake.calls)
+
+
+# =============================================================================================
+# Closing the ones nobody came back to
+# =============================================================================================
+def test_a_busy_agent_is_never_reaped(monkeypatch):
+    """A turn that is thinking paints a counter; a turn on a slow tool call may paint nothing.
+
+    So a still screen alone is not evidence, and the check that matters is what the agent is
+    doing. Killing a working agent would lose a real turn somebody is watching.
+    """
+    monkeypatch.setattr(draft_terminal, "sessions", lambda: ["draft-p15"])
+    monkeypatch.setattr(draft_terminal, "activity",
+                        lambda _pid: {"status": "busy", "detail": "Working"})
+    killed = []
+    monkeypatch.setattr(draft_terminal, "kill", lambda pid: killed.append(pid))
+    assert draft_terminal.reap_idle(1) == []
+    assert killed == []
+
+
+def test_an_idle_agent_is_reaped_only_after_a_whole_sweep_of_stillness(monkeypatch):
+    draft_terminal._IDLE_SINCE.clear()
+    monkeypatch.setattr(draft_terminal, "sessions", lambda: ["draft-p15"])
+    monkeypatch.setattr(draft_terminal, "activity", lambda _pid: {"status": "idle", "detail": ""})
+    monkeypatch.setattr(draft_terminal, "visible_hash", lambda _pid: "same-screen")
+    killed = []
+    monkeypatch.setattr(draft_terminal, "kill", lambda pid: killed.append(pid))
+
+    #  First sight of a still screen only starts the clock: this could be the instant a turn
+    #  finished, with the person about to type the next thing.
+    assert draft_terminal.reap_idle(0.0) == []
+    assert killed == []
+    assert draft_terminal.reap_idle(0.0) == ["draft-p15"]
+    assert killed == [15]
+
+
+def test_a_screen_that_moves_resets_the_clock(monkeypatch):
+    draft_terminal._IDLE_SINCE.clear()
+    screens = iter(["one", "two", "two"])
+    monkeypatch.setattr(draft_terminal, "sessions", lambda: ["draft-p15"])
+    monkeypatch.setattr(draft_terminal, "activity", lambda _pid: {"status": "idle", "detail": ""})
+    monkeypatch.setattr(draft_terminal, "visible_hash", lambda _pid: next(screens))
+    monkeypatch.setattr(draft_terminal, "kill", lambda _pid: True)
+
+    assert draft_terminal.reap_idle(0.0) == []      # first sight
+    assert draft_terminal.reap_idle(0.0) == []      # it moved: the clock restarts
+    assert draft_terminal.reap_idle(0.0) == ["draft-p15"]
+
+
+def test_the_reaper_forgets_a_session_that_has_gone(monkeypatch):
+    draft_terminal._IDLE_SINCE.clear()
+    draft_terminal._IDLE_SINCE["draft-p99"] = ("x", 0.0)
+    monkeypatch.setattr(draft_terminal, "sessions", lambda: [])
+    draft_terminal.reap_idle(1)
+    assert "draft-p99" not in draft_terminal._IDLE_SINCE
+
+
+def test_the_reap_window_is_never_shorter_than_ten_minutes(monkeypatch):
+    """A knob nobody should be able to set to "kill it while I am reading"."""
+    assert draft_terminal.IDLE_REAP_SECONDS >= 600

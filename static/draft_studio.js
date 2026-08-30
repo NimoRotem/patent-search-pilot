@@ -1685,13 +1685,24 @@
      The drafting agent still owns the drawing TEXT - the Brief Description, each figure's brief,
      and the numeral table - and it can open every sheet uploaded here, because each one is
      written into its workspace as a PNG. */
+  /* A drawing brief used to be a sentence. Now that the agent writes it for a person to draw
+     from, it is several hundred words of structured markdown - view type, what the sheet shows,
+     the numerals on it, the section indicators - and putting that through `esc` into one muted
+     span produced a wall with literal ** in it. Paragraphs, with the bold the agent meant, and
+     folded away by default so the pane is a list of sheets rather than six essays. */
+  function briefHtml(text) {
+    return para(text).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  }
+
   function figureCard(figure) {
     const src = figure.figure_id
       ? `${BASE}/drafts/${PID}/figures/${figure.figure_id}.png?version=${figure.active_version}`
       : '';
+    const caption = String(figure.caption || '').trim();
     return `<article class="figblock${figure.orphan ? ' orphan' : ''}">
-      <div class="fighead"><b>${esc(figure.label)}</b>
-        <span class="small muted">${esc(figure.caption || '')}</span></div>
+      <div class="fighead"><b>${esc(figure.label)}</b></div>
+      ${caption ? `<details class="figbrief"><summary>What this sheet must show</summary>
+        <div class="figbriefbody">${briefHtml(caption)}</div></details>` : ''}
       ${figure.orphan ? `<div class="small warn">This sheet is no longer described in the
         specification. Either the agent should describe it again, or it should be deleted.</div>` : ''}
       ${src ? `<img class="figimg" loading="lazy" alt="${esc(figure.label)}" src="${src}">`

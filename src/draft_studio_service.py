@@ -1336,7 +1336,11 @@ def recover_interrupted_turns() -> int:
 
 def init_app(app, runner_factory: Callable[[], draft_studio.TurnRunner]):
     configure(runner_factory)
-    if ("pytest" not in sys.modules and not app.config.get("TESTING")
-            and os.environ.get("DRAFT_TURN_WORKER", "1").lower() not in ("0", "false", "no")):
-        start_worker()
+    if "pytest" not in sys.modules and not app.config.get("TESTING"):
+        #  Started whatever DRAFT_TURN_WORKER says, and deliberately: that flag is about the turn
+        #  QUEUE, and the drafting agents are not on it. A copy of this app with the worker off
+        #  still opens terminals and still has to close the ones nobody came back to.
+        draft_terminal.start_reaper()
+        if os.environ.get("DRAFT_TURN_WORKER", "1").lower() not in ("0", "false", "no"):
+            start_worker()
     return app

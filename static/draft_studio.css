@@ -860,3 +860,43 @@ body.modalopen { overflow: hidden; }
   /*  Stacked, so the terminal does not take a whole screen before the draft begins. */
   .raw-output { height: 38vh; }
 }
+
+/*  The drawing brief, folded. It is the instruction somebody draws from, so it has to be readable
+    when it is open and out of the way when it is not: six of these unfolded is six essays between
+    the reader and the sheets they came to look at. */
+.figbrief { margin: 6px 0 10px; }
+.figbrief > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.figbrief > summary::-webkit-details-marker { display: none; }
+.figbrief > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform .14s ease;
+}
+.figbrief[open] > summary::before { transform: rotate(45deg); }
+.figbrief > summary:hover { color: var(--ink); }
+.figbriefbody {
+  margin-top: 8px;
+  padding-left: 13px;
+  border-left: 2px solid var(--line);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.figbriefbody p { margin: 0 0 9px; }
+.figbriefbody p:last-child { margin-bottom: 0; }
+.figbriefbody b { color: var(--ink); }
