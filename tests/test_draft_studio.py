@@ -4851,6 +4851,42 @@ def test_complete_turn_atomically_queues_its_drawing_continuation(monkeypatch):
     assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _ in queries)
 
 
+def test_complete_turn_refuses_ready_when_checked_drawing_rows_disappear(monkeypatch):
+    queries = []
+
+    class Cursor:
+        last_query = ""
+
+        def execute(self, query, params=()):
+            self.last_query = query
+            queries.append((query, params))
+
+        def fetchone(self):
+            if "SELECT user_id FROM app_drafting_projects" in self.last_query:
+                return {"user_id": 91}
+            if "AS figure_count" in self.last_query:
+                return {"figure_count": 0, "active_png_count": 0}
+            raise AssertionError(self.last_query)
+
+    @contextmanager
+    def cursor_factory(**_kwargs):
+        yield Cursor()
+
+    repository = draft_studio.StudioRepository(cursor_factory, migrate=False)
+    monkeypatch.setattr(repository, "_verify", lambda *_args: {
+        "id": 33, "project_id": 7, "turn_no": 4, "requested_by_user_id": 91,
+        "project_revision": 2, "status": "running",
+    })
+
+    with pytest.raises(drafting.DraftingValidationError, match="drawing set changed"):
+        repository.complete_turn(
+            33, "lease", result={}, session_id="session", cost_usd=1,
+            duration_ms=1000, model_name="model", required_figure_count=2)
+
+    assert not any("SET status='complete'" in query for query, _params in queries)
+    assert not any("SET status='ready'" in query for query, _params in queries)
+
+
 def test_invalid_workspace_is_automatic_repair_input_not_a_failed_turn(monkeypatch, tmp_path):
     repository = Mock()
     repository.save_version.return_value = {"version_no": 1}
