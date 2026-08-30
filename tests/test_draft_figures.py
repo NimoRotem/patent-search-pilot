@@ -545,6 +545,41 @@ def test_section_mark_consensus_requires_two_complete_coordinate_reviews():
     assert any("disagree" in item.lower() for item in divergent["errors"])
 
 
+def test_section_mark_consensus_accepts_same_axis_with_different_line_extents():
+    first = {
+        "matches_spec": True, "summary": "full carriage height", "errors": [],
+        "marks": [{
+            "designation": "A", "start_x": 500, "start_y": 100,
+            "end_x": 500, "end_y": 900, "view_dx": 1, "view_dy": 0,
+            "evidence": "vertical center axis of the first carriage",
+        }],
+    }
+    second = {
+        "matches_spec": True, "summary": "same center axis", "errors": [],
+        "marks": [{
+            "designation": "A", "start_x": 510, "start_y": 320,
+            "end_x": 510, "end_y": 680, "view_dx": 1, "view_dy": 0,
+            "evidence": "vertical center axis through the same carriage",
+        }],
+    }
+
+    audit = draft_figures.section_mark_consensus(["A"], [first, second])
+
+    assert audit["ok"] is True
+    assert audit["errors"] == []
+    assert audit["marks"][0]["start_x"] == 505
+    assert audit["marks"][0]["end_x"] == 505
+    disjoint = {
+        **second,
+        "marks": [{
+            **second["marks"][0], "start_y": 920, "end_y": 990,
+        }],
+    }
+    rejected = draft_figures.section_mark_consensus(["A"], [first, disjoint])
+    assert rejected["ok"] is False
+    assert any("disagree" in item.lower() for item in rejected["errors"])
+
+
 def test_no_section_mark_is_a_current_deterministic_audit():
     audit = draft_figures.inspect_section_marks(
         blank_png(), label="FIG. 1", caption="Plan view of the body.", anchors=[])
@@ -870,6 +905,58 @@ def test_section_mark_collision_repair_moves_interior_targets_off_both_lines():
     assert positions["16"] != (500, 500)
     assert positions["24"] != (136, 500)
     assert draft_figures._section_mark_anchor_audit(repaired, marks)["ok"] is True
+
+
+def test_section_mark_collision_repair_honors_directional_cutting_plane_target():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((300, 400, 700, 600), outline="black", width=8)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    anchors = [{
+        "numeral": "58", "x": 500, "y": 500, "visible": True,
+        "evidence": "center of the clamp knob",
+        "target_evidence": (
+            "A leader for numeral 58 targets the clamp knob, with its endpoint on the knob "
+            "to the left of the vertical cutting-plane line A-A."
+        ),
+    }]
+    marks = [{
+        "designation": "A", "start_x": 500, "start_y": 200,
+        "end_x": 500, "end_y": 800, "view_dx": 1, "view_dy": 0,
+    }]
+
+    repaired, audit = draft_figures._repair_section_mark_anchor_collisions(
+        output.getvalue(), anchors, marks, numerals=["58 = clamp knob"])
+
+    assert audit["ok"] is True
+    assert audit["adjusted_numerals"] == ["58"]
+    assert repaired[0]["x"] < 500
+    assert repaired[0]["y"] == 500
+
+
+def test_section_mark_collision_repair_uses_fine_offsets_inside_small_part():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((450, 400, 550, 600), outline="black", width=8)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    anchors = [{
+        "numeral": "58", "x": 500, "y": 500, "visible": True,
+        "evidence": "well inside the clamp knob",
+    }]
+    marks = [{
+        "designation": "A", "start_x": 500, "start_y": 200,
+        "end_x": 500, "end_y": 800, "view_dx": 1, "view_dy": 0,
+    }]
+
+    repaired, audit = draft_figures._repair_section_mark_anchor_collisions(
+        output.getvalue(), anchors, marks, numerals=["58 = clamp knob"])
+
+    assert audit["ok"] is True
+    assert audit["adjusted_numerals"] == ["58"]
+    assert 450 < repaired[0]["x"] < 550
+    assert repaired[0]["x"] != 500
 
 
 def test_ocr_audit_rejects_an_extra_invalid_sheet_marking():

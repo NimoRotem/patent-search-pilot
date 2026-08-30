@@ -139,6 +139,7 @@ MARKED_ANCHOR_CORRECTION_GAIN = 1.0
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 MAX_REVIEW_COORDINATE = 50_000
 SECTION_MARK_COORDINATE_TOLERANCE = 180
+SECTION_MARK_AXIS_TOLERANCE = 60
 # Twenty normalized units still leave at least 28 raw pixels on a 1400-pixel sheet while
 # permitting an interior target inside a narrow member that the required cutting plane bisects.
 SECTION_MARK_ANCHOR_CLEARANCE = 20
@@ -1509,6 +1510,47 @@ def section_mark_consensus(expected, results) -> dict:
     """Require two coordinate reviews to agree before typesetting a cutting-plane mark."""
     from math import hypot
 
+    def same_axis(first: dict, second: dict) -> bool:
+        """Allow extent disagreement only when both traces identify one physical cut axis."""
+        first_dx = first["end_x"] - first["start_x"]
+        first_dy = first["end_y"] - first["start_y"]
+        second_dx = second["end_x"] - second["start_x"]
+        second_dy = second["end_y"] - second["start_y"]
+        first_length = hypot(first_dx, first_dy)
+        second_length = hypot(second_dx, second_dy)
+        if first_length < 60 or second_length < 60:
+            return False
+        parallel = abs(
+            (first_dx * second_dx) + (first_dy * second_dy)
+        ) / (first_length * second_length)
+        if parallel < 0.97:
+            return False
+
+        def cross_track(x: int, y: int) -> float:
+            return abs(
+                first_dx * (first["start_y"] - y) -
+                (first["start_x"] - x) * first_dy
+            ) / first_length
+
+        if max(
+                cross_track(second["start_x"], second["start_y"]),
+                cross_track(second["end_x"], second["end_y"])) > \
+                SECTION_MARK_AXIS_TOLERANCE:
+            return False
+        unit_x, unit_y = first_dx / first_length, first_dy / first_length
+
+        def projection(x: int, y: int) -> float:
+            return ((x - first["start_x"]) * unit_x +
+                    (y - first["start_y"]) * unit_y)
+
+        second_interval = sorted((
+            projection(second["start_x"], second["start_y"]),
+            projection(second["end_x"], second["end_y"]),
+        ))
+        overlap = max(
+            0.0, min(first_length, second_interval[1]) - max(0.0, second_interval[0]))
+        return overlap >= min(first_length, second_length) * 0.35
+
     reviews = [_section_mark_review(expected, value) for value in results or ()]
     expected_values = [str(value or "").strip().upper() for value in expected or ()]
     errors = []
@@ -1551,7 +1593,8 @@ def section_mark_consensus(expected, results) -> dict:
                 record["start_x"], record["end_x"] = record["end_x"], record["start_x"]
                 record["start_y"], record["end_y"] = record["end_y"], record["start_y"]
                 direct = swapped
-            if direct > SECTION_MARK_COORDINATE_TOLERANCE:
+            if (direct > SECTION_MARK_COORDINATE_TOLERANCE and
+                    not same_axis(first, record)):
                 errors.append(
                     f"Independent section-mark reviews disagree on designation {designation}.")
             aligned.append(record)
@@ -11146,10 +11189,22 @@ def _repair_section_mark_anchor_collisions(raw_png: bytes, anchors, marks, *, nu
     part_by_numeral = {
         item["numeral"]: item["part"] for item in numeral_entries(numerals)}
     offsets = (
+        (-32, 0), (32, 0), (0, -32), (0, 32),
+        (-45, -30), (-45, 30), (45, -30), (45, 30),
         (0, -90), (90, -90), (-90, -90), (90, 90), (-90, 90),
         (130, 0), (-130, 0), (0, 130), (160, -130), (-160, -130),
         (160, 130), (-160, 130),
     )
+    directional_offsets = {
+        "left": ((-32, 0), (-45, -30), (-45, 30), (-60, 0), (-90, 0),
+                 (-90, -60), (-90, 60), (-130, 0), (-160, -90), (-160, 90)),
+        "right": ((32, 0), (45, -30), (45, 30), (60, 0), (90, 0),
+                  (90, -60), (90, 60), (130, 0), (160, -90), (160, 90)),
+        "above": ((0, -32), (-30, -45), (30, -45), (0, -60), (0, -90),
+                  (-60, -90), (60, -90), (0, -130), (-90, -160), (90, -160)),
+        "below": ((0, 32), (-30, 45), (30, 45), (0, 60), (0, 90),
+                  (-60, 90), (60, 90), (0, 130), (-90, 160), (90, 160)),
+    }
     adjusted = []
     for item in repaired:
         numeral = _clean_numeral(item.get("numeral"))
@@ -11157,8 +11212,17 @@ def _repair_section_mark_anchor_collisions(raw_png: bytes, anchors, marks, *, nu
             continue
         target = " ".join(str(item.get(key) or "") for key in (
             "target_evidence", "evidence"))
-        if not re.search(r"\b(?:well inside|inside (?:the|its|that)|interior)\b", target,
-                         re.IGNORECASE):
+        direction_match = re.search(
+            r"\bto\s+the\s+(left|right)\s+of\b[^.;]{0,240}"
+            r"\b(?:cutting[-\s]plane|section)\b|"
+            r"\b(above|below)\b[^.;]{0,240}\b(?:cutting[-\s]plane|section)\b",
+            target, re.IGNORECASE)
+        direction = next(
+            (str(value).lower() for value in (direction_match.groups()
+                                               if direction_match else ()) if value), "")
+        if (not direction and
+                not re.search(r"\b(?:well inside|inside (?:the|its|that)|interior)\b", target,
+                              re.IGNORECASE)):
             continue
         try:
             current = (int(item.get("x")), int(item.get("y")))
@@ -11168,7 +11232,7 @@ def _repair_section_mark_anchor_collisions(raw_png: bytes, anchors, marks, *, nu
             _normalized_to_pixel(current[0], width),
             _normalized_to_pixel(current[1], height),
         )
-        for offset_x, offset_y in offsets:
+        for offset_x, offset_y in directional_offsets.get(direction, offsets):
             candidate = (current[0] + offset_x, current[1] + offset_y)
             if min(candidate[0], candidate[1], 1000 - candidate[0], 1000 - candidate[1]) < \
                     _MIN_ANCHOR_SHEET_MARGIN:
