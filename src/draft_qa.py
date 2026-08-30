@@ -606,11 +606,12 @@ def _first_use_introduces(spec_text: str, table: Mapping[str, str]) -> dict[str,
     cup 10" is a real defect, but so is a false positive here, so this can only ever advise.
     """
     problems = []
+    scan_text = _FIG_RE.sub("FIGURE", spec_text)
     for numeral, part in table.items():
         head = _head_noun(part)
         if not head:
             continue
-        match = re.search(rf"((?:\S+\s+){{0,6}})\b{re.escape(numeral)}\b", spec_text)
+        match = re.search(rf"((?:\S+\s+){{0,6}})\b{re.escape(numeral)}\b", scan_text)
         if not match:
             continue
         window = _normal(match.group(1))

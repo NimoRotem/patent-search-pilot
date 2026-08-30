@@ -9032,6 +9032,13 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
             owner = explicit_target_owner.search(value)
             return not owner or _clean_numeral(owner.group(1)) == numeral
 
+        def is_usable_target(value: str) -> bool:
+            owner = explicit_target_owner.search(value)
+            owned = bool(owner and _clean_numeral(owner.group(1)) == numeral)
+            return bool(
+                target_marker.search(value) and target_belongs_to_part(value) and
+                (not _ANNOTATION_ONLY.search(value) or owned))
+
         numeral_pattern = re.compile(
             r"(?<![A-Za-z0-9])" + re.escape(numeral) + r"(?![A-Za-z0-9])")
         declaration_pattern = re.compile(
@@ -9063,9 +9070,7 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
                                  not target_marker.search(chunk)), None)
         definition = (local[definition_index] if definition_index is not None else part)[:800]
         explicit_targets = [
-            chunk for chunk in local if target_marker.search(chunk) and
-            target_belongs_to_part(chunk) and
-            not _ANNOTATION_ONLY.search(chunk) and
+            chunk for chunk in local if is_usable_target(chunk) and
             (numeral_pattern.search(chunk) or part.lower() in chunk.lower())]
         target = explicit_targets[0] if explicit_targets else ""
         if not target and definition_index is not None:
@@ -9075,9 +9080,7 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
                               r"(?![A-Za-z0-9])", following)
                     for value in all_numerals if value != numeral)
                 if (
-                        not _ANNOTATION_ONLY.search(following) and
-                        target_marker.search(following) and
-                        target_belongs_to_part(following) and
+                        is_usable_target(following) and
                         (block_begins_with_declaration or not mentions_other)):
                     target = following
                     break
