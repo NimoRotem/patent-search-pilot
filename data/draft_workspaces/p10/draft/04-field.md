@@ -1,0 +1,1 @@
+The present disclosure relates to insulated carriers for transporting temperature-sensitive goods, and more particularly to a reusable passive carrier in which a removable thermal module holding phase-change cassettes is registered by closure of a lid so that air circulates without a powered air mover along a defined path around a removable product tray.

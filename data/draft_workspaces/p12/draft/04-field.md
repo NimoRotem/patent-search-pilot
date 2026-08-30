@@ -1,0 +1,1 @@
+The present disclosure relates to inline liquid metering valves, and more particularly to a reusable valve that delivers a repeatable measured volume of a concentrate into a flowing carrier liquid and that rinses the internal surfaces wetted by the concentrate as part of the same mechanical cycle.

@@ -1,0 +1,263 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b23q_ep3875406a1",
+ "subject_pub": "EP-3875406-A1",
+ "n_claims_source": 16,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 39,
+  "by_kind": {
+   "independent_limitation": 11,
+   "combination": 3,
+   "dependent_limitation": 25
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "gripping a terminal section of a tube with a lifting part",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "lifting the terminal section of the tube by lifting the lifting part",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "arranging the terminal section of the tube on at least one holding part",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "moving the at least one holding part with a movement component parallel to the tube's extension direction",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "moving the holding part until the tube is removed from the group",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "at least one movable lifting part configured to grip and lift a terminal section of a tube",
+   "kind": "independent_limitation",
+   "source": "claim 7",
+   "weight": 1.0
+  },
+  {
+   "text": "at least one movable holding part configured to be arranged below the terminal section of the tube",
+   "kind": "independent_limitation",
+   "source": "claim 7",
+   "weight": 1.0
+  },
+  {
+   "text": "at least one movable holding part configured to move with a direction component parallel to the tube's extension direction",
+   "kind": "independent_limitation",
+   "source": "claim 7",
+   "weight": 1.0
+  },
+  {
+   "text": "a computer program with program code means to perform the method steps of claims 1-6",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "the computer program is executed on a computer or computing unit",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "the computer program is executed on a control unit of a device according to claims 7-15",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "A method for removing a single tube from a group of several tubes, comprising: gripping a terminal section of the tube with a lifting part, lifting the terminal section by lifting the lifting part, arranging the terminal section on at least",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "An apparatus for removing a single tube from a group of several tubes, comprising: at least one movable lifting part configured to grip and lift a terminal section of the tube, and at least one movable holding part configured to be arranged",
+   "kind": "combination",
+   "source": "claim 7",
+   "weight": 0.9
+  },
+  {
+   "text": "A computer program with program code means configured to carry out the steps of a method according to claims 1 to 6 when executed on a computer or corresponding computing unit, in particular on a control unit of a device according to claims",
+   "kind": "combination",
+   "source": "claim 16",
+   "weight": 0.9
+  },
+  {
+   "text": "the lifting part engages with the end face of the tube",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the lifting part moves into a cavity of the tube",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the tube is arranged on at least two holding parts",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the at least two holding parts are moved independently of one another",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the lifting part grips the end section of the tube during the movement of the at least one holding part",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "determining which tube is being removed using at least one optical device",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "the removed tube is fed to a target position by moving the at least one holding part",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the next tube is removed after the previous tube is fed to a target position",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the device is configured to perform a method according to claims 1-6",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "the lifting part has a mandrel engageable with the end face of the tube",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the lifting part has a clamping part for clamping the terminal section of the tube",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the lifting part is guided on at least one linear guide",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "a first optical device detects the extension direction of the tube to be separated",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "a second optical device detects the position of the end face of the tube to be removed",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "the second optical device has a first camera and a second camera",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "the second camera is arranged closer to the lifting part than the first camera",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "the first optical device determines target coordinates for the lifting part's movement",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the second optical device determines target coordinates for the lifting part's movement",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the at least one holding part has at least one stop for the tube",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the at least one holding part is arranged on a rail and movable along the rail",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the rail is connected to a carrier and movable relative to the carrier",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the at least one holding part has a third optical device to detect the tube's position relative to the holding part",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "the third optical device is connected to a control unit",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "the control unit moves the rail relative to the carrier when the detected tube position deviates from a target position by a user-defined tolerance",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "the at least one holding part is assigned a stop that serves as an abutment for a tube arranged on the holding part",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "be9f69d8afb5c1bc"
+}

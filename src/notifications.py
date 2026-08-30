@@ -27,7 +27,7 @@ import db
 
 
 PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "https://rotem.ai/patents").rstrip("/")
-MAIL_FROM = (os.environ.get("MAIL_FROM") or "Rotem Patents <patents@rotem.ai>").strip()
+MAIL_FROM = (os.environ.get("MAIL_FROM") or "IPtorch <patents@rotem.ai>").strip()
 MAIL_TRANSPORT = (os.environ.get("MAIL_TRANSPORT") or "auto").strip().lower()
 POLL_SECONDS = max(5.0, float(os.environ.get("MAIL_POLL_SECONDS", "20")))
 
@@ -104,7 +104,7 @@ def _deliver(row):
             #  Resend 403s the default urllib User-Agent. Learned the hard way; a real one is not
             #  optional.
             headers={"Authorization": "Bearer %s" % key, "Content-Type": "application/json",
-                     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) rotem-patents/1.0"})
+                     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) iptorch/1.0"})
         try:
             with urllib.request.urlopen(req, timeout=30) as fh:
                 fh.read()
@@ -314,8 +314,8 @@ def queue_invitation(email, full_name, invite_url, inviter_name=""):
     return accounts.enqueue_mail(
         to_email=email, user_id=None, search_slug=None, kind="invitation",
         dedupe_key=f"invite:{email.lower()}:{hashlib.sha256(invite_url.encode()).hexdigest()[:16]}",
-        subject="You have been invited to Rotem Patents",
-        body_text=(f"Hello {name},\n\nYou have been invited{who} to Rotem Patents, a "
+        subject="You have been invited to IPtorch",
+        body_text=(f"Hello {name},\n\nYou have been invited{who} to IPtorch, a "
                    "prior-art search and drafting tool.\n\nChoose a password and open your "
                    f"account here:\n{invite_url}\n\nThe link works once and expires in two "
                    "weeks. If you were not expecting this, ignore it — no account exists until "
@@ -344,7 +344,7 @@ def queue_password_reset(email, reset_url):
         # Hash the opaque token deterministically without storing the reset credential itself.
         dedupe_key=(f"password-reset:{user['id']}:"
                     f"{hashlib.sha256(token.encode()).hexdigest()}"),
-        subject="Reset your Rotem Patents password",
+        subject="Reset your IPtorch password",
         body_text=(f"Hello {user['full_name']},\n\nUse this link within one hour to reset your password:\n"
                    f"{url}\n\nIf you did not request this, you can ignore this message.\n"))
     kick()

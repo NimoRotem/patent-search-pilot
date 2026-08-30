@@ -1,0 +1,229 @@
+{
+ "n": 5,
+ "pub": "US-3320564-A",
+ "family_id": "23760940",
+ "biblio": {
+  "pub": "US-3320564-A",
+  "label": "U.S. Patent No. 3,320,564",
+  "kind": "patent",
+  "title": "Magnetic chuck",
+  "country": "US",
+  "inventor": "William F Sosey",
+  "assignee": "Eriez Manufacturing Co",
+  "publication_date": "1967-05-16",
+  "priority_date": "1965-03-29",
+  "filing_date": "1965-03-29",
+  "dates_source": "corpus",
+  "abstract": "",
+  "issue_date_pretty": "May 16, 1967",
+  "priority_date_pretty": "March 29, 1965"
+ },
+ "subject": {
+  "app_no": "19/318,450",
+  "pub_no": "US 2026/0070232 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a magnetic chuck for holding parts, which includes magnetic pressings, a pole ring, and a locating pin for positioning workpieces, and a mechanical means for removing parts.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[a]",
+   "quote_claim": true,
+   "claim_text": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "claim_paraphrase": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "This invention relates to magnetic chucks and, more particularly, to an improved magnetic chuck in combination with a removing means for removing parts therefrom.",
+   "note": "The reference describes a magnetic chuck for holding parts, which can be considered a magnetic gripper for a ferromagnetic workpiece.",
+   "cites": [
+    "Paragraph [0004]"
+   ],
+   "confidence": 0.9,
+   "_id": 0,
+   "disclosure": "The reference discloses a magnetic chuck for holding parts, which is a magnetic gripper for a ferromagnetic workpiece."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[c]",
+   "quote_claim": true,
+   "claim_text": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the workpiece contact surface",
+   "claim_paraphrase": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The annular groove 20 receives the magnetic pressings 11, which may be made of ceramic permanent magnetic material of a well known kind, and they may have dimensions of, for example, 1 X /2 x 1 7 inches.",
+   "note": "The reference describes magnetic pressings and a pole ring that guide the magnetic field, which are analogous to pole shoes.",
+   "cites": [
+    "Paragraph [0018]"
+   ],
+   "confidence": 0.6,
+   "_id": 1,
+   "disclosure": "The reference discloses magnetic pressings 11 that guide the magnetic field."
+  },
+  {
+   "claim_no": 2,
+   "label": "claim 2[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the housing extends along a longitudinal axis",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the housing extends along a longitudinal axis",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The chuck has a relatively annular shaped member, which may be considered to be generally cylindrical in shape.",
+   "note": "The reference describes the chuck housing as generally cylindrical, which implies it extends along a longitudinal axis.",
+   "cites": [
+    "Paragraph [0018]",
+    "Paragraph [0021]"
+   ],
+   "confidence": 0.8,
+   "_id": 2,
+   "disclosure": "The reference discloses a chuck that is generally cylindrical in shape, which implies it extends along a longitudinal axis."
+  },
+  {
+   "claim_no": 3,
+   "label": "claim 3[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The pole ring 114 is made of magnetic material, such as steel, and is in the form of a part of a plate. The pole ring 114 is supported on top of the magnetic pressings by means of the flat",
+   "note": "The reference describes a 'pole ring' made of magnetic material that supports magnetic pressings, which could be considered a structure for directing a magnetic field.",
+   "cites": [
+    "Paragraph [0020]"
+   ],
+   "confidence": 0.6,
+   "_id": 3,
+   "disclosure": "The reference discloses a pole ring 114 made of magnetic material that supports magnetic pressings."
+  },
+  {
+   "claim_no": 7,
+   "label": "claim 7[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper (10) according to claim 1, wherein the magnetic gripper (10) has a positioning device (56) for positioning the ferromagnetic workpiece (72) on the workpiece contact surface (40, 42",
+   "claim_paraphrase": "The magnetic gripper (10) according to claim 1, wherein the magnetic gripper (10) has a positioning device (56) for positioning the ferromagnetic workpiece (72) on the workpiece …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "It is another object of the invention to provide a locating pin in a magnetic chuck which aligns and locates the steel parts for proper positioning.",
+   "note": "The reference discloses a locating pin for aligning and positioning steel parts on the magnetic chuck.",
+   "cites": [
+    "Paragraph [0011]"
+   ],
+   "confidence": 0.9,
+   "_id": 4,
+   "disclosure": "The reference discloses a locating pin that aligns and locates steel parts for proper positioning."
+  },
+  {
+   "claim_no": 8,
+   "label": "claim 8[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The annular groove 20 receives the magnetic pressings 11, which may be made of ceramic permanent magnetic material of a well known kind, and they may have dimensions of, for example, 1 X /2 x 1 7 inches.",
+   "note": "The reference describes magnetic pressings which act as magnetic poles",
+   "cites": [
+    "Paragraph [0018]"
+   ],
+   "confidence": 0.6,
+   "_id": 5,
+   "disclosure": "The reference discloses magnetic pressings 11, which act as magnetic poles."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "As the collar is unthreaded, it will move the work piece attached, so that the face will move in plane parallel to the plane of face 151 on the chuck, and the collar 130 will force the work piece out",
+   "note": "The reference discloses a mechanical means (threaded collar) to move the workpiece out of engagement, which is a form of displacement for release",
+   "cites": [
+    "Paragraph [0021]"
+   ],
+   "confidence": 0.7,
+   "_id": 6,
+   "disclosure": "The reference discloses a threaded collar that moves the workpiece out of engagement, which is a mechanical means for displacement for release."
+  },
+  {
+   "claim_no": 13,
+   "label": "claim 13[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein a housing portion of the housing is designed to largely suppress the escape of the magnetic field of the magnet from the housing portion, or",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein a housing portion of the housing is designed to largely suppress the escape of the magnetic field of the magnet from the housing …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The generally cylindrical chuck housing is made of magnetic material.",
+   "note": "The reference discloses a housing made of magnetic material, which can suppress the escape of the magnetic field",
+   "cites": [
+    "Paragraph [0018]"
+   ],
+   "confidence": 0.7,
+   "_id": 7,
+   "disclosure": "The reference discloses a cylindrical chuck housing made of magnetic material."
+  },
+  {
+   "claim_no": 14,
+   "label": "claim 14[a]",
+   "quote_claim": false,
+   "claim_text": "A magnetic gripper system, the magnetic gripper system comprising",
+   "claim_paraphrase": "A magnetic gripper system, the magnetic gripper system comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "This invention relates to magnetic chucks and, more particularly, to an improved magnetic chuck in combination with a removing means for removing parts therefrom.",
+   "note": "The reference describes a magnetic chuck system that includes a magnetic chuck and a means for removing parts, which implies a system.",
+   "cites": [
+    "Paragraph [0004]",
+    "Paragraph [0006]"
+   ],
+   "confidence": 0.9,
+   "_id": 8,
+   "disclosure": "The reference discloses an improved magnetic chuck in combination with a removing means for removing parts therefrom, which is a magnetic gripper system."
+  },
+  {
+   "claim_no": 16,
+   "label": "claim 16[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the receptacle is in the form of a groove",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the receptacle is in the form of a groove",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The cylindrical portion 19 of the annular member has an annular groove 20 in it, which may be countergrooved at 21. The generally cylindrical chuck housing is made of magnetic material. The annular groove 20 receives the magnetic pressings 11,",
+   "note": "The reference describes a groove in the cylindrical housing that receives magnetic pressings, which functions as a receptacle.",
+   "cites": [
+    "Paragraph [0018]"
+   ],
+   "confidence": 1.0,
+   "_id": 9,
+   "disclosure": "The reference discloses an annular groove 20 in the cylindrical portion 19 that receives the magnetic pressings 11."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "public_prior_art",
+   "blocked": false,
+   "forum": "US"
+  },
+  "quotes": {
+   "checked": 10,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

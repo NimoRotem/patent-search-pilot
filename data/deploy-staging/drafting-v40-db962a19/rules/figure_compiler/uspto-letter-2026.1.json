@@ -1,0 +1,17 @@
+{
+  "id": "uspto-letter-2026.1",
+  "jurisdiction": "USPTO",
+  "effective_checked": "2026-08-10",
+  "authority": "37 CFR 1.84(f)-(g); MPEP 608.02",
+  "source_url": "https://www.uspto.gov/web/offices/pac/mpep/s608.html",
+  "sheet_mm": [216, 279],
+  "margins_mm": {"top": 25, "left": 25, "right": 15, "bottom": 10},
+  "usable_mm": [176, 244],
+  "units_per_mm": 10,
+  "minimum_character_height_mm": 3.2,
+  "stroke_mm": 0.35,
+  "thin_stroke_mm": 0.25,
+  "allow_color": false,
+  "allow_frames": false,
+  "sheet_number_format": "{sheet}/{total}"
+}

@@ -1,0 +1,425 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b66c_ep1806311a3",
+ "subject_pub": "EP-1806311-A3",
+ "n_claims_source": 27,
+ "claims_source": "display_record:DE-102006001279-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 66,
+  "by_kind": {
+   "independent_limitation": 15,
+   "combination": 1,
+   "dependent_limitation": 50
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A crane with a trolley",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A base transceiver on the trolley",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Base transceiver radiates a base transmit signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Base transceiver receives a first transponder signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Base transceiver receives a second transponder signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A first transponder at a predetermined location relative to the crane",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "First transponder receives the base transmit signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "First transponder radiates the first transponder signal upon receiving the base transmit signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A second transponder on a load, hook, or target",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Second transponder receives the base transmit signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Second transponder radiates the second transponder signal upon receiving the base transmit signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Second transponder signal is different from the first transponder signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "An evaluation device coupled to the base transceiver",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Evaluation device determines distance of first transponder from trolley based on first transponder signal and base transmit signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Evaluation device determines distance of second transponder from trolley based on second transponder signal and base transmit signal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A crane with a trolley, a base transceiver on the trolley radiating a base transmit signal and receiving first and second transponder signals, a first transponder at a predetermined location receiving the base signal and radiating the first",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "First transponder is attached to a boom of the crane",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "First transponder is attached to the boom less than 0.5m from where the boom attaches to the mast",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Second transponder is on the hook",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "A third transponder is at a predefined location spaced from the first transponder location",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Position of the second predefined location is independent of boom movement",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Third transponder is attached to the load's target destination",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "A fourth transponder is spaced from the first transponder on the crane boom",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Base transceiver receives a fourth transponder signal from the fourth transponder",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines trolley distance from fourth transponder based on base transmit signal and fourth transponder signal",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device checks functionality by comparing distances of first and fourth transponders from the trolley",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Fourth transponder is less than 0.5m from the boom tip",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines first transponder distance from trolley based on transit time of base transmit signal to first transponder",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines second transponder distance from base transceiver based on transit time of base transmit signal to second transponder",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Crane is a luffing jib crane",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "A tilt sensor on the suspension cable or crane hook generates a tilt sensor signal",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Tilt sensor signal depends on angle between suspension cable and boom",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device coupled to tilt sensor receives tilt sensor signal",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines load distance from trolley parallel to mast from second transponder signal and tilt sensor signal",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines load distance from trolley perpendicular to mast from second transponder signal and tilt sensor signal",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines vertical acceleration from tilt sensor signal and second transponder signal at three time points",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines horizontal acceleration from tilt sensor signal and second transponder signal at three time points",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device coupled to lifting device, trolley movement device, or mast rotation device",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device compares acceleration to a critical threshold",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device controls lifting device, trolley movement device, or mast rotation device if threshold is exceeded",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Base transceiver radiates base transmit signal periodically",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "A receiver at the crane control station",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device and base transceiver are a single physical unit",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device radiates a radio signal with distance information of first and second transponders from trolley",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Receiver receives radio signal and determines and displays transponder distances from trolley",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines trolley distance from mast",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines load moment from trolley distance from mast",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device compares load moment to a permissible load moment limit",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device coupled to trolley movement device",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device controls trolley movement to prevent exceeding permissible load moment",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Transponder is attached to a boom of the crane",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "Transponder is attached to the boom less than 0.5m from where the boom attaches to the mast",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "An additional transponder is attached to the crane boom",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Base transceiver receives an additional transponder signal from the additional transponder",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines transponder distance from trolley based on transponder signal",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines trolley distance from additional transponder based on base transmit signal and additional transponder signal",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device checks functionality by comparing distances of transponder and additional transponder from the trolley",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Additional transponder is less than 0.5m from the boom tip",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines load moment from transit time of base transmit signal to transponder",
+   "kind": "dependent_limitation",
+   "source": "claim 23",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device determines load moment from transit time of transponder signal to base transceiver",
+   "kind": "dependent_limitation",
+   "source": "claim 23",
+   "weight": 0.7
+  },
+  {
+   "text": "Weighing device is spaced from the base transceiver",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "Weighing device radiates a weighing radio signal dependent on load weight",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "Base transceiver receives weighing radio signal and determines load weight",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "Base transceiver and evaluation device are a single physical unit",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  },
+  {
+   "text": "Evaluation device radiates a radio signal dependent on load moment value",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  },
+  {
+   "text": "Receiver receives radio signal and determines and displays load moment value",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "9c23d6b5826a815e"
+}

@@ -1,0 +1,365 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b66c_ep1889537a3",
+ "subject_pub": "EP-1889537-A3",
+ "n_claims_source": 22,
+ "claims_source": "family_claims:US-2008041805-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 56,
+  "by_kind": {
+   "independent_limitation": 23,
+   "combination": 2,
+   "dependent_limitation": 31
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Method for controlling a boom construction and an articulated tool",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Boom construction comprises a first boom",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "First actuator controls the first boom",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Second boom articulated to the first boom",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Second actuator controls the second boom",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Third actuator controls the position of the tool",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "First actuator is controlled manually",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Second actuator is controlled manually",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Third actuator is controlled simultaneously and automatically",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "First actuator is controlled with a first set point",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Second actuator is controlled with a second set point",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "Third actuator is controlled simultaneously using a variable dependent on at least one set point",
+   "kind": "independent_limitation",
+   "source": "claim 4",
+   "weight": 1.0
+  },
+  {
+   "text": "System for controlling a boom construction and an articulated tool",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "System comprises a first boom and a first actuator controlling it",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "System comprises a second boom articulated to the first boom",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "System comprises a second actuator controlling the second boom",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "System comprises a third actuator controlling the tool position",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "System comprises a device for giving a first set point and controlling the first actuator",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "System comprises a device for giving a second set point and controlling the second actuator",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "Control system comprises a variable for controlling the third actuator simultaneously",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "Variable is for simultaneous control with the first actuator, second actuator, or both",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "Control system comprises a control algorithm to determine the variable",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "Variable is dependent on at least one of the set points",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "Method for controlling a boom construction and a tool connected to it by articulation, the boom construction comprising a first boom and a first actuator controlling the same, a second boom articulated to the first boom, and a second actuat",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "System for controlling a boom construction and a tool articulated thereto, comprising: a first boom and a first actuator controlling the same, a second boom articulated to the first boom and a second actuator controlling the same, a third a",
+   "kind": "combination",
+   "source": "claim 14",
+   "weight": 0.9
+  },
+  {
+   "text": "Tool position is maintained substantially stationary",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Second actuator controls solely the second boom",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Second actuator controls both first and second booms simultaneously for parallel movement",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Third actuator is controlled simultaneously with a third set point for tilting the tool",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Variable is jointly proportional to the first, second, and third set points",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Tool of a boom construction coupled to a forest machine is automatically controlled",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "One or more set points are set by one or more manual control sticks",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Third actuator is controlled with a controlling element",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Controlling element is effective on the variable",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Controlling element controls volume flow of a medium to the third actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Second set point also controls the first actuator simultaneously with the second actuator for parallel movement",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Second actuator also controls the first boom simultaneously with the second boom for parallel movement",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "First actuator is controlled simultaneously with the first set point",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Variable is jointly proportional to both the first and second set points",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Second actuator is effective on the first and second booms with a link mechanism",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Second set point controls both the first and second actuators simultaneously for parallel movement",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Control system comprises a device for providing a third set point and controlling the third actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "Control algorithm defines the variable to be jointly dependent on first, second, and third set points",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "Control algorithm comprises one or more settable parameters",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Parameters determine dependence between controlling variable and each set point",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Devices comprise a manually controllable control stick",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Control system comprises a controlling element for each third actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "Controlling element is configured to control volume flow to the third actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "Variable is configured to control the controlling element",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "Boom construction is coupled to a forest machine",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Tool is coupled to the boom construction and the third actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Control system controls the tool by the third actuator simultaneously when first and/or second actuator is manually controlled",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Forest machine is a feller buncher",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Tool is a felling head",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Forest machine is a harvester or a forwarder",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "Tool is a harvester head intended for cutting and collecting wood",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "3ee3539c01ae011a"
+}

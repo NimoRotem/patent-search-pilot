@@ -1,0 +1,41 @@
+{#  The FULL ranked list — every family the search ranked, not the 60-card page. The card page is
+    a view; this is the underlying ordering, so nothing the pipeline earned is unreachable. Each
+    row deep-links into the report's document panel (#patent= opens the slide-over). #}
+{% extends "base.html" %}
+{% block title %}Full ranked list · {{ slug }} | Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap">
+  <h1 style="font-size:1.3rem">Full ranked list</h1>
+  <p class="cc">{{ total }} ranked families for <a href="{{ url_for('report', slug=slug) }}">this search</a>.
+    The report page shows the top {{ page_size_note }} as cards; every row below opens the same
+    full-document panel. Rows {{ start + 1 }}–{{ start + rows|length }}.</p>
+  <div style="overflow-x:auto">
+  <table class="rankedtail" style="border-collapse:collapse;width:100%;font-size:.9rem">
+    <tr>
+      <th style="text-align:left;padding:4px 8px">#</th>
+      <th style="text-align:left;padding:4px 8px">Publication</th>
+      <th style="text-align:left;padding:4px 8px">Title</th>
+      <th style="text-align:left;padding:4px 8px">Date</th>
+      <th style="text-align:left;padding:4px 8px">Screen</th>
+      <th style="text-align:left;padding:4px 8px">Read</th>
+      <th style="text-align:left;padding:4px 8px">Evidence cells</th>
+    </tr>
+    {% for r in rows %}
+    <tr style="border-top:1px solid #e5e5e5">
+      <td style="padding:4px 8px">{{ r.rank }}</td>
+      <td style="padding:4px 8px"><a href="{{ url_for('report', slug=slug) }}#patent={{ r.pub }}">{{ r.pub }}</a></td>
+      <td style="padding:4px 8px">{{ r.title }}</td>
+      <td style="padding:4px 8px">{{ r.date or "" }}</td>
+      <td style="padding:4px 8px">{{ r.screen if r.screen is not none else "—" }}</td>
+      <td style="padding:4px 8px">{{ "full" if r.read else ("batch" if r.batched else "—") }}</td>
+      <td style="padding:4px 8px">{{ r.cells or "" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <p style="margin-top:12px">
+    {% if start > 0 %}<a href="{{ url_for('ranked_tail', slug=slug) }}?start={{ [start - n, 0]|max }}&n={{ n }}">&larr; previous</a>{% endif %}
+    {% if start + rows|length < total %}<a style="margin-left:16px" href="{{ url_for('ranked_tail', slug=slug) }}?start={{ start + n }}&n={{ n }}">next &rarr;</a>{% endif %}
+  </p>
+</div>
+{% endblock %}

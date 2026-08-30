@@ -1,0 +1,14 @@
+# Weekly corpus refresh for the patent-search pilot.
+# Install:  crontab -u nimrod_rotem ops/patent-refresh.cron
+# Inspect:  crontab -u nimrod_rotem -l
+#
+# Sunday 03:17 UTC. Chosen deliberately:
+#   * Sunday early morning is the quietest window for the live app at rotem.ai/patents-data
+#   * :17 rather than :00 avoids the top-of-hour thundering herd against BigQuery
+#   * weekly (not daily) because the upstream BigQuery table refreshes only every few
+#     months -- polling harder would spend money to learn nothing
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+17 3 * * 0 /home/nimrod_rotem/patent-search-pilot/ops/refresh_corpus.sh

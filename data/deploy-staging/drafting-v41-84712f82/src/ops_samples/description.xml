@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ops:world-patent-data xmlns:ops="http://ops.epo.org" xmlns="http://www.epo.org/exchange" xmlns:ftxt="http://www.epo.org/fulltext">
+  <ftxt:fulltext-documents>
+    <ftxt:fulltext-document system="ops.epo.org" fulltext-format="text-only">
+      <bibliographic-data>
+        <publication-reference>
+          <document-id document-id-type="docdb">
+            <country>EP</country><doc-number>2496850</doc-number><kind>A1</kind>
+          </document-id>
+        </publication-reference>
+      </bibliographic-data>
+      <ftxt:description lang="EN">
+        <ftxt:p num="0001">The present invention relates to a suction cup for attaching to a contact surface, in particular to a vacuum suction device for lifting and handling objects having a smooth or textured surface.</ftxt:p>
+        <ftxt:p num="0002">Suction cups of this general type are known from the prior art. A flexible sealing lip contacts the surface and an underpressure is generated in a chamber bounded by the sealing lip, so that the cup adheres to the object.</ftxt:p>
+        <ftxt:p num="0003">A problem with known suction cups is that on rough or porous surfaces the vacuum is quickly lost through leakage paths, so that the holding force is insufficient for reliable lifting.</ftxt:p>
+        <ftxt:p num="0004">It is therefore an object of the present invention to provide a suction cup which maintains a reliable vacuum grip even on rough or porous surfaces, by continuously running a vacuum pump that compensates for leakage.</ftxt:p>
+        <ftxt:p num="0005">According to the invention this object is achieved by a suction cup comprising a rigid base element, a resilient sealing lip arranged at the periphery of the base element, and an electric vacuum pump in fluid communication with the chamber, the pump being operable to continuously extract air so as to maintain the underpressure.</ftxt:p>
+        <ftxt:p num="0006">In a preferred embodiment a pressure sensor monitors the chamber pressure and triggers an acoustic alarm when the underpressure falls below a threshold, warning the operator of an imminent loss of grip.</ftxt:p>
+      </ftxt:description>
+    </ftxt:fulltext-document>
+  </ftxt:fulltext-documents>
+</ops:world-patent-data>

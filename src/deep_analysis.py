@@ -137,6 +137,15 @@ _STATUS: dict = {}
 # ---------------------------------------------------------------------------
 # the full text of one reference
 # ---------------------------------------------------------------------------
+def _stage_tier(key, default):
+    """Which tier this stage asks for. Settings page first, then the code default."""
+    try:
+        import model_settings
+        return model_settings.tier_for(key, default)
+    except Exception:
+        return default
+
+
 def full_text(pub, max_chars=MAX_REFERENCE_CHARS):
     """Every citable unit of one publication: abstract, all claims, all description paragraphs.
 
@@ -484,7 +493,7 @@ def _refute(rows, pub, texts=None):
     #  never renders as coverage. It is also cheap in volume — one call per reference against the
     #  eleven the reading costs — so it is exactly where a better model is worth paying for.
     out = llm.chat_json(_REFUTE_SYS, json.dumps({"reference": pub, "pairs": pairs})[:40000],
-                        tier="strong",
+                        tier=_stage_tier("refuting", "strong"),
                         max_tokens=2000) or {}
     checks = {int(c.get("i", -1)): c for c in (out.get("checks") or []) if isinstance(c, dict)}
     downgraded = 0
@@ -615,7 +624,8 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
         #  finds fewer teachings in 90,000 characters costs the report cells, not seconds. See
         #  model_pool.READ for the measurement that separated it out.
         return llm.chat_json(_SYS, [{"text": doc_prefix, "cache": True}, {"text": tail}],
-                             tier="read", max_tokens=READ_MAX_TOKENS) or {}
+                             tier=_stage_tier("reading", "read"),
+                             max_tokens=READ_MAX_TOKENS) or {}
 
     #  FOCUSED READS, not one combined one. MEASURED: asking for 12 feature rows AND 13 claim rows
     #  in a single answer, each with a verbatim quote and a note, made the model economise: the
@@ -926,7 +936,7 @@ def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH, k
         #  the same reference was just read a dozen times on the read tier, and the refuter and
         #  this pass revisit it on the strong tier.
         out = llm.chat_json(system, [{"text": doc_part, "cache": True}, {"text": tail_part}],
-                            tier="strong", max_tokens=8000) or {}
+                            tier=_stage_tier("second_look", "strong"), max_tokens=8000) or {}
     except Exception:
         return 0
     changed = 0

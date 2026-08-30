@@ -1,0 +1,119 @@
+{
+ "n": 4,
+ "pub": "US-4837540-A",
+ "family_id": "11193345",
+ "biblio": {
+  "pub": "US-4837540-A",
+  "label": "U.S. Patent No. 4,837,540",
+  "kind": "patent",
+  "title": "Magnetic work-holder",
+  "country": "US",
+  "inventor": "Cardone Michele",
+  "assignee": "Tecnomagnete SpA",
+  "publication_date": "1989-06-06",
+  "priority_date": "1987-10-12",
+  "filing_date": "1988-10-03",
+  "dates_source": "corpus",
+  "abstract": "A magnetic holding device, comprising magnetically activable holding surface having pole members of different polarities, and at least a first and a second single-pole extension members for said pole members of opposite polarities. Each pole-extension member comprises a base portion fastened to a pole member and a movable portion sliding on said base portion along an inclined surface the sliding surfaces of said first and second pole-extension members are slanted in opposite angular directions in respect to said holding surface of the device.",
+  "issue_date_pretty": "June 6, 1989",
+  "priority_date_pretty": "October 12, 1987"
+ },
+ "subject": {
+  "app_no": "19/318,450",
+  "pub_no": "US 2026/0070232 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a magnetic work-holder that is a magnetic holding device with pole members and single-pole extension members, including a movable pole portion with a work-holding face and guiding means, where slanted abutting faces form an angle with the holding surface.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[a]",
+   "quote_claim": true,
+   "claim_text": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "claim_paraphrase": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A magnetic holding device, comprising magnetically activable holding surface having pole members of different polarities, and at least a first and a second single-pole extension members for said pole members of opposite polarities.",
+   "note": "The reference discloses a magnetic holding device with pole members",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 0,
+   "disclosure": "The reference discloses a magnetic holding device comprising a magnetically activable holding surface having pole members of different polarities, and at least a first and a second single-pole extension members for said pole members of opposite polarities."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[d]",
+   "quote_claim": true,
+   "claim_text": "the workpiece contact surface defines a contact surface angle between the workpiece contact surface and the displacement direction",
+   "claim_paraphrase": "the workpiece contact surface defines a contact surface angle between the workpiece contact surface and the displacement direction",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "said movable pole portion of said pole extension members having an outwardly oriented work-holding face, and guiding means for guiding said movable pole portion on said base pole portion, said abutting faces of the base and movable pole portions of",
+   "note": "The reference discloses a work-holding face and slanted abutting faces, which implies an angle",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.6,
+   "_id": 1,
+   "disclosure": "The reference discloses a movable pole portion of said pole extension members having an outwardly oriented work-holding face, and guiding means for guiding said movable pole portion on said base pole portion, where abutting faces of the base and movable pole portions are present."
+  },
+  {
+   "claim_no": 3,
+   "label": "claim 3[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "said movable pole portion of said pole extension members having an outwardly oriented work-holding face, and guiding means for guiding said movable pole portion on said base pole portion",
+   "note": "The reference describes pole extension members with a work-holding face and guiding means, which direct the magnetic field,\"",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.7,
+   "_id": 2,
+   "disclosure": "The reference discloses movable pole portions of pole extension members having an outwardly oriented work-holding face and guiding means for guiding said movable pole portion on said base pole portion."
+  },
+  {
+   "claim_no": 4,
+   "label": "claim 4[c]",
+   "quote_claim": false,
+   "claim_text": "the bevel angle ranges in size from 5° to 85° or, in 15° to 75° or, preferably 40° to 60",
+   "claim_paraphrase": "the bevel angle ranges in size from 5° to 85° or, in 15° to 75° or, preferably 40° to 60",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A device according to claim 1, in which said slanted abutting faces form an angle of between 15° and 80°, preferably between 40° and 50° with respect to the said holding surface.",
+   "note": "The reference discloses a range of 15° to 80° and a preferred range of 40° to 50°, which partially overlaps with the claimed ranges",
+   "cites": [
+    "Claim 2"
+   ],
+   "confidence": 0.7,
+   "_id": 3,
+   "disclosure": "The reference discloses that said slanted abutting faces form an angle of between 15° and 80°, preferably between 40° and 50° with respect to the said holding surface."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "public_prior_art",
+   "blocked": false,
+   "forum": "US"
+  },
+  "quotes": {
+   "checked": 4,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

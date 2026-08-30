@@ -89,9 +89,10 @@ def test_the_post_returns_at_once_instead_of_holding_the_browser(client, report,
                     data={"pubs": ["US-11413727-B2", "US-7240935-B2"], "app_no": "18/915,337"})
     took = time.time() - t0
     gate.set()
-    assert r.status_code == 200
+    #  Post/Redirect/Get: the POST hands back a redirect so a refresh cannot re-submit the build.
+    assert r.status_code == 302
     assert took < 3, "the POST held the browser for %.1fs; the build must run off the request" % took
-    assert b'id="cdProg"' in r.data, "the page must come back showing the progress bar"
+    assert b'id="cdProg"' in client.get(r.headers["Location"]).data, "no progress bar on the GET"
     _wait(report)
 
 
@@ -109,15 +110,27 @@ def test_progress_counts_real_steps_and_reaches_done(client, report):
 
 
 def test_progress_names_the_document_being_worked_on(report):
-    """A count alone does not tell you which reference is costing the wait."""
+    """A count alone does not tell you which reference is costing the wait.
+
+    The reads run in a pool now, so the numbers are completions and not positions: they repeat
+    while several documents are in flight and they arrive in whatever order the pool finishes.
+    What must still hold is that the count never goes backwards, that it ends at the number of
+    documents, and that every document is named somewhere along the way.
+    """
     seen = []
     subject = {"app_no": "18/915,337", "pub_no": "US 2025/0033224 A1"}
     deep = json.loads((webapp.REPORTS / ("%s.deep.json" % report)).read_text())
-    cd.build(deep, ["US-11413727-B2", "US-7240935-B2"], subject, do_phrase=False,
+    pubs = ["US-11413727-B2", "US-7240935-B2"]
+    cd.build(deep, pubs, subject, do_phrase=False,
              on_progress=lambda n, msg: seen.append((n, msg)))
-    assert [n for n, _ in seen] == [0, 1]
-    assert "US-11413727-B2" in seen[0][1] and "1 of 2" in seen[0][1]
-    assert "US-7240935-B2" in seen[1][1]
+    counts = [n for n, _ in seen]
+    assert counts == sorted(counts), "the count went backwards: %s" % counts
+    assert counts[-1] == len(pubs), "it did not finish at %d: %s" % (len(pubs), counts)
+    #  It says something before the first document lands, or the bar reads as a hang.
+    assert counts[0] == 0 and "Reading" in seen[0][1]
+    for pub in pubs:
+        assert any(pub in msg for _, msg in seen), "%s was never named" % pub
+    assert any("2 of 2" in msg for _, msg in seen)
 
 
 def test_an_idle_slug_reports_idle_not_a_phantom_build(client, report):

@@ -1,0 +1,195 @@
+{
+ "n": 7,
+ "pub": "JP-2007301640-A",
+ "family_id": "38836027",
+ "biblio": {
+  "pub": "JP-2007301640-A",
+  "label": "JP 2007301640 A",
+  "kind": "foreign",
+  "title": "Faceplate for magnetic chuck",
+  "country": "JP",
+  "inventor": "Takeshi Ide",
+  "assignee": "Kanetec KK",
+  "publication_date": "2007-11-22",
+  "priority_date": "2006-05-08",
+  "filing_date": "2006-05-08",
+  "dates_source": "corpus",
+  "abstract": "<P>PROBLEM TO BE SOLVED: To dispense with soldering in a faceplate for a magnetic chuck releasably attracting a magnetic body such as a workpiece.  <P>SOLUTION: This faceplate includes a plurality of first pole shoes disposed at some interval apart in a first direction and being long in a second direction crossing with the first direction, a plurality of second pole shoes each disposed between the adjoining first pole shoes and being long in the second direction, and a plurality of spacers each disposed between the adjoining first and second pole shoes for connecting the first and second pole shoes, connecting the both pole shoes and restricting a working face attracting the magnetic body cooperating with the first and second pole shoes. Each spacer is manufactured of a non-magnetic synthetic resin material.  <P>COPYRIGHT: (C)2008,JPO&INPIT",
+  "issue_date_pretty": "November 22, 2007",
+  "priority_date_pretty": "May 8, 2006"
+ },
+ "subject": {
+  "app_no": "19/318,450",
+  "pub_no": "US 2026/0070232 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a faceplate for a magnetic chuck that releasably attracts a magnetic material such as a workpiece, featuring first and second pole shoes and spacers, and a magnetic flux generation source that can be switched between an excited and non-excited state.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[a]",
+   "quote_claim": true,
+   "claim_text": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "claim_paraphrase": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The present invention relates to a face plate for a magnetic chuck that releasably attracts a magnetic material such as a workpiece.",
+   "note": "This passage discloses a magnetic chuck for releasably attracting a magnetic material, which is equivalent to a magnetic gripper for gripping a ferromagnetic workpiece.",
+   "cites": [
+    "Paragraph [0004]"
+   ],
+   "confidence": 0.9,
+   "_id": 0,
+   "disclosure": "The reference discloses a magnetic chuck that releasably attracts a magnetic material such as a workpiece."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[b]",
+   "quote_claim": true,
+   "claim_text": "a magnet which is arranged in the housing and which is displaceable along a displacement direction between a gripping position for gripping the ferromagnetic workpiece and a release position for releasing the ferromagnetic workpiece",
+   "claim_paraphrase": "a magnet which is arranged in the housing and which is displaceable along a displacement direction between a gripping position for gripping the ferromagnetic workpiece and a …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The magnetic flux generation source includes an electromagnet device including an iron core and an exciting coil wound around the iron core, a permanent magnet device including a plurality of fixed permanent magnets and a plurality of movable magnets, and",
+   "note": "The reference discloses a magnet (magnetic flux generation source) arranged in a housing. It also mentions movable magnets, which implies displaceability.",
+   "cites": [
+    "Paragraph [0071]"
+   ],
+   "confidence": 0.6,
+   "_id": 1,
+   "disclosure": "The reference discloses a magnetic flux generation source including an electromagnet device with an iron core and an exciting coil, and a permanent magnet device with fixed and movable magnets."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[c]",
+   "quote_claim": true,
+   "claim_text": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the workpiece contact surface",
+   "claim_paraphrase": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The first and second magnetic pole pieces 20 and 22 and the spacer 24 jointly form a work surface for attracting the magnetic material on the side opposite to the main body 12.",
+   "note": "This passage describes pole pieces (magnetic pole pieces) that form a work surface for attracting magnetic material, which is equivalent to a workpiece contact surface designed to guide a magnetic field portion of the magnet to the workpiece contact surface.",
+   "cites": [
+    "Paragraph [0090]"
+   ],
+   "confidence": 0.8,
+   "_id": 2,
+   "disclosure": "The first and second magnetic pole pieces 20 and 22 and the spacer 24 jointly form a work surface for attracting the magnetic material."
+  },
+  {
+   "claim_no": 2,
+   "label": "claim 2[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the housing extends along a longitudinal axis",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the housing extends along a longitudinal axis",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The housing 18 is manufactured in the shape of a narrow box that is long in the longitudinal direction (first direction) of the main body 12.",
+   "note": "The housing is described as extending in a longitudinal direction.",
+   "cites": [
+    "Paragraph [0061]"
+   ],
+   "confidence": 0.8,
+   "_id": 3,
+   "disclosure": "The housing 18 is manufactured in the shape of a narrow box that is long in the longitudinal direction (first direction) of the main body 12."
+  },
+  {
+   "claim_no": 8,
+   "label": "claim 8[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "This faceplate includes a plurality of first pole shoes disposed at some interval apart in a first direction and being long in a second direction crossing with the first direction, a plurality of second pole shoes each disposed between the",
+   "note": "The reference explicitly states the faceplate includes both first and second pole shoes.",
+   "cites": [
+    "Abstract",
+    "Paragraph [0164]"
+   ],
+   "confidence": 1.0,
+   "_id": 4,
+   "disclosure": "The faceplate includes a plurality of first pole shoes and a plurality of second pole shoes."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "When the supply of current to the exciting coil 20 is stopped, the work surface is brought into a non-excited state, and the attracted magnetic body is released.",
+   "note": "The reference describes the magnet being switchable between gripping and release by supplying or stopping current to an exciting coil, which is an electrical displacement.",
+   "cites": [
+    "Paragraph [0168]"
+   ],
+   "confidence": 0.8,
+   "_id": 5,
+   "disclosure": "When the supply of current to the exciting coil 20 is stopped, the work surface is brought into a non-excited state, and the attracted magnetic body is released."
+  },
+  {
+   "claim_no": 14,
+   "label": "claim 14[d]",
+   "quote_claim": false,
+   "claim_text": "wherein, in a release state, the magnet is in the release position and the ferromagnetic workpiece is not pressed, by means of a magnetic force, against each workpiece contact surface",
+   "claim_paraphrase": "wherein, in a release state, the magnet is in the release position and the ferromagnetic workpiece is not pressed, by means of a magnetic force, against each workpiece contact …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "When the supply of current to the exciting coil 20 is stopped, the work surface is brought into a non-excited state, and the attracted magnetic body is released.",
+   "note": "The reference describes stopping the current to the exciting coil, which puts the work surface in a non-excited state and releases the attracted magnetic body, corresponding to a release state where the workpiece is not pressed by magnetic force.",
+   "cites": [
+    "Paragraph [0168]",
+    "Paragraph [0004]"
+   ],
+   "confidence": 0.9,
+   "_id": 6,
+   "disclosure": "When the supply of current to the exciting coil 20 is stopped, the work surface is brought into a non-excited state, and the attracted magnetic body is released."
+  },
+  {
+   "claim_no": 16,
+   "label": "claim 16[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the receptacle is in the form of a groove",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the receptacle is in the form of a groove",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "In the example shown in the drawing, the face plate 14 is provided with a plurality of first grooves having a predetermined depth dimension and a constant pitch from the upper surface side of the plate body having a predetermined",
+   "note": "The reference describes the face plate having grooves, which can function as receptacles for magnetic pole pieces.",
+   "cites": [
+    "Paragraph [0113]"
+   ],
+   "confidence": 0.8,
+   "_id": 7,
+   "disclosure": "The face plate 14 is provided with a plurality of first grooves having a predetermined depth dimension."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "public_prior_art",
+   "blocked": false,
+   "forum": "US"
+  },
+  "quotes": {
+   "checked": 8,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0,
+   "pre_translated": true,
+   "note": "This is a Japanese-language document. The passages relied on are quoted from an English translation held in the search corpus, not from the original text. A verified translation of the relied-on portions should accompany the filing."
+  },
+  "neutralised": []
+ }
+}

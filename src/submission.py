@@ -61,6 +61,9 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph,
                                 TableStyle)
 
 import concise_render
+import pdf_conform                           # will Patent Center accept the papers we just wrote
+import pdf_fonts
+import search_modes                          # the forum rule: which offices 102(a)(2) reaches
 
 # --------------------------------------------------------------------------------- item typing
 
@@ -72,8 +75,27 @@ _NO_COPY_NEEDED = (US_PATENT, US_PGPUB)
 #  Offices whose publications are not in English. Keyed on the ISSUING OFFICE and not on a language
 #  sniff over the text we hold: the text in the corpus for a JP publication may already be
 #  somebody's translation, and "this looks like English" is not the question (d)(4) asks.
-_NON_ENGLISH_OFFICES = {"JP", "CN", "KR", "DE", "FR", "ES", "IT", "RU", "TW", "BR", "PT", "NL",
-                        "SE", "DK", "FI", "NO", "PL", "TR", "AT", "CH", "MX", "AR", "CL"}
+#  ONE LIST, NOT THREE.
+#
+#  Three modules each carried their own answer to "is this item non-English": this set, the set in
+#  submission_package.needs_translation, and the office-to-language map in
+#  submission_compliance._FOREIGN_OFFICE. SU, the Soviet office, was in none of them, so
+#  SU1296407A1 went into a packet with a copy and no translation while the audit line above it read
+#  "attached for all 7 non-English items" -- it was not counted as one of them, by any of the three.
+#
+#  Derived from the map that has to exist anyway, because the prose needs the language name. A
+#  literal fallback keeps this importable if that module ever moves; it is the same content, and
+#  the deriving import above it is what stops the two drifting again.
+def _non_english_offices():
+    try:
+        import submission_compliance
+        return frozenset(submission_compliance._FOREIGN_OFFICE)
+    except Exception:                                                     # noqa: BLE001
+        return frozenset({"JP", "CN", "KR", "DE", "FR", "ES", "IT", "RU", "SU", "TW", "BR", "PT",
+                          "NL", "SE", "DK", "FI", "NO", "PL", "TR", "AT", "CH", "MX", "AR", "CL"})
+
+
+_NON_ENGLISH_OFFICES = _non_english_offices()
 
 _OFFICE_NAMES = {
     "JP": "Japan Patent Office", "CN": "China National Intellectual Property Administration",
@@ -112,13 +134,164 @@ def needs_copy(doc):
 
 
 def needs_translation(doc):
-    """1.290(d)(4): any non-English item."""
-    return office_of(doc)[0] in _NON_ENGLISH_OFFICES
+    """1.290(d)(4): any non-English item.
+
+    THE OFFICE IS NOT THE LANGUAGE, and trusting it was an exposure. Measured on this corpus:
+    3,497 claim rows tagged `en` are unmistakably German and 4,957 contain CJK characters. A US
+    publication carrying Japanese claim text is a non-English item under (d)(4) whatever its
+    country code says, and a packet that files it with no translation is defective on its face.
+
+    So the office still decides by default, and detected text can only ADD a translation, never
+    remove one: a false positive costs a translation nobody needed, a false negative costs the
+    submission.
+    """
+    if office_of(doc)[0] in _NON_ENGLISH_OFFICES:
+        return True
+    try:
+        import grounding
+        sample = " ".join(str(r.get("quote") or "") for r in (doc.get("rows") or [])[:6])
+        return bool(sample.strip()) and not grounding.is_english_text(sample)
+    except Exception:                                                     # noqa: BLE001
+        return False
+
+
+#  37 CFR 1.17(o), fee code 1818/2818, from the USPTO schedule effective 2025-01-19 and read on
+#  2026-08-24. A third party is NOT eligible for the micro entity discount, which is why there are
+#  only two numbers here. Overridable because a fee schedule changes and a stale constant on a
+#  filing paper is worse than one somebody can correct.
+FEE_PER_UNIT = {"large": float(os.environ.get("USPTO_1290_FEE_LARGE", "195")),
+                "small": float(os.environ.get("USPTO_1290_FEE_SMALL", "78"))}
+FEE_SCHEDULE_DATE = os.environ.get("USPTO_FEE_SCHEDULE_DATE", "19 January 2025")
+ITEMS_PER_UNIT = 10
+
+
+def _money(v):
+    return ("%.2f" % float(v)).rstrip("0").rstrip(".")
 
 
 def fee_units(n_items):
     """1.290(f): one unit of the 1.17(o) fee per ten items OR FRACTION THEREOF."""
-    return int(math.ceil(max(int(n_items), 0) / 10.0)) if n_items else 0
+    return int(math.ceil(max(int(n_items), 0) / float(ITEMS_PER_UNIT))) if n_items else 0
+
+
+def fee_amount(n_items, entity_size="small"):
+    """What this many items costs. -> (units, dollars, per_unit)"""
+    per = FEE_PER_UNIT.get(str(entity_size or "small"), FEE_PER_UNIT["small"])
+    units = fee_units(n_items)
+    return units, round(units * per, 2), per
+
+
+def fee_choices(entity_size="small", max_units=5):
+    """The budget a person actually picks from: how many units, and how many documents that buys.
+
+    The fee steps in tens, so choosing "two units" is choosing "up to twenty documents". Offering
+    the unit and letting the app fill the slots is the honest way round: the alternative is a
+    reader adding an eleventh document and silently doubling the bill.
+    """
+    per = FEE_PER_UNIT.get(str(entity_size or "small"), FEE_PER_UNIT["small"])
+    out = []
+    for u in range(1, int(max_units) + 1):
+        money = _money(u * per)
+        #  NAME WHO IS BEING PAID. A bare "$78" beside a Build button reads as OUR price, which
+        #  is the one thing it is not: it is the 1.17(o) fee the Office charges for the
+        #  submission, paid to the Office, and this site does not take it. The amount cannot come
+        #  out of the label, because the amount IS the choice being made here.
+        out.append({"units": u, "max_documents": u * ITEMS_PER_UNIT,
+                    "dollars": round(u * per, 2), "dollars_pretty": money,
+                    "label": "%d unit%s, up to %d documents, $%s USPTO fee"
+                             % (u, "" if u == 1 else "s", u * ITEMS_PER_UNIT, money)})
+    return out
+
+
+#  How many rows the passed-over table may carry. Long enough that a document worth having is
+#  in it, short enough that somebody reads to the bottom.
+PASSED_OVER_MAX = 25
+
+
+def passed_over(cands, budget_items):
+    """Documents the claim grid ranks highly that this selection does not include, with the reason.
+
+    Counsel, 2026-08-24: "Never drop a top-N coverage reference silently. If the selector passes
+    over something the grid ranks first, say so and say why. A one-line 'considered and not
+    selected, because X' would have turned twenty minutes of reconciliation into thirty seconds."
+
+    The grid's number is `reads_on`, every limitation the reference is not simply absent from,
+    which is what a practitioner sees on the report page. The selection uses `n_limitations`, what
+    could actually be charted. When those two disagree, that IS the reason, and it is the one that
+    is invisible from either page on its own.
+    """
+    picked, ranked, n = [], [], 0
+    for c in cands or []:
+        if c.get("default_include") and n < budget_items:
+            picked.append(c)
+            n += 1
+        ranked.append(c)
+    chosen = {c.get("pub") for c in picked}
+    with_reach = [c for c in ranked if c.get("reads_on")]
+    top = sorted(with_reach, key=lambda c: -int(c.get("reads_on") or 0))[:max(budget_items, 10)]
+    #  AND EVERY PUBLIC-ART DOCUMENT AT LEAST AS BROAD AS THE NARROWEST ONE SELECTED. A cap on the
+    #  top by breadth is not enough on its own: Schunk's DE 10 2022 135 066 A1 reads on 16, sat
+    #  outside the top ten, and is 102(a)(1) art with no 102(b)(2) argument available against it,
+    #  while the member of the same disclosure that WAS in reach is 102(a)(2) only. "You picked
+    #  something narrower and legally weaker than this" is the sentence worth printing.
+    floor = min([int(c.get("reads_on") or 0) for c in picked] or [0])
+    if floor:
+        top += [c for c in with_reach
+                if c.get("basis") == PUBLIC and int(c.get("reads_on") or 0) >= floor
+                and c not in top]
+    out, seen = [], set()
+    for c in top:
+        if c.get("pub") in chosen or c.get("pub") in seen:
+            continue
+        seen.add(c.get("pub"))
+        out.append({"pub": c.get("pub"), "title": c.get("title") or "",
+                    "reads_on": c.get("reads_on"), "charts": c.get("n_limitations") or 0,
+                    #  THE BASIS BELONGS HERE, because the ranking cannot see it and it is often
+                    #  the fact that decides. Schunk's DE 10 2022 135 066 A1 published before the
+                    #  filing date, so it is 102(a)(1) art with no 102(b)(2) argument available
+                    #  against it, while the US member of the same disclosure is 102(a)(2) only.
+                    #  A coverage order will always prefer the weaker one.
+                    "basis": c.get("basis") or "",
+                    "basis_label": BASIS_LABEL.get(c.get("basis") or "", ""),
+                    "why": _why_not(c, budget_items)})
+    #  Public art first among equals: it is the stronger document and it is the one somebody
+    #  scanning this table should see before they run out of patience. Capped for the same
+    #  reason, because a table of sixty-nine is a table nobody reads and this exists to be read.
+    out.sort(key=lambda d: (d["basis"] != PUBLIC, -int(d["reads_on"] or 0)))
+    return out[:PASSED_OVER_MAX]
+
+
+def _why_not(c, budget_items):
+    """One line: why this document is not in the selection. Ordered by which reason governs."""
+    if c.get("of_record"):
+        return ("the Office already has it: %s. A slot on this submission is a slot paid for, and "
+                "this document is already in front of the examiner"
+                % ("the examiner applied it against this family"
+                   if c.get("office") == "applied" else "it is of record on an IDS"))
+    if not c.get("readable", True):
+        return ("its full text was never read, so everything charted for it rests on an abstract")
+    if c.get("basis") == NOT_ART:
+        return c.get("not_art_why") or "it is not prior art against these claims"
+    if c.get("co_owned"):
+        return ("it appears to share an owner with the application, which 102(b)(2)(C) may remove "
+                "as prior art entirely")
+    if c.get("dates_suspect"):
+        return ("its recorded dates cannot all be true, so whether it is prior art here cannot be "
+                "decided: %s" % c.get("dates_suspect_why"))
+    if c.get("basis") == UNKNOWN:
+        return "its dates could not be established, so its status as prior art is unknown"
+    if c.get("text_foreign"):
+        #  ONE LINE, on a page that is already dense. The reason has to fit on a row beside forty
+        #  others; the argument for it lives in the module docstring and in `grounding`.
+        return ("its chart is short because the text is not in English, not because the document "
+                "says little. Worth checking by hand")
+    charts, reads = int(c.get("n_limitations") or 0), int(c.get("reads_on") or 0)
+    if reads and charts < reads:
+        return ("it reads on %d limitations but only %d %s a verified passage, so the chart "
+                "filed for it would have %d row%s"
+                % (reads, charts, "carries" if charts == 1 else "carry",
+                   charts, "" if charts == 1 else "s"))
+    return ("it ranks below the %d documents this fee budget pays for" % budget_items)
 
 
 def exemption_available(n_items):
@@ -155,7 +328,8 @@ def _plus_six_months(d):
     return datetime.date(y, m, 1)
 
 
-def window(publication_date, first_rejection_date=None, notice_of_allowance_date=None, today=None):
+def window(publication_date, first_rejection_date=None, notice_of_allowance_date=None, today=None,
+           suspect_why=""):
     """1.290(b), computed. -> {"open", "deadline", "basis", "days_left", "why"}
 
     The rule is a nest of earlier/later and it is easy to read backwards, so it is spelled out:
@@ -169,6 +343,12 @@ def window(publication_date, first_rejection_date=None, notice_of_allowance_date
     the EARLIEST date the window could close, which is what a person planning a filing needs.
     """
     today = today or datetime.date.today()
+    #  A WINDOW COMPUTED FROM A DATE THAT CANNOT BE TRUE IS WORSE THAN NO WINDOW. Printing
+    #  "the window closed" over a bad ingest is how a live filing with sixteen days left was
+    #  reported as dead. Refuse, and name the reason, so the answer is checkable.
+    if suspect_why:
+        return {"open": None, "deadline": None, "basis": "unknown", "days_left": None,
+                "why": suspect_why}
     pub, rej, noa = (_as_date(publication_date), _as_date(first_rejection_date),
                      _as_date(notice_of_allowance_date))
     six = _plus_six_months(pub)
@@ -196,6 +376,373 @@ def window(publication_date, first_rejection_date=None, notice_of_allowance_date
             "basis": "; ".join(basis),
             "capped_by_allowance": bool(cap),
             "why": ""}
+
+
+#  ---- what a candidate is, BEFORE a model call is spent on it ---------------------------------
+#  The two facts that decide whether a document belongs in a submission at all are its date basis
+#  and whether it is the applicant's own work. Both were only discovered after the build, on the
+#  compliance pass, which is the wrong end: by then the document has cost a model call and the
+#  person choosing never saw the choice. They are computed here from the corpus, for the picker.
+
+PUBLIC, SECRET, NOT_ART, UNKNOWN = "public", "secret", "not_art", "unknown"
+
+#  Short enough to sit in a table cell, and it says the statute rather than a word like "strong".
+BASIS_LABEL = {
+    PUBLIC: "102(a)(1) public art",
+    SECRET: "102(a)(2) only",
+    NOT_ART: "not prior art here",
+    UNKNOWN: "dates unknown",
+}
+
+BASIS_HELP = {
+    PUBLIC: "Published before this application's earliest effective filing date, so it is prior "
+            "art to everyone under 35 U.S.C. 102(a)(1) and EPC Art. 54(2). Nothing disqualifies "
+            "it and no exception reaches it.",
+    SECRET: "Filed before this application but published after it. In the United States that "
+            "makes it prior art only under 102(a)(2), and in Europe only under EPC Art. 54(3).",
+    NOT_ART: "<b>Not prior art against these claims in the United States.</b> One of two "
+             "reasons, and the row says which.\n\n"
+             "<b>The dates.</b> It was neither published nor filed before this application's "
+             "earliest effective filing date, so nothing reaches it.\n\n"
+             "<b>The office it came from.</b> It was filed first and published later, which "
+             "leaves only 35 U.S.C. 102(a)(2), and 102(a)(2) reaches U.S. patents, U.S. "
+             "pre-grant publications and PCT applications designating the United States, and "
+             "nothing else. A JP, TW, CN, DE or GB national publication in that position is not "
+             "prior art here at all. Note this is a UNITED STATES answer: the same document may "
+             "be EPC Art. 54(3) art at the EPO if it is a European application or a Euro-PCT "
+             "entering the European phase.\n\n"
+             "Either way, listing it invites the examiner to disregard it, and a submission is "
+             "read as a whole.",
+}
+
+UNREAD_HELP = (
+    "<b>What it is.</b> The search identified this document and screened it as worth reading, and "
+    "then could not read it: the corpus holds a title and an abstract for it and no full text. "
+    "Everything said about it here rests on that abstract.\n\n"
+    "<b>Why it is not offered.</b> Not because it scored badly. Because it scores WELL and should "
+    "not. A short text gets mapped generously onto many limitations, and every passage verifies "
+    "against the abstract it was taken from, so an unread reference can top a coverage ranking on "
+    "the strength of two hundred words. Counsel, 2026-08-24, on US 8,991,263: a fibre-testing "
+    "snubbing clamp charted against \"pole shoes guide a magnetic field portion\". That is the "
+    "kind of reach an examiner notices, and a submission is read as a whole.\n\n"
+    "<b>When to include it.</b> When you have read the document yourself and the mapping holds. "
+    "The concise description filed for it is still built from the evidence in this report, so "
+    "check every row against the real document first. <b>When not to.</b> Any other time. Fetch "
+    "the office copy and re-run the reading instead: the full text usually says a great deal more "
+    "than the abstract, in both directions."
+)
+
+SECRET_HELP = (
+    "<b>What it is.</b> A document filed before this application but published afterwards. It was "
+    "secret on the day the application was filed, and the law reaches back to its filing date "
+    "anyway.\n\n"
+    "<b>United States.</b> Citable under 35 U.S.C. 102(a)(2), and available for obviousness under "
+    "103 as well as for novelty. Two things can take it away: it must have been effectively filed "
+    "before this application's earliest effective filing date, which depends on its own priority "
+    "chain actually supporting the passage you rely on; and 102(b)(2)(C) disqualifies it entirely "
+    "if it and this application were commonly owned, or subject to an obligation of assignment to "
+    "the same person, before that date.\n\n"
+    "<b>Europe.</b> The equivalent is EPC Art. 54(3): it counts for NOVELTY ONLY and can never "
+    "support an inventive-step attack, and there is no common-ownership exception, so an "
+    "applicant's own earlier filing is 54(3) art against them.\n\n"
+    "<b>When to include it.</b> When it anticipates a claim outright and you can show its priority "
+    "chain supports the disclosure you cite. <b>When not to.</b> When your case rests on combining "
+    "it with something else in Europe, when the priority chain is long or doubtful, or when there "
+    "is any chance of common ownership.")
+
+CO_OWNED_HELP = (
+    "<b>What it is.</b> This document and the application under examination share an applicant or "
+    "assignee, so far as the record here shows.\n\n"
+    "<b>United States.</b> If they were commonly owned, or under an obligation of assignment to "
+    "the same person, before this application's earliest effective filing date, then 35 U.S.C. "
+    "102(b)(2)(C) removes the document as prior art under 102(a)(2) ENTIRELY. Filing it invites "
+    "the examiner to disregard it and weakens everything filed with it. It does NOT rescue a "
+    "document that is prior art under 102(a)(1): a published-early document stays prior art "
+    "whoever owns it.\n\n"
+    "<b>Europe.</b> There is no such exception. Under EPC Art. 54(3) an applicant's own "
+    "earlier-filed, later-published European application is prior art against them, for novelty. "
+    "Common ownership changes nothing.\n\n"
+    "<b>When to include it.</b> When the document is 102(a)(1) public art, where ownership is "
+    "irrelevant, or when you are filing at the EPO. <b>When not to.</b> When it is only 102(a)(2) "
+    "art in a U.S. submission, which is when the exception bites. The names matched here are the "
+    "ones in the record and may be stale or incomplete: check the assignment before relying on "
+    "either answer.")
+
+
+def _norm_owner(name):
+    """Company names for comparison: case, punctuation and the corporate suffix all drop out."""
+    s = re.sub(r"[^a-z0-9 ]+", " ", str(name or "").lower())
+    s = re.sub(r"\b(inc|llc|ltd|limited|gmbh|co|corp|corporation|company|kk|kabushiki|kaisha|"
+               r"ag|sa|bv|nv|oy|ab|as|pty|plc|lp|llp|spa|srl|pte)\b", " ", s)
+    return " ".join(s.split())
+
+
+#  Where an earlier-filed, later-published application is still prior art when the United States
+#  cannot reach it. Keyed on the office that issued the document, because that is what decides.
+#  Deliberately NOT a general prior-art engine: it answers one question, "this is out here, is it
+#  out everywhere", and it names the statute so the answer can be checked.
+_ELSEWHERE = {
+    "EP": ("European Patent Office", "EPC Art. 54(3)",
+           "an earlier-filed European application published after the filing date is novelty-only "
+           "art at the EPO"),
+    "WO": ("European Patent Office", "EPC Art. 54(3)",
+           "a Euro-PCT entering the European phase is an Art. 54(3) right"),
+    "DE": ("German Patent and Trade Mark Office", "§ 3(2) PatG",
+           "an earlier German application published after the priority date of the German family "
+           "member is novelty-only self-collision art at the DPMA"),
+    "FR": ("France (INPI)", "Art. L611-11 CPI",
+           "an earlier French application published later counts for novelty only"),
+    "GB": ("United Kingdom Intellectual Property Office", "s.2(3) Patents Act 1977",
+           "an earlier UK application published later counts for novelty only"),
+    "JP": ("Japan Patent Office", "Art. 29bis Patent Act",
+           "an earlier Japanese application published later is enlarged prior art"),
+    "CN": ("China National Intellectual Property Administration", "Art. 22(2) Patent Law",
+           "an earlier Chinese application published later defeats novelty"),
+}
+
+
+def elsewhere_note(country, us_reachable, co_owned):
+    """What this document is worth at another office when the United States cannot use it. -> str
+
+    Counsel, 2026-08-24, on Schmalz's own DE 10 2024 105 114 A1: "Dead in the US, lethal in
+    Germany, and not available at the EPO. That is why the system should flag self-collisions
+    rather than filter them: what is unusable in one office is decisive in another." It teaches
+    the one limitation of claim 1 that has no other art anywhere in the world, and it is the
+    German track's best document precisely because it is the applicant's own.
+
+    Two reasons the United States lets a document go, and they do not travel the same way. If the
+    office is outside 102(a)(2)'s reach, the equivalent right at THAT office usually still exists.
+    If 102(b)(2)(C) took it because of common ownership, no other office has that exception at
+    all, so an own-filing that is dead here is live everywhere else.
+    """
+    code = str(country or "").upper()[:2]
+    entry = _ELSEWHERE.get(code)
+    if not entry:
+        return ""
+    office, statute, how = entry
+    if not us_reachable:
+        note = ("Outside 102(a)(2)'s reach in the United States, but at the %s this is %s art: %s."
+                % (office, statute, how))
+    elif co_owned:
+        note = ("102(b)(2)(C) may remove this in the United States because of common ownership. "
+                "No other office has that exception: at the %s it is %s art, %s."
+                % (office, statute, how))
+    else:
+        return ""
+    if co_owned:
+        note += (" An applicant's own earlier filing is the strongest kind of document there, "
+                 "because nothing else has to be combined with it.")
+    return note
+
+
+def classify_candidates(cands, subject_efd, subject_owners=(), sweep=True):
+    """Annotate each candidate with its date basis and whether it looks commonly owned.
+
+    Mutates and returns `cands`, so the picker and the ranking stay one list. Reads one row per
+    candidate from the corpus, in one query, because this runs on a page load.
+
+    AND THEN SWEEPS THE FAMILY OF EVERYTHING IT EXCLUDES. An exclusion is a statement about ONE
+    publication, and a family is many: Schmalz's DE 10 2024 105 114 A1 is useless in the US because
+    it published after their own priority date, and the same disclosure was registered as
+    DE 20 2024 100 869 U1 six months BEFORE it. See family_sweep; `sweep=False` for the callers
+    that only want the classification.
+    """
+    pubs = [c.get("pub") for c in cands if c.get("pub")]
+    if not pubs:
+        return cands
+    efd = _as_date(subject_efd)
+    mine = {_norm_owner(o) for o in (subject_owners or []) if _norm_owner(o)}
+    rows = {}
+    try:
+        import db
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT p.publication_number, p.publication_date, p.filing_date, "
+                "       p.earliest_priority_date, p.country, "
+                "       array_remove(array_agg(pa.raw_name) FILTER "
+                "         (WHERE pa.role='assignee'), NULL) AS owners "
+                "  FROM publications p LEFT JOIN parties pa ON pa.publication_id = p.id "
+                " WHERE p.publication_number = ANY(%s) GROUP BY 1,2,3,4,5", (pubs,))
+            rows = {r["publication_number"]: r for r in cur.fetchall()}
+            #  WHAT LANGUAGE THE TEXT ACTUALLY IS, not what the row says it is.
+            #
+            #  DE-202024100869-U1 is Schmalz's own earlier utility model and the single most
+            #  on-point examiner-cited reference in the case this was measured on. Its whole claim
+            #  set is stored as ONE row, in German, tagged `lang='en'`. An English limitation
+            #  almost never matches a verbatim German passage, so it earned three verified rows,
+            #  and the picker ranks on verified rows: it dropped the best document in the search
+            #  and said nothing. Corpus-wide, 3,497 rows tagged `en` are German and 4,957 contain
+            #  CJK, out of 542,546.
+            #
+            #  So the tag is not consulted at all. A sample of the text is read and judged, which
+            #  is the same thing `grounding` already does for every quote.
+            cur.execute(
+                "SELECT p.publication_number, "
+                "       substr(string_agg(ch.text, ' ' ORDER BY ch.id), 1, 4000) AS sample "
+                "  FROM publications p JOIN chunks ch ON ch.publication_id = p.id "
+                " WHERE p.publication_number = ANY(%s) "
+                "   AND ch.kind IN ('claim_own', 'abstract') GROUP BY 1", (pubs,))
+            import grounding
+            for r in cur.fetchall():
+                s = r["sample"] or ""
+                if len(s) >= 200 and not grounding.is_english_text(s):
+                    (rows.setdefault(r["publication_number"], {}))["text_foreign"] = True
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    for c in cands:
+        r = rows.get(c.get("pub")) or {}
+        pub_d, eff = _as_date(r.get("publication_date")), (
+            _as_date(r.get("earliest_priority_date")) or _as_date(r.get("filing_date")))
+        country = str(r.get("country") or (c.get("pub") or "")[:2]).upper()
+        c["not_art_why"] = ""
+        c["elsewhere"] = ""
+        #  THE SAME GUARD, ON THE OTHER SIDE. Three cards in the measured run FT-A carried a
+        #  publication date equal to their priority date and no filing date, synthesised by the
+        #  external fan-out where a correct corpus row existed; two of them were in its top ten.
+        #  All three were then classified on those dates, which demoted three citable references.
+        #  A document whose dates cannot be true is not "not prior art" and not "prior art": it is
+        #  UNKNOWN, which the picker already knows how to say.
+        c["dates_suspect"], c["dates_suspect_why"] = dates_suspect(
+            r.get("publication_date"), r.get("filing_date"), r.get("earliest_priority_date"))
+        #  Carried, not acted on: this NEVER excludes a document. It explains a short claim chart
+        #  so a reader can tell "this reference says little" from "we could not read what it
+        #  says", and it is what `needs_translation` uses so the packet cannot file a foreign
+        #  passage with no translation under 1.290(d)(4).
+        c["text_foreign"] = bool(r.get("text_foreign"))
+        if not efd or not (pub_d or eff):
+            c["basis"] = UNKNOWN
+        elif pub_d and pub_d < efd:
+            c["basis"] = PUBLIC
+        elif eff and eff < efd:
+            #  SECRET ART DOES NOT REACH FROM EVERY OFFICE. 102(a)(2) reaches US patents, US
+            #  pre-grant publications and PCT applications designating the US, and nothing else.
+            #  A JP or TW national publication that came out after the filing date is not prior
+            #  art at all here. This used to be found on the compliance pass, one model call per
+            #  document too late; measured on adhoc-efbf2979420b, where two of ten were dropped
+            #  after they had been read.
+            if search_modes.secret_art_reaches(country):
+                c["basis"] = SECRET
+            else:
+                c["basis"] = NOT_ART
+                c["not_art_why"] = search_modes.secret_art_note(country)
+        else:
+            c["basis"] = NOT_ART
+            c["not_art_why"] = ("It published on %s and was filed on %s, both after the "
+                                "application's effective filing date of %s."
+                                % (pub_d or "an unknown date", eff or "an unknown date", efd))
+        owners = [o for o in (r.get("owners") or []) if o]
+        shared = sorted({o for o in owners if _norm_owner(o) in mine})
+        c["owners"] = owners[:3]
+        c["co_owned"] = bool(shared)
+        c["co_owned_with"] = shared[:2]
+        c["published"] = str(pub_d) if pub_d else ""
+        #  What the picker should tick by default: public art yes, secret art yes but flagged,
+        #  and never something that is not prior art, or is the applicant's own, or that the
+        #  search could not read.
+        #
+        #  UNREADABLE IS A HARD EXCLUSION, whatever it scores. A reference the corpus holds only a
+        #  title and an abstract for produces a description resting on that abstract, and the
+        #  mapping is a reach: counsel, 2026-08-24, on US 8,991,263, a fibre-testing snubbing clamp
+        #  charted against "pole shoes guide a magnetic field portion". It scores HIGH, not low,
+        #  because a short text gets mapped generously and every cell verifies against the abstract
+        #  it came from. Still listed, still choosable, never chosen for you.
+        #  ALREADY OF RECORD IS NOT SOMETHING TO FILE. A document the examiner applied, or that
+        #  the applicant put on an IDS and the examiner initialled, is already in front of them.
+        #  1.290(f) charges per ten items, so a slot spent on one is a slot bought and wasted.
+        #  Counsel, 2026-08-24, on US 2021/0031317 A1: "already of record from Schmalz's own IDS,
+        #  so there is nothing to gain there either." Ranked highly all the same, because being
+        #  good enough for an examiner to apply is real evidence of quality, and left unticked
+        #  because a reason to file it anyway is a judgement somebody has to make.
+        if c["dates_suspect"]:
+            c["basis"] = UNKNOWN
+            c["not_art_why"] = c["dates_suspect_why"]
+        c["of_record"] = str(c.get("office") or "") in ("applied", "considered")
+        c["default_include"] = (c["basis"] in (PUBLIC, SECRET) and not c["co_owned"]
+                                and c.get("readable", True) and not c["of_record"])
+        #  KEPT OUT HERE IS NOT WORTHLESS. A later-published application the United States cannot
+        #  reach, or one 102(b)(2)(C) removes because it is the applicant's own, is frequently the
+        #  best document there is at another office. Filtering it silently loses that.
+        if c["basis"] in (SECRET, NOT_ART) and eff and efd and eff < efd:
+            c["elsewhere"] = elsewhere_note(
+                country, search_modes.secret_art_reaches(country), c["co_owned"])
+        #  WHAT THE SAME DOCUMENT IS WORTH AT EACH OFFICE, computed once, per jurisdiction. The
+        #  single US answer above is the one that decides a 1.290 submission; it is not the one
+        #  that decides an EPO opposition or a DPMA nullity action, and running the exclusion once
+        #  loses the difference on exactly the documents where it is largest.
+        c["forums"] = search_modes.forum_matrix(country, pub_d, eff, efd, own=c["co_owned"])
+        c["forums_live"] = [m["forum"] for m in c["forums"] if m.get("available")]
+    if sweep and efd:
+        try:
+            import family_sweep
+            family_sweep.sweep_excluded(cands, efd)
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
+    return cands
+
+
+#  ------------------------------------------------------------------ dates that cannot be true
+#
+#  THE INCIDENT, 2026-08-27. The subject of that day's QA, US 2026/0070232 A1, was ingested with
+#  its FILING date written into `publication_date`, no filing date at all, and the same value
+#  repeated as the earliest priority date:
+#
+#      publication_date        2025-09-04   <- this is actually the filing date
+#      filing_date             NULL
+#      earliest_priority_date  2025-09-04   <- the real earliest priority is 2024-09-09
+#
+#  Three separate things were computed from that and all three were wrong. The packet printed "the
+#  1.290(b) window closed on 2026-03-04" when the real deadline was 2026-09-12 with sixteen days
+#  left, so a live filing read as a dead one. The prior-art bar moved by a year, onto the wrong
+#  side of the closest art in the case. And every reference was then classified against that bar.
+#
+#  `window()` was correct. Its INPUT was not, and nothing between the two said so. So the shape is
+#  detected ONCE, here, and each consumer refuses to state a confident answer over it rather than
+#  every consumer growing its own private warning. 42 of 67,159 records on the old shard had this
+#  shape and 45 rows on the current corpus still do, all of them written by the external fan-out.
+def dates_suspect(publication_date, filing_date, earliest_priority_date):
+    """Is this record's own date set internally inconsistent? -> (bool, why)
+
+    Deliberately narrow. It answers "these three dates cannot all be true", never "this date looks
+    unlikely": a heuristic that guesses would take real records out of a filing, which is a worse
+    failure than the one it prevents.
+    """
+    pub, fil, pri = (_as_date(publication_date), _as_date(filing_date),
+                     _as_date(earliest_priority_date))
+    #  A publication cannot predate the priority it claims.
+    if pub and pri and pub < pri:
+        return True, ("its recorded publication date (%s) is EARLIER than its own earliest "
+                      "priority date (%s), so at least one of the two is wrong" % (pub, pri))
+    #  The signature of the bad ingest: one date, copied into both columns, with no filing date to
+    #  contradict it. A real same-day publication and priority does happen, but it has a filing
+    #  date, because a document cannot publish without having been filed.
+    if pub and pri and pub == pri and not fil:
+        return True, ("its publication date and its earliest priority date are the same day (%s) "
+                      "and it has no filing date, which is the signature of a filing date written "
+                      "into the publication column rather than a same-day publication" % pub)
+    return False, ""
+
+
+def subject_dates_suspect(report):
+    """The same test applied to the SUBJECT of this search, from the corpus row. -> why, or ""."""
+    pub = (((report or {}).get("prosecution") or {}).get("dossier") or {}).get("subject") or {}
+    number = str(pub.get("pub") or (report or {}).get("subject") or "").strip()
+    if not number:
+        return ""
+    try:
+        import db
+        with db.cursor() as cur:
+            cur.execute("SELECT publication_date, filing_date, earliest_priority_date "
+                        "FROM publications WHERE publication_number = %s LIMIT 1", (number,))
+            r = cur.fetchone()
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return ""
+    if not r:
+        return ""
+    bad, why = dates_suspect(r["publication_date"], r["filing_date"],
+                             r["earliest_priority_date"])
+    return ("The application's own dates in this corpus cannot be relied on: %s. Read the real "
+            "publication date off the front page before filing." % why) if bad else ""
 
 
 def prosecution_dates(report):
@@ -243,7 +790,195 @@ class Finding:
         return [self.id, self.cite, self.title, self.status, self.detail]
 
 
-def audit(docs, subject, copies, translations, win, exemption_claimed=False):
+def _inference_hits(docs):
+    """Sentences in the relevance column that assert what their passage does not say. -> [str]
+
+    Reported rather than repaired here, because the compliance pass has already removed what it
+    could and this is the check that the removal WORKED. A paper edited by hand between the two
+    passes goes through this and not through that one, which is exactly when it matters.
+    """
+    try:
+        import submission_compliance as sc
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return []
+    out = []
+    for d in docs or []:
+        for r in (d.get("rows") or []):
+            evidence = " ".join([str(r.get("quote") or ""), str(r.get("quote_original") or "")])
+            for field in ("disclosure", "note"):
+                _clean, changed = sc.strip_inference(r.get(field), evidence)
+                out.extend("Doc %s: %s" % (d.get("n"), c) for c in changed)
+    return out
+
+
+def _copy_quote_findings(want_copy, copies, translations=None):
+    """Every quotation checked against the rendition it would actually be read in. -> [Finding]
+
+    Three answers, kept apart on purpose.
+
+      MISSING from a readable rendition   a defect: either the copy is not the document, or the
+                                          quotation is not in the document.
+      NO TEXT LAYER                       an image scan. Calling its quotations absent would be as
+                                          wrong as calling them present, so it is reported as what
+                                          it is: a copy nobody has read carrying quotations nothing
+                                          has checked.
+      NON-ENGLISH WITH NO TRANSLATION     the quotation is English and the copy is Korean. Checking
+                                          one against the other would fail every time and mean
+                                          nothing, so the check waits for the translation that
+                                          1.290(d)(4) requires anyway.
+
+    That last split matters: a guard that cries wolf on six of six quotations from a Korean
+    publication trains its reader to skip the line where a real defect is.
+    """
+    try:
+        import submission_package as sp
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return []
+    translations = translations or {}
+    bad, unchecked, untranslated, checked = [], [], [], 0
+    for d in want_copy:
+        copy = copies.get(d["pub"])
+        if not isinstance(copy, dict):
+            continue
+        quotes = [r.get("quote") for r in (d.get("rows") or []) if (r.get("quote") or "").strip()]
+        if not quotes:
+            continue
+        label = (d.get("biblio") or {}).get("label") or d["pub"]
+        against = copy
+        if needs_translation(d):
+            #  What the examiner reads a quotation from an Ariana or a Seoul publication IN is the
+            #  English translation filed beside the copy, and that is what it has to be found in.
+            tr = translations.get(d["pub"]) or {}
+            body = " ".join(str(tr.get(k) or "") for k in ("claims", "text")).strip()
+            if not body:
+                untranslated.append("Doc %s (%s): %d quotation%s"
+                                    % (d["n"], label, len(quotes),
+                                       "" if len(quotes) == 1 else "s"))
+                continue
+            against = {"text": body}
+        got = sp.quotes_in_copy(against, quotes)
+        if not got["readable"]:
+            unchecked.append("Doc %s (%s): %d quotation%s"
+                             % (d["n"], label, len(quotes), "" if len(quotes) == 1 else "s"))
+            continue
+        checked += got["checked"]
+        if got["missing"]:
+            bad.append("Doc %s (%s): %d of %d quotations are not in the %s, starting “%s”"
+                       % (d["n"], label, len(got["missing"]), got["checked"],
+                          "translation" if against is not copy else "copy",
+                          " ".join(str(got["missing"][0]).split())[:90]))
+    out = []
+    if bad:
+        out.append(Finding(
+            "COPY-QUOTES", "beyond the rule",
+            "Every quotation is in the copy that goes with it", ACTION,
+            "%s. An examiner checks a quotation against the papers you filed for that item, so "
+            "either what you attached is not the document or the quotation is not in it. Settle "
+            "which before signing." % "; ".join(bad)))
+    elif checked:
+        out.append(Finding(
+            "COPY-QUOTES", "beyond the rule",
+            "Every quotation is in the copy that goes with it", OK,
+            "All %d quotation%s found in the text of the copy filed with it, which is the document "
+            "the examiner will open." % (checked, " was" if checked == 1 else "s were")))
+    if unchecked:
+        out.append(Finding(
+            "COPY-QUOTES-UNREADABLE", "beyond the rule",
+            "The copy can be read, so its quotations can be checked", ACTION,
+            "%s could not be checked against their copies: those copies carry no text layer, so "
+            "they are image scans. Read them, or obtain a searchable copy, before filing."
+            % "; ".join(unchecked)))
+    if untranslated:
+        out.append(Finding(
+            "COPY-QUOTES-TRANSLATION", "beyond the rule",
+            "A quotation from a non-English item is checked against its translation", ACTION,
+            "%s could not be checked: the copy is in the original language, the quotation is in "
+            "English, and no translation was produced. 1.290(d)(4) requires the translation in any "
+            "event, and it is also what the quotation has to be found in."
+            % "; ".join(untranslated)))
+    return out
+
+
+def _pdf_findings(pdf_report):
+    """Patent Center's own upload validation, run over the papers before they are sent. -> [Finding]
+
+    Split three ways, because the three ask different people for different things.
+
+      the papers this service wrote   a defect here is a defect in the generator
+      the copies fetched from an office  the practitioner converts them; we cannot
+      the fonts this host can embed   a box with no font files renders on the base-14 and every
+                                      paper it produces fails validation, so it is said out loud
+                                      rather than discovered at upload
+
+    00_AUDIT.pdf is not in the report and does not need to be: it is built by the same template and
+    the same styles as the document list, from the same fonts, so the document list passing is the
+    generator passing.
+    """
+    out = []
+    ours = {n: r for n, r in (pdf_report or {}).items() if pdf_conform.is_generated(n)}
+    theirs = {n: r for n, r in (pdf_report or {}).items() if not pdf_conform.is_generated(n)}
+    bad_ours = ["%s: %s" % (n, "; ".join(r["problems"])) for n, r in sorted(ours.items())
+                if not r["ok"]]
+    bad_theirs = ["%s: %s" % (n, "; ".join(r["problems"])) for n, r in sorted(theirs.items())
+                  if not r["ok"]]
+    if ours:
+        out.append(Finding(
+            "PDF-CONFORM", "Patent Center", "Every paper uploads: fonts embedded, PDF 1.1 to 1.6, "
+            "US Letter or A4, no encryption, no layers, no attachments",
+            OK if not bad_ours else BLOCKED,
+            "All %d generated paper%s passes. 00_AUDIT.pdf is written by the same template and the "
+            "same embedded faces as the document list, so it passes with it."
+            % (len(ours), "" if len(ours) == 1 else "s") if not bad_ours
+            else "These would be rejected at upload: %s." % "; ".join(bad_ours[:6])))
+    if bad_theirs:
+        out.append(Finding(
+            "PDF-CONFORM-COPY", "Patent Center", "The fetched copies upload too", ACTION,
+            "%s. These are copies obtained from the issuing office and cannot be regenerated here. "
+            "Re-save each one as a PDF between 1.1 and 1.6 on US Letter or A4 before uploading."
+            % "; ".join(bad_theirs[:6])))
+    try:
+        gaps = pdf_fonts.missing()
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        gaps = []
+    if gaps:
+        out.append(Finding(
+            "FONTS", "Patent Center", "This host can embed every face it typesets in", BLOCKED,
+            "%s did not resolve to a font file on this machine, so the papers fell back to the "
+            "PDF base-14, which is never embedded and is a listed validation failure. Install the "
+            "fonts (fonts-liberation2 and fonts-droid-fallback) and rebuild the packet."
+            % ", ".join(gaps)))
+    return out
+
+
+def unprintable_in(docs):
+    """Characters no face this host has can draw, in text that will be typeset. -> [str]
+
+    reportlab does not raise on a missing glyph. It substitutes ZapfDingbats, in which "n" is a
+    solid black square, so a name in a script the face does not cover prints as a row of boxes and
+    nothing anywhere says so. `pdf_fonts.with_fallback` handles the ordinary case; this is the
+    check for when even the fallback face is absent.
+    """
+    bad = []
+    for d in docs or []:
+        b = d.get("biblio") or {}
+        for field in ("title", "inventor", "assignee", "label"):
+            v = str(b.get(field) or "")
+            if v and not pdf_fonts.covers_serif(v) and pdf_fonts.FALLBACK not in pdf_fonts.ready():
+                bad.append("Doc %s %s: %r" % (d.get("n"), field, v[:40]))
+        for r in (d.get("rows") or []):
+            v = str(r.get("quote") or "")
+            if v and not pdf_fonts.covers_serif(v) and pdf_fonts.FALLBACK not in pdf_fonts.ready():
+                bad.append("Doc %s: a quotation in a script this host has no face for"
+                           % d.get("n"))
+                break
+    return bad
+
+
+def audit(docs, subject, copies, translations, win, exemption_claimed=False,
+          entity_size="small", identity=None, pdf_report=None):
     """Every 1.290 requirement, checked against the packet that was actually built. -> [Finding]"""
     out = []
     n = len(docs)
@@ -256,9 +991,14 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
         d = win["deadline"]
         extra = (" The window may extend if the first rejection is mailed after that date, but it "
                  "cannot be relied on." if "no rejection" in win["basis"] else "")
+        #  A DEADLINE, NOT A COUNTDOWN. The PDF is written once and read later, so "20 days away"
+        #  is wrong by one the next morning and by a fortnight in a fortnight. The date does not
+        #  move; the days remaining are shown live on the page instead.
         out.append(Finding("TIMING", "1.290(b)", "The submission window", OK,
-                           "Open. File before %s, which is %d day%s away.%s"
-                           % (d, win["days_left"], "" if win["days_left"] == 1 else "s", extra),
+                           "Open. File before %s. That was %d day%s from the date of this audit, "
+                           "%s; count from today, not from the number in this line.%s"
+                           % (d, win["days_left"], "" if win["days_left"] == 1 else "s",
+                              datetime.date.today(), extra),
                            win["basis"]))
     else:
         out.append(Finding("TIMING", "1.290(b)", "The submission window", BLOCKED,
@@ -298,6 +1038,80 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
                               "s" if len(want_copy) == 1 else "") if not lack
                            else "Missing for document(s) %s. The submission cannot be entered "
                                 "without them." % ", ".join(str(x) for x in lack)))
+        #  SOMEBODY ELSE'S LICENCE BANNER ON A PAPER FILED AT THE OFFICE.
+        #
+        #  Espacenet's whole-document download is rendered by an unlicensed PDFKit.NET, which
+        #  prints "Generated by PDFKit.NET Evaluation" in red at the top of every page. Two copies
+        #  in one packet carried it, on twelve and thirty-five pages, and nothing looked at it:
+        #  the text check counted the stamp as the document having some text, and no rule in the
+        #  audit had ever been told that a copy can be the right document, complete and legible,
+        #  and still not be filable.
+        #
+        #  It blocks. It is not ours to strip from another party's document, and the remedy is to
+        #  obtain the copy from a source that does not stamp it, which the build now does before
+        #  this runs. Reaching this line means that failed.
+        stamped = ["Doc %s (%s): stamped \u201c%s\u201d"
+                   % (d["n"], (d.get("biblio") or {}).get("label") or d["pub"],
+                      (copies.get(d["pub"]) or {}).get("watermark"))
+                   for d in want_copy
+                   if isinstance(copies.get(d["pub"]), dict)
+                   and copies[d["pub"]].get("watermark")]
+        out.append(Finding("COPY-WATERMARK", "1.290(d)(3)",
+                           "No copy carries another party's evaluation stamp",
+                           OK if not stamped else BLOCKED,
+                           "No attached copy carries a rendering vendor's banner."
+                           if not stamped else
+                           "%s. That text is printed on the page an examiner opens, on every page, "
+                           "and it is not part of the published document. Obtain the copy from "
+                           "another source; it must not be filed as it is." % "; ".join(stamped)))
+        #  A SEPARATE CHECK, because a copy can be present and still not be the document. See
+        #  submission_package.inspect_copy: the GB 874,600 copy was its drawing sheets only.
+        thin = ["Doc %s (%s): %d pages with no readable text, so this is a drawings bundle or an "
+                "unsearchable scan rather than the specification. Check it opens as the whole "
+                "document before filing."
+                % (d["n"], (d.get("biblio") or {}).get("label") or d["pub"],
+                   (copies.get(d["pub"]) or {}).get("pages", 0))
+                for d in want_copy
+                if isinstance(copies.get(d["pub"]), dict)
+                and copies[d["pub"]].get("drawings_only")]
+        #  A THIN COPY IS A DECISION UNLESS SOMETHING IS QUOTED FROM IT, AND THEN IT IS A STOP.
+        #
+        #  1.290(d)(3) wants a legible copy, and a bundle of drawing sheets is not a legible copy
+        #  of a specification. That alone is the practitioner's call: a document cited for what its
+        #  figures show is legitimately filed as figures.
+        #
+        #  But when the concise description quotes that document, the copy going in the envelope
+        #  cannot contain the quoted sentence, because it contains no sentences. The examiner reads
+        #  the description, opens the copy and finds pictures. That is not a decision to weigh, it
+        #  is a defect, and it shipped as an ACTION line the reader was free to scroll past.
+        #  Counsel found exactly this on GB 874,600: eight quotations attributed to an abstract
+        #  that is not on any of the six drawing sheets that were filed for it.
+        def _quotes_from(doc):
+            return any(str((r or {}).get("quote") or "").strip()
+                       for r in (doc.get("rows") or []))
+
+        thin_quoted = [d for d in want_copy
+                       if isinstance(copies.get(d["pub"]), dict)
+                       and copies[d["pub"]].get("drawings_only") and _quotes_from(d)]
+        out.append(Finding("COPY-COMPLETE", "1.290(d)(3)",
+                           "Each copy is the whole document, not part of one",
+                           OK if not thin else (BLOCKED if thin_quoted else ACTION),
+                           "Every attached copy carries the document's text." if not thin
+                           else (" ".join(thin) + (
+                               "  THIS BLOCKS THE PACKET: %s quoted in the concise descriptions, "
+                               "so the copy the examiner opens cannot contain the passage it is "
+                               "cited to. Replace the copy with the full published document, or "
+                               "drop the document." % (
+                                   ", ".join("Doc %s" % d["n"] for d in thin_quoted))
+                               if thin_quoted else ""))))
+        #  AND THE QUOTATIONS HAVE TO BE IN THE COPY THAT IS ACTUALLY GOING IN THE ENVELOPE. The
+        #  cheapest check in the packet, and it catches two different defects at once: a copy that
+        #  is not the document (GB 874,600, filed as its drawing sheets, with eight quotations
+        #  attributed to an abstract that is not on any of them), and a quotation the document does
+        #  not contain (US 2022/0045594 A1, quoted with a numeric tolerance it states
+        #  qualitatively). If the quote is not in the copy then either the copy is wrong or the
+        #  quote is, and both are the practitioner's to settle before signing.
+        out.extend(_copy_quote_findings(want_copy, copies, translations))
 
     # -- (d)(4) translations -------------------------------------------------------------------
     want_tr = [d for d in docs if needs_translation(d)]
@@ -313,12 +1127,42 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
                            % (len(want_tr), "" if len(want_tr) == 1 else "s") if not lack_tr
                            else "Missing for document(s) %s."
                                 % ", ".join(str(x) for x in lack_tr)))
+        #  A CHARACTER THE SOURCE SCAN COULD NOT RESOLVE. Google's OCR of a 1986 Japanese
+        #  publication put a solid black square mid-sentence, and it went onto a paper filed at
+        #  the Office looking exactly like a rendering failure of ours. It is not: it is what the
+        #  machine translation says, and the paper already states that the original governs. So it
+        #  is named rather than edited, because editing a translation to look tidier is the one
+        #  thing that would actually be wrong.
+        smudged = []
+        for d in want_tr:
+            tr = translations.get(d["pub"]) or {}
+            body = " ".join(str(tr.get(k) or "") for k in ("claims", "text"))
+            n_bad = sum(body.count(ch) for ch in ("�", "■", "□"))
+            if n_bad:
+                smudged.append("Doc %s (%s): %d"
+                               % (d["n"], (d.get("biblio") or {}).get("label") or d["pub"],
+                                  n_bad))
+        if smudged:
+            out.append(Finding(
+                "TRANSLATION-OCR", "1.290(d)(4)", "The translation is legible as furnished", NOTE,
+                "The machine translation carries characters the source scan could not resolve, "
+                "printed as they came: %s. They are in the translation, not in this rendering, "
+                "and the paper already states that the original publication governs. Read the "
+                "passage before filing and consider whether a human translation is worth the "
+                "cost for that document." % "; ".join(smudged)))
 
     # -- (d)(5) statements ---------------------------------------------------------------------
+    #  The same test the renderer applies, so the audit can never call a paper signed that the
+    #  renderer then left blank.
+    signer = signature_name(identity)
     out.append(Finding("STATEMENTS", "1.290(d)(5)", "The two statements by the submitting party",
-                       ACTION,
-                       "Both are on the document list paper and both are unsigned. They are made "
-                       "by the party, not by this tool: read them and adopt them in Patent Center."))
+                       OK if signer else ACTION,
+                       "Both are on the document list paper, signed /%s/ under 37 CFR 1.4(d)(2). "
+                       "Read them before filing: they are your statements, and inserting the "
+                       "signature is your act." % signer if signer
+                       else "Both are on the document list paper and both are UNSIGNED. Set a "
+                            "signature in your profile, or sign them in Patent Center. They are "
+                            "made by the party, not by this tool."))
 
     # -- (e) the list's own format --------------------------------------------------------------
     bad = []
@@ -330,6 +1174,15 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
             bad.append("Doc %s needs an issuing office and a publication date" % d["n"])
         if k == NPL and not (b.get("title") and b.get("issue_date_pretty")):
             bad.append("Doc %s needs a title and a publication date" % d["n"])
+        #  THE NAME HAS TO BE PRINTABLE, not merely present. CN 216190291 U was filed identifying
+        #  its inventor as "■■": the filing font has no CJK glyphs and the record held no Latin
+        #  form. `printable_party` falls back to the applicant, and when even that is unprintable
+        #  the packet fails here rather than putting boxes where a person's name belongs.
+        who = concise_render.printable_party(b)[1]
+        if who and not concise_render.is_latin(who):
+            bad.append("Doc %s: %r cannot be printed in the filing font and there is no Latin "
+                       "applicant to name instead. Supply a romanised name or the applicant."
+                       % (d["n"], who))
     out.append(Finding("LIST-FORMAT", "1.290(e)", "How each item must be identified",
                        OK if not bad else ACTION,
                        "Every item carries the fields its own type requires, U.S. patents and "
@@ -337,7 +1190,7 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
                        "every page." if not bad else "; ".join(bad)))
 
     # -- (f)/(g) fee -----------------------------------------------------------------------------
-    units = fee_units(n)
+    units, dollars, per = fee_amount(n, entity_size)
     if exemption_claimed and exemption_available(n):
         out.append(Finding("FEE", "1.290(g)", "The fee, or the exemption", ACTION,
                            "The exemption is claimed for %d item%s. It is only available if this "
@@ -347,8 +1200,11 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
     else:
         out.append(Finding("FEE", "1.290(f)", "The fee, or the exemption", ACTION,
                            "%d item%s means %d unit%s of the 1.17(o) fee, charged per ten items "
-                           "or fraction thereof. Pay it in Patent Center at the current rate."
-                           % (n, "" if n == 1 else "s", units, "" if units == 1 else "s")
+                           "or fraction thereof: $%s at the %s-entity rate of $%s a unit "
+                           "(schedule of %s). A third party cannot use the micro-entity discount. "
+                           "Pay it in Patent Center and check the rate has not moved."
+                           % (n, "" if n == 1 else "s", units, "" if units == 1 else "s",
+                              _money(dollars), entity_size, _money(per), FEE_SCHEDULE_DATE)
                            + ("" if not exemption_available(n) else
                               " The 1.290(g) exemption would remove it if this is your first and "
                               "only submission here and you make that statement.")))
@@ -367,6 +1223,20 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
                        OK if not hits else ACTION,
                        "No argumentative or conclusory language found." if not hits
                        else "Remove before filing: %s" % "; ".join(hits[:8])))
+
+    # -- MPEP 1134.01, the half that uses no statutory words -------------------------------------
+    #  A linter hunting for "anticipates", "obvious" or "§ 103" finds neither of the two statements
+    #  that actually failed in a real packet. "generally cylindrical in shape, IMPLYING IT EXTENDS
+    #  ALONG A LONGITUDINAL AXIS" is the drafter supplying a claim limitation; the reference says
+    #  annular and cylindrical and says nothing about an axis. So the bar is structural: a sentence
+    #  in the relevance column has to be a restatement of what the quotation beside it says.
+    inferred = _inference_hits(docs)
+    out.append(Finding("NO-INFERENCE", "MPEP 1134.01",
+                       "Each sentence restates the passage beside it and infers nothing from it",
+                       OK if not inferred else ACTION,
+                       "Every sentence is carried by the passage it is attached to." if not inferred
+                       else "These assert something the quotation does not say, which is argument "
+                            "under 1.290(a) whatever words it uses: %s" % "; ".join(inferred[:6])))
 
     # -- our own bars ----------------------------------------------------------------------------
     unverified, checked, rows_dropped = 0, 0, 0
@@ -407,6 +1277,18 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
                        "Every item qualifies on its dates." if not blocked_pa
                        else "; ".join(blocked_pa)))
 
+    # -- will it upload -----------------------------------------------------------------------
+    out.extend(_pdf_findings(pdf_report))
+    boxes = unprintable_in(docs)
+    if boxes:
+        out.append(Finding(
+            "GLYPHS", "1.290(e)", "Every character on these papers has a glyph to print it",
+            BLOCKED,
+            "This host has no fallback face, and reportlab substitutes ZapfDingbats for a missing "
+            "glyph rather than failing, which prints solid black squares: %s. Install "
+            "fonts-droid-fallback, or supply a romanised form, before this is filed."
+            % "; ".join(boxes[:6])))
+
     # -- (i) 1.8 ----------------------------------------------------------------------------------
     out.append(Finding("NO-CERT-MAILING", "1.290(i)", "A certificate of mailing does not help",
                        NOTE,
@@ -432,19 +1314,22 @@ def verdict(findings):
 # --------------------------------------------------------------------------------- rendering
 
 def _styles():
-    base = ParagraphStyle("s", fontName="Times-Roman", fontSize=10.5, leading=13,
+    base = ParagraphStyle("s", fontName=pdf_fonts.font(pdf_fonts.SERIF), fontSize=10.5, leading=13,
                           alignment=TA_LEFT, spaceAfter=0)
     return {
-        "h": ParagraphStyle("h", parent=base, fontName="Times-Bold", fontSize=12, leading=15,
+        "h": ParagraphStyle("h", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=12, leading=15,
                             spaceAfter=7),
-        "h2": ParagraphStyle("h2", parent=base, fontName="Times-Bold", fontSize=11, leading=14,
+        "h2": ParagraphStyle("h2", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=11, leading=14,
                              spaceBefore=12, spaceAfter=5),
-        "app": ParagraphStyle("app", parent=base, fontName="Times-Italic", spaceAfter=10),
+        "app": ParagraphStyle("app", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_ITALIC), spaceAfter=10),
         "body": ParagraphStyle("body", parent=base, spaceBefore=3, spaceAfter=7),
-        "th": ParagraphStyle("th", parent=base, fontName="Times-Bold", fontSize=9.5, leading=12),
+        "th": ParagraphStyle("th", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=9.5, leading=12),
         "td": ParagraphStyle("td", parent=base, fontSize=9.5, leading=12),
         "note": ParagraphStyle("note", parent=base, fontSize=9, leading=11.5,
                                textColor=colors.HexColor("#333333"), spaceBefore=8),
+        #  An S-signature is read as a signature, so it is set apart from the prose around it.
+        "sig": ParagraphStyle("sig", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_ITALIC), fontSize=13,
+                              leading=17, spaceBefore=10, spaceAfter=4),
     }
 
 
@@ -455,7 +1340,7 @@ def _template(buf, subject, title):
 
     def _page(canv, docobj):
         canv.saveState()
-        canv.setFont("Times-Roman", 9)
+        canv.setFont(pdf_fonts.font(pdf_fonts.SERIF), 9)
         canv.setFillColor(colors.HexColor("#333333"))
         canv.drawString(inch, letter[1] - 0.6 * inch, running)
         canv.drawRightString(letter[0] - inch, 0.6 * inch, "Page %d" % canv.getPageNumber())
@@ -480,6 +1365,10 @@ def _esc(s):
 def _grid(data, widths):
     t = Table(data, colWidths=widths, repeatRows=1)
     t.setStyle(TableStyle([
+        #  A Table whose cells are Paragraphs STILL emits its own default cell font, and
+        #  that default is an unembedded Helvetica. Naming it here is what keeps a base-14
+        #  resource out of a paper Patent Center validates.
+        ("FONTNAME", (0, 0), (-1, -1), pdf_fonts.font(pdf_fonts.SERIF)),
         ("GRID", (0, 0), (-1, -1), 0.6, colors.HexColor("#444444")),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFEFEF")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -502,10 +1391,14 @@ def _identification(doc):
                 ("First named inventor", b.get("inventor")),
                 ("Publication date", b.get("issue_date_pretty"))]
     if k == FOREIGN:
+        #  (e)(3) accepts "the applicant, patentee, or first named inventor", and that OR is what
+        #  lets a document whose only personal name is CJK be identified in a script the filing
+        #  font can print. See concise_render.printable_party.
+        who_label, who = concise_render.printable_party(b)
         return [("Issuing office", office),
                 ("Document number", b.get("label") or b.get("pub")),
-                ("Applicant, patentee or first named inventor",
-                 b.get("inventor") or b.get("assignee")),
+                ("Applicant" if who_label == "Applicant"
+                 else "Applicant, patentee or first named inventor", who),
                 ("Publication date", b.get("issue_date_pretty"))]
     return [("Author", b.get("author") or b.get("inventor")),
             ("Title", b.get("title")),
@@ -514,8 +1407,59 @@ def _identification(doc):
             ("Publisher and place", b.get("publisher") or "")]
 
 
+def signature_name(identity):
+    """The name that may go between the slashes, or "" if none may.
+
+    The profile refuses a slash on the way in, but a row written before that check exists still
+    holds one, and `/Nimo /Rotem//` on a filed paper is not the signature anybody agreed to. A
+    signature is a legal act, so this refuses rather than repairs: an unsigned paper with a line
+    to sign is a nuisance, a paper signed with the wrong string is a defect nobody would spot.
+    """
+    #  AND CONSENT, WHICH IS THE WHOLE BASIS OF THE MECHANISM. 37 CFR 1.4(d)(2) permits an
+    #  S-signature because inserting it is the SIGNER's own act. A name sitting in a profile field
+    #  is a name, not an instruction, so a paper is signed only when the signer has said, on the
+    #  record and with a timestamp, that it may be. Withdrawing consent, or changing the name,
+    #  clears it, and the papers go back to carrying a line to sign by hand.
+    if not (identity or {}).get("signature_consent_at"):
+        return ""
+    name = str((identity or {}).get("signature_name") or "").strip()
+    if not name or "/" in name or "\\" in name:
+        return ""
+    return name
+
+
+def signature_block(story, st, identity):
+    """The 37 CFR 1.4(d)(2) S-signature, or a line to sign by hand.
+
+    An S-signature is the signer's own name between forward slashes. It is inserted here because
+    the signer told this tool to insert it, which is the same posture as any e-filing form: the
+    paper says so, so nobody can read it as the machine having signed anything.
+    """
+    ident = identity or {}
+    name = signature_name(ident)
+    title = str(ident.get("signature_title") or "").strip()
+    story.append(Paragraph("SIGNATURE", st["h2"]))
+    if name:
+        story.append(Paragraph("/%s/" % _esc(name), st["sig"]))
+        story.append(Paragraph("%s%s<br/>Date: %s"
+                               % (_esc(name), (", " + _esc(title)) if title else "",
+                                  datetime.date.today().isoformat()), st["body"]))
+        story.append(Paragraph(
+            "Signed under 37 CFR 1.4(d)(2). The signature above was applied from the signer's own "
+            "stored signature at the signer's instruction; the statements above are the signer's.",
+            st["note"]))
+    else:
+        story.append(Paragraph("/______________________________/", st["sig"]))
+        story.append(Paragraph("Printed name: ______________________________<br/>"
+                               "Date: ______________________________", st["body"]))
+        story.append(Paragraph(
+            "NOT SIGNED. 37 CFR 1.4 requires a signature. Set one in your profile so it is applied "
+            "here, or sign this paper before filing.", st["note"]))
+
+
 def document_list_and_statements(docs, subject, copies, translations, win,
-                                 exemption_claimed=False) -> bytes:
+                                 exemption_claimed=False, entity_size="small",
+                                 identity=None) -> bytes:
     """1.290(d)(1)+(e) and 1.290(d)(5)+(g), on one paper, in the shape PTO/SB/429 asks for."""
     st = _styles()
     buf = io.BytesIO()
@@ -550,7 +1494,7 @@ def document_list_and_statements(docs, subject, copies, translations, win,
                      "Publication date", "Copy / translation"],
              lambda d: [str(d["n"]),
                         "%s %s" % (office_of(d)[1], d["biblio"].get("label") or d["pub"]),
-                        d["biblio"].get("inventor") or d["biblio"].get("assignee") or "",
+                        concise_render.printable_party(d["biblio"])[1],
                         d["biblio"].get("issue_date_pretty") or "",
                         "; ".join(filter(None, [
                             "copy attached" if copies.get(d["pub"]) else "COPY OUTSTANDING",
@@ -574,6 +1518,7 @@ def document_list_and_statements(docs, subject, copies, translations, win,
         "CFR 1.290.", st["body"]))
 
     n = len(docs)
+    units, dollars, per = fee_amount(n, entity_size)
     story.append(Paragraph("FEE", st["h2"]))
     if exemption_claimed and exemption_available(n):
         story.append(Paragraph(
@@ -587,8 +1532,11 @@ def document_list_and_statements(docs, subject, copies, translations, win,
         story.append(Paragraph(
             "This submission lists <b>%d item%s</b>. Under 37 CFR 1.290(f) the fee set by 37 CFR "
             "1.17(o) is due for every ten items or fraction thereof, so <b>%d unit%s</b> of that "
-            "fee applies. It is calculated and paid in Patent Center at the rate then in force."
-            % (n, "" if n == 1 else "s", fee_units(n), "" if fee_units(n) == 1 else "s"),
+            "fee applies: <b>$%s</b> at the %s-entity rate of $%s a unit, from the schedule of %s. "
+            "A third party is not eligible for the micro-entity discount. It is paid in Patent "
+            "Center; check the rate has not moved."
+            % (n, "" if n == 1 else "s", units, "" if units == 1 else "s", _money(dollars),
+               entity_size, _money(per), FEE_SCHEDULE_DATE),
             st["body"]))
         if exemption_available(n):
             story.append(Paragraph(
@@ -600,8 +1548,8 @@ def document_list_and_statements(docs, subject, copies, translations, win,
 
     story.append(Paragraph(
         "These statements are made by the party filing the submission. They are reproduced here "
-        "so they can be read and checked before they are adopted in Patent Center; nothing in "
-        "this packet signs them.", st["note"]))
+        "so they can be read and checked before they are adopted in Patent Center.", st["note"]))
+    signature_block(story, st, identity)
 
     if win.get("deadline"):
         story.append(Paragraph(
@@ -671,7 +1619,7 @@ def manifest_csv(docs, copies, translations) -> str:
     for d in docs:
         b = d.get("biblio") or {}
         wr.writerow([d["n"], b.get("label") or d["pub"], item_kind(d), office_of(d)[0],
-                     b.get("inventor") or "", b.get("issue_date_pretty") or "",
+                     concise_render.printable_party(b)[1], b.get("issue_date_pretty") or "",
                      "yes", "yes" if copies.get(d["pub"]) else
                      ("not required" if not needs_copy(d) else "NO"),
                      "yes" if translations.get(d["pub"]) else

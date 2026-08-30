@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Sign in | Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap authwrap">
+  <section class="panel authcard" aria-labelledby="login-title">
+    <h1 id="login-title">Sign in</h1>
+    <p class="muted">Open saved searches, receive completion alerts, and keep reports in your account.</p>
+    {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="{{ request.script_root }}/login" class="authform">
+      {% if next_path %}<input type="hidden" name="next" value="{{ next_path }}">{% endif %}
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" name="email" required autocomplete="email"
+             placeholder="you@company.com" autofocus>
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" name="password" required
+             autocomplete="current-password">
+      <button class="btn" type="submit">Sign in</button>
+    </form>
+    <div class="authlinks">
+      <a href="{{ request.script_root }}/register">Create an account</a>
+      <a href="{{ request.script_root }}/forgot-password">Forgot password?</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

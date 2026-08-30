@@ -1,0 +1,1718 @@
+{
+  "generated": "2026-07-18",
+  "results": [
+    {
+      "id": "grabo_gripper_novelty",
+      "category": "grabo_own",
+      "mode": "novelty",
+      "n_gold": 44,
+      "n_reachable": 37,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "vector": {
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.25,
+          "reachable_recall@500": 0.2973,
+          "family_recall@1000": 0.25,
+          "reachable_recall@1000": 0.2973,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "25084279",
+              "25644276",
+              "34810482",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.2273,
+          "reachable_recall@500": 0.2703,
+          "family_recall@1000": 0.25,
+          "reachable_recall@1000": 0.2973,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "25084279",
+              "25644276",
+              "34810482",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ],
+            "cpc": [
+              "22498676",
+              "24430975",
+              "24840037",
+              "29740151",
+              "34810482",
+              "42115107",
+              "45554511",
+              "7961965"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.2273,
+          "reachable_recall@500": 0.2703,
+          "family_recall@1000": 0.25,
+          "reachable_recall@1000": 0.2973,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "25084279",
+              "25644276",
+              "34810482",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ],
+            "cpc": [
+              "22498676",
+              "24430975",
+              "24840037",
+              "29740151",
+              "34810482",
+              "42115107",
+              "45554511",
+              "7961965"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.0455,
+          "reachable_recall@100": 0.0541,
+          "family_recall@500": 0.2045,
+          "reachable_recall@500": 0.2432,
+          "family_recall@1000": 0.2955,
+          "reachable_recall@1000": 0.3514,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "24430975",
+              "25644276",
+              "42115107",
+              "6332344",
+              "6495403",
+              "7865086"
+            ],
+            "cpc": [
+              "22498676",
+              "7961965"
+            ],
+            "citation": [
+              "22498676",
+              "22883737",
+              "23205091",
+              "23289430",
+              "25421211",
+              "25644276",
+              "34810482",
+              "39244538",
+              "42115107",
+              "7865086"
+            ],
+            "qbe": [
+              "23289430",
+              "25084279",
+              "25644276",
+              "34810482",
+              "41380067",
+              "42115107",
+              "6332344",
+              "7889498",
+              "7961965"
+            ],
+            "crosslingual": [
+              "22498676",
+              "34201690"
+            ]
+          },
+          "marginal_yield_per_round": [
+            1042,
+            397,
+            116
+          ],
+          "rounds": 2,
+          "llm_calls": 5,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "Chamber defined by seal element and base element",
+              "Loop-shaped vacuum seal element",
+              "Seal element attached to second side of base element",
+              "Seal element protrudes from base element",
+              "Seal element with contact surface and encircling surface",
+              "Vacuum gripper with rigid base element"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "Air extraction means continuously extracts air from chamber",
+              "Air extraction means in fluid communication with chamber through base element",
+              "Air extraction means mounted to first side of base element",
+              "Air extraction means operable in a variable manner",
+              "Seal element attachment surface mounted to peripheral support area",
+              "Seal element elastically deformable at contact surface"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [
+        "22883737",
+        "25421211",
+        "34810482",
+        "39244538"
+      ],
+      "agent_only_gold": [
+        "24430975",
+        "25421211",
+        "34201690",
+        "6332344",
+        "6495403",
+        "6918853"
+      ]
+    },
+    {
+      "id": "grabo_gripper_inventive",
+      "category": "grabo_own",
+      "mode": "inventive_step",
+      "n_gold": 44,
+      "n_reachable": 37,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "vector": {
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.25,
+          "reachable_recall@500": 0.2973,
+          "family_recall@1000": 0.2955,
+          "reachable_recall@1000": 0.3514,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "25084279",
+              "25644276",
+              "29740151",
+              "34810482",
+              "39244538",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.2273,
+          "reachable_recall@500": 0.2703,
+          "family_recall@1000": 0.2955,
+          "reachable_recall@1000": 0.3514,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "25084279",
+              "25644276",
+              "29740151",
+              "34810482",
+              "39244538",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ],
+            "cpc": [
+              "22498676",
+              "24430975",
+              "24840037",
+              "29740151",
+              "32054112",
+              "34810482",
+              "42115107",
+              "45554511",
+              "6332344",
+              "7961965"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.2273,
+          "reachable_recall@500": 0.2703,
+          "family_recall@1000": 0.2955,
+          "reachable_recall@1000": 0.3514,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "25084279",
+              "25644276",
+              "29740151",
+              "34810482",
+              "39244538",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ],
+            "cpc": [
+              "22498676",
+              "24430975",
+              "24840037",
+              "29740151",
+              "32054112",
+              "34810482",
+              "42115107",
+              "45554511",
+              "6332344",
+              "7961965"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.1364,
+          "reachable_recall@100": 0.1622,
+          "family_recall@500": 0.25,
+          "reachable_recall@500": 0.2973,
+          "family_recall@1000": 0.3409,
+          "reachable_recall@1000": 0.4054,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": true,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "24840037",
+              "25644276",
+              "32054112",
+              "41380067",
+              "42115107",
+              "6332344",
+              "7865086",
+              "7961965"
+            ],
+            "cpc": [
+              "22498676",
+              "42115107",
+              "7961965"
+            ],
+            "citation": [
+              "22498676",
+              "23205091",
+              "23289430",
+              "24262135",
+              "24664421",
+              "32054112",
+              "34810482",
+              "39244538",
+              "42115107",
+              "45508079",
+              "6332344",
+              "7865086"
+            ],
+            "qbe": [
+              "23289430",
+              "24430975",
+              "25084279",
+              "34810482",
+              "41380067",
+              "42115107",
+              "45554511",
+              "6332344"
+            ],
+            "crosslingual": [
+              "22498676"
+            ]
+          },
+          "marginal_yield_per_round": [
+            1141,
+            424,
+            187
+          ],
+          "rounds": 2,
+          "llm_calls": 10,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "Air extraction means mounted to first side",
+              "Loop-shaped vacuum seal element",
+              "Rigid base element with first and second opposite sides",
+              "Seal element attached to second side, protruding away from first side",
+              "Seal element elastically deformable at contact surface",
+              "Seal element with contact surface and encircling surface defining a chamber"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "Air extraction means continuously extracts air from chamber",
+              "Air extraction means in fluid communication with chamber through base element",
+              "Bracing structure within or outside the seal element",
+              "Seal element protrudes a distance no greater than its thickness",
+              "Variable operation of air extraction means by fluctuating power",
+              "Variable operation of air extraction means by reducing power to maintain grip"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [
+        "24262135",
+        "24664421",
+        "34810482",
+        "39244538",
+        "45508079"
+      ],
+      "agent_only_gold": [
+        "24262135",
+        "24664421",
+        "24840037",
+        "32054112",
+        "45508079",
+        "6332344",
+        "6495403"
+      ]
+    },
+    {
+      "id": "grabo_extended_frame",
+      "category": "grabo_own",
+      "mode": "novelty",
+      "n_gold": 49,
+      "n_reachable": 45,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0204,
+          "reachable_recall@1000": 0.0222,
+          "earliest_relevant_family": "3104865",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "bm25": [
+              "23205091"
+            ]
+          }
+        },
+        "vector": {
+          "family_recall@100": 0.0408,
+          "reachable_recall@100": 0.0444,
+          "family_recall@500": 0.2449,
+          "reachable_recall@500": 0.2667,
+          "family_recall@1000": 0.3061,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "3104865",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "23158645",
+              "23205091",
+              "23289430",
+              "24262135",
+              "24430975",
+              "24664421",
+              "24840037",
+              "25084279",
+              "25644276",
+              "27070290",
+              "34810482",
+              "41380067",
+              "42115107",
+              "7865086",
+              "7961965"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.0408,
+          "reachable_recall@100": 0.0444,
+          "family_recall@500": 0.1633,
+          "reachable_recall@500": 0.1778,
+          "family_recall@1000": 0.3265,
+          "reachable_recall@1000": 0.3556,
+          "earliest_relevant_family": "3104865",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "23158645",
+              "23205091",
+              "23289430",
+              "24262135",
+              "24430975",
+              "24664421",
+              "24840037",
+              "25084279",
+              "25644276",
+              "27070290",
+              "34810482",
+              "41380067",
+              "42115107",
+              "7865086",
+              "7961965"
+            ],
+            "bm25": [
+              "23205091"
+            ],
+            "cpc": [
+              "22498676",
+              "23158645",
+              "24430975",
+              "24840037",
+              "25479119",
+              "29740151",
+              "34810482",
+              "42115107",
+              "45554511",
+              "7961965"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.0408,
+          "reachable_recall@100": 0.0444,
+          "family_recall@500": 0.1633,
+          "reachable_recall@500": 0.1778,
+          "family_recall@1000": 0.3265,
+          "reachable_recall@1000": 0.3556,
+          "earliest_relevant_family": "3104865",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "23158645",
+              "23205091",
+              "23289430",
+              "24262135",
+              "24430975",
+              "24664421",
+              "24840037",
+              "25084279",
+              "25644276",
+              "27070290",
+              "34810482",
+              "41380067",
+              "42115107",
+              "7865086",
+              "7961965"
+            ],
+            "bm25": [
+              "23205091"
+            ],
+            "cpc": [
+              "22498676",
+              "23158645",
+              "24430975",
+              "24840037",
+              "25479119",
+              "29740151",
+              "34810482",
+              "42115107",
+              "45554511",
+              "7961965"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.0408,
+          "reachable_recall@100": 0.0444,
+          "family_recall@500": 0.2041,
+          "reachable_recall@500": 0.2222,
+          "family_recall@1000": 0.3061,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "3104865",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "23158645",
+              "23205091",
+              "23289430",
+              "24664421",
+              "24840037",
+              "3193909",
+              "31947993",
+              "41380067",
+              "7865086",
+              "7961965"
+            ],
+            "cpc": [
+              "22498676"
+            ],
+            "citation": [
+              "22883737",
+              "23289430",
+              "24664421",
+              "24840037",
+              "25421211",
+              "27070290",
+              "31947993",
+              "32054112",
+              "42115107",
+              "45508079",
+              "7865086",
+              "7961965"
+            ],
+            "qbe": [
+              "23158645",
+              "23289430",
+              "24840037",
+              "25644276",
+              "3193909",
+              "31947993",
+              "32054112",
+              "34201690",
+              "6332344",
+              "6918853",
+              "7865086"
+            ],
+            "crosslingual": [
+              "23289430",
+              "7961965"
+            ]
+          },
+          "marginal_yield_per_round": [
+            1159,
+            432,
+            184
+          ],
+          "rounds": 2,
+          "llm_calls": 15,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "elongated base with peripheral support wall",
+              "extended frame portable vacuum grip device",
+              "multiple independent vacuum grip regions",
+              "open chamber for vacuum grip connections",
+              "plurality of ports through the base",
+              "rigid unitary support frame"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "closed-loop gaskets as vacuum seal members",
+              "gaskets define independent vacuum grip regions",
+              "gaskets mate with base and support wall",
+              "ports operatively connected to corresponding pumps",
+              "structural reinforcements for reducing stresses",
+              "support frame for each gasket"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [
+        "22883737",
+        "25421211",
+        "27070290",
+        "32054112",
+        "42115107",
+        "45508079"
+      ],
+      "agent_only_gold": [
+        "25421211",
+        "3193909",
+        "31947993",
+        "32054112",
+        "34201690",
+        "45508079",
+        "45554511",
+        "6332344",
+        "6918853"
+      ]
+    },
+    {
+      "id": "grabo_de_utility_xling",
+      "category": "cross_lingual",
+      "mode": "novelty",
+      "n_gold": 7,
+      "n_reachable": 7,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "vector": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.2857,
+          "reachable_recall@500": 0.2857,
+          "family_recall@1000": 0.2857,
+          "reachable_recall@1000": 0.2857,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "34201690",
+              "63449883"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.2857,
+          "reachable_recall@500": 0.2857,
+          "family_recall@1000": 0.2857,
+          "reachable_recall@1000": 0.2857,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "34201690",
+              "63449883"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.2857,
+          "reachable_recall@500": 0.2857,
+          "family_recall@1000": 0.2857,
+          "reachable_recall@1000": 0.2857,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "34201690",
+              "63449883"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.1429,
+          "reachable_recall@500": 0.1429,
+          "family_recall@1000": 0.1429,
+          "reachable_recall@1000": 0.1429,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "citation": [
+              "6495403"
+            ],
+            "qbe": [
+              "7889498"
+            ]
+          },
+          "marginal_yield_per_round": [
+            1138,
+            460,
+            165
+          ],
+          "rounds": 2,
+          "llm_calls": 20,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "Loop-shaped vacuum sealing element",
+              "Portable or handheld vacuum gripper",
+              "Rigid base element with first and second sides",
+              "Sealing element attached to periphery of base element's second side",
+              "Sealing element with protruding section extending away from base element",
+              "Second side of base element having central area and surrounding periphery"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "Air evacuation means in fluid communication with chamber to continuously remove air",
+              "Air evacuation means on first side of base element",
+              "Chamber defined by protruding section and central area of base element",
+              "Contact surface elastically deformable to conform to object surface",
+              "Protruding section having a contact surface for object interface",
+              "Sealing element with inner and outer circumferential surfaces"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [
+        "6495403"
+      ],
+      "agent_only_gold": [
+        "7889498"
+      ]
+    },
+    {
+      "id": "schmalz_sauggreifsystem",
+      "category": "competitor",
+      "mode": "novelty",
+      "n_gold": 4,
+      "n_reachable": 4,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "32297463",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "vector": {
+          "family_recall@100": 0.25,
+          "reachable_recall@100": 0.25,
+          "family_recall@500": 0.5,
+          "reachable_recall@500": 0.5,
+          "family_recall@1000": 0.5,
+          "reachable_recall@1000": 0.5,
+          "earliest_relevant_family": "32297463",
+          "earliest_recovered": true,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "32297463",
+              "50556166"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.25,
+          "reachable_recall@100": 0.25,
+          "family_recall@500": 0.25,
+          "reachable_recall@500": 0.25,
+          "family_recall@1000": 0.5,
+          "reachable_recall@1000": 0.5,
+          "earliest_relevant_family": "32297463",
+          "earliest_recovered": true,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "32297463",
+              "50556166"
+            ],
+            "cpc": [
+              "32297463"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.25,
+          "reachable_recall@100": 0.25,
+          "family_recall@500": 0.25,
+          "reachable_recall@500": 0.25,
+          "family_recall@1000": 0.5,
+          "reachable_recall@1000": 0.5,
+          "earliest_relevant_family": "32297463",
+          "earliest_recovered": true,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "32297463",
+              "50556166"
+            ],
+            "cpc": [
+              "32297463"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.5,
+          "reachable_recall@100": 0.5,
+          "family_recall@500": 0.5,
+          "reachable_recall@500": 0.5,
+          "family_recall@1000": 0.5,
+          "reachable_recall@1000": 0.5,
+          "earliest_relevant_family": "32297463",
+          "earliest_recovered": true,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "32297463",
+              "50556166"
+            ],
+            "citation": [
+              "32297463"
+            ],
+            "qbe": [
+              "32297463"
+            ],
+            "crosslingual": [
+              "50556166"
+            ]
+          },
+          "marginal_yield_per_round": [
+            949,
+            357,
+            198
+          ],
+          "rounds": 2,
+          "llm_calls": 25,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "At least two suction elements",
+              "Suction device applies negative pressure to suction element",
+              "Suction elements arranged on a base carrier",
+              "Suction elements at end of suction line",
+              "Suction gripping system",
+              "Suction lines connected to suction device"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "Flow resistance element in at least one suction line",
+              "Method for operating a suction gripping system"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [],
+      "agent_only_gold": []
+    },
+    {
+      "id": "schmalz_vacuum_clamp",
+      "category": "competitor",
+      "mode": "inventive_step",
+      "n_gold": 7,
+      "n_reachable": 7,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.2857,
+          "reachable_recall@500": 0.2857,
+          "family_recall@1000": 0.4286,
+          "reachable_recall@1000": 0.4286,
+          "earliest_relevant_family": "7790219",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "bm25": [
+              "31984472",
+              "36011303",
+              "43736808"
+            ]
+          }
+        },
+        "vector": {
+          "family_recall@100": 0.4286,
+          "reachable_recall@100": 0.4286,
+          "family_recall@500": 0.5714,
+          "reachable_recall@500": 0.5714,
+          "family_recall@1000": 0.5714,
+          "reachable_recall@1000": 0.5714,
+          "earliest_relevant_family": "7790219",
+          "earliest_recovered": true,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "31984472",
+              "36011303",
+              "43736808",
+              "7790219"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.4286,
+          "reachable_recall@100": 0.4286,
+          "family_recall@500": 0.4286,
+          "reachable_recall@500": 0.4286,
+          "family_recall@1000": 0.5714,
+          "reachable_recall@1000": 0.5714,
+          "earliest_relevant_family": "7790219",
+          "earliest_recovered": true,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "31984472",
+              "36011303",
+              "43736808",
+              "7790219"
+            ],
+            "bm25": [
+              "31984472",
+              "36011303",
+              "43736808"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.4286,
+          "reachable_recall@100": 0.4286,
+          "family_recall@500": 0.4286,
+          "reachable_recall@500": 0.4286,
+          "family_recall@1000": 0.5714,
+          "reachable_recall@1000": 0.5714,
+          "earliest_relevant_family": "7790219",
+          "earliest_recovered": true,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "31984472",
+              "36011303",
+              "43736808",
+              "7790219"
+            ],
+            "bm25": [
+              "31984472",
+              "36011303",
+              "43736808"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.4286,
+          "reachable_recall@100": 0.4286,
+          "family_recall@500": 0.5714,
+          "reachable_recall@500": 0.5714,
+          "family_recall@1000": 0.7143,
+          "reachable_recall@1000": 0.7143,
+          "earliest_relevant_family": "7790219",
+          "earliest_recovered": true,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "31984472",
+              "36011303",
+              "43736808"
+            ],
+            "citation": [
+              "31984472",
+              "36011303",
+              "43736808",
+              "7790219"
+            ],
+            "qbe": [
+              "31984472"
+            ],
+            "crosslingual": [
+              "26040986",
+              "31984472",
+              "36011303",
+              "7790219"
+            ]
+          },
+          "marginal_yield_per_round": [
+            1244,
+            269,
+            320
+          ],
+          "rounds": 2,
+          "llm_calls": 30,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "Console for vacuum clamping device",
+              "Driven driver for moving a clamping means",
+              "Driver arranged on a side wall of the console",
+              "Driver displaceably guided along console longitudinal direction",
+              "Driver pin for mechanical coupling of clamping means",
+              "Driver with at least one extendable driver pin"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "Clamping means for vacuum clamping device",
+              "Driver with fluid supply",
+              "Fluid supply for pressurized fluid to coupled clamping means",
+              "Vacuum clamping device"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [
+        "7790219"
+      ],
+      "agent_only_gold": [
+        "26040986"
+      ]
+    },
+    {
+      "id": "probst_stone_lifter_xling",
+      "category": "cross_lingual",
+      "mode": "novelty",
+      "n_gold": 6,
+      "n_reachable": 6,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "6026446",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "vector": {
+          "family_recall@100": 0.1667,
+          "reachable_recall@100": 0.1667,
+          "family_recall@500": 0.1667,
+          "reachable_recall@500": 0.1667,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6026446",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "26224347",
+              "6480115"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.1667,
+          "reachable_recall@100": 0.1667,
+          "family_recall@500": 0.1667,
+          "reachable_recall@500": 0.1667,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6026446",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "26224347",
+              "6480115"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.1667,
+          "reachable_recall@100": 0.1667,
+          "family_recall@500": 0.1667,
+          "reachable_recall@500": 0.1667,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6026446",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "26224347",
+              "6480115"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.3333,
+          "reachable_recall@500": 0.3333,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6026446",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "6480115"
+            ],
+            "qbe": [
+              "26224347",
+              "6480115"
+            ]
+          },
+          "marginal_yield_per_round": [
+            895,
+            158,
+            52
+          ],
+          "rounds": 2,
+          "llm_calls": 35,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "device for generating vacuum",
+              "fastening device for crane hook",
+              "handle part on lifting device",
+              "housing for vacuum lifting device",
+              "vacuum lifting device",
+              "vacuum suction device for stone elements"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "inherently stable running gear",
+              "running gear fixed to housing",
+              "running gear for movable support",
+              "running gear with at least one wheel"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [],
+      "agent_only_gold": []
+    },
+    {
+      "id": "probst_kerb_lifter",
+      "category": "competitor",
+      "mode": "inventive_step",
+      "n_gold": 9,
+      "n_reachable": 6,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "7217340",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "vector": {
+          "family_recall@100": 0.1111,
+          "reachable_recall@100": 0.1667,
+          "family_recall@500": 0.1111,
+          "reachable_recall@500": 0.1667,
+          "family_recall@1000": 0.1111,
+          "reachable_recall@1000": 0.1667,
+          "earliest_relevant_family": "7217340",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "6259387"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.1111,
+          "reachable_recall@100": 0.1667,
+          "family_recall@500": 0.1111,
+          "reachable_recall@500": 0.1667,
+          "family_recall@1000": 0.1111,
+          "reachable_recall@1000": 0.1667,
+          "earliest_relevant_family": "7217340",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "6259387"
+            ],
+            "cpc": [
+              "6259387",
+              "6391811"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.1111,
+          "reachable_recall@100": 0.1667,
+          "family_recall@500": 0.1111,
+          "reachable_recall@500": 0.1667,
+          "family_recall@1000": 0.1111,
+          "reachable_recall@1000": 0.1667,
+          "earliest_relevant_family": "7217340",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "6259387"
+            ],
+            "cpc": [
+              "6259387",
+              "6391811"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.1111,
+          "reachable_recall@100": 0.1667,
+          "family_recall@500": 0.1111,
+          "reachable_recall@500": 0.1667,
+          "family_recall@1000": 0.1111,
+          "reachable_recall@1000": 0.1667,
+          "earliest_relevant_family": "7217340",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "6259387"
+            ],
+            "citation": [
+              "6259387"
+            ],
+            "qbe": [
+              "6391811"
+            ]
+          },
+          "marginal_yield_per_round": [
+            1004,
+            330,
+            124
+          ],
+          "rounds": 2,
+          "llm_calls": 40,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "Bottom mast part on basic body",
+              "Jib located on free end of mast",
+              "Lifting appliance for kerb stones or paving flags",
+              "Lifting device arranged on jib",
+              "Mast fastened to a basic body",
+              "Two-part mast design"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "Actuator for pivoting top mast part",
+              "Jib fastened to free end of top mast part",
+              "Pivoting about an axis",
+              "Top mast part",
+              "Top mast part pivots relative to bottom mast part"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [],
+      "agent_only_gold": [
+        "6391811"
+      ]
+    },
+    {
+      "id": "nl_handheld_vacuum_seal_sensor",
+      "category": "hard_combination",
+      "mode": "novelty",
+      "n_gold": 5,
+      "n_reachable": 5,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.4,
+          "reachable_recall@500": 0.4,
+          "family_recall@1000": 0.4,
+          "reachable_recall@1000": 0.4,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "bm25": [
+              "66624664",
+              "83194486"
+            ]
+          }
+        },
+        "vector": {
+          "family_recall@100": 0.4,
+          "reachable_recall@100": 0.4,
+          "family_recall@500": 0.4,
+          "reachable_recall@500": 0.4,
+          "family_recall@1000": 0.4,
+          "reachable_recall@1000": 0.4,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.9,
+          "channel_gold_contribution": {
+            "dense": [
+              "66624664",
+              "83194486"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.4,
+          "reachable_recall@100": 0.4,
+          "family_recall@500": 0.4,
+          "reachable_recall@500": 0.4,
+          "family_recall@1000": 0.4,
+          "reachable_recall@1000": 0.4,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.9,
+          "channel_gold_contribution": {
+            "dense": [
+              "66624664",
+              "83194486"
+            ],
+            "bm25": [
+              "66624664",
+              "83194486"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.4,
+          "reachable_recall@100": 0.4,
+          "family_recall@500": 0.4,
+          "reachable_recall@500": 0.4,
+          "family_recall@1000": 0.4,
+          "reachable_recall@1000": 0.4,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.9,
+          "channel_gold_contribution": {
+            "dense": [
+              "66624664",
+              "83194486"
+            ],
+            "bm25": [
+              "66624664",
+              "83194486"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.4,
+          "reachable_recall@100": 0.4,
+          "family_recall@500": 0.4,
+          "reachable_recall@500": 0.4,
+          "family_recall@1000": 0.4,
+          "reachable_recall@1000": 0.4,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "66624664",
+              "83194486"
+            ],
+            "citation": [
+              "66624664",
+              "83194486"
+            ],
+            "qbe": [
+              "66624664"
+            ]
+          },
+          "marginal_yield_per_round": [
+            704
+          ],
+          "rounds": 0,
+          "llm_calls": 41,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "Battery-powered vacuum lifter",
+              "Electric vacuum pump for lifter",
+              "Flexible sealing lip for vacuum lifter",
+              "Handheld vacuum lifter",
+              "Pressure sensor for vacuum lifter",
+              "Warning system for lost vacuum grip"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "Operator warning for vacuum loss",
+              "Portable vacuum lifting device",
+              "Vacuum lifter with integrated pressure sensing"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [],
+      "agent_only_gold": []
+    },
+    {
+      "id": "nl_porous_surface_gripper",
+      "category": "hard_combination",
+      "mode": "novelty",
+      "n_gold": 6,
+      "n_reachable": 6,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.3333,
+          "reachable_recall@500": 0.3333,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "bm25": [
+              "66624664",
+              "83194486"
+            ]
+          }
+        },
+        "vector": {
+          "family_recall@100": 0.3333,
+          "reachable_recall@100": 0.3333,
+          "family_recall@500": 0.3333,
+          "reachable_recall@500": 0.3333,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.9,
+          "channel_gold_contribution": {
+            "dense": [
+              "66624664",
+              "83194486"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.3333,
+          "reachable_recall@100": 0.3333,
+          "family_recall@500": 0.3333,
+          "reachable_recall@500": 0.3333,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.9,
+          "channel_gold_contribution": {
+            "dense": [
+              "66624664",
+              "83194486"
+            ],
+            "bm25": [
+              "66624664",
+              "83194486"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.3333,
+          "reachable_recall@100": 0.3333,
+          "family_recall@500": 0.3333,
+          "reachable_recall@500": 0.3333,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.9,
+          "channel_gold_contribution": {
+            "dense": [
+              "66624664",
+              "83194486"
+            ],
+            "bm25": [
+              "66624664",
+              "83194486"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.3333,
+          "reachable_recall@100": 0.3333,
+          "family_recall@500": 0.3333,
+          "reachable_recall@500": 0.3333,
+          "family_recall@1000": 0.3333,
+          "reachable_recall@1000": 0.3333,
+          "earliest_relevant_family": "6480115",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "66624664",
+              "83194486"
+            ],
+            "citation": [
+              "66624664",
+              "83194486"
+            ],
+            "qbe": [
+              "66624664"
+            ]
+          },
+          "marginal_yield_per_round": [
+            1034
+          ],
+          "rounds": 0,
+          "llm_calls": 42,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "continuously running pump",
+              "lifts porous surfaces",
+              "lifts rough surfaces",
+              "lifts textured tile",
+              "maintains airflow",
+              "vacuum suction gripper"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "airflow maintenance in vacuum gripper",
+              "concrete lifting",
+              "stone lifting",
+              "suction lifting device"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [],
+      "agent_only_gold": []
+    },
+    {
+      "id": "nl_robot_eoat_vacuum",
+      "category": "neighbouring_cpc",
+      "mode": "inventive_step",
+      "n_gold": 3,
+      "n_reachable": 3,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "vector": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "hybrid": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "agentic": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "34201690",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {},
+          "marginal_yield_per_round": [
+            1230
+          ],
+          "rounds": 0,
+          "llm_calls": 43,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "array of suction cups",
+              "handling panels",
+              "handling sheets",
+              "independent vacuum zones",
+              "robotic end-of-arm gripper",
+              "vacuum gripper"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "robotics for material handling",
+              "suction lifting device"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [],
+      "agent_only_gold": []
+    }
+  ]
+}

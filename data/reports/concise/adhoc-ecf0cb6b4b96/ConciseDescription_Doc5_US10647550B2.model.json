@@ -1,0 +1,178 @@
+{
+ "n": 5,
+ "pub": "US-10647550-B2",
+ "family_id": "65717919",
+ "biblio": {
+  "pub": "US-10647550-B2",
+  "label": "U.S. Patent No. 10,647,550",
+  "kind": "patent",
+  "title": "Operating device for a tube lifter and tube lifter",
+  "country": "US",
+  "inventor": "Norman Paul",
+  "assignee": "J Schmalz GmbH",
+  "publication_date": "2020-05-12",
+  "priority_date": "2018-03-12",
+  "filing_date": "2019-02-25",
+  "dates_source": "corpus",
+  "abstract": "The invention relates to an operating device for a tube lifter having a lifting tube that has a tube interior and can be shortened by applying a vacuum to the tube interior, and having a suction grip device arranged on one end of the tube lifter, which suction grip device can be supplied with a vacuum through the tube interior, the operating device having a suction port for fluid communication with the suction grip device, a lifting tube port for fluid communication with the tube interior of the lifting tube, and a valve for controlling the fluid communications.",
+  "issue_date_pretty": "May 12, 2020",
+  "priority_date_pretty": "March 12, 2018"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses an operating device for a tube lifter having a lifting tube and a suction grip device, with a suction port, a lifting tube port, and a valve for controlling fluid communications.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[a]",
+   "quote_claim": true,
+   "claim_text": "A grip unit for a vacuum hand-operated laying device and for use with a suction plate, the grip unit comprising",
+   "claim_paraphrase": "A grip unit for a vacuum hand-operated laying device and for use with a suction plate, the grip unit comprising",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The invention relates to an operating device for a tube lifter having a lifting tube that has a tube interior and can be shortened by applying a vacuum to the tube interior, and having a suction grip device arranged on",
+   "note": "This reference describes an operating device for a tube lifter with a suction grip device that uses vacuum. This is a type of vacuum hand-operated laying device.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.8,
+   "_id": 0,
+   "disclosure": "The operating device is for a tube lifter having a lifting tube and a suction grip device, which is a type of vacuum hand-operated laying device."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[d]",
+   "quote_claim": true,
+   "claim_text": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "claim_paraphrase": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "For this reason, the ventilation valve 60 is accommodated inside a housing body that is open to the atmosphere but sealed against the suction port 10 and is inserted into a larger lower housing body 34 .",
+   "note": "This reference describes a ventilation valve within a housing body that allows air to escape",
+   "cites": [
+    "Paragraph [0020]"
+   ],
+   "confidence": 0.6,
+   "_id": 1,
+   "disclosure": "The ventilation valve 60 is accommodated inside a housing body that is open to the atmosphere, allowing air to escape."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[e]",
+   "quote_claim": true,
+   "claim_text": "a sound-damping device is arranged in the grip portion",
+   "claim_paraphrase": "a sound-damping device is arranged in the grip portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The valve means 16 comprise or form a ventilation valve 60 comprising a second valve plate 61 that can be brought into a hold position and into a ventilation position.",
+   "note": "This reference describes an operating device for a tube lifter with valve means for controlling fluid communications, which could include some form of sound damping",
+   "cites": [
+    "Paragraph [0020]"
+   ],
+   "confidence": 0.7,
+   "_id": 2,
+   "disclosure": "The valve means 16 comprise a ventilation valve 60 with a second valve plate 61 that can be brought into a hold position and a ventilation position."
+  },
+  {
+   "claim_no": 5,
+   "label": "claim 5[a]",
+   "quote_claim": false,
+   "claim_text": "The grip unit according to claim 3, wherein the grip portion is elongated between the first housing portion and a second housing portion, wherein the air outlet is arranged on the second housing portion",
+   "claim_paraphrase": "The grip unit according to claim 3, wherein the grip portion is elongated between the first housing portion and a second housing portion, wherein the air outlet is arranged on the …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The operating device 2 comprises a lifting tube port 10 for the lifting tube 4 and a suction port 12 for the suction grip device 8 . The operating device 2 further comprises valve means 14 , 16 , 18",
+   "note": "This reference discloses an operating device with a manually grippable and rotatable rod (grip portion) between an upper mounting plate (first housing portion) and a lower mounting plate (second housing portion).",
+   "cites": [
+    "Paragraph [0016]"
+   ],
+   "confidence": 0.7,
+   "_id": 3,
+   "disclosure": "The operating device 2 comprises a lifting tube port 10 for the lifting tube 4 and a suction port 12 for the suction grip device 8."
+  },
+  {
+   "claim_no": 7,
+   "label": "claim 7[a]",
+   "quote_claim": false,
+   "claim_text": "The grip unit according to claim 1, wherein downstream of the grip portion, in on or in the second housing portion, one or more, bent or curved, air baffles are arranged for guiding exhaust air emerging from the grip portion to the air outlet",
+   "claim_paraphrase": "The grip unit according to claim 1, wherein downstream of the grip portion, in on or in the second housing portion, one or more, bent or curved, air baffles are arranged for …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The operating device 2 comprises a lifting tube port 10 for the lifting tube 4 and a suction port 12 for the suction grip device 8 . The operating device 2 further comprises valve means 14 , 16 , 18",
+   "note": "This reference describes an operating device for a tube lifter with a suction grip device and valve means for controlling fluid communications, including ventilation. While it implies exhaust air, it does not explicitly disclose bent or curved air baffles for guiding it.",
+   "cites": [
+    "Paragraph [0016]"
+   ],
+   "confidence": 0.6,
+   "_id": 4,
+   "disclosure": "The operating device 2 comprises a lifting tube port 10 for the lifting tube 4 and a suction port 12 for the suction grip device 8."
+  },
+  {
+   "claim_no": 10,
+   "label": "claim 10[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Tube lifter comprising an operating device for the tube lifter which comprises a lifting tube that has a tube interior and can be shortened by applying a vacuum to the tube interior, and comprising a suction grip device arranged on",
+   "note": "This reference discloses a suction grip device arranged on one end of a tube lifter, which implies a connection",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.6,
+   "_id": 5,
+   "disclosure": "A suction grip device is arranged on one end of the tube lifter, implying a connection between the grip unit and the suction plate."
+  },
+  {
+   "claim_no": 11,
+   "label": "claim 11[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate in order to generate a vacuum between the suction plate and an object to be lifted",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Operating device for a tube lifter which comprises a lifting tube that has a tube interior and can be shortened by applying a vacuum to the tube interior, and comprising a suction grip device arranged on one end of the",
+   "note": "This reference describes a suction grip device with a suction port for fluid communication to supply vacuum. While it implies a suction chamber and a means to generate vacuum, it does not explicitly mention a 'suction opening fluidically connected to a suction chamber delimited by a suction plate'.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.6,
+   "_id": 6,
+   "disclosure": "The operating device includes a suction grip device arranged on one end of the tube lifter, which can be supplied with a vacuum through the tube interior."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "self_collision": {
+   "same_owner": true,
+   "us_disqualified": false,
+   "note": "SELF-COLLISION. This document appears to be commonly owned with the target (J Schmalz GmbH). It predates the target as public prior art, so 102(b)(2)(C) does not reach it (that exception applies only to 102(a)(2) art). It remains citable in both jurisdictions, but confirm the ownership position before filing."
+  },
+  "quotes": {
+   "checked": 7,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

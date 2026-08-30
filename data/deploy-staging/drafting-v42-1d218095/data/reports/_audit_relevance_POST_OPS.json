@@ -1,0 +1,586 @@
+[
+ {
+  "label": "gold:grabo_novelty",
+  "slug": "grabo_gripper_novelty",
+  "query": "Vacuum gripper\nA vacuum gripper comprises a rigid base element and a loop-shaped",
+  "n": 10,
+  "relevant": 5,
+  "borderline": 2,
+  "irrelevant": 3,
+  "precision_strict": 0.5,
+  "precision_lenient": 0.6,
+  "judged": [
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum gripper unit with a vacuum chamber, but lacks the specific rigid base and loop-shaped seal element.",
+    "pub": "US-10456928-B2",
+    "text": "Vacuum gripper unit comprising vacuum pump | The present invention relates to a vacuum gripper unit. The unit has a first mounting container and a second mounting container of cylindrical shapes formed in an H-type when seen from the outside, including a main body for providing a common vacuum chamber. A vacuum pump is inserted into the first mounting container, while the vacuum pump or a release "
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum gripper with a gripper plate (base element) and suction ports (vacuum seal element).",
+    "pub": "US-9266686-B2",
+    "text": "Vacuum gripper | A vacuum gripper for gripping a work-piece includes a flat or curved gripper plate having at least one suction port. A work-piece suction throttling zone is formed around the suction port. The gripper plate has at least one recess provided at a side facing the work-piece and arranged beyond the work-piece suction throttling zone ( 6 ) formed around the suction port. At least one v"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "The reference describes a multi-finger gripper with suction, not a vacuum gripper with a loop-shaped seal element.",
+    "pub": "US-10195746-B2",
+    "text": "Grasping gripper | An example gripper may include: a base; two or more fingers attached to the base, with each finger being movable towards, and away from, one or more others of the fingers; and one or more ports at the base or at one or more of the fingers to provide suction through a vacuum. | A gripper comprising: a base; two or more fingers attached to the base, each of the two or more fingers"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum gripper with a flexible suction body (seal element) and a contact surface (base element).",
+    "pub": "US-7240935-B2",
+    "text": "Suction grip arm | A vacuum gripper for suctioning work pieces, having a vacuum connection, a flexible suction body and a suction body holder, where the side of the suction body facing the work piece has a sealing lip bounding a vacuum chamber, and the vacuum chamber is connected to the vacuum connection. The suction body has a contact surface abutting the work pieces with prevailing vacuum in the"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum gripper with a base (plates), side walls (framework), and a sealing device (deformable element).",
+    "pub": "US-9815209-B2",
+    "text": "Casing with modular vacuum | A modular vacuum gripper having a first plate, a second plate provided with at least one downstream orifice, framework members, assembly device for assembling the first plate, the second plate and the framework members, at least one upstream orifice situated on one of the walls of the vacuum gripper, sealing device, vacuum generation device adapted to suck out the air "
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum holding device with a vacuum chamber, elastic seal, and press-on web, directly overlapping the invention's core features.",
+    "pub": "US-9803680-B2",
+    "text": "Releasable vacuum holding device | The invention relates to a releasable holding device ( 1 ) for attaching objects to a contact surface ( 8 ), with a vacuum chamber ( 7 ), which is open towards the contact surface ( 8 ) and in which, after application to the contact surface ( 8 ) by means of a suction device ( 20 ) generating a vacuum, a vacuum can be generated, the vacuum drawing the holding dev"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum gripper with a suction plate (base) and a suction chamber (seal element).",
+    "pub": "US-8414045-B2",
+    "text": "Vacuum gripper | A vacuum gripper includes a suction plate for gripping an object. The suction plate has a lid and a suction bottom which define a suction chamber there between and engage formfittingly at least on one side within one another via a tongue and groove joint extending in parallel relation to a gripping plane. The tongue and groove joint includes a groove on one of the suction bottom a"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "Reference describes a lighting/vision system for a gripper, not the gripper's vacuum sealing mechanism.",
+    "pub": "US-8290624-B2",
+    "text": "Uniform lighting and gripper positioning system for robotic picking operations | A gripper grasps irregular and deformable work pieces so as to lift and hold packaged, processed, or raw, and manipulate the work pieces for the purpose of material handling, assembly, packaging, and other robotic and automated manipulative functions. A vacuum is induced at multiple points through a flexible gripping "
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "The reference describes a general gripper, not a vacuum gripper with a loop-shaped seal element.",
+    "pub": "US-10562195-B2",
+    "text": "Gripper, in particular pneumatically operated gripper in the form of a vacuum gripper or gripping tongs | The present invention relates to a gripper ( 100 ) and in particular a pneumatically operated gripper ( 100 ) in the form of a vacuum gripper or gripping tongs. The gripper ( 100 ) comprises a gripper holder ( 3.1, 3.2 ) via which the gripper ( 100 ) is preferably detachably connectable to a m"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum gripper with a sealing lip and vacuum port, but lacks a rigid base element and specific loop-shaped seal.",
+    "pub": "US-2007187965-A1",
+    "text": "Vacuum gripper | The invention concerns a vacuum gripper for suctioning workpieces with an vacuum port, an elastic vacuum element and a vacuum element holder, wherein the vacuum element has a sealing lip on its side facing the workpiece, which delimits the vacuum chamber, and the vacuum chamber is flow-connected to the vacuum port, wherein the vacuum gripper has means that display the suction stat"
+   }
+  ]
+ },
+ {
+  "label": "gold:schmalz_clamp",
+  "slug": "schmalz_vacuum_clamp",
+  "query": "Konsole, Spannmittel und Unterdruckspanneinrichtung\nEine Konsole (10) f\u00fcr eine U",
+  "n": 10,
+  "relevant": 5,
+  "borderline": 4,
+  "irrelevant": 1,
+  "precision_strict": 0.5,
+  "precision_lenient": 0.7,
+  "judged": [
+   {
+    "verdict": "borderline",
+    "reason": "Reference discloses a console for a vacuum clamping device, but lacks the driven carrier for displacement.",
+    "pub": "DE-102005017684-A1",
+    "text": "Support for vacuum clamping device has insert with at least one channel running parallel to longitudinal axis of longitudinal bearer | The support has at least one longitudinal bearer (14) and at least two inserts (16) forming the support surface (12). Each insert has at least one channel (32) running parallel to longitudinal direction (34). The channels come out on the endfaces (40) of the inside"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Reference discloses a vacuum clamping device with a console and a movable carriage, similar to the invention's console with a driven carrier",
+    "pub": "DE-102014214802-A1",
+    "text": "Unterdruckspanneinrichtung | Die Erfindung betrifft eine Unterdruckspanneinrichtung mit wenigstens einer Konsole und wenigstens einem auf der Konsole verlagerbaren Schlitten, welcher einen Konsolenf\u00fchrungsabschnitt und eine Saugeraufnahme aufweist, und mit wenigstens einem Blocksauger, wobei der Blocksauger eine dem zu spannenden Werkst\u00fcck zugewandte obere Spannfl\u00e4che und einen dieser entgegengese"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Reference discloses a clamping device with suction and movable pins, but the core mechanism of driven carrier for console movement is missin",
+    "pub": "EP-2745987-A2",
+    "text": "Clamping device | The device (10) has suction device (14) which sucks work piece to be clamped. A supporting device is provided with a cylinder forming housing (22). The cylinder and housing are provided on three axially projecting and axially movable positioning pins (20). A piston is arranged in cylinder, and axially moved adjacent to pins. A clamping sleeve is engaged on pin to engage jacket of"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum chuck for holding objects, but lacks the specific console and driven carrier features.",
+    "pub": "US-4858975-A",
+    "text": "Vacuum chuck apparatus for wet processing wafers | A vacuum chuck apparatus operable in both gas and liquid includes a liquid-gas separating membrane which allows passage of gas molecules but prevents passage of liquid. The liquid-gas separating membrane is disposed between an inlet hole of the chuck and a manifold which is connected to a pneumatic system. The pneumatic system includes an aspirato"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Reference discloses a vacuum holder for workpieces, but lacks the specific driven carrier mechanism for displacement.",
+    "pub": "EP-0175295-A1",
+    "text": "Vacuum holder for fixing work pieces on work benches, tables or the like | The vacuum holder is formed by individual vacuum elements 3 which, in plan view (fixing plane), have the cross-section of an equilateral polygon, preferably a hexagon. Suction openings 6 are formed in the upper suction face. Provided in all lateral faces are connecting openings 7 which serve for the vacuum connection of the"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "The reference describes a vacuum holding device for curved workpieces, not a console with a driven carrier.",
+    "pub": "US-4491306-A",
+    "text": "Holding curved workpieces | Large, spherically preshaped, thin workpieces are held and clamped in discrete, well-defined points under utilization of holding and clamping elements in which a portion of a head is universally pivotable about a point being the center of a sealing rim for a plenum chamber adjacent the engaging workpiece in which plenum chamber high pressure is established so that the w"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum clamping device with suction clamps on a support structure, positionable for different workpiece formats.",
+    "pub": "EP-1258319-A3",
+    "text": "Vacuum clamping device for workpieces for a stationary tool machine | Eine Vakuumspanneinrichtung f\u00fcr Werkst\u00fccke f\u00fcr station\u00e4r\nbearbeitende hat Saugspanner (1), die auf einer Unterst\u00fctzungskonstruktion\nangeordnet und zwecks Anpassung an\nunterschiedliche Werkst\u00fcckformate positionierbar sind.\nZum Spannen der auf sie auflegbaren Werkst\u00fccke (2) haben\ndie Saugspanner (1) jeweils einen Saugraum (3) an i"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a console with a displaceable receptacle for a vacuum suction element, positionable by a drive mechanism.",
+    "pub": "DE-10023916-A1",
+    "text": "Machine worktable with framed arm and traveling mounts controls mount position on arm and arm position off drive belt engagedly coupled to mount and arm. | The mount (2) can be moved to controllable positions (9) along the bracket arm (1) as also controllably (9) positioned using a drive belt (3), chain or threaded rod lying within the arm and connected to both arm and mount (2) by means of one or"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a console with vacuum tensioners for workpieces, directly addressing the core invention.",
+    "pub": "EP-2740569-A2",
+    "text": "Console table for a wood processing machine | The desk (10) has movable consoles (22-28) movably locked along guide rails (18, 20) and releasably locked at the guide rails in a desired position. Vacuum tensioners (50) for a workpiece are positioned on upper sides (48) of the consoles. Stopper elements (58, 64, 66) limit processing fields for the workpiece. Stationary consoles (30, 32) are arranged"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a console with a driven carrier for a suction block, which is essentially the same device.",
+    "pub": "US-2002074703-A1",
+    "text": "Device for fixing workpieces | The invention pertains to a device for fixing workpieces and contains at least one clamping beam and a suction block that lies on the clamping beam. The suction block is mounted on a sled that can be displaced in the longitudinal direction of the clamping beam. In addition, the suction block can be lifted off the surface of the clamping beam. | Device for fixing work"
+   }
+  ]
+ },
+ {
+  "label": "gold:probst_kerb",
+  "slug": "probst_kerb_lifter",
+  "query": "Lifting appliance, in particular for laying kerb stones, paving flags and the li",
+  "n": 10,
+  "relevant": 3,
+  "borderline": 6,
+  "irrelevant": 1,
+  "precision_strict": 0.3,
+  "precision_lenient": 0.6,
+  "judged": [
+   {
+    "verdict": "borderline",
+    "reason": "Reference is for lifting kerbstones, but uses a caliper mechanism, not a mast.",
+    "pub": "EP-0138497-A3",
+    "text": "Lifting and positioning aid | There is disclosed a calliper-type lifting device wherein the \nwork engaging parts at the ends of the pivotted levers are \nadapted for location in a narrow space suiting the aid for the \nmanoeuvering of kerbstones, paving flags, building blocks or \nthe like. | A lifting and positioning aid of the kind referred to characterised in that said work engaging and gripping p"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Both relate to lifting devices for heavy blocks, but the reference lacks a mast and specific kerbstone handling features.",
+    "pub": "US-3973795-A",
+    "text": "Lifting device for handling cut cellular concrete bodies | A load-lifting device comprises a generally horizontal frame to be lifted and a plurality of load-engaging carriers movable by means of actuators along said supporting frame in a direction, in which the carriers form a row. Every two adjacent carriers are interconnected by a group of actuators that is operable independently of all the othe"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a lifting device with an articulated arm and sucker plate for handling objects, similar to the invention's purpose.",
+    "pub": "EP-0393004-A1",
+    "text": "Lifting device | The invention relates to a lifting device for sheets of glass or, more generally, for handling sheets of glass or other objects which can be gripped by a sucker plate. The lifting device according to the invention comprises an elevator (2) with a platform (3), mounted on a self-powered vehicle (1), and an articulated and orientable lifting arm (4) equipped with a sucker plate (9) "
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a lifting appliance for laying paving stones, with a hoist mechanism on a carrier arm, similar to the invention's mast.",
+    "pub": "DE-2751515-A1",
+    "text": "Vehicle with lifting gear laying concrete paving stones - has rotatable hoist on arm, with shaft facing control position | The appliance is fitted with a hoist mechanism for use in laying concrete shaped paving blocks, mounted at the open end of a carrier arm hinged so as to swivel vertically on a pref. motor-driven chassis. The hoist mechanism (7) is rotatably mounted on the carrier arm (6), and "
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "The reference describes a block-lifting device with a parallelogram linkage, not a mast-based lifting appliance.",
+    "pub": "US-3098673-A",
+    "text": "Lifting device | A DEVICE FOR LIFTING A STACK OF BLOCKS COMPRISING, A FRAME, DOWNWARDLY EXTENDING BARS PIVOTALLY SUPPORTED AT THEIR UPPER ENDS TO THE OPPOSITE ENDS OF SAID FRAME, A PAIR OF SPACED LONGITUDINALLY EXTENDING BEAMS, EACH END OF EACH OF SAID BEAMS BEING SUPPORTED BY THE LOWER ENDS OF SEVERAL OF SAID BARS WHICH ARE ARRANGED IN PARALLOGRAM FORMATION FOR SWINGING MOVEMENT OF SAID BEAMS TOW"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a self-propelled apparatus with a mobile arm and suction cups for lifting paving stones.",
+    "pub": "US-4787812-A",
+    "text": "Apparatus for lifting arrays of paving stones and the like | A self-propelled apparatus for lifting arrays of paving stones has a mobile arm one end of which carries a support for a polygonal assembly of suction cups having axially and angularly movable bellows which attract the paving stones of an array during transport. The support further carries directional jaws which are adjacent to the sides"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Reference discloses a vacuum lifting device, but lacks the mast and basic body of the invention.",
+    "pub": "US-3183032-A",
+    "text": "Vacuum lifting device | A VACUUM LIFTING DEVICE COMPRISING A HORIZONTAL FLEXIBLE PAD PROVIDED WITH A SURROUNDING DEPENDING LIP, SAID PAD BEING PROVIDED WITH A PLURALITY OF VERTICAL OPENINGS, A SEPARATE METAL BOTTOM PLATE ENGAGING THE BOTTOM OF THE PAD AROUND EACH OPENING, THE PLATES HAVING OUTER EDGES ADJACENT THE UPPER PORTIONS OF SAID LIP, THE PLATES BEING SPACED A SHORT DISTANCE APART TO PROVID"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum lifting apparatus with a lift tube, but lacks the mast and specific application for kerb stones.",
+    "pub": "US-5039274-A",
+    "text": "Vacuum lifting apparatus | Valve means 1 for controlling vacuum lifting apparatus 2 comprising a bellows like lift tube 3 having an interior 6 connectable to a vacuum generating means, with a suction foot 10 associated with the lift tube 4. Valve means 1, serving to connect the interior 6 at a controllable level to atmosphere to regulate the vacuum therein and hence the axial extension of the lift"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Reference discloses a vacuum lifting apparatus, but lacks the mast and basic body of the invention.",
+    "pub": "US-3152828-A",
+    "text": "Vacuum cup units for lifting pads | VACUUM LIFTING APPARATUS, COMPRISING, IN COMBINATION, A VACUUM CUP INCLUDING, A CARRIER PLATE (C) RECESSED ALONG ITS UPPER EDGE TO PROVIDE A POCKET, A ONE-PIECE RESILIENT VACUUM CUP (B) HAVING A MEDIAL PORTION COEXTENSIVE WITH THE LOWER MATERIAL ENGAGING FACE OF SAID CARRIER PLATE (C) AND ALSO HAVING AN ELASTIC FLANGE (7) FITTED IN SAID POCKET, A SUPPORT (A), IN"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum lifting apparatus with vacuum pads and a lifting arm, but not specifically for kerbstones or a mast structure.",
+    "pub": "US-4978269-A",
+    "text": "Vacuum controlled lifting apparatus | A vacuum-controlled apparatus for gripping or gripping and lifting a load such as a roll-out refuse container. The lifting apparatus includes a primary vacuum pad for initially engaging the load, the primary vacuum pad comprising a vacuum head for exerting a vacuum-induced suction grip on the load, secondary vacuum pad carried by the vacuum head for secondaril"
+   }
+  ]
+ },
+ {
+  "label": "ft:handheld_lifter",
+  "slug": "adhoc-c603fc0bc21f",
+  "query": "A cordless handheld vacuum lifter for glass and stone panels, with a flexible se",
+  "n": 10,
+  "relevant": 2,
+  "borderline": 6,
+  "irrelevant": 2,
+  "precision_strict": 0.2,
+  "precision_lenient": 0.5,
+  "judged": [
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a portable vacuum gripper with a flexible seal for irregular surfaces and battery-operated vacuum generation.",
+    "pub": "US-12115659-B1",
+    "text": "Portable vacuum gripper | A vacuum gripper for gripping an object surface using vacuum suction is configured to be portable or operated by a hoist. Battery conservation measures are included to provide a long term vacuum generation capability, together with manually rechargeable mechanism. A manually-operated vacuum pump is also integrated to the vacuum gripper as a safeguard for the battery-opera"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum lifting device with a sensor system, but lacks cordless, handheld, flexible lip, or continuous pump operation.",
+    "pub": "US-2022153556-A1",
+    "text": "Vacuum lifting device | The invention relates particularly to a vacuum lifting device comprising a sensor system for the direct or indirect determination or estimation of the type and/or weight of goods gripped or to be gripped by a suction means of the vacuum lifting device. | A vacuum lifting device comprising: a suction line extending between a vacuum connection of a vacuum supply and an outlet"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum gripper with a flexible seal, continuous air extraction, and a base element, similar to the invention.",
+    "pub": "US-11999030-B2",
+    "text": "Vacuum gripper | A vacuum gripper comprises a rigid base element and a loop-shaped vacuum seal element. The base element has first and second opposite sides. The seal element is attached at least indirectly to the second side and protruding therefrom in a direction away from the first side. The seal element comprises a contact surface that at least partially contacts with an object surface and an "
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum lifter for sheet material, but lacks handheld, cordless, flexible lip, or continuous pump operation for rough surfaces.",
+    "pub": "US-11235939-B2",
+    "text": "Vacuum lifter | A vacuum lifter apparatus for lifting sheet material articles, comprises an upper chassis joined to a substantially planar lower suction plate and an airflow suction system for conveying vacuum air pressure to the suction plate. The suction plate comprises a lower side and an upper side, the upper side of the suction plate being affixed to the chassis, and the suction plate lower s"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses an electric vacuum suction lifter with sealing units, but lacks explicit mention of handheld, cordless, or rough surface capabilit",
+    "pub": "US-10625955-B2",
+    "text": "Electric vacuum suction lifter | A touch display device includes a display module, a touch module and a light-transmitting substrate. The display module has a display surface and a bottom surface opposite to the display surface. The touch module is fixed to the display surface by an adhesive. The adhesive, the touch module and the display surface together form an accommodating space between the di"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a portable vacuum lifter with pump, seal, and gauge, but not explicitly handheld or for rough/porous surfaces.",
+    "pub": "US-12122645-B2",
+    "text": "Portable vacuum lifter system | A portable vacuum lifter system having a power source, drive motor, vacuum pump and reservoir contained in a readily carriable case. The system also has a vacuum pad in fluid communication with the vacuum pump via a vacuum line and a solenoid operated valve. The system is removably mountable on a small host vehicle for use in confined areas. | A portable vacuum lift"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum lifter for sheet material with an airflow suction system, but lacks handheld, cordless, flexible lip, or pressure sensor.",
+    "pub": "US-11420830-B2",
+    "text": "Vacuum lifter | A vacuum lifter apparatus for lifting sheet material articles, comprises an upper chassis joined to a substantially planar lower suction plate and an airflow suction system for conveying vacuum air pressure to the suction plate. The suction plate comprises a plurality of suction plate modules, each comprising a housing with a substantially hollow interior and each of the housings b"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum lifting device with handles and a sealing joint, but lacks cordless, electric pump, or pressure sensor.",
+    "pub": "US-12358725-B2",
+    "text": "Vacuum lifting device | A vacuum lifting device to facilitate the lifting and/or repositioning of an article having an external surface as set out herein comprises at least one pair of handles and a base having opposed first and second surfaces, the base having an aperture arranged through the base. The second surface is arranged is provided with a continuous sealing joint projecting downwards fro"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "This is a heavy-duty attachment for a hydraulic work machine, not a handheld cordless lifter.",
+    "pub": "US-10071885-B2",
+    "text": "Vacuum lift attachment | A vacuum lift attachment ( 10 ) for a hydraulic work machine, the hydraulic work machine including a control station, a lift arm to which the hydraulic work attachment can be coupled, an auxiliary hydraulic system for operating a coupled hydraulic work attachment and an auxiliary hydraulic actuator in the control station that upon actuation by an operator causes an auxilia"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "This is an automated gantry-style plate lifter, not a handheld cordless device for rough surfaces.",
+    "pub": "US-11247858-B2",
+    "text": "Vacuum lifter | A vacuum plate lifting system for lifting sheet material articles, comprises a vacuum lifter apparatus for lifting sheet material articles, a lifter actuation system configured to lift and/or move the vacuum lifter apparatus during use and a control system, the control system being configured to control the lifter actuation system during said movement. The vacuum lifter apparatus c"
+   }
+  ]
+ },
+ {
+  "label": "ft:robotic_eoat",
+  "slug": "adhoc-a9f6bc2b1114",
+  "query": "A robotic end-of-arm vacuum gripper for depalletizing cardboard boxes, with an a",
+  "n": 10,
+  "relevant": 3,
+  "borderline": 3,
+  "irrelevant": 4,
+  "precision_strict": 0.3,
+  "precision_lenient": 0.45,
+  "judged": [
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a robotic vacuum gripper with a single cup, but lacks an array, independent valving, or venturi generator.",
+    "pub": "EP-4359177-A1",
+    "text": "Vacuum gripping system with extending gripper arm | A vacuum gripping system for grabbing and releasing an object has a base frame for operably engaging a robotic arm. The base frame includes a pneumatic source connector. The system also includes an extendable member configured to extend and retract relative to the base frame. The extendable member has a distal end and a proximal end. The extendab"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a robotic arm with individually controlled vacuum cups, but for dispensing articles, not depalletizing boxes, and lacks venturi.",
+    "pub": "US-11315381-B2",
+    "text": "Apparatuses, systems, and methods for the automated dispensing of articles | Provided herein is a system for automated dispensing of articles. Systems may include: a robotic arm; an end-of-arm tool attached to the robotic arm; a scanning device proximate the end-of-arm tool; and a controller to control the robotic arm and the end-of-arm tool. The end-of-arm tool may include a body and two or more "
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a multi-cup vacuum gripper with independent valving, vacuum pump, and control system for selective cup activation.",
+    "pub": "US-9205558-B1",
+    "text": "Multiple suction cup control | Example embodiments may provide for control of a suction gripper with multiple suction cups. One example system includes a suction gripper and a control system. The suction gripper may include a vacuum pump, a plurality of suction cups coupled to the vacuum pump, and a plurality of sensors corresponding to the suction cups, where a sensor is positioned between the va"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "Reference describes a single suction cup design, not an array with independent valving or a venturi generator.",
+    "pub": "US-9221623-B2",
+    "text": "Suction gripper apparatus | A suction gripper apparatus with a suction head, which is mounted with at least one elastic mounting member on a working head of an actuation device, the suction head having an elastic suction cup which possesses a suction body and a suction lip forming an open edge portion of the suction body and running in a suction plane, wherein the suction head possesses a retainin"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a lift head with individually valved suction chambers for handling palletized goods.",
+    "pub": "US-9260256-B2",
+    "text": "Apparatus for handling layers of palletized goods | An apparatus for handling layers of palletized goods is disclosed including a lift head with a substantially horizontal suction face sized for a pallet including downwardly open suction chambers, which via individual valves are connected to a vacuum source, incorporated in the lift head or provided externally. The suction face is movable against "
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "Reference describes a single high-flow vacuum source and contact surface, not an array of independently valved suction cups.",
+    "pub": "US-10857682-B2",
+    "text": "Systems and methods for providing high flow vacuum acquisition in automated systems | A system is disclosed for providing high flow vacuum control to an end effector of an articulated arm. The system includes a high flow vacuum source that provides an opening with an area of high flow vacuum at the end effector such that objects may be engaged while permitting substantial flow of air through the o"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a robotic gripper with an array of independently controlled vacuum assemblies for grasping objects.",
+    "pub": "US-12447620-B2",
+    "text": "Methods and apparatus for controlling a gripper of a robotic device | Methods and apparatus for controlling a robotic gripper of a robotic device are provided. The method includes activating a plurality of vacuum assemblies of the robotic gripper to grasp one or more objects, disabling one or more of the plurality of vacuum assemblies having a seal quality with the one or more objects that is less"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a robotic suction gripper with multiple cups and linear actuation, but lacks independent valving, venturi, or controller mapping.",
+    "pub": "US-9498887-B1",
+    "text": "Two-faced linearly actuated gripper | An example two-faced linearly actuated suction gripper includes a first gripping surface having one or more first suction cups arranged to provide suction in a first direction. The suction gripper also includes a second gripping surface comprising one or more second suction cups arranged to provide suction in a second direction which is perpendicular to the fi"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "This reference describes a single suction cup with a pressure pad, not an array of independently valved cups or a vacuum generator.",
+    "pub": "EP-1580158-A1",
+    "text": "Suction gripper | A pressure pad (30) is located inside the suction space (22) and secured to the gripper base (12). The pad is a bellows made from an elastic material (preferably a plastic material and especially rubber) and filled, fillable or inflatable with a fluid. | Sauggreifer (10) mit einem Grundk\u00f6rper (12) und einer am Grundk\u00f6rper (12) befestigten umlaufenden Dichtlippe (16), die vom Grun"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "Describes a specific vacuum cup valve, not a gripper with an array of cups, venturi, or controller.",
+    "pub": "US-11325266-B1",
+    "text": "Bellows valve for vacuum systems | A valve for use within a vacuum cup of a vacuum gripping system is described. In one example, a vacuum cup includes a bellows and a valve assembly seated within an inner chamber of the bellows. The valve assembly includes a body disk seated within the inner chamber, a control disk seated toward a suction cup end of the bellows, a spring positioned between the bod"
+   }
+  ]
+ },
+ {
+  "label": "ft:suction_pnp",
+  "slug": "adhoc-f7ee7d708d59",
+  "query": "A suction-cup gripper for a pick-and-place machine handling smooth plastic parts",
+  "n": 10,
+  "relevant": 2,
+  "borderline": 7,
+  "irrelevant": 1,
+  "precision_strict": 0.2,
+  "precision_lenient": 0.55,
+  "judged": [
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a silicone suction cup for delicate objects, but lacks bellows or check valve for power loss.",
+    "pub": "US-4582353-A",
+    "text": "Suction cup for gripping small, delicate objects | A tubular silicone suction cup comprises a cylindrical body 9 tapering to an outwardly flared cone 11 at its lower end lined with a thin, flexible biconical latex skirt 20 extending below the cone, the skirt adapting to complex shapes of objects to be grasped, such as small confectionery or food items. | A suction cup for grasping small, delicate,"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses bellows and suction for plastic parts, but lacks check valve and specific cup style.",
+    "pub": "DE-4109724-C1",
+    "text": "Pick=up head for small articles - has suction or adhesive heads mounted on tentacles extending from spherical bellows | The gripper picks up nonmetal, plastics, rubber, wood or iron parts from random in a container, singly or in small amounts. Couplings suction or adhesive are held by a spherical bellows which fits snugly onto the shape and position of the part and thus completes the connection fo"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a bellows-style suction cup with a valve, directly addressing core features of the invention.",
+    "pub": "US-7000964-B1",
+    "text": "Vacuum flow suction cup assembly | A contact activated vacuum assisted suction cup assembly comprising: 1) a cylindrical bellowed or corrugated cup defining a plurality of interconnected bellows or corrugations of alternating, coaxial large and small diameter areas, hereinafter \u201cbellows\u201d, and having; A) an open contact end; and B) a valve end including a valve seat; 2) a valve stem having first an"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a bellows-style suction cup for handling objects, but lacks a check valve for vacuum retention.",
+    "pub": "US-6588718-B2",
+    "text": "Bellowed suction cup | A resilient suction cup includes a body having an outer lip and a centrally located stem. The stem includes a substantially bell shaped stop and a plurality of expandable bellows. When the suction cup is positioned on an object, a vacuum source withdraws air from a cavity formed by the body. As the air is withdrawn by the vacuum source, the plurality of bellows collapse, and"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "Reference describes a suction cup with a retaining plate, but lacks bellows, check valve, or power loss handling.",
+    "pub": "US-9221623-B2",
+    "text": "Suction gripper apparatus | A suction gripper apparatus with a suction head, which is mounted with at least one elastic mounting member on a working head of an actuation device, the suction head having an elastic suction cup which possesses a suction body and a suction lip forming an open edge portion of the suction body and running in a suction plane, wherein the suction head possesses a retainin"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a suction gripper with resilient material, but lacks bellows or check valve for power loss.",
+    "pub": "US-3223442-A",
+    "text": "Suction grippers | A SUCTION GRIPPER CONSISTING A MOUTHPIECE OF RESILIENT MATERIAL HAVING A OPEN MOUTH, A PART-SPHERICAL SOCKET AND A THROUGHWAY FOR SUCTION LEADING FROM THE SOCKET TO THE MOUTH, IN COMBINATION WITH A CARRIER MEMBER HAVING A BALL RECEIVED WITHIN THE SAID SOCKET AND RESILIENTLY GRIPPED THEREBY FORMING A BALL AND SOCKET PIVOTAL ATTACHMENT OF THE MOUTHPIECE TO THE CARRIER MEMBER AND A"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a bellows-style elastomer suction cup for robotic picking, directly addressing core features.",
+    "pub": "US-12202128-B1",
+    "text": "Robotic picking assemblies with highly damped suction cups | Systems and methods are disclosed for robotic picking assemblies with highly damped suction cups. In one embodiment, an example suction cup for a picking assembly may include a shell formed of an elastomeric material, where the shell forms a first bellow. The suction cup may include a first fluid chamber disposed on an outer portion of t"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a suction gripper with a bellows-style pressure pad, but lacks the check valve for vacuum retention.",
+    "pub": "EP-1580158-A1",
+    "text": "Suction gripper | A pressure pad (30) is located inside the suction space (22) and secured to the gripper base (12). The pad is a bellows made from an elastic material (preferably a plastic material and especially rubber) and filled, fillable or inflatable with a fluid. | Sauggreifer (10) mit einem Grundk\u00f6rper (12) und einer am Grundk\u00f6rper (12) befestigten umlaufenden Dichtlippe (16), die vom Grun"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum cup gripper for robotic arm, but lacks bellows-style cup and check valve for power loss.",
+    "pub": "EP-4359177-A1",
+    "text": "Vacuum gripping system with extending gripper arm | A vacuum gripping system for grabbing and releasing an object has a base frame for operably engaging a robotic arm. The base frame includes a pneumatic source connector. The system also includes an extendable member configured to extend and retract relative to the base frame. The extendable member has a distal end and a proximal end. The extendab"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a portable vacuum gripper with a vacuum seal and air extraction, but not a bellows cup or check valve.",
+    "pub": "US-12115659-B1",
+    "text": "Portable vacuum gripper | A vacuum gripper for gripping an object surface using vacuum suction is configured to be portable or operated by a hoist. Battery conservation measures are included to provide a long term vacuum generation capability, together with manually rechargeable mechanism. A manually-operated vacuum pump is also integrated to the vacuum gripper as a safeguard for the battery-opera"
+   }
+  ]
+ },
+ {
+  "label": "edge:broad_vacuumgripper",
+  "slug": "adhoc-b9edaa69dda8",
+  "query": "vacuum gripper",
+  "n": 10,
+  "relevant": 10,
+  "borderline": 0,
+  "irrelevant": 0,
+  "precision_strict": 1.0,
+  "precision_lenient": 1.0,
+  "judged": [
+   {
+    "verdict": "relevant",
+    "reason": "The reference is explicitly titled 'Vacuum gripper for transferring articles' and describes a vacuum gripper with specific valve features.",
+    "pub": "EP-1802550-A1",
+    "text": "Vacuum gripper for transferring articles | An aim of the invention is a vacuum gripper with which articles can be gripped from above, from one side and from below by means of negative pressure. The device can be moved into different positions and places by manpower or mechanically with a robot or the like lifting device. The vacuum gripper comprising a vacuum space (7), sealing means (6), a plural"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "The reference discloses a vacuum gripper unit with a vacuum pump and common vacuum chamber, directly matching the invention query.",
+    "pub": "US-10456928-B2",
+    "text": "Vacuum gripper unit comprising vacuum pump | The present invention relates to a vacuum gripper unit. The unit has a first mounting container and a second mounting container of cylindrical shapes formed in an H-type when seen from the outside, including a main body for providing a common vacuum chamber. A vacuum pump is inserted into the first mounting container, while the vacuum pump or a release "
+   },
+   {
+    "verdict": "relevant",
+    "reason": "The reference describes a modular vacuum gripper with plates, framework, orifices, sealing, and vacuum generation.",
+    "pub": "US-9815209-B2",
+    "text": "Casing with modular vacuum | A modular vacuum gripper having a first plate, a second plate provided with at least one downstream orifice, framework members, assembly device for assembling the first plate, the second plate and the framework members, at least one upstream orifice situated on one of the walls of the vacuum gripper, sealing device, vacuum generation device adapted to suck out the air "
+   },
+   {
+    "verdict": "relevant",
+    "reason": "The reference discloses a vacuum gripping system with a vacuum cup, directly matching the invention query.",
+    "pub": "EP-4359177-A1",
+    "text": "Vacuum gripping system with extending gripper arm | A vacuum gripping system for grabbing and releasing an object has a base frame for operably engaging a robotic arm. The base frame includes a pneumatic source connector. The system also includes an extendable member configured to extend and retract relative to the base frame. The extendable member has a distal end and a proximal end. The extendab"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "The reference discloses a \"device for vacuum gripping\" with a gripper body, suction throat, and supply/discharge lines.",
+    "pub": "US-2014062112-A1",
+    "text": "Device for vacuum gripping | Disclosed is a device for vacuum gripping that may be used in a vacuum transfer system. The vacuum gripping device includes a supply passage extending from the lower end of the sidewall of a gripper body having a discharge passage therein to a suction hole provided below the lower end of the discharge passage. Further, an air guide is mounted to the lower end of the gr"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum gripping device with multiple suction bodies and individual suction valves, matching the core invention.",
+    "pub": "US-9676565-B2",
+    "text": "Vacuum gripping device | A vacuum gripping device comprising a plurality of suction bodies, each comprising a suction chamber for applying to a workpiece to be gripped, a suction valve is associated with each suction point, wherein each suction valve comprises a vacuum supply side for connection to a vacuum supply device and a suction side connected to the suction chamber of the assigned suction b"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "Discloses a vacuum gripping pad with a flexible sealing ring and lips for engaging a workpiece.",
+    "pub": "US-3195941-A",
+    "text": "Vacuum gripping pad | A VACUUM GRIPPING MEMBER COMPRISING IN COMBINATION, A GENERALLY PLANAR PAD HAVING AN OPENING IN THE BOTTOM FACE THEREOF ADAPTED TO BE PLACED IN COMMUNICATION WITH MEAENS FOR PRODUCING A VACUUM, WHICH PAD HAS AN UPPER PORTION WITH A GENERALLY VERTICAL EDGE EXTENDING AROUND THE PERIPHERY THEREOF, AND A BOTTOM PORTION OF REDUCED CROSS-SECTION THEREBY FORMING A DOWNWARDLY FACING "
+   },
+   {
+    "verdict": "relevant",
+    "reason": "The reference is titled \"Vacuum Gripper\" and describes a vacuum-actuated gripper for holding objects.",
+    "pub": "US-3147017-A",
+    "text": "Vacuum gripper | A WORK HOLDING APPARATUS FOR HOLDING IN A FIXED RELATION TO A REFERENCE SURFACE AN OBJECT HAVING AN ANNULAR, INTERNAL SURFACE COMPRISING, (A) A GRIPPER BODY ASSOCIATED WITH SAID REFERENCE SURFACE AND HAVING A GENERALLY ANNULAR EXTERNAL SURFACE ADAPTED TO MATE WITH THE INTERNAL SURFACE OF A WORKPIECE TO BE HELD, (B) SAID GRIPPER BODY DEFINING AT LEAST ONE CIRCUMFERENTIAL GROOVE AT "
+   },
+   {
+    "verdict": "relevant",
+    "reason": "The reference describes a suction gripper apparatus with a suction head and elastic suction cup, directly matching the invention query.",
+    "pub": "US-9221623-B2",
+    "text": "Suction gripper apparatus | A suction gripper apparatus with a suction head, which is mounted with at least one elastic mounting member on a working head of an actuation device, the suction head having an elastic suction cup which possesses a suction body and a suction lip forming an open edge portion of the suction body and running in a suction plane, wherein the suction head possesses a retainin"
+   },
+   {
+    "verdict": "relevant",
+    "reason": "The reference discloses a suction gripper for gripping objects using vacuum, which is the core mechanism.",
+    "pub": "EP-4142986-A1",
+    "text": "Suction gripper and vacuum handling system | The invention relates to a suction gripper (10) for gripping and handling an object by means of a vacuum, having a base part (20), wherein the suction gripper has a suction side (14) with a suction surface (16) which provides a suction cross section (18) for suctioning the object, wherein the suction gripper has at least one displacement part (24) which"
+   }
+  ]
+ },
+ {
+  "label": "edge:narrow_multifeature",
+  "slug": "adhoc-69be53deb741",
+  "query": "A vacuum gripper with a self-cleaning porous sintered-metal contact face, an int",
+  "n": 10,
+  "relevant": 0,
+  "borderline": 7,
+  "irrelevant": 3,
+  "precision_strict": 0.0,
+  "precision_lenient": 0.35,
+  "judged": [
+   {
+    "verdict": "irrelevant",
+    "reason": "Reference discloses a suction cup gripper, not a porous sintered-metal contact face or any specific control/sensing features.",
+    "pub": "US-9221623-B2",
+    "text": "Suction gripper apparatus | A suction gripper apparatus with a suction head, which is mounted with at least one elastic mounting member on a working head of an actuation device, the suction head having an elastic suction cup which possesses a suction body and a suction lip forming an open edge portion of the suction body and running in a suction plane, wherein the suction head possesses a retainin"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum gripper with a proportional vacuum valve and a flow sensor, but lacks self-cleaning, sintered metal, Venturi, or capaciti",
+    "pub": "DE-102007031760-A1",
+    "text": "Vacuum device for handling tools has a vacuum-gripper module fitted with a suction gripper applied with a vacuum for causing a sucking effect so as to grip an object | A vacuum valve (36) is designed as an electrically triggered proportional valve for controlling a vacuum applied to a suction gripper (7). A through-flow sensor (42) measures flow of a resulting sucking capacity. Evaluatory electron"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum gripper with a vacuum generator and controllable valve, but lacks specific features like sintered-metal face or capacitiv",
+    "pub": "US-9656813-B2",
+    "text": "System for handling workpieces and method for operating such a system | The invention relates to a system ( 10 ) for handling workpieces, with a handling device ( 12 ) which comprises at least one vacuum gripper ( 16 ) for drawing a workpiece in by suction, with at least one vacuum generator ( 26 ) that can be operated by the supply of compressed air for supplying the vacuum gripper ( 16 ) with va"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum gripper element, but lacks specific features like sintered-metal face, Venturi ejector, proportional valve, or capacitive",
+    "pub": "EP-4076869-A1",
+    "text": "Vacuum gripper element and vacuum gripper device | The invention relates to a vacuum gripper element (1) and a vacuum gripper device (24) which are designed to suck against or to hold a component that is to be transported when a vacuum is supplied. The vacuum gripper device (24) comprises a support device (6) and at least one vacuum gripper element (1) connected releasably to the support device (6"
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "This reference describes a mechanical work-holding apparatus, not a vacuum gripper with the specified features.",
+    "pub": "US-3147017-A",
+    "text": "Vacuum gripper | A WORK HOLDING APPARATUS FOR HOLDING IN A FIXED RELATION TO A REFERENCE SURFACE AN OBJECT HAVING AN ANNULAR, INTERNAL SURFACE COMPRISING, (A) A GRIPPER BODY ASSOCIATED WITH SAID REFERENCE SURFACE AND HAVING A GENERALLY ANNULAR EXTERNAL SURFACE ADAPTED TO MATE WITH THE INTERNAL SURFACE OF A WORKPIECE TO BE HELD, (B) SAID GRIPPER BODY DEFINING AT LEAST ONE CIRCUMFERENTIAL GROOVE AT "
+   },
+   {
+    "verdict": "irrelevant",
+    "reason": "Reference describes a mechanical object-sensing valve, not a self-cleaning face, Venturi, proportional valve, or capacitive sensor.",
+    "pub": "US-9114535-B2",
+    "text": "Object-sensing valve for a vacuum gripper | An object-sensing valve configured for integration in the suction duct ( 3 ) of a vacuum gripper includes a flexible and back-springing tongue ( 10 ), one end ( 11 ) of which is anchored by the side of the suction duct and the other end ( 14 ) of which extends freely outside a mouth ( 8; 8 \u2032) to the suction duct, the tongue dimensioned to be forced by an"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a vacuum gripper with an ejector nozzle (Venturi) and perforated suction wall, but lacks self-cleaning, proportional control, or c",
+    "pub": "US-2010025905-A1",
+    "text": "Pneumatically actuated area vacuum gripper | A pneumatically actuated area vacuum gripper for gripping and, if necessary, separating workpieces is provided by the present disclosure. In particular, the vacuum gripper is used with thin, flexible workpieces, and has a suction chamber, which has a suction wall with perforations, to be placed on the workpiece. An ejector nozzle has a connection and an"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a Venturi ejector and gripping member, but lacks self-cleaning face, proportional control, or capacitive sensor.",
+    "pub": "US-2010045057-A1",
+    "text": "Ejector device with ventilation action | An ejector device adapted to generate a negative pressure with compressed air, which via a compressed-air duct is fed to an ejector, the device including a valve member arranged in the compressed-air duct and controllable in order to, in the open position, allow flow of compressed air to the ejector, an air suction duct arranged between the ejector and a gr"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses a Venturi vacuum generator and object sensing for a gripper, but lacks porous face, proportional valve, or capacitive sensor.",
+    "pub": "US-4750768-A",
+    "text": "Gripper device | This all pneumatic vacuum gripper which utilizes a fluid amp sensor senses an object when the object comes in contact with vacuum cup. This activates the main venturi vacuum generator which provides the vacuum force necessary to `grip` the object to be lifted. An external release signal cuts the vacuum `off` to release the object. Vacuum power is generated only when lifting the ob"
+   },
+   {
+    "verdict": "borderline",
+    "reason": "Discloses an integrated Venturi ejector and addresses debris, but lacks porous face, proportional valve, or capacitive sensor.",
+    "pub": "US-2025339884-A1",
+    "text": "Occluding purge venturi systems and methods of use thereof | The systems and methods relate to high-speed object manipulation using a vacuum system in combination with an occluding purge assembly. This system addresses the technical problem of blockages caused by debris or contaminants in open-to-atmosphere venturi systems. The solution involves an occluding purge assembly that seals the exhaust p"
+   }
+  ]
+ }
+]

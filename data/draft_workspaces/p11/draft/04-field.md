@@ -1,0 +1,1 @@
+The present disclosure relates to control of electric-vehicle charging equipment, and more particularly to an edge controller that allocates current among several electric-vehicle connectors supplied by a common electrical branch whose allowable aggregate current is lower than the sum of the ratings of those connectors.

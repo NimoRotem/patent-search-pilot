@@ -44,8 +44,12 @@ def test_the_suite_opted_itself_in():
 
 
 def test_production_sql_excludes_the_prefix(monkeypatch):
+    """'test%', not 'test-%'. The suite creates `testq-...` rows as well, and on 2026-08-23 a
+    restarted deep worker claimed one and spent model calls on it. The narrower pattern would
+    let that happen again, so the guard covers every slug that starts with the word."""
     monkeypatch.setattr(runstore, "ALLOW_TEST_SLUGS", False)
-    assert runstore._live_only() == "AND slug NOT LIKE 'test-%%'"
+    assert runstore._live_only() == "AND slug NOT LIKE 'test%%'"
+    assert "testq-abc" .startswith("test")
     monkeypatch.setattr(runstore, "ALLOW_TEST_SLUGS", True)
     assert runstore._live_only() == ""
 

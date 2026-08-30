@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Patent search and drafting | Rotem Patents{% endblock %}
+{% block body %}
+<section class="landingmast">
+  <div class="wrap landingmast-grid">
+    <div class="landingcopy">
+      <p class="eyebrow">Patent search and drafting</p>
+      <h1>Find the prior art.<br>Build the application.</h1>
+      <p class="lede">Search claims, specifications, drawings and live patent sources. Every
+        strong reference is read against the invention, then carried directly into a drafting
+        workspace.</p>
+      <div class="landingactions">
+        <a class="btn big" href="{{ request.script_root }}/register">Create a free account</a>
+        <a class="btn ghost big" href="{{ request.script_root }}/login">Sign in</a>
+      </div>
+      <p class="landingnote">No card required. Your searches and drafts stay in your account.</p>
+    </div>
+
+    <aside class="workpreview" aria-label="Example patent search report">
+      <div class="previewtop">
+        <div>
+          <span class="previewlabel">Search report</span>
+          <strong>Compliant vacuum lifting head</strong>
+        </div>
+        <span class="previewmode">Novelty</span>
+      </div>
+      <div class="previewmetrics">
+        <span><b>50</b> ranked references</span>
+        <span><b>12</b> claim elements</span>
+        <span><b>8</b> source channels</span>
+      </div>
+      <div class="previewresult">
+        <span class="previewrank">01</span>
+        <div>
+          <strong>Handheld vacuum lifting apparatus</strong>
+          <p>Flexible sealing lip, pump control and pressure-loss warning.</p>
+          <div class="previewevidence"><span>Evidence</span> "a pressure sensor configured to
+            signal a loss of holding vacuum"</div>
+        </div>
+        <span class="previewscore">92</span>
+      </div>
+      <div class="previewresult mutedresult">
+        <span class="previewrank">02</span>
+        <div><strong>Portable suction gripping device</strong><p>Seal geometry and cordless pump assembly.</p></div>
+        <span class="previewscore">84</span>
+      </div>
+      <div class="previewfoot"><span>Full text checked</span><span>Family deduplicated</span><span>Sources linked</span></div>
+    </aside>
+  </div>
+</section>
+
+<div class="wrap landingbody">
+  <section class="landmetrics" aria-label="Search coverage">
+    <div><b>{% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}Live{% endif %}</b><span>publications indexed</span></div>
+    <div><b>{% if corpus.chunks %}{{ '{:.1f}M'.format(corpus.chunks / 1000000) }}{% else %}Millions{% endif %}</b><span>searchable passages</span></div>
+    <div><b>{{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join('  ') }}</b><span>deep corpus jurisdictions</span></div>
+    <div><b>Evidence first</b><span>references read in full, then carried into drafting</span></div>
+  </section>
+
+  <section class="landingsection">
+    <div class="sectionintro">
+      <p class="eyebrow">One evidence trail</p>
+      <h2>From disclosure to filing package</h2>
+      <p>The work stays connected. Search context, cited references, draft sections and drawings
+        remain available throughout the matter.</p>
+    </div>
+    <div class="workflowgrid">
+      <article><span>01</span><h3>Describe or upload</h3><p>Start with plain language, a patent link, or a PDF. Review the extracted invention before searching.</p></article>
+      <article><span>02</span><h3>Search and verify</h3><p>Retrieve across the local corpus and external sources, deduplicate families, and inspect the passages behind each result.</p></article>
+      <article><span>03</span><h3>Draft and revise</h3><p>Open the report in the drafting studio, revise by conversation, generate drawings, and run another search without leaving.</p></article>
+    </div>
+  </section>
+
+  <section class="capabilitysplit">
+    <div class="capabilitycopy">
+      <p class="eyebrow">Search</p>
+      <h2>Similarity is the start, not the answer.</h2>
+      <p>References are ranked by the invention elements they disclose. Filled chart cells carry
+        a quote and location. Unread or unavailable text is identified instead of silently scored
+        as evidence.</p>
+      <a href="{{ request.script_root }}/how-it-works">See the retrieval method</a>
+    </div>
+    <div class="capabilitycopy">
+      <p class="eyebrow">Draft</p>
+      <h2>Prior art stays beside the claims.</h2>
+      <p>Build a US application from a completed search or start from scratch. Drawing numerals are
+        checked in both directions, and each revision receives an independent review.</p>
+      <a href="{{ request.script_root }}/register">Start a matter</a>
+    </div>
+  </section>
+
+  <section class="trustbar">
+    <div><strong>Clear scope</strong><span>Coverage and date ceilings stay visible in every report.</span></div>
+    <div><strong>Source linked</strong><span>Open the publication behind each result and citation.</span></div>
+    <div><strong>Versioned work</strong><span>Drafts, reviews and drawings retain their history.</span></div>
+  </section>
+</div>
+{% endblock %}

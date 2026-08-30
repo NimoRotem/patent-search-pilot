@@ -1,0 +1,191 @@
+{
+ "n": 8,
+ "pub": "GB-874600-A",
+ "family_id": "9960499",
+ "biblio": {
+  "pub": "GB-874600-A",
+  "label": "GB 874600 A",
+  "kind": "foreign",
+  "title": "Improvements in or relating to magnetic chucks and similar holding devices",
+  "country": "GB",
+  "inventor": "Joseph Crawford Williamson",
+  "assignee": "DARWINS Ltd",
+  "publication_date": "1961-08-10",
+  "priority_date": "1958-03-28",
+  "filing_date": "1958-03-28",
+  "dates_source": "corpus",
+  "abstract": "874,600. Magnets. DARWINS Ltd. June 12, 1959 [March 28, 1958], No. 10048/58. Class 35. A magnetic chuck or holding device in which the holding effort is provided at the edges 4A, 4F, 4C, 4D of at least one pair of plate pole-pieces 2A, 2B, Figs. 1 and 3, cooperating with an assembly of permanent magnet material 1A, 1B having surfaces 2 of opposite magnetic polarity disposed sideby-side, has provision for relative movement of the pole pieces 2A, 2B and the magnetic assembly 1A, 1B, between an \" ON \" position (Fig. 1) in which each pole-piece is in surface contiguity with an area of magnetic material of one polarity only, and an \" OFF \" position in which each pole-piece is in surface contiguity with substantially equal areas of opposite polarity, when the magnetic circuit is in effect short-circuited between the pole-pieces so that no holding effort is available at the edges; a permeable work-piece is held when completing the circuit across the pole-pieces with the magnetic assembly is in the \" ON \" position but is released when the assembly is rotated through 90 degrees to the \" OFF \" position. The holding effort may be increased by alternating assemblies of magnet plates and pole plates with reversal of polarity between the plates of adjacent assemblies as shown in Fig. 6. The holding face may also be widened by mounting two or more magnet plate assemblies for rotation on parallel 10, in axes 20, Fig. which a single holding face 15 is constituted by the edges of the upper pole plates 16A, the lower pole plates 16B resting on a non-magnetic base 17. The magnet plates 21A, 21B are rotatable in unison by a lever-operated cross-shaft and bevel pinion and quadrant, the shafts 20 being geared together. Alternatively, rectilinear sliding of the plate assemblies in a direction parallel to the holding faces may be effected as shown in Figs. 13 and 16 in which the rectangular plates 32A, 32B of alternating polarity across their width are together slidable between separated pairs of pole plates 33A, 33B, each plate assembly being mounted in a non-magnetic frame 36, Fig. 16, which rests on non-magnetic bolts 37, notches in the lower edges of the pole plates engaging with the bolts. A yoke 40, provided at one end of the frames 36, is movable by a crank 41 to slide the groups of plate assemblies between \" ON \" and \" OFF \" positions. Further embodiments are described in which semi-circular or segmental permanent magnet plates, set in plastic or other non- magnetic material, are rotatably mounted within rimmed semi-circular or segmental pole plates, the holding face being provided by the protruding edges of the rims. Magnet plates 43A, 43B, Fig. 21, are retained inside the rimmed pole plates 45A, 45B by a cover plate 50 which is secured to and rotated by a stem 52 and knob 53. A non-magnetic ring 55 surrounds the magnet plates 43A, 43B, the rim 44 enabling the device when turned to the \" ON \" position, to hold itself against a permeable mass, e.g. a surface plate, and to carry a dial gauge or other device by a stem fitted into a tapped hole 56. A second pair of rimmed pole plates may be placed above the plate assembly with the rims arranged concentrically and flush, or several such units may be combined to form a shallow magnetic chuck. Figs. 22 and 24 show a chuck in which two concentric permanent magnet material assemblies are formed as thin-walled cylinders comprising sectors 57, 58, attached to a non-magnetic base plate 59 which is rotatable through half a sector-arc by a pinion 60 meshing with teeth 61. The sectors 57, 58 are of opposite polarity, the direction of magnetization being radial. Each group of sectors has its own sets of outer and inner pole-pieces in the form of sectors 57A, 57B and 58A, 58B respectively all separated from each other. By means of the pinion 60 the magnet plates may be moved to an \" ON \" position in which they are in register with the pole plates or to an \" OFF \" position in which each magnet plate overlaps two outer and two inner pole-pieces. Ceramic magnetic material, e.g. BaO6Fe 2 O 3 , is preferably used for the permanent magnet material. The magnet plate assemblies may be moved slightly beyond the fully balanced \" OFF \" position to effect slight demagnetization of the workpiece.",
+  "issue_date_pretty": "August 10, 1961",
+  "priority_date_pretty": "March 28, 1958"
+ },
+ "subject": {
+  "app_no": "19/318,450",
+  "pub_no": "US 2026/0070232 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a magnetic chuck or holding device for gripping a workpiece, which includes a magnetic assembly that moves between an \"ON\" (gripping) and \"OFF\" (release) position, and pole-pieces that provide holding effort and cooperate with the magnetic assembly to guide the magnetic field.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[a]",
+   "quote_claim": true,
+   "claim_text": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "claim_paraphrase": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A magnetic chuck or holding device in which the holding effort is provided at the edges 4A, 4F, 4C, 4D of at least one pair of plate pole-pieces 2A, 2B, Figs. 1 and 3, cooperating with an assembly of permanent",
+   "note": "The reference discloses a magnetic chuck or holding device for gripping a workpiece",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 0,
+   "disclosure": "The reference discloses a magnetic chuck or holding device for gripping a workpiece."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[b]",
+   "quote_claim": true,
+   "claim_text": "a magnet which is arranged in the housing and which is displaceable along a displacement direction between a gripping position for gripping the ferromagnetic workpiece and a release position for releasing the ferromagnetic workpiece",
+   "claim_paraphrase": "a magnet which is arranged in the housing and which is displaceable along a displacement direction between a gripping position for gripping the ferromagnetic workpiece and a …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "provision for relative movement of the pole pieces 2A, 2B and the magnetic assembly 1A, 1B, between an \" ON \" position (Fig. 1) in which each pole-piece is in surface contiguity with an area of magnetic material of one",
+   "note": "The reference describes a magnetic assembly that moves between an 'ON' (gripping) and 'OFF' (release) position.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.9,
+   "_id": 1,
+   "disclosure": "The reference describes a magnetic assembly 1A, 1B that moves between an \"ON\" position (gripping) and an \"OFF\" position (release)."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[c]",
+   "quote_claim": true,
+   "claim_text": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the workpiece contact surface",
+   "claim_paraphrase": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A magnetic chuck or holding device in which the holding effort is provided at the edges 4A, 4F, 4C, 4D of at least one pair of plate pole-pieces 2A, 2B, Figs. 1 and 3, cooperating with an assembly of permanent",
+   "note": "The reference describes pole-pieces that provide holding effort and cooperate with a magnetic assembly to guide the magnetic field.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.9,
+   "_id": 2,
+   "disclosure": "The reference describes plate pole-pieces 2A, 2B that provide holding effort and cooperate with a magnetic assembly to guide a magnetic field portion."
+  },
+  {
+   "claim_no": 3,
+   "label": "claim 3[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A magnetic chuck or holding device in which the holding effort is provided at the edges 4A, 4F, 4C, 4D of at least one pair of plate pole-pieces 2A, 2B, Figs. 1 and 3, cooperating with an assembly of permanent",
+   "note": "The quote describes pole pieces providing holding effort and cooperating with magnetic material, which implies directing a magnetic field.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 3,
+   "disclosure": "The reference describes plate pole-pieces 2A, 2B that provide holding effort and cooperate with a magnetic assembly, which implies directing a magnetic field portion."
+  },
+  {
+   "claim_no": 7,
+   "label": "claim 7[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper (10) according to claim 1, wherein the magnetic gripper (10) has a positioning device (56) for positioning the ferromagnetic workpiece (72) on the workpiece contact surface (40, 42",
+   "claim_paraphrase": "The magnetic gripper (10) according to claim 1, wherein the magnetic gripper (10) has a positioning device (56) for positioning the ferromagnetic workpiece (72) on the workpiece …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A non-magnetic ring 55 surrounds the magnet plates 43A, 43B, the rim 44 enabling the device when turned to the \" ON \" position, to hold itself against a permeable mass, e.g. a surface plate, and to carry a dial",
+   "note": "The reference discloses a tapped hole (56) for fitting a device, which could be a positioning device",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.6,
+   "_id": 4,
+   "disclosure": "The reference discloses a non-magnetic ring 55 and a rim 44 that enables the device to hold itself against a permeable mass and carry a dial."
+  },
+  {
+   "claim_no": 8,
+   "label": "claim 8[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A magnetic chuck or holding device in which the holding effort is provided at the edges 4A, 4F, 4C, 4D of at least one pair of plate pole-pieces 2A, 2B, Figs. 1 and 3",
+   "note": "The reference describes pole-pieces 2A and 2B, which function as first and second pole shoes.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.9,
+   "_id": 5,
+   "disclosure": "The reference describes at least one pair of plate pole-pieces 2A, 2B, which function as a first and second pole shoe."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The magnet plates 21A, 21B are rotatable in unison by a lever-operated cross-shaft and bevel pinion and quadrant, the shafts 20 being geared together.",
+   "note": "The reference describes a lever-operated mechanism for rotating the magnet plates between 'ON' and 'OFF' positions, which corresponds to mechanical displacement between gripping and release positions.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.9,
+   "_id": 6,
+   "disclosure": "The reference describes magnet plates 21A, 21B that are rotatable by a lever-operated mechanism, which corresponds to mechanical displacement between the gripping and release positions."
+  },
+  {
+   "claim_no": 14,
+   "label": "claim 14[c]",
+   "quote_claim": false,
+   "claim_text": "wherein, in a gripping state, the magnet is in the gripping position, and the ferromagnetic workpiece is pressed against each workpiece contact surface by means of a magnetic force, and",
+   "claim_paraphrase": "wherein, in a gripping state, the magnet is in the gripping position, and the ferromagnetic workpiece is pressed against each workpiece contact surface by means of a magnetic …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A permeable work-piece is held when completing the circuit across the pole-pieces with the magnetic assembly is in the \"ON\" position",
+   "note": "This passage describes a workpiece being held by magnetic force when the magnetic assembly is in the 'ON' position, which corresponds to a gripping state.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.9,
+   "_id": 7,
+   "disclosure": "The reference discloses that a permeable workpiece is held when the magnetic assembly is in the \"ON\" position, indicating that the workpiece is pressed against the pole-pieces by a magnetic force."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "public_prior_art",
+   "blocked": false,
+   "forum": "US"
+  },
+  "quotes": {
+   "checked": 8,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ops:world-patent-data xmlns:ops="http://ops.epo.org" xmlns="http://www.epo.org/exchange" xmlns:ftxt="http://www.epo.org/fulltext">
+  <ftxt:fulltext-documents>
+    <ftxt:fulltext-document>
+      <ftxt:claims lang="EN">
+        <ftxt:claim num="0001">
+          <ftxt:claim-text>1. A suction cup for attaching to a contact surface, comprising a rigid base element, a resilient sealing lip arranged at a periphery of the base element and defining a chamber, and an electric vacuum pump in fluid communication with the chamber and operable to continuously extract air from the chamber so as to maintain an underpressure that holds the suction cup on the contact surface.</ftxt:claim-text>
+        </ftxt:claim>
+        <ftxt:claim num="0002">
+          <ftxt:claim-text>2. The suction cup according to claim 1, wherein the sealing lip is elastically deformable so as to conform to a rough or porous contact surface.</ftxt:claim-text>
+        </ftxt:claim>
+        <ftxt:claim num="0003">
+          <ftxt:claim-text>3. The suction cup according to claim 1 or 2, further comprising a pressure sensor arranged to monitor a pressure in the chamber.</ftxt:claim-text>
+        </ftxt:claim>
+        <ftxt:claim num="0004">
+          <ftxt:claim-text>4. The suction cup according to claim 3, further comprising an acoustic alarm triggered by the pressure sensor when the underpressure falls below a threshold value.</ftxt:claim-text>
+        </ftxt:claim>
+        <ftxt:claim num="0005">
+          <ftxt:claim-text>5. The suction cup according to any one of the preceding claims, wherein the electric vacuum pump is battery powered and the suction cup is a handheld device.</ftxt:claim-text>
+        </ftxt:claim>
+      </ftxt:claims>
+    </ftxt:fulltext-document>
+  </ftxt:fulltext-documents>
+</ops:world-patent-data>

@@ -1774,9 +1774,20 @@ async function openSimilar(pn){
    backwards, each stage keeps the numbers it learned, and the active stage shows how long it has
    been running — a silent server still reads as visible, honest progress. */
 const LIVE_CORPUS_N = Number((typeof window !== 'undefined' && window.CORPUS_PUBLICATIONS) || 0);
+const LIVE_CORPUS_CLAIMS = Number((typeof window !== 'undefined' && window.CORPUS_CLAIMS_PUBS) || 0);
+/*  THIS SENTENCE SAID SOMETHING FALSE until 2026-08-25. It read "N publications with full claims
+    and description text", where N is every publication in the corpus. MEASURED: N is 4,984,254 and
+    the number with parsed claims is 814,523, which is 16%; description text is rarer still. An
+    attorney reading it would believe the run had searched five million patents' claims. The count
+    now comes from the same snapshot /corpus shows, and the sentence says only what is true: how
+    many publications there are, and how many of them the search can read claims for. */
 const LIVE_CORPUS_NOTE = (LIVE_CORPUS_N
-  ? 'Our own pgvector corpus of ' + LIVE_CORPUS_N.toLocaleString() + ' publications with full claims and description text, '
-  : 'Our own pgvector corpus with full claims and description text, ')
+  ? 'Our own pgvector corpus of ' + LIVE_CORPUS_N.toLocaleString() + ' publications'
+    + (LIVE_CORPUS_CLAIMS
+        ? ', ' + LIVE_CORPUS_CLAIMS.toLocaleString() + ' of them with parsed claim text and the '
+          + 'rest reached by title, abstract and classification, '
+        : ', ')
+  : 'Our own pgvector corpus, ')
   + 'searched through eight channels at once: dense and claim-dense embeddings, sparse BM25 over '
   + 'claims and full text, CPC classification, backward and forward citations, query-by-example '
   + 'and cross-lingual EN/DE.';
@@ -2703,5 +2714,59 @@ async function streamNewCards(){
     if (!btn) return;
     ev.preventDefault();
     open(btn);
+  });
+})();
+
+
+/*  ------------------------------------------------------------------ the (?) mark, anywhere
+    A page that explains itself in a paragraph beside every control is a page nobody finishes
+    reading. The explanation is still worth having, so it moves one click away: the control says
+    what it is, and the (?) beside it says how it works and when it matters.
+
+    Usage is one element and no wiring:
+
+        <button type="button" class="qmark" data-title="Concept search"
+                data-help="Breaks the description into…">?</button>
+
+    Two paragraphs: separate with a blank line. `type="button"` matters inside a form, and the
+    markup is a <button> rather than a <span> so it is reachable by keyboard without a tabindex.
+*/
+(function questionMarks() {
+  var dlg = null;
+
+  function ensure() {
+    if (dlg) { return dlg; }
+    dlg = document.createElement('dialog');
+    dlg.className = 'dlg qmarkdlg';
+    dlg.innerHTML =
+      '<form method="dialog" class="stack" style="min-width:min(34rem,92vw)">' +
+      '<h3 class="h3" data-t style="margin-top:0"></h3>' +
+      '<div class="small" data-b style="line-height:1.6"></div>' +
+      '<div style="display:flex;margin-top:.7rem"><span class="grow"></span>' +
+      '<button class="btn ghost sm" value="close">Close</button></div></form>';
+    document.body.appendChild(dlg);
+    return dlg;
+  }
+
+  function open(btn) {
+    var d = ensure();
+    if (!d.showModal) { return; }                 // no <dialog>: leave the title attribute to it
+    d.querySelector('[data-t]').textContent = btn.getAttribute('data-title') || 'About this';
+    var body = btn.getAttribute('data-help') || '';
+    d.querySelector('[data-b]').innerHTML = body.split(/\n\s*\n/).map(function (p) {
+      //  The text is authored in the template, never from a user, but escape it anyway: this is
+      //  one line and it means a future data-help that IS user text cannot inject.
+      var e = document.createElement('div');
+      e.textContent = p.trim();
+      return '<p>' + e.innerHTML + '</p>';
+    }).join('');
+    d.showModal();
+  }
+
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('.qmark');
+    if (!b) { return; }
+    ev.preventDefault();
+    open(b);
   });
 })();

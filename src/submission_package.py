@@ -45,10 +45,23 @@ from reportlab.lib.units import inch
 from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph, Spacer, Table,
                                 TableStyle)
 
+import citation                     # a translation has to be OF the member being filed
 import concise_render
+import pdf_fonts
 
 #  A U.S. patent or U.S. pre-grant publication needs no copy: 1.290(d)(3) excludes exactly those.
 _US_PUB = re.compile(r"^US", re.I)
+
+
+def _non_english_offices():
+    """The one office list, from submission_compliance, which also holds each language's name."""
+    try:
+        import submission_compliance
+        return frozenset(submission_compliance._FOREIGN_OFFICE)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return frozenset({"JP", "CN", "KR", "DE", "FR", "ES", "IT", "RU", "SU", "TW", "BR", "PT",
+                          "NL", "SE", "DK", "FI", "NO", "PL", "TR", "AT", "CH", "MX", "AR", "CL"})
 
 
 def needs_copy(doc):
@@ -66,18 +79,93 @@ def needs_translation(doc):
     """
     b = doc.get("biblio") or {}
     country = str(b.get("country") or "").upper()[:2]
-    return country in ("JP", "CN", "KR", "DE", "FR", "ES", "IT", "RU", "TW", "BR", "PT", "NL",
-                       "SE", "DK", "FI", "NO", "PL", "TR")
+    #  THE SAME LIST submission._NON_ENGLISH_OFFICES uses, from the same place. See the comment
+    #  there: SU was missing from all three copies of this question, so a Soviet publication was
+    #  filed with a copy and no translation and the audit said every non-English item had one.
+    return country in _non_english_offices()
+
+
+#  A UTF-8 lead byte decoded as Latin-1 survives as A-circumflex / A-tilde / I-circumflex and so
+#  on, followed by a continuation byte. It reached a filed paper: a quotation on the JP2019155534A
+#  concise description reads "inclination angle" followed by a mojibake theta.
+_MOJI = re.compile("[\u00c2\u00c3\u00ce\u00c5\u00e2][\u0080-\u00bf\u2018-\u2122]")
+
+
+def mojibake_fix(s):
+    """Undo one UTF-8-as-Latin-1 round trip, but only where it demonstrably helps. -> str
+
+    Applied per string rather than to a whole document: a corpus record can hold one mojibake'd
+    English paragraph beside text that is not Latin-1-encodable at all, and encoding the
+    concatenation fails on the second and leaves the first broken.
+    """
+    s = str(s or "")
+    if not _MOJI.search(s):
+        return s
+    try:
+        out = s.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+    #  Only if it actually removed the signature. A string that legitimately contains these
+    #  letters must come back untouched.
+    return out if len(_MOJI.findall(out)) < len(_MOJI.findall(s)) else s
+
+
+def corpus_translation(pub):
+    """The English rendition of this document that the concise description actually quotes.
+
+    THIS IS THE ONE THAT HAS TO BE FILED, and the audit is what proved it. Quotations were taken
+    from the corpus, which holds Google's machine translation ("Translated from Japanese" is in
+    the text), while the translation attached to the packet was fetched live from the acquisition
+    ladder. Two independent English renderings of one Japanese sentence do not match word for
+    word, so the check that every quotation appears in the filed translation failed on six
+    documents, and it was right to: an examiner opening the attached translation could not find
+    the sentence the description quoted.
+
+    The remedy is not to relax the check. It is to file the translation that was relied on. That
+    keeps the check meaningful, because a quotation the corpus does not contain still fails it.
+    """
+    try:
+        import deep_analysis
+        ft = deep_analysis.full_text(pub) or {}
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return {}
+    claims, body = [], []
+    for p in (ft.get("passages") or []):
+        if not isinstance(p, dict):
+            continue
+        text = mojibake_fix(p.get("text") or "").strip()
+        if not text:
+            continue
+        (claims if str(p.get("kind") or "").startswith("claim") else body).append(text)
+    if not claims and not body:
+        return {}
+    return {"text": "\n\n".join(body), "claims": "\n\n".join(claims),
+            "source": "corpus (machine translation, as relied on in the concise description)"}
 
 
 def fetch_translation(pub, timeout=120.0):
     """An English machine translation of the listed document. -> {"text", "claims", "source"} or {}
 
-    Uses the acquisition ladder rather than the corpus copy, and that is deliberate: MEASURED on
-    JP-2019155534-A, the corpus paragraph text is mojibake, UTF-8 bytes decoded as Latin-1, while
-    the same document fetched live comes back as 15,901 characters of clean English in under a
-    second. Filing a translation built from the corpus copy would have filed mojibake.
+    THE CORPUS RENDITION FIRST, because it is the one the concise description quotes and the one
+    the examiner therefore has to be able to read the quotation in. See corpus_translation.
+
+    The live ladder stays as the fallback for the case that put it here in the first place:
+    MEASURED on JP-2019155534-A, the corpus paragraph text was mojibake, UTF-8 bytes decoded as
+    Latin-1. `mojibake_fix` repairs that where it is repairable and the Latin-script guard below
+    still rejects anything that comes back in the original script, so a corpus record that is
+    genuinely unusable falls through to the fetch rather than being filed.
     """
+    got_corpus = {}
+    try:
+        got_corpus = corpus_translation(pub)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    if got_corpus:
+        body = got_corpus["text"] or got_corpus["claims"]
+        latin = sum(1 for c in body if ord(c) < 0x2E80)
+        if latin >= 0.9 * max(len(body), 1):
+            return got_corpus
     try:
         import sources
         got = sources.fetch_fulltext([pub], timeout=timeout) or {}
@@ -86,6 +174,14 @@ def fetch_translation(pub, timeout=120.0):
         return {}
     for key, rec in got.items():
         if key == "_summary" or not isinstance(rec, dict):
+            continue
+        #  IT HAS TO BE A TRANSLATION OF THE MEMBER BEING FILED. The ladder answers with whatever
+        #  it resolved, and taking the first record regardless of its key is how a translation of a
+        #  sibling ends up attached to a document it does not translate. Two publications of one
+        #  application differ in text, in paragraph numbering and in claim count, so filing one as
+        #  the translation of the other is filing something the examiner cannot reconcile with the
+        #  copy beside it. See citation.same_publication.
+        if not citation.same_publication(key, pub):
             continue
         text = str(rec.get("description") or "")
         claims = rec.get("claims") or ""
@@ -123,38 +219,124 @@ def fetch_copy(pub):
     return b""
 
 
-def outstanding(docs, translations):
-    """What a human still has to supply before this can be filed. -> [str]"""
-    out = []
-    for d in docs:
-        n, label = d.get("n"), (d.get("biblio") or {}).get("label") or d.get("pub")
-        if needs_copy(d):
-            out.append("Document %s (%s): a legible copy of the publication itself. It is not a "
-                       "U.S. patent or U.S. patent application publication, so 1.290(d)(3) "
-                       "requires the copy to be filed with the submission." % (n, label))
-        if needs_translation(d) and not translations.get(d.get("pub")):
-            out.append("Document %s (%s): an English translation. One could not be produced "
-                       "automatically, so it has to be obtained and attached." % (n, label))
-    out.append("The document list and the two statements under 1.290(d)(5) are entered through "
-               "Patent Center's own workflow. The papers in this archive are for checking against "
-               "what is entered there.")
-    out.append("The fee under 37 CFR 1.290(f), or the exemption under 1.290(g), is settled in "
-               "Patent Center at the time of filing.")
+def _norm(s):
+    return re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).strip()
+
+
+def _squash(s):
+    """Letters and digits only, no spaces at all.
+
+    A PDF text layer breaks lines wherever the typesetter did, and a word broken across a line
+    comes back hyphenated: "magnet-\\nic" extracts as "magnet ic" and never matches "magnetic".
+    Removing every separator on both sides makes the comparison immune to that, to double spaces
+    and to the soft hyphen, at the cost of ignoring word boundaries, which does not matter when the
+    needle is a run of twelve words.
+    """
+    return re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
+
+
+#  Words of a quotation to probe for. The same window `submission_compliance.verify_quotes` uses,
+#  because a stored passage is capped mid-sentence and a whole-string match would fail on the
+#  ellipsis rather than on the copy.
+_PROBE_WORDS = 12
+
+
+def quotes_in_copy(copy, quotes):
+    """Which of these quotations are NOT in the copy that will be filed. -> {"checked", "missing"}
+
+    THE CHEAPEST CHECK IN THE PACKET, and counsel put it third on the build list because it catches
+    the citation defects as well as the copy defects: "after assembling the packet, confirm that
+    every quoted string is present in the text layer of the copy being filed. If the quote isn't in
+    the copy, either the copy is wrong or the quote is."
+
+    Both happened in one packet. The GB 874,600 copy was its six drawing sheets, so an examiner
+    following any of the eight quotations attributed to it would have found pictures. And a
+    quotation attributed to US 2022/0045594 A1 gave a numeric tolerance the document states
+    qualitatively, so it was not in the copy either, for the opposite reason.
+
+    A copy with no text layer answers "unknown", not "missing": that is a scan, and saying its
+    quotations are absent would be as wrong as saying they are present. The audit reports the two
+    separately.
+    """
+    out = {"checked": 0, "missing": [], "readable": False}
+    hay = _squash((copy or {}).get("text") or "")
+    if not hay:
+        return out
+    out["readable"] = True
+    for q in quotes or []:
+        q = str(q or "").strip()
+        if not q:
+            continue
+        out["checked"] += 1
+        probe = _squash(" ".join(_norm(q.rstrip(" ….")).split()[:_PROBE_WORDS]))
+        if probe and probe not in hay:
+            out["missing"].append(q)
     return out
 
 
-# --------------------------------------------------------------------------- rendering
+def inspect_copy(blob):
+    """What is actually in this copy. -> {"pages", "chars", "drawings_only", "text"}
+
+    PRESENCE IS NOT COMPLETENESS, and the difference reached a filing. The copy attached for
+    GB 874,600 A was six pages of figures whose own header reads "COMPLETE SPECIFICATION, 4 SHEETS,
+    This drawing is a reproduction of the Original on a reduced scale": the drawing sheets alone,
+    with no front page, no description and no claims. The concise description for that document
+    quoted its abstract eight times, so an examiner checking a quotation against the filed copy
+    would not have found it.
+
+    A patent facsimile with no extractable text at all is either a pure image scan or a drawings
+    bundle, and both need a human to look before they are filed as "the item".
+    """
+    out = {"pages": 0, "chars": 0, "drawings_only": False, "text": "", "watermark": ""}
+    if not blob:
+        return out
+    #  WHOSE TEXT IS IT. GB2211356A extracted 372 characters over twelve pages and every one of
+    #  them was "Generated by PDFKit.NET Evaluation", the stamp Espacenet's whole-document
+    #  download puts on each page. Counting those as the document's own text made a copy with no
+    #  readable specification look like a copy with a little text in it. `copy_repair.assess`
+    #  discounts the stamp and names it, so the audit can refuse to file a stamped paper.
+    try:
+        import copy_repair
+        a = copy_repair.assess(blob)
+        out["watermark"] = a.get("watermark") or ""
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    try:
+        import io as _io
+
+        from pypdf import PdfReader
+        r = PdfReader(_io.BytesIO(blob))
+        out["pages"] = len(r.pages)
+        text = " ".join((p.extract_text() or "") for p in r.pages)
+        out["chars"] = len("".join(text.split()))
+        #  KEPT, because the audit checks every quotation against the copy that is actually going
+        #  in the envelope. Capped so a 300-page facsimile cannot make the packet build expensive.
+        out["text"] = text[:2_000_000]
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return out
+    if out["watermark"]:
+        #  Discount the stamp before judging whether there is a specification in here.
+        try:
+            import copy_repair
+            out["chars"] = copy_repair.assess(blob)["chars"]
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
+    #  Under ~40 characters a page there is no specification text in here, whatever the page count.
+    out["drawings_only"] = bool(out["pages"]) and out["chars"] < 40 * out["pages"]
+    return out
+
 
 
 def _styles():
-    base = ParagraphStyle("sp", fontName="Times-Roman", fontSize=11, leading=13.5,
+    base = ParagraphStyle("sp", fontName=pdf_fonts.font(pdf_fonts.SERIF), fontSize=11, leading=13.5,
                           alignment=TA_LEFT, spaceAfter=0)
     return {
-        "h": ParagraphStyle("h", parent=base, fontName="Times-Bold", fontSize=11.5, leading=14,
+        "h": ParagraphStyle("h", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=11.5, leading=14,
                             spaceAfter=6),
-        "app": ParagraphStyle("app", parent=base, fontName="Times-Italic", spaceAfter=10),
+        "app": ParagraphStyle("app", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_ITALIC), spaceAfter=10),
         "body": ParagraphStyle("body", parent=base, spaceBefore=4, spaceAfter=7),
-        "th": ParagraphStyle("th", parent=base, fontName="Times-Bold", fontSize=10, leading=12.5),
+        "th": ParagraphStyle("th", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=10, leading=12.5),
         "td": ParagraphStyle("td", parent=base, fontSize=10, leading=12.5),
         "note": ParagraphStyle("note", parent=base, fontSize=9.5, leading=12,
                                textColor=colors.HexColor("#333333"), spaceBefore=8),
@@ -166,7 +348,7 @@ def _doc(buf, subject, title):
 
     def _page(canv, docobj):
         canv.saveState()
-        canv.setFont("Times-Roman", 9.5)
+        canv.setFont(pdf_fonts.font(pdf_fonts.SERIF), 9.5)
         canv.setFillColor(colors.HexColor("#333333"))
         canv.drawString(inch, letter[1] - 0.62 * inch, running)
         canv.drawString(inch, 0.62 * inch, running)
@@ -184,96 +366,6 @@ def _esc(s):
     return concise_render._esc(s)
 
 
-def document_list(docs, subject, translations=None) -> bytes:
-    """The 1.290(d)(1) listing: every item, identified the way the rule identifies it."""
-    translations = translations or {}
-    st = _styles()
-    buf = io.BytesIO()
-    tmpl = _doc(buf, subject, "Document list, 37 CFR 1.290(d)(1)")
-    story = [Paragraph("DOCUMENT LIST &mdash; THIRD-PARTY SUBMISSION UNDER 37 CFR &sect; 1.290",
-                       st["h"]),
-             Paragraph(_esc(concise_render.subject_line(subject)), st["app"])]
-
-    head = [Paragraph("No.", st["th"]), Paragraph("Document", st["th"]),
-            Paragraph("First named inventor", st["th"]), Paragraph("Date", st["th"]),
-            Paragraph("Copy / translation", st["th"])]
-    data = [head]
-    for d in docs:
-        b = d.get("biblio") or {}
-        bits = []
-        if needs_copy(d):
-            bits.append("copy required: OUTSTANDING")
-        else:
-            bits.append("no copy required")
-        if needs_translation(d):
-            bits.append("translation attached" if translations.get(d.get("pub"))
-                        else "translation required: OUTSTANDING")
-        data.append([Paragraph(str(d.get("n")), st["td"]),
-                     Paragraph(_esc(b.get("label") or d.get("pub")), st["td"]),
-                     Paragraph(_esc(b.get("inventor") or ""), st["td"]),
-                     Paragraph(_esc(b.get("issue_date_pretty") or ""), st["td"]),
-                     Paragraph(_esc("; ".join(bits)), st["td"])])
-    w = letter[0] - 2 * inch
-    tbl = Table(data, colWidths=[w * 0.06, w * 0.30, w * 0.22, w * 0.18, w * 0.24], repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.6, colors.HexColor("#444444")),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFEFEF")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    story.append(tbl)
-    story.append(Paragraph(
-        "A U.S. patent and a U.S. patent application publication need no copy: 37 CFR "
-        "1.290(d)(3) requires a legible copy of each listed item <i>other than</i> those. Any "
-        "item above marked OUTSTANDING has to be attached before this is filed.", st["note"]))
-    tmpl.build(story)
-    return buf.getvalue()
-
-
-_STATEMENTS = [
-    ("Statement under 37 CFR 1.290(d)(5)(i)",
-     "The party making this submission is not an individual who has a duty to disclose "
-     "information with respect to the above-identified application under 37 CFR 1.56."),
-    ("Statement under 37 CFR 1.290(d)(5)(ii)",
-     "This submission complies with the requirements of 35 U.S.C. 122(e) and 37 CFR 1.290."),
-]
-
-
-def statements(docs, subject) -> bytes:
-    """The 1.290(d)(5) statements, and where the fee question stands."""
-    st = _styles()
-    buf = io.BytesIO()
-    tmpl = _doc(buf, subject, "Statements, 37 CFR 1.290(d)(5)")
-    story = [Paragraph("STATEMENTS &mdash; THIRD-PARTY SUBMISSION UNDER 37 CFR &sect; 1.290",
-                       st["h"]),
-             Paragraph(_esc(concise_render.subject_line(subject)), st["app"])]
-    for title, text in _STATEMENTS:
-        story.append(Paragraph(_esc(title), st["th"]))
-        story.append(Paragraph(_esc(text), st["body"]))
-
-    n = len(docs)
-    story.append(Paragraph("Fee", st["th"]))
-    if n <= 3:
-        story.append(Paragraph(
-            "This submission lists %d document%s. 37 CFR 1.290(g) exempts a submission listing "
-            "three or fewer total items from the fee, where it is the first submission in this "
-            "application by this party or a party in privity with this party and is accompanied "
-            "by a statement to that effect. <b>Confirm that this is the first such submission "
-            "before relying on the exemption</b>, and make the statement in Patent Center."
-            % (n, "" if n == 1 else "s"), st["body"]))
-    else:
-        story.append(Paragraph(
-            "This submission lists %d documents, which is more than the three that 37 CFR "
-            "1.290(g) exempts, so the fee under 37 CFR 1.290(f) applies. The amount is set by "
-            "37 CFR 1.17 and is calculated and paid in Patent Center at the time of filing."
-            % n, st["body"]))
-    story.append(Paragraph(
-        "These statements are reproduced here so they can be read and checked. They are made to "
-        "the Office through Patent Center's own workflow, which is where the document list and "
-        "the fee are also entered.", st["note"]))
-    tmpl.build(story)
-    return buf.getvalue()
 
 
 def translation_pdf(doc, translation, subject) -> bytes:
@@ -282,7 +374,7 @@ def translation_pdf(doc, translation, subject) -> bytes:
     b = doc.get("biblio") or {}
     buf = io.BytesIO()
     tmpl = _doc(buf, subject, "English translation of %s" % (b.get("label") or doc.get("pub")))
-    story = [Paragraph("ENGLISH TRANSLATION &mdash; %s" % _esc(b.get("label") or doc.get("pub")),
+    story = [Paragraph("ENGLISH TRANSLATION: %s" % _esc(b.get("label") or doc.get("pub")),
                        st["h"]),
              Paragraph(_esc(concise_render.subject_line(subject)), st["app"])]
     story.append(Paragraph(
@@ -322,31 +414,3 @@ def _paragraphs(text, limit=4000):
         if s:
             out.append(s)
     return out or [""]
-
-
-def readme(docs, subject, translations) -> str:
-    lines = [
-        "THIRD-PARTY PREISSUANCE SUBMISSION UNDER 37 CFR 1.290",
-        concise_render.running_head(subject).replace("Re: ", ""),
-        "",
-        "THIS ARCHIVE IS NOT A COMPLETE SUBMISSION ON ITS OWN. It contains the papers that can be",
-        "produced from the search: a concise description of relevance for each listed document, a",
-        "document list, the statements, and a machine translation of each non-English document",
-        "where one could be obtained.",
-        "",
-        "What it contains:",
-    ]
-    lines.append("  00_DocumentList.pdf          the 1.290(d)(1) listing")
-    lines.append("  01_Statements_and_Fee.pdf    the 1.290(d)(5) statements and the fee position")
-    for d in docs:
-        b = d.get("biblio") or {}
-        lines.append("  ConciseDescription_Doc%-3s   %s" % (d.get("n"), b.get("label") or d.get("pub")))
-        if translations.get(d.get("pub")):
-            lines.append("  Translation_Doc%-3s          English machine translation of the same"
-                         % d.get("n"))
-    lines += ["", "Still to be supplied by the practitioner:"]
-    for item in outstanding(docs, translations):
-        lines.append("  - %s" % item)
-    lines += ["", "A machine translation is expressly acceptable under 1.290(d)(4). The one here "
-                  "is labelled as", "one on its face."]
-    return "\n".join(lines) + "\n"

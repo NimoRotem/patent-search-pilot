@@ -1,0 +1,1274 @@
+{
+  "_meta": {
+    "generated": "2026-07-17",
+    "methodology": "Relevance = DOCDB families of each anchor's examiner/search-report citations + curated competitor families. Citation edges hidden at retrieval time. Frozen \u2014 do not edit after retrieval tuning begins.",
+    "n_entries": 11,
+    "frozen": true
+  },
+  "entries": [
+    {
+      "id": "grabo_gripper_novelty",
+      "category": "grabo_own",
+      "mode": "novelty",
+      "anchor_publication": "US-11999030-B2",
+      "anchor_family": "66624664",
+      "title": "Vacuum gripper",
+      "notes": "GRABO core portable vacuum gripper (fam 66624664).",
+      "query_text": "Vacuum gripper\nA vacuum gripper comprises a rigid base element and a loop-shaped vacuum seal element. The base element has first and second opposite sides. The seal element is attached at least indirectly to the second side and protruding therefrom in a direction away from the first side. The seal element comprises a contact surface that at least partially contacts with an object surface and an encircling surface oriented transversely to the contact surface so as to define a chamber. The seal element is elastically deformable at the contact surface to enable conforming to the object surface when pressed thereagainst. The vacuum gripper comprises an air extraction means mounted to the first side to be in fluid communication with the chamber through the base element, and configured to continuously extract air from the chamber to cause the contact surface to be urged towards and grip the object surface when pressed thereagainst.\nClaim 1: What is claimed is: \n     \n       1. A vacuum gripper for gripping an object surface, the vacuum gripper comprising:\n a base element having a first side and a second side opposite to the first side, the second side having a central area and a periphery surrounding the central area, \n wherein said periphery of the second side of the base element is bounded by a peripheral rim and comprises a peripheral support area; \n a seal element having an attachment surface mounted to the peripheral support area and a contact surface opposite to the attachment surface; \n an air extraction means mounted to the first side of the base element so as to be in fluid communication with a chamber defined by the second side and the seal element and configured to extract air from the chamber; and \n a bracing structure arranged within or outside the seal element; \n wherein the seal element protrudes a distance from the peripheral support area no greater than a thickness of the seal element; and \n wherein said air extraction means is operable in a variable manner by at least one of: \n a. fluctuating operating power supplied to the air extraction means; or \n b. reducing the power supplied to said air extraction means to a level sufficient to maintain the vacuum grip on an object comprising said object surface.",
+      "subject": {
+        "number": "US-11999030-B2",
+        "efd": "2018-05-08",
+        "filing_date": "2023-05-22",
+        "publication_date": "2024-06-04",
+        "jurisdiction": "US",
+        "has_claims": true
+      },
+      "gold_families": [
+        "22498676",
+        "22883737",
+        "23205091",
+        "23289430",
+        "23516263",
+        "24262135",
+        "24430975",
+        "24664421",
+        "24840037",
+        "25084279",
+        "25421211",
+        "25644276",
+        "27177351",
+        "29740151",
+        "32054112",
+        "34201690",
+        "34810482",
+        "36920701",
+        "36974391",
+        "39244538",
+        "40115693",
+        "41380067",
+        "42115107",
+        "42629144",
+        "45508079",
+        "45554511",
+        "54067591",
+        "55234658",
+        "56814857",
+        "56830674",
+        "59125095",
+        "61375111",
+        "61880391",
+        "6332344",
+        "63449883",
+        "6480115",
+        "6495403",
+        "6918853",
+        "70050062",
+        "7782789",
+        "7865086",
+        "7889498",
+        "7961965",
+        "8790101"
+      ],
+      "n_gold_families": 44,
+      "hidden_edges": [
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-2920916-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-3240525-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "GB-1036586-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-3506297-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-3915241-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "DE-3724659-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-4852926-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-5681022-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-5795001-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6039371-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "WO-0121357-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6244778-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6279976-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6296426-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6341808-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6413022-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6502877-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7004521-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-2806399-Y",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7222901-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7267512-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7404536-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-201147927-Y",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7712807-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "DE-202009004659-U1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "WO-2010110719-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7963578-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-8096537-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-8104809-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-9108319-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-9215962-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-205555846-U",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-106855077-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "EP-3181027-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "WO-2017215163-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-206958070-U",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-207245123-U",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-11413727-B2",
+          "category": "SEA",
+          "type": ""
+        }
+      ]
+    },
+    {
+      "id": "grabo_gripper_inventive",
+      "category": "grabo_own",
+      "mode": "inventive_step",
+      "anchor_publication": "US-11999030-B2",
+      "anchor_family": "66624664",
+      "title": "Vacuum gripper",
+      "notes": "Same anchor, inventive-step mode (public art only).",
+      "query_text": "Vacuum gripper\nA vacuum gripper comprises a rigid base element and a loop-shaped vacuum seal element. The base element has first and second opposite sides. The seal element is attached at least indirectly to the second side and protruding therefrom in a direction away from the first side. The seal element comprises a contact surface that at least partially contacts with an object surface and an encircling surface oriented transversely to the contact surface so as to define a chamber. The seal element is elastically deformable at the contact surface to enable conforming to the object surface when pressed thereagainst. The vacuum gripper comprises an air extraction means mounted to the first side to be in fluid communication with the chamber through the base element, and configured to continuously extract air from the chamber to cause the contact surface to be urged towards and grip the object surface when pressed thereagainst.\nClaim 1: What is claimed is: \n     \n       1. A vacuum gripper for gripping an object surface, the vacuum gripper comprising:\n a base element having a first side and a second side opposite to the first side, the second side having a central area and a periphery surrounding the central area, \n wherein said periphery of the second side of the base element is bounded by a peripheral rim and comprises a peripheral support area; \n a seal element having an attachment surface mounted to the peripheral support area and a contact surface opposite to the attachment surface; \n an air extraction means mounted to the first side of the base element so as to be in fluid communication with a chamber defined by the second side and the seal element and configured to extract air from the chamber; and \n a bracing structure arranged within or outside the seal element; \n wherein the seal element protrudes a distance from the peripheral support area no greater than a thickness of the seal element; and \n wherein said air extraction means is operable in a variable manner by at least one of: \n a. fluctuating operating power supplied to the air extraction means; or \n b. reducing the power supplied to said air extraction means to a level sufficient to maintain the vacuum grip on an object comprising said object surface.",
+      "subject": {
+        "number": "US-11999030-B2",
+        "efd": "2018-05-08",
+        "filing_date": "2023-05-22",
+        "publication_date": "2024-06-04",
+        "jurisdiction": "US",
+        "has_claims": true
+      },
+      "gold_families": [
+        "22498676",
+        "22883737",
+        "23205091",
+        "23289430",
+        "23516263",
+        "24262135",
+        "24430975",
+        "24664421",
+        "24840037",
+        "25084279",
+        "25421211",
+        "25644276",
+        "27177351",
+        "29740151",
+        "32054112",
+        "34201690",
+        "34810482",
+        "36920701",
+        "36974391",
+        "39244538",
+        "40115693",
+        "41380067",
+        "42115107",
+        "42629144",
+        "45508079",
+        "45554511",
+        "54067591",
+        "55234658",
+        "56814857",
+        "56830674",
+        "59125095",
+        "61375111",
+        "61880391",
+        "6332344",
+        "63449883",
+        "6480115",
+        "6495403",
+        "6918853",
+        "70050062",
+        "7782789",
+        "7865086",
+        "7889498",
+        "7961965",
+        "8790101"
+      ],
+      "n_gold_families": 44,
+      "hidden_edges": [
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-2920916-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-3240525-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "GB-1036586-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-3506297-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-3915241-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "DE-3724659-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-4852926-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-5681022-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-5795001-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6039371-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "WO-0121357-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6244778-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6279976-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6296426-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6341808-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6413022-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-6502877-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7004521-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-2806399-Y",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7222901-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7267512-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7404536-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-201147927-Y",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7712807-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "DE-202009004659-U1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "WO-2010110719-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-7963578-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-8096537-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-8104809-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-9108319-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-9215962-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-205555846-U",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-106855077-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "EP-3181027-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "WO-2017215163-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-206958070-U",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "CN-207245123-U",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11999030-B2",
+          "dst": "US-11413727-B2",
+          "category": "SEA",
+          "type": ""
+        }
+      ]
+    },
+    {
+      "id": "grabo_extended_frame",
+      "category": "grabo_own",
+      "mode": "novelty",
+      "anchor_publication": "US-11731291-B2",
+      "anchor_family": "83194486",
+      "title": "Extended-frame portable vacuum gripper",
+      "notes": "GRABO extended-frame portable vacuum gripper (fam 83194486).",
+      "query_text": "Extended-frame portable vacuum gripper\nAn extended frame portable vacuum grip device is provided having a rigid unitary support frame with elongated base and peripheral support wall that can define an open chamber at a face of the device for vacuum grip connections. A plurality of corresponding components can be combined to form independent vacuum grip regions within the open chamber extending along the length of the support frame. A plurality of ports can be defined through the base along its length that can each operatively connect with a corresponding pump. A plurality of closed-loop gaskets can each mate with corresponding portions of the base and support wall within the open chamber to act as vacuum seal members and define independent vacuum grip regions. A corresponding support frame for each gasket can help retain the independent arrangement and enhance seal actions of the gasket. The grip device can include structural reinforcements for reducing applied stresses.\nClaim 1: We claim: \n     \n       1. An extended frame portable vacuum grip device comprising:\n a rigid support frame defining an open chamber, the support frame comprising:\n an impermeable elongate base having a vacuum grip side, an opposite support side, a width, and an extended length that is larger than the width, the impermeable elongate base defining at least one port therethrough; and \n an impermeable support wall connected to a perimeter of the impermeable elongate base and extending around the impermeable elongate base, the support wall protruding a first distance from the impermeable elongate base in a vacuum grip direction away from the opposite support side, the support wall having an inner side and an opposite outer side, the inner side and the vacuum grip side of the impermeable elongate base defining the open chamber of the support frame; \n \n at least one closed-loop gasket coupled with the elongate base, the at least one port, and the support wall for defining a vacuum grip region configured to form a seal with a surface of a lift object, the at least one closed-loop gasket comprising:\n a base surface connected to the impermeable elongate base at the vacuum grip side, the gasket protruding from the impermeable elongate base in the vacuum grip direction a second distance greater than the support wall first distance; \n a contact surface at an opposite end from the base surface; \n an inner wall between the base surface and the contact surface forming a closed-loop and defi",
+      "subject": {
+        "number": "US-11731291-B2",
+        "efd": "2018-05-08",
+        "filing_date": "2021-12-08",
+        "publication_date": "2023-08-22",
+        "jurisdiction": "US",
+        "has_claims": true
+      },
+      "gold_families": [
+        "19852272",
+        "22498676",
+        "22577009",
+        "22883737",
+        "22950774",
+        "23158645",
+        "23205091",
+        "23289430",
+        "23516263",
+        "24262135",
+        "24430975",
+        "24635901",
+        "24664421",
+        "24840037",
+        "25084279",
+        "25421211",
+        "25479119",
+        "25644276",
+        "27070290",
+        "27177351",
+        "29740151",
+        "3104865",
+        "3193909",
+        "31947993",
+        "32054112",
+        "34201690",
+        "34810482",
+        "35940933",
+        "36974391",
+        "39244538",
+        "40115693",
+        "41380067",
+        "42115107",
+        "4405320",
+        "45508079",
+        "45554511",
+        "54067591",
+        "55234658",
+        "56814857",
+        "56830674",
+        "6332344",
+        "63449883",
+        "66624664",
+        "6918853",
+        "70050062",
+        "7715998",
+        "7865086",
+        "7961965",
+        "8790101"
+      ],
+      "n_gold_families": 49,
+      "hidden_edges": [
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-1036586-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-1125752-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-1514036-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-2172199-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-2233350-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-2475073-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-2578020-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "FR-1036586-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-2920916-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-3181027-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-3240525-A",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "GB-1036586-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-3506297-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-3724659-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-3915241-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-4685714-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "DE-3724659-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-4852926-A",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "BE-1001645-A6",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-5681022-A",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-5795001-A",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-6039371-A",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "WO-0121357-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-6244778-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-6279976-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-6296426-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-6341808-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-6413022-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-6502877-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-7004521-B2",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-7216403-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-7222901-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-7267512-B1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-7404536-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "CN-201147927-Y",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-7712807-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-7963578-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-8096537-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-8104809-B1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-8534633-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-9108319-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-9215962-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "CN-205555846-U",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "WO-2017215163-A1",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-10383492-B2",
+          "category": "APP",
+          "type": ""
+        },
+        {
+          "src": "US-11731291-B2",
+          "dst": "US-11413727-B2",
+          "category": "SEA",
+          "type": ""
+        }
+      ]
+    },
+    {
+      "id": "grabo_de_utility_xling",
+      "category": "cross_lingual",
+      "mode": "novelty",
+      "anchor_publication": "DE-202019005606-U1",
+      "anchor_family": "66624664",
+      "title": "Vakuumgreifer",
+      "notes": "GRABO DE utility model \u2014 German-text anchor (cross-lingual recall test).",
+      "query_text": "Vakuumgreifer\nEin Vakuumgreifer (100, 200, 300, 400) zum Greifen einer Objektoberfl\u00e4che, wobei der Vakuumgreifer ein tragbarer oder handgehaltener Vakuumgreifer ist und, bevor er in Kontakt mit der Objektoberfl\u00e4che gebracht wird, umfasst:\n ein starres Basiselement (141, 210, 310, 410) mit einer ersten Seite und einer der ersten Seite gegen\u00fcberliegenden zweiten Seite, wobei die zweite Seite einen zentralen Bereich und\n eine den zentralen Bereich umgebende Peripherie (180, 218, 318, 418) aufweist;\n ein schlaufenf\u00f6rmiges Vakuumdichtungselement (145, 220, 320, 420) aufweisend:\n eine Befestigungsfl\u00e4che (221, 421), an der es zumindest indirekt an der Periphere der zweiten Seite des starren Basiselements befestigt ist;\n einen vorstehenden Abschnitt (145b, 223, 323, 423), der keinen Kontakt mit dem starren Basiselement hat und von diesem entlang einer gesamten Ausdehnung der Befestigungsfl\u00e4che in einer Richtung weg von der ersten Seite des Basiselements vorsteht;\n eine Kontaktfl\u00e4che (145c, 222, 322, 422), die einen Teil des vorstehenden Abschnitts bildet und so konfiguriert ist, dass sie in zumindest teilweisen Kontakt mit der Objektoberfl\u00e4che gebracht werden kann, wobei das Vakuumdichtungselement zumindest an der Kontaktfl\u00e4che elastisch verformbar ist, um zu erm\u00f6glichen, dass sich die Kontaktfl\u00e4che an die Objektoberfl\u00e4che anpasst, wenn sie gegen diese gedr\u00fcckt wird; und\n eine innere umlaufende Fl\u00e4che (145d, 224, 324, 424), die in eine Richtung zu dem zentralen Bereich hin weist, und eine \u00e4u\u00dfere umlaufende Fl\u00e4che (145e, 225, 325, 425), die in eine Richtung weg von der inneren umlaufenden Oberfl\u00e4che weist, wobei sich beide Fl\u00e4chen zwischen der Kontakt- und der Befestigungsfl\u00e4che erstrecken;\n eine Kammer (230, 330), die durch den vorstehenden Abschnitt mit dem zentralen Bereich an der zweiten Seite des starren Basiselements definiert ist; und\n ein Luftabsaugmittel (240), das an der ersten Seite des Basiselements so angebracht ist,\n dass es durch das Basiselement hindurch in Fluidverbindung mit der Kammer steht, und das so konfiguriert ist, dass es kontinuierlich Luft aus der Kammer absaugt, um zu bewirken,\n dass die Kontaktfl\u00e4che in Richtung auf die Objektoberfl\u00e4che gedr\u00fcckt wird und diese dadurch ergreift, wenn sie gegen sie gedr\u00fcckt wird.",
+      "subject": {
+        "number": "DE-202019005606-U1",
+        "efd": "2018-05-08",
+        "filing_date": "2019-05-05",
+        "publication_date": "2021-03-02",
+        "jurisdiction": "DE",
+        "has_claims": false
+      },
+      "gold_families": [
+        "34201690",
+        "63449883",
+        "6480115",
+        "6495403",
+        "70050062",
+        "7782789",
+        "7889498"
+      ],
+      "n_gold_families": 7,
+      "hidden_edges": []
+    },
+    {
+      "id": "schmalz_sauggreifsystem",
+      "category": "competitor",
+      "mode": "novelty",
+      "anchor_publication": "DE-102017106252-A1",
+      "anchor_family": "63449883",
+      "title": "Sauggreifsystem sowie Verfahren zum Betreiben eines Sauggreifsystems",
+      "notes": "Schmalz suction-gripper system (fam 63449883); DE anchor.",
+      "query_text": "Sauggreifsystem sowie Verfahren zum Betreiben eines Sauggreifsystems\nDie Erfindung betrifft ein Sauggreifsystem (1) mit wenigstens zwei an einem Grundtr\u00e4ger (3) angeordneten Saugelementen (4), welche am Ende einer jeweiligen Saugleitung (5) angeordnet und \u00fcber diese mit einer Saugvorrichtung (6) verbunden sind, mittels welcher das jeweilige Saugelement (4) mit einem Unterdruck beaufschlagbar ist, wobei in einer der wenigstens zwei Saugleitungen (5) ein Str\u00f6mungswiderstandselement (10) angeordnet ist. Des Weiteren betrifft die Erfindung ein Verfahren zum Betreiben eines Sauggreifsystems (1).",
+      "subject": {
+        "number": "DE-102017106252-A1",
+        "efd": "2017-03-23",
+        "filing_date": "2017-03-23",
+        "publication_date": "2018-09-27",
+        "jurisdiction": "DE",
+        "has_claims": false
+      },
+      "gold_families": [
+        "32297463",
+        "50556166",
+        "66624664",
+        "83194486"
+      ],
+      "n_gold_families": 4,
+      "hidden_edges": [
+        {
+          "src": "DE-102017106252-A1",
+          "dst": "US-2004094979-A1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-102017106252-A1",
+          "dst": "DE-202006021243-U1",
+          "category": "APP,SEA",
+          "type": ""
+        }
+      ]
+    },
+    {
+      "id": "schmalz_vacuum_clamp",
+      "category": "competitor",
+      "mode": "inventive_step",
+      "anchor_publication": "DE-102019107477-A1",
+      "anchor_family": "70050062",
+      "title": "Konsole, Spannmittel und Unterdruckspanneinrichtung",
+      "notes": "Schmalz console/vacuum clamping device (fam 70050062).",
+      "query_text": "Konsole, Spannmittel und Unterdruckspanneinrichtung\nEine Konsole (10) f\u00fcr eine Unterdruckspanneinrichtung (100), wobei die Konsole (10) einen angetriebenen Mitnehmer (20) zur Verlagerung eines auf die Konsole (10) aufsetzbaren Spannmittels (60) aufweist, wobei der Mitnehmer (20) an einer Seitenwand (18) der Konsole (10) angeordnet und entlang der Konsolenl\u00e4ngsrichtung (12) verschieblich gef\u00fchrt ist, wobei vorgeschlagen wird dass der Mitnehmer (20) mindestens einen ausfahrbaren Mitnehmerzapfen (26) zur mechanischen Ankopplung eines Spannmittels (60) an den Mitnehmer (20) und eine Fluidzuf\u00fchrung (28) zur Beaufschlagung eines an den Mitnehmer (20) angekoppelten Spannmittels (60) mit einem insbesondere unter Druck stehenden Fluid aufweist.\n Ein Spannmittel (60) f\u00fcr einen Unterdruckspanneinrichtung (100) und eine Unterdruckspanneinrichtung (100) sind ebenfalls angegeben.",
+      "subject": {
+        "number": "DE-102019107477-A1",
+        "efd": "2019-03-22",
+        "filing_date": "2019-03-22",
+        "publication_date": "2020-09-24",
+        "jurisdiction": "DE",
+        "has_claims": false
+      },
+      "gold_families": [
+        "26040986",
+        "31984472",
+        "32981160",
+        "36011303",
+        "43736808",
+        "7790219",
+        "7917022"
+      ],
+      "n_gold_families": 7,
+      "hidden_edges": [
+        {
+          "src": "DE-102019107477-A1",
+          "dst": "DE-19613094-A1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-102019107477-A1",
+          "dst": "DE-29723509-U1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-102019107477-A1",
+          "dst": "DE-19936502-C1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-102019107477-A1",
+          "dst": "DE-10301454-B3",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-102019107477-A1",
+          "dst": "DE-10319272-A1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-102019107477-A1",
+          "dst": "DE-102004043697-A1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-102019107477-A1",
+          "dst": "DE-102010053657-A1",
+          "category": "SEA",
+          "type": ""
+        }
+      ]
+    },
+    {
+      "id": "probst_stone_lifter_xling",
+      "category": "cross_lingual",
+      "mode": "novelty",
+      "anchor_publication": "DE-4327663-A1",
+      "anchor_family": "6495403",
+      "title": "Vacuum lifting device for stone elements",
+      "notes": "Probst vacuum lifting device for stone elements (fam 6495403); DE.",
+      "query_text": "Vacuum lifting device for stone elements\nThe invention relates to a vacuum lifting device for stone elements and the like, having a housing (2), a fastening device (5) arranged thereon and intended for fastening the lifting device (1) to the crane hook or the like of a working apparatus, a vacuum suction device (3) for the stone elements, and a handle part (4), a device (6 to 9) for generating a vacuum for the suction device (3) being provided. Running gear (10, 11, 12, 13; 11&#39;, 11&#39;&#39;), which supports the lifting device (1) movably and inherently stably and includes at least one wheel (11; 11&#39;; 11&#39;&#39;), can be fixed to the housing (2). &lt;IMAGE&gt;",
+      "subject": {
+        "number": "DE-4327663-A1",
+        "efd": "1993-08-17",
+        "filing_date": "1993-08-17",
+        "publication_date": "1995-02-23",
+        "jurisdiction": "DE",
+        "has_claims": false
+      },
+      "gold_families": [
+        "26224347",
+        "6026446",
+        "6480115",
+        "66624664",
+        "6853263",
+        "83194486"
+      ],
+      "n_gold_families": 6,
+      "hidden_edges": [
+        {
+          "src": "DE-4327663-A1",
+          "dst": "DE-2756389-A1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4327663-A1",
+          "dst": "DE-9004769-U1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4327663-A1",
+          "dst": "EP-0189356-B1",
+          "category": "SEA",
+          "type": ""
+        }
+      ]
+    },
+    {
+      "id": "probst_kerb_lifter",
+      "category": "competitor",
+      "mode": "inventive_step",
+      "anchor_publication": "DE-4303944-A1",
+      "anchor_family": "6480115",
+      "title": "Lifting appliance, in particular for laying kerb stones, paving flags and the like",
+      "notes": "Probst kerbstone/paving lifting appliance (fam 6480115).",
+      "query_text": "Lifting appliance, in particular for laying kerb stones, paving flags and the like\nThe invention relates to a lifting appliance having a mast which is fastened to a basic body (9) and on the free end of which a jib (6) is located, on which a lifting device (1) is arranged. The mast is of two-part design and comprises a bottom mast part (5&#39;) arranged on the basic body and a top mast part (5&#39;&#39;), to the free end of which the jib (6) is fastened in such a way that the top mast part (5&#39;&#39;) can be pivoted about an axis (8) in relation to the bottom mast part (5&#39;) by an actuator (7). &lt;IMAGE&gt;",
+      "subject": {
+        "number": "DE-4303944-A1",
+        "efd": "1993-02-10",
+        "filing_date": "1993-02-10",
+        "publication_date": "1994-08-11",
+        "jurisdiction": "DE",
+        "has_claims": false
+      },
+      "gold_families": [
+        "5566733",
+        "5877774",
+        "6259387",
+        "6391811",
+        "6495403",
+        "7217340",
+        "8811546",
+        "8841954",
+        "9340346"
+      ],
+      "n_gold_families": 9,
+      "hidden_edges": [
+        {
+          "src": "DE-4303944-A1",
+          "dst": "DE-1013850-B",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4303944-A1",
+          "dst": "FR-1367982-A",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4303944-A1",
+          "dst": "FR-1421589-A",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4303944-A1",
+          "dst": "DE-2318339-A1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4303944-A1",
+          "dst": "DE-3500342-C2",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4303944-A1",
+          "dst": "DD-236079-B1",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4303944-A1",
+          "dst": "DE-3735262-C2",
+          "category": "SEA",
+          "type": ""
+        },
+        {
+          "src": "DE-4303944-A1",
+          "dst": "DE-3934922-A1",
+          "category": "SEA",
+          "type": ""
+        }
+      ]
+    },
+    {
+      "id": "nl_handheld_vacuum_seal_sensor",
+      "category": "hard_combination",
+      "mode": "novelty",
+      "anchor_publication": null,
+      "anchor_family": null,
+      "title": null,
+      "notes": "Feature combination: portability + seal + active pump + loss-of-vacuum sensor.",
+      "query_text": "handheld battery-powered vacuum lifter with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that warns the operator when grip vacuum is lost",
+      "subject": null,
+      "gold_families": [
+        "34201690",
+        "63449883",
+        "66624664",
+        "70050062",
+        "83194486"
+      ],
+      "n_gold_families": 5,
+      "hidden_edges": []
+    },
+    {
+      "id": "nl_porous_surface_gripper",
+      "category": "hard_combination",
+      "mode": "novelty",
+      "anchor_publication": null,
+      "anchor_family": null,
+      "title": null,
+      "notes": "Hard: porous/rough-surface handling \u2014 a differentiator of the field.",
+      "query_text": "vacuum suction gripper able to lift rough or porous surfaces such as concrete, stone, or textured tile by maintaining airflow with a continuously running pump",
+      "subject": null,
+      "gold_families": [
+        "6480115",
+        "6495403",
+        "66624664",
+        "7782789",
+        "7889498",
+        "83194486"
+      ],
+      "n_gold_families": 6,
+      "hidden_edges": []
+    },
+    {
+      "id": "nl_robot_eoat_vacuum",
+      "category": "neighbouring_cpc",
+      "mode": "inventive_step",
+      "anchor_publication": null,
+      "anchor_family": null,
+      "title": null,
+      "notes": "Neighbouring CPC: B25J15/0616 robotic grippers vs handheld B66C1/0225.",
+      "query_text": "robotic end-of-arm vacuum gripper for handling sheets or panels with an array of suction cups and independent vacuum zones",
+      "subject": null,
+      "gold_families": [
+        "34201690",
+        "63449883",
+        "70050062"
+      ],
+      "n_gold_families": 3,
+      "hidden_edges": []
+    }
+  ]
+}

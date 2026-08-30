@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Compare references | Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap">
+  <div class="sec"><h1>Side-by-side reference comparison</h1>
+    <span class="hint">{{ mode.replace('_',' ') }} · for a combination / inventive-step argument</span></div>
+  <p class="q">Query: “{{ query[:220] }}{% if query|length>220 %}…{% endif %}”</p>
+
+  <div class="cmpgrid" style="grid-template-columns:repeat({{ cols|length }},minmax(0,1fr))">
+    {% for col in cols %}
+    <div class="cmpcol">
+      <div class="cmphead">
+        <a class="pn" href="{{ col.google_patents }}" target="_blank" rel="noopener">{{ col.biblio.pub }} ↗</a>
+        <div class="cmptitle">{{ col.biblio.flag }} {{ col.biblio.title or '(untitled)' }}</div>
+        <div class="small muted">{{ col.biblio.assignees|join('; ') }}</div>
+        <div class="small muted">published {{ col.biblio.publication_date or '—' }} ·
+          priority {{ col.biblio.priority_date or '—' }} · family {{ col.biblio.family_id }}</div>
+      </div>
+      <div class="cmpsec">
+        <h5>Key drawing</h5>
+        {% if col.img %}
+          {#  col.img is EITHER a root-relative "/figures/..." path (a locally-recovered figure,
+              which must go through script_root when the app is mounted under a prefix) OR an
+              absolute remote Google-CDN URL (a lemad-Mongo figure, used verbatim). Prefix only the
+              relative form. data-full is the full-resolution URL the lightbox opens. #}
+          <button type="button" class="cmpimgbtn" onclick="openLb(this.querySelector('img'))"
+                  aria-label="Open lead drawing of {{ col.biblio.pub }} full size"><img class="cmpimg"
+               src="{% if col.img.startswith('/') %}{{ request.script_root }}{% endif %}{{ col.img }}"
+               data-full="{% if col.img_full.startswith('/') %}{{ request.script_root }}{% endif %}{{ col.img_full }}"
+               data-pub="{{ col.biblio.pub }}" alt="Lead drawing of {{ col.biblio.pub }}"></button>
+          <div class="small muted" style="margin-top:5px">{{ col.n_images }} figure(s)</div>
+        {% else %}<div class="nodig">No drawing digitized for this document.</div>{% endif %}
+      </div>
+      <div class="cmpsec">
+        <h5>Best-matching passage</h5>
+        {% if col.matched and col.matched.text %}
+          <div class="small muted">{{ col.matched.kind }} · {{ col.matched.coord }}</div>
+          <div class="para matched" style="margin-top:6px;max-height:220px;overflow:auto">{{ col.matched.text }}</div>
+        {% else %}<span class="muted small">—</span>{% endif %}
+      </div>
+      <div class="cmpsec">
+        <h5>Invention elements it reads on ({{ col.covers|length }})</h5>
+        {% if col.covers %}{% for el in col.covers %}<div class="cmp-el">✓ {{ el }}</div>{% endfor %}
+        {% else %}<span class="muted small">none mapped</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="sec"><h2>Element coverage matrix</h2></div>
+  <div class="chartwrap"><table class="chart">
+    <caption class="vh">Which of the compared references covers which invention element</caption>
+    <thead><tr><th class="elh" scope="col">Invention element</th>
+      {% for col in cols %}<th scope="col">{{ col.biblio.pub }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for el in elements %}<tr><th class="elh" scope="row">{{ el }}</th>
+        {% for col in cols %}
+          {% if el in col.covers %}<td class="cell" style="background:rgba(63,185,80,.22)">✓<span class="vh">covered</span></td>
+          {% else %}<td class="cell empty">·<span class="vh">not covered</span></td>{% endif %}
+        {% endfor %}</tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Figure viewer">
+  <button type="button" class="x" id="lbclose" onclick="closeLb()" aria-label="Close the figure viewer">✕</button>
+  <button type="button" class="nav l" id="lbprev" onclick="lbNav(-1)" aria-label="Previous figure">‹</button>
+  <div id="lbstage"></div>
+  <button type="button" class="nav r" id="lbnext" onclick="lbNav(1)" aria-label="Next figure">›</button>
+  <div class="cap" id="lbcap"></div>
+</div>
+{% endblock %}

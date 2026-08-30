@@ -6,6 +6,7 @@ top-K over all chunk kinds is systematically biased against short documents (see
 belongs to workstream E; it enters through `retrieval.shard_router`, not here.
 """
 from __future__ import annotations
+from config import EMBED_DIM  # noqa: E402
 
 import re
 
@@ -102,7 +103,7 @@ class DenseMixin:
         vecs = []
         t = (out.get("t") or "").strip()
         if t:
-            vecs.append(embed.embed_query(t[:8000], 768))
+            vecs.append(embed.embed_query(t[:8000], EMBED_DIM))
         self._xl_cache[key] = vecs
         return vecs
 

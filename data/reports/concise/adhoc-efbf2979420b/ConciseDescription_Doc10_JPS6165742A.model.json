@@ -1,0 +1,194 @@
+{
+ "n": 10,
+ "pub": "JP-S6165742-A",
+ "family_id": "16152677",
+ "biblio": {
+  "pub": "JP-S6165742-A",
+  "label": "JP S6165742 A",
+  "kind": "foreign",
+  "title": "permanent magnet chuck",
+  "country": "JP",
+  "inventor": "Takashi Nakayama",
+  "assignee": "KANETSUU KOGYO KK, Kanetsu Kogyo KK",
+  "publication_date": "1986-04-04",
+  "priority_date": "1984-09-05",
+  "filing_date": "1984-09-05",
+  "dates_source": "corpus",
+  "abstract": "(57) [Summary] This bulletin contains application data before electronic filing, so abstract data is not recorded.",
+  "issue_date_pretty": "April 4, 1986",
+  "priority_date_pretty": "September 5, 1984"
+ },
+ "subject": {
+  "app_no": "19/318,450",
+  "pub_no": "US 2026/0070232 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a permanent magnet chuck that effectively magnetizes the whole magnetic zone of a surface plate and improves its magnetic attractive force by switching the surface plate between magnetized and non-magnetized conditions.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[b]",
+   "quote_claim": true,
+   "claim_text": "a magnet which is arranged in the housing and which is displaceable along a displacement direction between a gripping position for gripping the ferromagnetic workpiece and a release position for releasing the ferromagnetic workpiece",
+   "claim_paraphrase": "a magnet which is arranged in the housing and which is displaceable along a displacement direction between a gripping position for gripping the ferromagnetic workpiece and a …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "a permanent magnet able to move in the vertical direction between a bottom plate and the surface plate.",
+   "note": "This passage describes a permanent magnet that moves in the vertical direction between a bottom plate and a surface plate, which corresponds to a magnet displaceable along a displacement direction between a gripping and release position.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.9,
+   "_id": 1,
+   "disclosure": "The reference discloses a permanent magnet able to move in the vertical direction between a bottom plate and the surface plate, which corresponds to a magnet displaceable along a displacement direction between a gripping and release position."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[c]",
+   "quote_claim": true,
+   "claim_text": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the workpiece contact surface",
+   "claim_paraphrase": "a number of pole shoes attached to the housing, wherein each pole shoe has a workpiece contact surface and is designed to guide a magnetic field portion of the magnet to the …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "a magnetic pole part 14, brought into contact with a yoke 26, and each magnetic zone 14a of a surface plate, brought into contact with a yoke upper magnetic part 24b, are alternately magnetized in a different magnetic pole placing",
+   "note": "The reference discloses magnetic pole parts (pole shoes) and a surface plate (workpiece contact surface) that guide magnetic flux.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 2,
+   "disclosure": "The reference discloses a magnetic pole part 14 brought into contact with a yoke 26, and each magnetic zone 14a of a surface plate, brought into contact with a yoke upper magnetic part 24b, which are alternately magnetized and guide magnetic flux."
+  },
+  {
+   "claim_no": 2,
+   "label": "claim 2[b]",
+   "quote_claim": false,
+   "claim_text": "the displacement direction is aligned parallel to the longitudinal axis of the housing",
+   "claim_paraphrase": "the displacement direction is aligned parallel to the longitudinal axis of the housing",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The permanent magnets 20 are rigidly supported by each frame 34 so as to be aligned in the same magnetization direction, and as shown in FIG. 26 , that is, the magnetic a1 of the face plate 16? The magnetization",
+   "note": "The reference describes the movement of permanent magnets in a vertical direction, which could be considered a displacement direction.",
+   "cites": [
+    "Paragraph [0016]"
+   ],
+   "confidence": 0.6,
+   "_id": 3,
+   "disclosure": "The reference discloses permanent magnets 20 that are rigidly supported by each frame 34 so as to be aligned in the same magnetization direction, and move in the vertical direction."
+  },
+  {
+   "claim_no": 3,
+   "label": "claim 3[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "In the upper position of a frame structure 34 supporting a magnet 20, a magnetic pole part 14, brought into contact with a yoke 26, and each magnetic zone 14a of a surface plate, brought into contact with a yoke",
+   "note": "The reference describes magnetic pole parts and yokes that guide magnetic flux to the surface plate, which can be interpreted as directing the magnetic field.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.7,
+   "_id": 4,
+   "disclosure": "The reference discloses a magnetic pole part 14 brought into contact with a yoke 26, and each magnetic zone 14a of a surface plate, brought into contact with a yoke, which direct the magnetic field."
+  },
+  {
+   "claim_no": 6,
+   "label": "claim 6[c]",
+   "quote_claim": false,
+   "claim_text": "the active structure has a recess between the first projection and the second projection",
+   "claim_paraphrase": "the active structure has a recess between the first projection and the second projection",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A recess 32 for the permanent magnet 20 is defined between the adjacent magnetic yokes 24 and 26 by spacers 28 and 30 in which an upper spacer 28 and a lower spacer 30 made of a non-magnetic material are",
+   "note": "The reference discloses a recess between adjacent magnetic yokes, which could be considered an active structure.",
+   "cites": [
+    "Paragraph [0013]"
+   ],
+   "confidence": 0.6,
+   "_id": 5,
+   "disclosure": "The reference discloses a recess 32 for the permanent magnet 20 defined between the adjacent magnetic yokes 24 and 26 by spacers 28 and 30."
+  },
+  {
+   "claim_no": 8,
+   "label": "claim 8[b]",
+   "quote_claim": false,
+   "claim_text": "the magnet is arranged in the housing such that, in the gripping position, the first pole shoe acts as a north pole and the second pole shoe acts as a south pole",
+   "claim_paraphrase": "the magnet is arranged in the housing such that, in the gripping position, the first pole shoe acts as a north pole and the second pole shoe acts as a south pole",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "are alternately magnetized in a different magnetic pole placing the surface plate 16 in a magnetized condition because a magnetic pole surface adapted to a yoke 24 of each permanent magnet 20 is brought into contact with only the upper",
+   "note": "The reference states that magnetic pole parts are alternately magnetized in a different magnetic pole, which implies north and south poles.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.6,
+   "_id": 6,
+   "disclosure": "The reference discloses that magnetic pole parts are alternately magnetized in a different magnetic pole, placing the surface plate 16 in a magnetized condition because a magnetic pole surface adapted to a yoke 24 of each permanent magnet 20 is brought into contact with only the upper part."
+  },
+  {
+   "claim_no": 14,
+   "label": "claim 14[d]",
+   "quote_claim": false,
+   "claim_text": "wherein, in a release state, the magnet is in the release position and the ferromagnetic workpiece is not pressed, by means of a magnetic force, against each workpiece contact surface",
+   "claim_paraphrase": "wherein, in a release state, the magnet is in the release position and the ferromagnetic workpiece is not pressed, by means of a magnetic force, against each workpiece contact …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Next in the bottom position of the frame structure 34, the surface plate 16 is placed in a non-magnetized condition by forming closed loop magnetic flux via the yoke 26, yoke bottom magnetic part 24C and a bottom plate 18",
+   "note": "This passage describes the surface plate being in a non-magnetized condition when the magnet is in the bottom position, meaning a workpiece would not be pressed by magnetic force, which corresponds to a release state.",
+   "cites": [
+    "Abstract",
+    "Claim 24"
+   ],
+   "confidence": 0.9,
+   "_id": 7,
+   "disclosure": "The reference discloses that in the bottom position of the frame structure 34, the surface plate 16 is placed in a non-magnetized condition by forming closed loop magnetic flux via the yoke 26, yoke bottom magnetic part 24C and a bottom plate 18, meaning the ferromagnetic workpiece is not pressed by magnetic force."
+  },
+  {
+   "claim_no": 16,
+   "label": "claim 16[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the receptacle is in the form of a groove",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the receptacle is in the form of a groove",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A recess 32 for the permanent magnet 20 is defined between the adjacent magnetic yokes 24 and 26 by spacers 28 and 30 in which an upper spacer 28 and a lower spacer 30 made of a non-magnetic material are",
+   "note": "The reference discloses a 'recess' for the permanent magnet, which could be considered a type of receptacle.",
+   "cites": [
+    "Paragraph [0013]"
+   ],
+   "confidence": 0.6,
+   "_id": 8,
+   "disclosure": "The reference discloses a recess 32 for the permanent magnet 20 defined between the adjacent magnetic yokes 24 and 26."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "public_prior_art",
+   "blocked": false,
+   "forum": "US"
+  },
+  "quotes": {
+   "checked": 9,
+   "dropped": 1,
+   "note": "1 of 9 quotations could not be found in the stored text of this reference and were removed; the finding and its citation remain."
+  },
+  "rows_dropped": 1,
+  "translation": {
+   "translated": 0,
+   "pre_translated": true,
+   "note": "This is a Japanese-language document. The passages relied on are quoted from an English translation held in the search corpus, not from the original text. A verified translation of the relied-on portions should accompany the filing."
+  },
+  "neutralised": []
+ }
+}

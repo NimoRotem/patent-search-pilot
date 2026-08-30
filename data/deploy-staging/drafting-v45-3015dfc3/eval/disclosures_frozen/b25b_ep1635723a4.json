@@ -1,0 +1,383 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25b_ep1635723a4",
+ "subject_pub": "EP-1635723-A4",
+ "n_claims_source": 61,
+ "claims_source": "family_claims:US-8292933-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 59,
+  "by_kind": {
+   "independent_limitation": 9,
+   "combination": 4,
+   "dependent_limitation": 46
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "absorbable screw fastener",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "body portion defining a longitudinal axis",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "body portion having a proximal end and a distal end",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "body portion having a helical thread formed thereon",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "helical thread having a major diameter and a minor diameter",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "head portion disposed at the proximal end of the body portion",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "head portion having a driver receiving slot formed in an outer radial surface",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "helical thread having a helical thread slot corresponding to and in alignment with the driver receiving slot",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "radially-innermost surface of the helical thread slot is between the major diameter and the minor diameter of the helical thread",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "absorbable screw fastener comprising a body portion with a helical thread having major/minor diameters, a head portion with a driver receiving slot, and a helical thread slot aligned with the driver receiving slot, where the innermost surfa",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "absorbable screw fastener with a body portion having a helical thread and a center shaft, the thread defining an outer distance and an inner distance where it meets the center shaft, and a helical thread slot between these distances; and a ",
+   "kind": "combination",
+   "source": "claim 17",
+   "weight": 0.9
+  },
+  {
+   "text": "absorbable screw fastening system with a fastener applier having a driver, and a plurality of absorbable screw fasteners arranged longitudinally in series, each fastener having a body portion with a helical thread defining an outer and inne",
+   "kind": "combination",
+   "source": "claim 38",
+   "weight": 0.9
+  },
+  {
+   "text": "method of performing a surgical procedure by providing an absorbable screw fastening system, applying a tip of the fastener driver to a tissue site, and actuating the driver to advance a pilot into the tissue site and then drive a fastener ",
+   "kind": "combination",
+   "source": "claim 59",
+   "weight": 0.9
+  },
+  {
+   "text": "head portion outer diameter substantially equal to the major diameter of the helical thread",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "head portion has a plurality of driver receiving slots",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "helical thread has a plurality of helical thread slots",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "each helical thread slot corresponds to and aligns with one driver receiving slot",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "body portion includes a center shaft that defines the minor diameter",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "major diameter of the helical thread varies between distal and proximal ends",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "minor diameter of the helical thread varies between distal and proximal ends",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "body portion and head portion define a lumen extending longitudinally through the screw fastener",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "distal end of the body portion is angled relative to the longitudinal axis",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "distal end of the body portion defines an atraumatic blunt tip",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "plurality of driver receiving slots are diametrically opposed on the head portion",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "plurality of helical thread slots are diametrically opposed on the body portion",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "driver receiving slot is a flat",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "helical thread slot is a flat",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "fastener applier for applying the screw fastener",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "fastener applier has a driver configured to be received in the helical thread slot and driver receiving slot",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "fastener applier configured to apply a plurality of screw fasteners",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "plurality of screw fasteners arranged longitudinally in series within the fastener applier",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "driver is received in the driver receiving slot of each fastener",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "driver is received in the helical thread slot of each fastener",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "helical thread includes a surface that defines the helical thread slot",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "surface that defines the driver receiving slot is planar or flattened",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "head portion includes a surface that defines the driver receiving slot",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "screw fastener is formed of a bioabsorbable material",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "bioabsorbable material is formed from a polylactide",
+   "kind": "dependent_limitation",
+   "source": "claim 23",
+   "weight": 0.7
+  },
+  {
+   "text": "bioabsorbable material is selected from polyglycolic acid, poly-Glycolide (PGA), polylactic acid (PLA), L1 (18/82 poly-Glycolide-co-L-lactide), L4 (42/58 poly-Glycolide-co-L-lactide), and PGB (63/37 poly-Glycolide-co-Trimethylene Carbonate)",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "surface that defines the driver receiving slot includes a shoulder",
+   "kind": "dependent_limitation",
+   "source": "claim 25",
+   "weight": 0.7
+  },
+  {
+   "text": "outer radial surface of the head portion has a diameter substantially equal to the outer distance of the helical thread",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  },
+  {
+   "text": "outer distance of the helical thread varies between distal and proximal ends",
+   "kind": "dependent_limitation",
+   "source": "claim 28",
+   "weight": 0.7
+  },
+  {
+   "text": "inner distance of the helical thread varies between distal and proximal ends",
+   "kind": "dependent_limitation",
+   "source": "claim 29",
+   "weight": 0.7
+  },
+  {
+   "text": "lumen is defined by the center shaft",
+   "kind": "dependent_limitation",
+   "source": "claim 31",
+   "weight": 0.7
+  },
+  {
+   "text": "driver receiving slot includes structure configured to transmit torque",
+   "kind": "dependent_limitation",
+   "source": "claim 34",
+   "weight": 0.7
+  },
+  {
+   "text": "structure configured to transmit torque is a shoulder",
+   "kind": "dependent_limitation",
+   "source": "claim 35",
+   "weight": 0.7
+  },
+  {
+   "text": "head portion includes a surface that defines the head slot",
+   "kind": "dependent_limitation",
+   "source": "claim 41",
+   "weight": 0.7
+  },
+  {
+   "text": "surface that defines the head slot is planar or flattened",
+   "kind": "dependent_limitation",
+   "source": "claim 42",
+   "weight": 0.7
+  },
+  {
+   "text": "surface that defines the head slot includes a shoulder",
+   "kind": "dependent_limitation",
+   "source": "claim 43",
+   "weight": 0.7
+  },
+  {
+   "text": "head portion has a plurality of head slots",
+   "kind": "dependent_limitation",
+   "source": "claim 45",
+   "weight": 0.7
+  },
+  {
+   "text": "each helical thread slot corresponds to and aligns with one head slot",
+   "kind": "dependent_limitation",
+   "source": "claim 45",
+   "weight": 0.7
+  },
+  {
+   "text": "plurality of head slots are diametrically opposed on the head portion",
+   "kind": "dependent_limitation",
+   "source": "claim 50",
+   "weight": 0.7
+  },
+  {
+   "text": "head slot includes structure configured to transmit torque",
+   "kind": "dependent_limitation",
+   "source": "claim 51",
+   "weight": 0.7
+  },
+  {
+   "text": "fastener applier includes a pilot extending through the plurality of screw fasteners",
+   "kind": "dependent_limitation",
+   "source": "claim 55",
+   "weight": 0.7
+  },
+  {
+   "text": "pilot extends through a lumen defined in each of the plurality of fasteners",
+   "kind": "dependent_limitation",
+   "source": "claim 56",
+   "weight": 0.7
+  },
+  {
+   "text": "pilot defines a tip portion for piloting fasteners through mesh and tissue",
+   "kind": "dependent_limitation",
+   "source": "claim 57",
+   "weight": 0.7
+  },
+  {
+   "text": "tip portion of the pilot is sharpened",
+   "kind": "dependent_limitation",
+   "source": "claim 58",
+   "weight": 0.7
+  },
+  {
+   "text": "advancing the pilot and driving the fastener into tissue upon a single stroke of the fastener driver",
+   "kind": "dependent_limitation",
+   "source": "claim 60",
+   "weight": 0.7
+  },
+  {
+   "text": "advancing the pilot into the tissue site includes a tip portion of the pilot defining an engagement space in the tissue site",
+   "kind": "dependent_limitation",
+   "source": "claim 61",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "61b50682424c978d"
+}

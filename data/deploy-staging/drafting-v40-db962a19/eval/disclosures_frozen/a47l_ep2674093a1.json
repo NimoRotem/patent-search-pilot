@@ -1,0 +1,203 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "a47l_ep2674093a1",
+ "subject_pub": "EP-2674093-A1",
+ "n_claims_source": 12,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 29,
+  "by_kind": {
+   "independent_limitation": 7,
+   "combination": 2,
+   "dependent_limitation": 20
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Device for loading a washing machine with components to be washed",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Device comprising a perimeter frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Abutment means positioned within the perimeter defined by the frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Abutment means adapted to house components in a predetermined position",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Apparatus for handling a device according to claims 1-6",
+   "kind": "independent_limitation",
+   "source": "claim 7",
+   "weight": 1.0
+  },
+  {
+   "text": "Apparatus comprises handling means adapted to move the device",
+   "kind": "independent_limitation",
+   "source": "claim 7",
+   "weight": 1.0
+  },
+  {
+   "text": "Handling means move the device from the exit to the entrance of a tunnel washing machine",
+   "kind": "independent_limitation",
+   "source": "claim 7",
+   "weight": 1.0
+  },
+  {
+   "text": "Device for loading a washing machine with components to be washed, comprising a perimeter frame and abutment means within the frame adapted to house components in a predetermined position",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Apparatus for handling a device, comprising handling means adapted to move the device from the exit of a tunnel washing machine to its entrance",
+   "kind": "combination",
+   "source": "claim 7",
+   "weight": 0.9
+  },
+  {
+   "text": "Abutment means comprise a plurality of supports fixed to the frame",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "A plurality of abutments are movably positioned on the supports",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Supports comprise longitudinal and transverse bars",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Bars are reversibly fixed to the frame, forming a modular system",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "At least some abutments are slidingly associated with transverse bars",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Abutments comprise notches in an upper portion",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Notches adapted to removably house components",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Frame and abutment means are made of stainless steel",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Apparatus further comprises a first tilting device at the washing machine entrance",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "First tilting device picks up the device from handling means and deposits it onto a loading station",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Apparatus further comprises a second tilting device at the washing machine exit",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Second tilting device picks up the device from an unloading station and couples it with handling means",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Apparatus further comprises a loading station at the washing machine entrance",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Loading station houses the device for loading operations",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Apparatus further comprises an unloading station at the washing machine exit",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Unloading station houses the device for unloading operations",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Handling means comprise a chain conveyor device",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Loading station and unloading station comprise a roller conveyor",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Each roller conveyor comprises lifting means",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Lifting means maintain the device in a raised and indexed position",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "ecedb90947cfeab8"
+}

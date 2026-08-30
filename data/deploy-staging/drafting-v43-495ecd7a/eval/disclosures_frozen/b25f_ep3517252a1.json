@@ -1,0 +1,221 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25f_ep3517252a1",
+ "subject_pub": "EP-3517252-A1",
+ "n_claims_source": 15,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 32,
+  "by_kind": {
+   "independent_limitation": 3,
+   "combination": 2,
+   "dependent_limitation": 27
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A motion sensor detects orientation of a handheld tool.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A processor processes detected orientation to determine if the tool is out of a predetermined tilting range.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A handheld tool is operably connected with the motion monitoring device.",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "A motion monitoring device for a handheld tool comprising a motion sensor detecting orientation and a processor determining if orientation is out of a predetermined tilting range.",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A handheld tool arranged to be operably connected with a motion monitoring device as described in claims 1-14.",
+   "kind": "combination",
+   "source": "claim 15",
+   "weight": 0.9
+  },
+  {
+   "text": "The predetermined tilting range comprises at least two of pitch, roll, and yaw ranges.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "An indicator provides an indication based on the processor's determination.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The indicator comprises a visual indicator.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The visual indicator includes a display.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The display has a tilt status indication portion.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tilt status indication portion provides a first indication when within range.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tilt status indication portion provides a second, different indication when out of range.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The display has a plurality of tilt direction indication portions.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The tilt direction indication portions indicate respective directions of tilt.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The tilt direction indication portions are activated only when the tool is out of range.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The device comprises at least 4 tilt direction indication portions.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The device comprises at least 8 tilt direction indication portions.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The tilt direction indication portions form a substantially continuous loop.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Each tilt direction indication portion has a first segment activated when exceeding range by a first amount.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Each tilt direction indication portion has a second segment activated when the first segment is active and exceeding range by a larger second amount.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The second segment indicates the extent of tilting.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Input means adjust or calibrate the predetermined tilting range.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The motion sensor comprises a gyroscope.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The motion sensor comprises an accelerometer.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The motion sensor comprises an IMU sensor.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "A wireless communication module communicates information and data with an external electronic device.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Information and data includes commands for controlling device operation.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Information and data includes commands for adjusting device settings.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Information and data includes determination results obtained by the device.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The handheld tool is a handheld power tool.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The handheld tool is a hedge trimmer.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "A connection interface connects with the handheld power tool for power and/or data communication.",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "10c85871d136a7cd"
+}

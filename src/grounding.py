@@ -55,6 +55,64 @@ def mostly_english(text):
     return en >= xx
 
 
+#  ------------------------------------------------------------------- writing systems, not words
+#
+#  `mostly_english` compares ENGLISH function words against GERMAN and FRENCH ones. On a script
+#  that has neither it scores nought against nought and answers True, so a Japanese claim set reads
+#  to it as English. Measured on this corpus: 4,957 claim rows tagged `en` contain CJK characters
+#  and 3,497 more are unmistakably German, out of 542,546.
+#
+#  That is not an academic gap. A reference whose stored text is not English earns almost no
+#  verified rows, because an English limitation will not match a verbatim foreign passage, and the
+#  1.290 picker ranks on verified rows: it silently dropped the single most on-point examiner-cited
+#  reference in the case this was measured on. The same blind spot decides whether the packet
+#  attaches the English translation that 1.290(d)(4) requires.
+#
+#  A script test is not a language detector and does not try to be. It answers the one question
+#  those rows actually pose, and it answers it deterministically.
+_FOREIGN_SCRIPT = (
+    (0x0400, 0x04FF),      # Cyrillic
+    (0x0590, 0x05FF),      # Hebrew
+    (0x0600, 0x06FF),      # Arabic
+    (0x1100, 0x11FF),      # Hangul Jamo
+    (0x3000, 0x303F),      # CJK symbols and punctuation
+    (0x3040, 0x309F),      # Hiragana
+    (0x30A0, 0x30FF),      # Katakana
+    (0x3400, 0x4DBF),      # CJK unified ideographs extension A
+    (0x4E00, 0x9FFF),      # CJK unified ideographs
+    (0xAC00, 0xD7AF),      # Hangul syllables
+    (0xF900, 0xFAFF),      # CJK compatibility ideographs
+)
+#  A stray CJK character in an English patent is ordinary: an assignee name, a units symbol, a
+#  transliterated inventor. A tenth of the body is not.
+FOREIGN_SCRIPT_SHARE = 0.10
+
+
+def foreign_script_share(text) -> float:
+    """Fraction of the non-space characters that belong to a non-Latin script."""
+    s = (text or "")[:6000]
+    body = [ch for ch in s if not ch.isspace()]
+    if not body:
+        return 0.0
+    n = 0
+    for ch in body:
+        o = ord(ch)
+        for lo, hi in _FOREIGN_SCRIPT:
+            if lo <= o <= hi:
+                n += 1
+                break
+    return n / len(body)
+
+
+def is_english_text(text) -> bool:
+    """English on BOTH axes: not another Latin-script language, and not another writing system.
+
+    Use this, not `mostly_english`, wherever the answer decides something a person relies on.
+    `mostly_english` is kept because the reader and the view are tuned against it on Latin text.
+    """
+    return foreign_script_share(text) < FOREIGN_SCRIPT_SHARE and mostly_english(text)
+
+
 def quote_is_english(quote):
     s = " " + (quote or "").lower().replace("­", "") + " "
     en = sum(s.count(w) for w in _EN_HINTS)

@@ -1,0 +1,246 @@
+  128 draft/01-title.md
+   16 draft/02-cross-reference.md
+   16 draft/03-government-support.md
+  511 draft/04-field.md
+ 6140 draft/05-background.md
+ 3548 draft/06-summary.md
+ 1960 draft/07-drawings.md
+14697 draft/08-detailed-description.md
+ 8834 draft/09-claims.md
+  900 draft/10-abstract.md
+  422 draft/numerals.md
+ 2616 figures/FIG-1-PERSPECTIVE-VIEW-OF-THE-VIBRATION-DEVICE-IN-USE.md
+ 2783 figures/FIG-2-VERTICAL-SECTION-THROUGH-THE-CHAMBER.md
+ 2064 figures/FIG-3-BOTTOM-PLAN-VIEW-OF-THE-VIBRATION-DEVICE.md
+ 2749 figures/FIG-4-ENLARGED-SECTION-OF-THE-PERIMETER-MEMBER-END.md
+ 2672 figures/FIG-5-SECOND-EMBODIMENT-WITH-A-PULLING-ELEMENT.md
+50056 total
+# Conversation so far
+
+### USER
+
+Here is my invention.
+
+The present invention relates to a vibration device for setting tiles and other covering materials into thinset, mortar, adhesive, or similar bonding material. Conventional tile vibrators generally include a vibrating motor connected to a handle and either a smooth sliding base or a flexible suction cup. The vibration is intended to remove trapped air, distribute the bonding material, improve surface contact, and strengthen the bond between the tile and the underlying substrate.
+
+Existing systems have two main disadvantages. First, vibration from the motor is not efficiently coupled to the tile. A smooth sliding base must be pressed firmly against the tile by the operator, and even then a thin layer of air between the base and the tile may dampen vibration transfer. A suction-cup system creates a stronger connection, but the flexible rubber or foam forming the suction cup absorbs and dampens part of the vibration. A conventional suction cup also attaches the machine at one fixed location, preventing it from sliding across the tile and causing vibration intensity to decrease at areas farther from the attachment point.
+
+Second, existing systems require the operator to continuously apply substantial downward pressure to maintain contact with the tile. This transfers vibration into the operator’s hands, wrists, arms, and joints, creating discomfort, fatigue, and possible injury. Shock absorbers and vibration-damping handles may reduce some vibration reaching the operator, but they also absorb mechanical energy that could otherwise be transferred to the tile. Furthermore, stronger coupling generally requires greater hand pressure, which increases the vibration experienced by the operator.
+
+The invention addresses these problems by providing a vibration motor coupled to a first side of a rigid base. An air-extraction mechanism, such as a vacuum pump, is also coupled to the first side and is in fluid communication with a chamber located on a second side of the base. The perimeter of the second side is formed as a rigid loop or skirt made from a low-friction material such as plastic, metal, PTFE, or a combination of rigid materials.
+
+Unlike conventional vacuum grippers or suction cups, the rigid perimeter is not intended to form a complete airtight seal and does not rely on flexible rubber or foam. Instead, it restricts airflow into the chamber while maintaining rigid contact with the tile. The air-extraction mechanism continuously removes air entering beneath the rigid perimeter, maintaining the chamber at a lower pressure than the surrounding atmosphere. The resulting pressure differential holds the device firmly against the tile without requiring the operator to press downward.
+
+Because the vibration motor is connected to the tile through rigid components, vibration energy is transferred with substantially less damping than through a flexible suction cup. At the same time, the low-friction perimeter allows the device to slide freely across different areas of the tile while the vacuum continuously maintains contact.
+
+The device may include one or more handles used primarily for guiding the machine rather than pressing it against the surface. In another embodiment, a rope, wire, cable, or similar flexible pulling element is connected to the device. Pulling the flexible element moves the device across the tile, while the pressure differential independently supplies the force holding the device against the surface. This provides decoupled control in which the operator controls position using minimal pulling force while the vacuum maintains consistent coupling and vibration transfer. The invention therefore maximizes vibration delivered to the tile while minimizing vibration, pressure, fatigue, and joint stress experienced by the operator.
+
+### YOU (the drafting agent)
+
+The first working draft is written. All nine sections of draft/ are populated, draft/numerals.md lists 24 parts against numerals 10-56 with no numeral used twice and none appearing in the text that is missing from the table, and figures/ holds seven drawing specifications detailed enough for a draftsperson: a perspective of the device in use, a vertical section showing both air paths, a bottom plan of the perimeter loop, an enlarged detail of the clearance, the pulling-element embodiment, a force-and-transmission schematic, and a method flow chart.
+
+Claim 1 is an apparatus claim resting on three things together: a rigid perimeter member ending in a low-friction bearing face that leaves a clearance through which ambient air enters continuously; an air-extraction mechanism whose extraction rate exceeds that inflow, so the chamber stays below atmospheric under continuous ingress; and a vibration transmission path from motor to bearing face in which every member is rigid and no elastomeric member, foam member or resilient mount is interposed — with the bearing face slidable while the differential is maintained. Claims 2-14 give the fallback ladder, claims 15-18 are a system claim on the decoupled-control pulling arrangement, and claims 19-25 are the method of use.
+
+Nine points where the disclosure gives no fact are marked with drafting notes in place of the missing detail and listed in the questions: motor type and frequency, pump capacity, perimeter and base dimensions, power source, handle arrangement, pulling-element attachment, the optional separator, vertical-surface use, and the treatment end point. Nothing has been filled in by invention. The claim count exceeds the fee-free 20/3 and should be trimmed or paid for before filing; that is a call for the attorney signing it, as are all questions of patentability.
+
+### USER
+
+remove all drafting notes and finalize the draft
+
+### USER
+
+Finalize this application autonomously. Remove every drafting note and placeholder. Reconcile all sections, claims, reference numerals, drawing specifications, and actual drawing sheets. Do not ask questions. Publish only when every filing gate passes.
+
+### USER
+
+Finalize this application autonomously. Remove every drafting note and placeholder. Reconcile all sections, claims, reference numerals, drawing specifications, and actual drawing sheets. Do not ask questions. Publish only when every filing gate passes.
+
+### USER
+
+Autonomously complete this application to filing readiness. Resolve every prior QA finding and generate every required drawing. Do not add drafting notes, placeholders, unsupported facts, or questions. Continue until the patent text, reference numerals, leader endpoints, rendered sheets, and final independent review all pass.
+
+### USER
+
+Autonomously rebuild this application to filing readiness under the current drawing gates. Preserve the disclosed invention while resolving every existing QA finding. Generate each required sheet from the final text, correct every geometry constraint and leader endpoint, and keep the claims, detailed description, numeral table, figure briefs, and rendered pixels internally consistent. Leave no drafting note, placeholder, unsupported fact, or question. Continue until every mechanical check, both semantic traces, both leader traces, OCR, and the final independent review pass.
+
+### USER
+
+Autonomously finish this application under the current source-fidelity and pixel-grounded drawing gates. Preserve the inventor disclosure and the best unpublished candidate. Resolve every existing text and rendered-sheet finding. Generated pixels must conform to the authoritative text and must never cause the claims, description, numeral table, or embodiments to be widened. Continue until all mechanical checks, semantic consensus, raw-pixel anchor grounding, leader consensus, OCR, and final independent source-fidelity review pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the current deterministic text lock and pixel-grounded drawing gates. Preserve the inventor disclosure, all patent sections, claims, and numeral definitions during drawing-only repairs. Correct each remaining figure brief and rendered sheet until all semantic consensus, raw-pixel grounding, leader consensus, OCR, source-fidelity, and whole-application checks pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic text lock and the current marked-endpoint drawing gates. Preserve the inventor disclosure, all patent sections, claims, and numeral definitions during drawing-only repairs. Correct each remaining figure brief and rendered sheet until semantic consensus, raw-pixel grounding, marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until semantic consensus, exact topology, raw-pixel grounding, marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until semantic consensus, exact topology, raw-pixel grounding, marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, full-spec semantic, marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until semantic consensus, exact topology, raw-pixel grounding, marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, high-accuracy full-spec semantic, marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until high-accuracy semantic consensus, exact topology, raw-pixel grounding, marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, high-accuracy full-spec semantic, annotation-aware marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until high-accuracy semantic consensus, exact topology, raw-pixel grounding, annotation-aware marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, high-accuracy full-spec semantic, annotation-aware marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until high-accuracy semantic consensus, exact topology, raw-pixel grounding, annotation-aware marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, high-accuracy full-spec semantic, annotation-aware marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until high-accuracy semantic consensus, exact topology, raw-pixel grounding, annotation-aware marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, high-accuracy full-spec semantic, annotation-aware marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until high-accuracy semantic consensus, exact topology, raw-pixel grounding, annotation-aware marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Autonomously finish this application from the preserved source-faithful candidate under the deterministic filing-source, figure-plan, high-accuracy full-spec semantic, annotation-aware marked-endpoint, and topology gates. Preserve every patent section, claim, numeral definition, figure, and numeral-to-sheet assignment during drawing-only repairs. Improve only the geometry instructions and rendered sheets until high-accuracy semantic consensus, exact topology, raw-pixel grounding, annotation-aware marked endpoint consensus, leader consensus, OCR, source fidelity, and whole-application review all pass with no findings. Leave no note, placeholder, unsupported fact, question, or instruction for a person.
+
+### USER
+
+Continue autonomously from the saved filing candidate. Resolve every remaining drawing audit failure by strengthening only the figure geometry briefs. Preserve the source-faithful filing text, numeral definitions, and figure membership unless an independent text check requires a change. Run every automatic filing check and publish only when the application is fully filing ready.
+
+### USER
+
+Continue autonomously from the saved filing candidate. Satisfy the current preflight by splitting every sheet with more than eight numerals into focused views, synchronizing the drawing descriptions and detailed-description figure references, and removing every human-directed note from the figure briefs. Preserve the disclosed invention and claim substance. Run every automatic check and publish only when fully filing ready.
+
+### USER
+
+Continue the source-faithful checked candidate. Preserve every filing section and every numeral definition. Repair the figure plan only: remove every human-directed instruction, keep each sheet at no more than eight unique reference numerals, retain all 22 numerals including fastener 54 by redistributing them across focused views, synchronize the Brief Description of the Drawings, then run every text, OCR, semantic, topology, and leader-line gate. Publish only when the application and all drawing sheets are filing-ready.
+
+### USER
+
+Resume the preserved filing candidate. Preserve all nine filing sections and all 22 reference-numeral definitions exactly. Repair only the drawing plan and figure briefs. Keep every brief at or below 2800 characters, remove invented exact counts and proportions not grounded in the disclosure, place no more than eight unique numerals on a sheet, retain all 22 numerals across focused views, and synchronize the Brief Description of the Drawings. Do not change the claims, specification, disclosed embodiments, or numeral definitions to accommodate generated pixels. Run every mechanical, OCR, semantic, topology, leader-line, marked-endpoint, source-fidelity, and independent text-review gate. Publish only when the application and every drawing sheet are filing-ready.
+
+### USER
+
+Resume the preserved filing candidate. Preserve every filing section and all 22 reference-numeral definitions exactly. Repair only the drawing plan and figure briefs. Remove all human-directed wording, keep each brief at or below 2800 characters, use no more than eight unique numerals per sheet, retain all 22 numerals across focused views, and synchronize the Brief Description of the Drawings. Do not change claims, specification text, disclosed embodiments, or numeral definitions to accommodate generated pixels. Run all deterministic, OCR, semantic, topology, leader-line, marked-endpoint, source-fidelity, and independent text-review gates. Publish only when the complete application and every sheet pass.
+
+### USER
+
+Resume the preserved filing candidate and repair every automatic filing gate failure, especially drawing geometry and exact endpoint placement. Preserve all filing sections and reference numeral definitions. Return only a complete filing-ready application with no notes or placeholders.
+
+### USER
+
+Resume the preserved filing candidate. Preserve every filing section and the reference numeral table. Keep each existing endpoint target sentence unless the reported target is geometrically impossible. Repair only the drawing specifications needed by the saved four-sheet report, then run the updated automatic pixel gates through filing-ready completion. Return no notes or placeholders.
+
+### USER
+
+Continue automatically from the saved candidate. Preserve all filing sections, numerals, and the five-figure plan exactly. Resume the current pixel-space endpoint review and repair process, applying as many bounded corrections as needed. Publish only after every text, OCR, leader-line, marked-anchor, numbering, cross-reference, and filing-readiness gate passes. Do not add drafting notes, placeholders, alternatives, instructions, or uncertainty language to the patent text.
+
+### USER
+
+Continue automatically from the saved candidate. Preserve every filing section, numeral definition, and the five-figure plan. Re-run the current OCR, semantic, leader-line, marked-endpoint, numbering, cross-reference, text-review, and filing-readiness gates under the coordinate-certificate review. Repair only unresolved endpoints and publish only when every gate passes. Do not add drafting notes, placeholders, alternatives, instructions, or uncertainty language to the patent text.
+
+### USER
+
+Resume the latest saved filing candidate and complete it as a filing-ready application. Preserve all nine filing sections, the full disclosure-supported subject matter, the 22-entry numeral table, and the five-figure plan in canonical FIG. 1 through FIG. 5 order. Rerun every text and drawing gate using the currently deployed pipeline. The application must contain no drafting note, editor comment, placeholder, bracketed request, unresolved alternative, instruction to a draftsperson, or unsupported invented feature. Generate all five drawings automatically from the final text, use only correct reference numerals, and keep every figure description, detailed-description reference, claim term, numeral-table entry, caption, depicted geometry, leader, and endpoint internally consistent. Do not finish until the exact filing version passes source lock, mechanical review, independent LLM text review, OCR, semantic geometry review, pixel grounding, whole-sheet leader review, three-review endpoint majority at every final coordinate, and filing readiness with no failed, critical, or major findings.
+
+### USER
+
+Resume the latest saved filing candidate after the interrupted infrastructure deployment. Preserve all nine filing sections, the source-supported text and claims, all 22 reference-numeral definitions, and the five-figure plan in canonical order. Continue autonomously through every current text and drawing gate. Resolve drawing failures only through disclosure-grounded figure-brief or coordinate repair, never by changing the invention to match generated pixels. Return no drafting note, placeholder, editor comment, question, alternative instruction, or unsupported feature. Publish only after source lock, mechanical review, independent LLM text review, OCR, semantic geometry, pixel grounding, whole-sheet leaders, three-review coordinate certificates, cross-reference consistency, and filing readiness all pass with no failed, critical, or major finding.
+
+### USER
+
+Resume the latest saved filing candidate and its current FIG. 3 repair after the transient provider rate limit. Preserve all nine filing sections, source-supported text and claims, all 22 numeral definitions, and the five-figure plan. Continue autonomously through every current filing and drawing gate. Do not add notes, placeholders, questions, unsupported features, or human-directed instructions. Publish only when all text, source-lock, OCR, semantic geometry, pixel, leader, endpoint-certificate, numbering, cross-reference, independent-review, and filing-readiness checks pass.
+
+### USER
+
+Resume the latest saved filing candidate and finish it autonomously. Preserve all nine filing sections, source-supported text and claims, all 22 reference-numeral definitions, and the five-figure plan in canonical order. Apply the current FIG. 3 geometry repair and retain every already certified drawing version whose specification is unchanged. Do not add drafting notes, placeholders, questions, alternatives, unsupported features, or instructions for a human. Publish only after source lock, mechanical review, independent text review, OCR, semantic geometry, pixel topology, whole-sheet leader review, three-review coordinate certificates, cross-reference consistency, and filing readiness all pass with no failed, critical, or major finding.
+
+### USER
+
+Continue the automatic filing QA from the saved checked draft. Preserve the invention and all complete patent text. Regenerate or correct only failing drawings and annotations until every filing gate passes, with no drafting notes or placeholders.
+
+### USER
+
+Continue the automatic filing QA from the saved checked candidate. Preserve the invention, all nine complete patent sections, all claims, all 22 reference-numeral definitions, and every already certified drawing. Correct only the remaining failed drawing checks, then publish only when every text, source-lock, OCR, semantic geometry, pixel topology, leader, endpoint-certificate, numbering, cross-reference, independent-review, and filing-readiness gate passes. Do not add drafting notes, placeholders, alternatives, questions, or instructions for a human.
+
+### USER
+
+Continue autonomously from the current invention and draft. Preserve the disclosed invention and improve the full filing package. Remove all drafting notes, placeholders, open questions, and internal commentary. Repair every failed text review and mechanical QA check. Rewrite every drawing brief so each numeral has one unambiguous, physically possible endpoint on the correct depicted geometry. In particular, remove any target that says a point is on a face and also below that same face. Regenerate and inspect every drawing under all required OCR, semantic, leader-routing, marked-coordinate, and independent Claude Opus final-pixel gates. Do not publish a version until the text, numeral mapping, figure descriptions, drawing pixels, and filing preflight are all internally consistent and every filing-blocking check passes.
+
+### USER
+
+Resume the latest saved filing candidate and finish it autonomously under the deployed v2 endpoint repair loop. Preserve the invention, all complete filing text, all 22 reference-numeral definitions, and the focused five-figure plan. Use the recorded drawing failures to regenerate only defective geometry and move every incorrect terminal dot to its specification target. Require OCR, two-review semantic geometry, pixel grounding, whole-sheet leader routing, three-review coordinate certificates, and independent Claude Opus final-pixel approval after every coordinate correction. Do not add notes, placeholders, questions, unsupported details, or instructions for a person. Publish only when every filing and drawing gate passes with no failed, critical, or major finding.
+
+### USER
+
+Resume the saved filing candidate and complete every automatic filing check. Do not ask questions.
+
+### USER
+
+Resume the saved filing candidate and complete every automatic filing check. Do not ask questions.
+
+### USER
+
+Continue the automatic filing validation from the complete saved candidate. Resolve every remaining text and drawing check without human input.
+
+### USER
+
+Continue automatic filing validation from the complete saved candidate. Before rendering, revise only the figure briefs so every numeral target is broad and visually unambiguous. Prefer a large interior region on the intended part, remove arbitrary midpoint, exact-depth, quarter, or toward-an-end requirements, and replace first or second rectangle ordinals with outermost, middle, or innermost. Preserve the invention, claims, description, and numeral table. Known blockers to resolve include FIG. 1 base 12 on a narrow face, FIG. 2 covering element 36, FIG. 3 second side 16 with ambiguous rectangle ordering, FIG. 4 bearing face 26, and FIG. 5 device 10, covering element 36, and cord 46. Leave no notes, questions, or human instructions.
+
+### USER
+
+Continue automatic filing validation from the complete saved candidate. Preserve the invention, application text, numeral table, and repaired figure briefs unless an automated gate identifies a real defect. Render every sheet, run all text, OCR, semantic, coordinate, topology, and independent cross-provider checks, repair any real defect automatically, and publish only when every filing gate passes. Do not add notes, placeholders, questions, or instructions for a person.
+
+### USER
+
+Continue automatic filing validation from the newest complete saved candidate. Before rendering, repair every figure brief that the new preflight flags. Remove arbitrary exact numeral endpoint instructions, including center or centre, midpoint, mid-height, mid-width, mid-depth, halfway, quarter, topmost, near-end, toward-end, and ambiguous first, second, third, or fourth shape references. Use broad visible interiors, full boundaries, or stable outermost, middle, innermost, left, and right part names. Preserve the invention, all nine application sections, claims, numeral table, disclosed geometry, and meaningful relationships. Then run every text, OCR, semantic, coordinate, topology, and independent cross-provider gate, repair real defects automatically, and publish only when every filing gate passes. No notes, placeholders, questions, or instructions for a person.
+
+### USER
+
+This is a source-fidelity QA repair, not additional inventor disclosure. Resume the saved candidate and make it pass all current filing gates. Treat every feature mentioned below as an example identified for deletion or narrowing unless it is independently traceable to an exact affirmative passage in the original invention disclosure or an earlier affirmative inventor statement. Do not use this corrective message as source support. Remove or generalize every untraced detail in every claim, numbered part, detailed-description embodiment, and figure. Examples already found unsupported include a separate PTFE facing fixed to a perimeter end; a through-base extraction opening, duct, support column, direct motor fasteners, exhaust to atmosphere, a no-valve limitation, electrical cord or battery alternatives, an integral one-piece loop, an attachment formation or specified low attachment height, plural chambers or dividing walls, vertical-surface use, and arbitrary bail-handle geometry. Complete every figure label, replace narrow directional or exact endpoint instructions with broad disclosure-grounded parts or boundaries, and keep the text, numeral table, figure briefs, rendered sheets, OCR, semantic reviews, leader reviews, and source review internally consistent. Leave no note, placeholder, instruction, question, or unverified detail. Run all automatic checks and publish only if every gate is clean.
+
+### USER
+
+This is a source-fidelity QA repair, not additional inventor disclosure. Resume the saved candidate and make it pass all current filing gates. Treat every feature mentioned below as an example identified for deletion or narrowing unless it is independently traceable to an exact affirmative passage in the original invention disclosure or an earlier affirmative inventor statement. Do not use this corrective message as source support. Remove or generalize every untraced detail in every claim, numbered part, detailed-description embodiment, and figure. Examples already found unsupported include a separate PTFE facing fixed to a perimeter end; a through-base extraction opening, duct, support column, direct motor fasteners, exhaust to atmosphere, a no-valve limitation, electrical cord or battery alternatives, an integral one-piece loop, an attachment formation or specified low attachment height, plural chambers or dividing walls, vertical-surface use, and arbitrary bail-handle geometry. Complete every figure label, replace narrow directional or exact endpoint instructions with broad disclosure-grounded parts or boundaries, and keep the text, numeral table, figure briefs, rendered sheets, OCR, semantic reviews, leader reviews, and source review internally consistent. Leave no note, placeholder, instruction, question, or unverified detail. Run all automatic checks and publish only if every gate is clean.
+
+### USER
+
+Resume finalization from the current repaired workspace. Complete every source-fidelity, mechanical, text-review, drawing-generation, OCR, semantic, leader, and filing-readiness gate. Publish only when every gate passes with no notes, placeholders, unsupported matter, or stale drawing evidence.
+
+### USER
+
+Continue automatically from the saved candidate. Complete every filing-gate and source-review repair, keep all section bodies filing-clean, and do not duplicate section headings inside the bodies.
+
+### USER
+
+Resume the latest saved candidate. Run the full source-fidelity review, render every drawing from its authoritative brief, and continue automatic repairs until all filing, OCR, leader, anchor, topology, cross-provider geometry, citation, source-fidelity, and text-quality gates pass. Do not treat this operational request as technical disclosure. Leave no notes, placeholders, or questions.
+
+### USER
+
+Resume the latest saved source-faithful candidate. Preserve every patent section, claim, numeral definition, figure brief, and numeral-to-sheet assignment unless a current gate proves a real inconsistency. Regenerate all five drawing sheets under the currently loaded deterministic geometry, OCR, pixel-grounding, semantic-consensus, cross-provider, and leader-endpoint gates. Run source fidelity, citation, filing, topology, text-quality, and final independent review until every gate passes. Publish only a filing-clean version with no drafting note, placeholder, question, instruction, unsupported fact, or stale drawing.
+
+### USER
+
+Resume the saved source-clean candidate unchanged and run every automatic filing gate using the current renderer and audit versions. Do not modify source text unless a current independent source review identifies a concrete unsupported or inconsistent passage. Regenerate and inspect every figure with OCR, exact numeral endpoint checks, independent geometry review, internal text review, and filing artifact checks. Leave no notes, placeholders, or questions.
+# Prior art available to this draft
+
+These are the ONLY documents you may cite, and the citation form is `[REF:PUBLICATION]`
+using exactly the key in the first column. Never invent a citation, never cite a document
+that is not listed here, and never describe a reference beyond what its file actually
+says.
+
+| Key | Title | Where it came from |
+| --- | --- | --- |
+| [US-11408462-B2](./US-11408462-B2.md) | Adhesion device | report |
+| [DE-202021002652-U1](./DE-202021002652-U1.md) | Vorrichtung für das Anheben und Verlegen von Platten | report |
+| [US-11247858-B2](./US-11247858-B2.md) | Vacuum lifter | report |
+| [US-10001245-B2](./US-10001245-B2.md) | Apparatus and method for coupling an end effector to a structure | report |
+| [US-4934475-A](./US-4934475-A.md) | Device capable of suction-adhering to a wall surface and moving therealong | report |

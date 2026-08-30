@@ -1,0 +1,101 @@
+{
+ "n": 1,
+ "pub": "SU-1181867-A1",
+ "family_id": "21134555",
+ "biblio": {
+  "pub": "SU-1181867-A1",
+  "label": "SU 1181867 A1",
+  "kind": "foreign",
+  "title": "",
+  "country": "SU",
+  "inventor": "",
+  "assignee": "",
+  "publication_date": "1985-09-30",
+  "priority_date": "1984-04-29",
+  "filing_date": "1984-04-29",
+  "dates_source": "corpus",
+  "abstract": "",
+  "issue_date_pretty": "September 30, 1985",
+  "priority_date_pretty": "April 29, 1984"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a vacuum tap containing a suction cup and a chamber with central and tangential channels, where the suction cup cavity is connected to the central channel, and the tangential channels are connected to a compressed air source.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[b]",
+   "quote_claim": true,
+   "claim_text": "a housing which has a grip portion for gripping the grip unit, and an, electrically operated, vacuum generating device",
+   "claim_paraphrase": "a housing which has a grip portion for gripping the grip unit, and an, electrically operated, vacuum generating device",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "VACUUM TAP containing a suction cup and a chamber with central and tangential channels, the suction cup cavity being connected to the central channel, and the tangential channels being connected to a compressed air source",
+   "note": "The reference describes a vacuum grip with a suction cup and channels, which implies a housing, Instead, it uses a compressed air source.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.6,
+   "_id": 0,
+   "disclosure": "The reference discloses a VACUUM TAP containing a suction cup and a chamber with central and tangential channels, and a compressed air source."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[b]",
+   "quote_claim": false,
+   "claim_text": "said suction plate comprising a carrier plate and a seal, which is fastened to the carrier plate and extends around the carrier plate; and",
+   "claim_paraphrase": "said suction plate comprising a carrier plate and a seal, which is fastened to the carrier plate and extends around the carrier plate; and",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "VACUUM TAP containing a suction cup",
+   "note": "The reference mentions a 'suction cup' which can be considered a suction plate with a seal",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.6,
+   "_id": 1,
+   "disclosure": "The reference discloses a VACUUM TAP containing a suction cup."
+  },
+  {
+   "claim_no": 11,
+   "label": "claim 11[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate in order to generate a vacuum between the suction plate and an object to be lifted",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "VACUUM TAP containing a suction cup and a chamber with central and tangential channels, the suction cup cavity being connected to the central channel",
+   "note": "The quote describes a suction cup cavity connected to a central channel, which functions as a suction opening fluidically connected to a suction chamber (the suction cup cavity) to generate a vacuum.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.8,
+   "_id": 2,
+   "disclosure": "The reference discloses a suction cup cavity being connected to the central channel."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 3,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

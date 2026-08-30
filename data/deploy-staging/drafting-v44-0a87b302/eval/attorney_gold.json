@@ -1,0 +1,119 @@
+{
+  "_meta": {
+    "generated": "2026-08-15",
+    "source": "preissuance submission filed 2026-08-02 against US 2026/0109053 A1 (App. 19/315,746)",
+    "methodology": "The ten references a patent attorney actually filed, with the claim each was mapped against. This is the only gold set here that is a human expert's finished work product rather than a citation list scraped from a register, which makes it the right thing to score the whole funnel on.",
+    "frozen": true,
+    "note": "Do not edit after tuning begins. Add a new file for a new subject."
+  },
+  "subject": {
+    "id": "us20260109053",
+    "publication": "US-2026109053-A1",
+    "url": "https://patents.google.com/patent/US20260109053A1/en",
+    "title": "Grip unit and vacuum handling apparatus comprising such a grip unit",
+    "applicant": "Schmalz",
+    "inventor": "Valentin Stegmaier",
+    "mode": "novelty"
+  },
+  "citations": [
+    {
+      "pub": "US-11413727-B1",
+      "corpus_pub": "US-11413727-B2",
+      "family": "66624664",
+      "name": "Rotem / GRABO",
+      "title": "Vacuum gripper",
+      "cited_for": "hollow grip body, electric vacuum generating device, exhaust guided through the grip to an outlet, pump in one handle section and battery in the other, carrier plate + seal",
+      "cpc_note": "B25B11/005, B66C1/0287 \u2014 inside the seeded branches"
+    },
+    {
+      "pub": "US-10794526-B2",
+      "corpus_pub": "US-10794526-B2",
+      "family": "55229671",
+      "name": "Hukelmann",
+      "title": "Sound absorber for vacuum grippers",
+      "cited_for": "sound-damping device in the grip portion in the exhaust path; grip lined with sound-damping material",
+      "cpc_note": "F16L55/052, B25J15/0616"
+    },
+    {
+      "pub": "US-9107549-B2",
+      "corpus_pub": null,
+      "family": null,
+      "name": "Crevling Jr.",
+      "title": "Removable internal air diffuser",
+      "cited_for": "sound-absorbent material inside the duct leading to the exhaust port rather than a projecting external muffler",
+      "cpc_note": "NOT IN CORPUS"
+    },
+    {
+      "pub": "US-11206961-B2",
+      "corpus_pub": null,
+      "family": null,
+      "name": "Sato",
+      "title": "Sound absorption structure for air flow path in electric air flow generation device",
+      "cited_for": "double-wall sound absorption section in the exhaust-side air flow path, spanning the joint between two housing sections",
+      "cpc_note": "NOT IN CORPUS"
+    },
+    {
+      "pub": "US-5269665-A",
+      "corpus_pub": "US-5269665-A",
+      "family": "US-5269665-A",
+      "name": "Sadler",
+      "title": "Portable hand-held blower/vacuum unit",
+      "cited_for": "muffler carried inside the upper body portion receiving exhaust and discharging through a front outlet",
+      "cpc_note": "F04D25/02, A47L5/14 \u2014 outside the seeded branches"
+    },
+    {
+      "pub": "US-4453755-A",
+      "corpus_pub": "US-4453755-A",
+      "family": "23606430",
+      "name": "Blatt",
+      "title": "Vacuum cup venturi assembly and blow off silencer",
+      "cited_for": "silencer barrel with internal silencing chamber and porous frequency-distorter inserts on the exhaust outlet",
+      "cpc_note": "B66C1/0268 \u2014 inside the seeded branches"
+    },
+    {
+      "pub": "US-5807034-A",
+      "corpus_pub": "US-5807034-A",
+      "family": "24750201",
+      "name": "Perlmutter",
+      "title": "Vacuum drill plate",
+      "cited_for": "screw-on muffler/silencer on the vacuum generator's exhaust port",
+      "cpc_note": "Y10T408/554, B25H1 \u2014 outside the seeded branches"
+    },
+    {
+      "pub": "US-7207874-B2",
+      "corpus_pub": null,
+      "family": null,
+      "name": "Bohne / Bosch",
+      "title": "Electric hand power tool",
+      "cited_for": "completely hollow auxiliary handle conducting motor cooling air, geometry designed to damp flow noise; spiral expanding air passage into the handle inlet",
+      "cpc_note": "NOT IN CORPUS"
+    },
+    {
+      "pub": "US-2966138-A",
+      "corpus_pub": "US-2966138-A",
+      "family": "24952751",
+      "name": "Quackenbush",
+      "title": "Muffler construction for portable pneumatic tool",
+      "cited_for": "handle containing both an exhaust passage and a muffler chamber with fibrous material and perforated baffles, exhaust discharged away from the operator \u2014 mapped against claims 1, 2, 5, 7 and 8",
+      "cpc_note": "B25F5/00, B23B45/04 \u2014 outside the seeded branches; the attorney's most comprehensive match"
+    },
+    {
+      "pub": "US-2014008929-A1",
+      "corpus_pub": "US-2014008929-A1",
+      "family": "44366539",
+      "name": "Cho",
+      "title": "Vacuum gripper device",
+      "cited_for": "gripper body + suction plate forming a vacuum chamber, embedded vacuum pump, silencer on the pump exhaust outlet",
+      "cpc_note": "inside the seeded branches"
+    }
+  ],
+  "baseline_2026_08_15": {
+    "run": "adhoc-42a7b24f36d9",
+    "in_corpus": 7,
+    "retrieved": 5,
+    "screened": 5,
+    "read_in_full": 4,
+    "on_the_page": 1,
+    "note": "Before the fixes of 2026-08-15. Hukelmann/Blatt/Cho were read in full and ranked 253/346/152 of 498 against a 60-card page; Quackenbush was screened 10 of 100 on a title because its text was never fetched; Sadler and Perlmutter were not retrieved; Crevling, Sato and Bosch are not in the corpus."
+  }
+}
