@@ -1070,6 +1070,11 @@ def _figure_checks(sections: Mapping[str, str],
                               items=[f"FIG. {n} missing" for n in gaps]))
 
     if figures:
+        #  A figure that carries a `drawn` flag came from a caller that had inspected the sheet's
+        #  pixels. Nothing does that any more - this product does not generate drawings, so there
+        #  is no vision audit to read - and the two blocks below are kept only so a stored report
+        #  written before that change still renders. Everything after them is about the TEXT and
+        #  runs either way.
         tracks_pixels = any("drawn" in figure for figure in figures)
         if tracks_pixels:
             semantic_failures = []
@@ -1119,10 +1124,15 @@ def _figure_checks(sections: Mapping[str, str],
                 "A stored drawing sheet is not listed in the Brief Description of the Drawings. "
                 "Restore its description or delete the obsolete sheet.",
                 items=[f"FIG. {n}" for n in extra]))
-        elif tracks_pixels:
+        elif figures:
+            #  Unconditional, and it used to be gated on `tracks_pixels`. With no pixel audit the
+            #  gate was never true, so the check simply VANISHED from a passing report - a reader
+            #  cannot tell "this was checked and is fine" from "this was never run", and a check
+            #  nobody sees pass is a check nobody trusts when it fails.
             out.append(_check(
                 "Every drawing sheet is described", "pass",
-                "Every stored drawing sheet is listed in the specification."))
+                "Every figure the application describes is listed in the Brief Description of "
+                "the Drawings."))
         missing = sorted({n for n in described
                           if n not in labels and re.sub(r"\D", "", n) not in labels},
                          key=_numeral_sort)

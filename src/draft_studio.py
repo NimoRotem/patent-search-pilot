@@ -758,8 +758,15 @@ def build_prompt(kind: str, *, seeded: bool = False) -> str:
 
 
 def filing_blockers(report: Mapping[str, Any]) -> list[str]:
-    """Reasons a workspace cannot be published as a filing-ready version."""
-    return _blockers(report, drawings=True, text=True)
+    """Reasons a workspace cannot be published as a filing-ready version.
+
+    Text only. This product no longer draws: a sheet is something the applicant uploaded, and
+    refusing to call their application filing-ready because a drawing they have not supplied yet
+    is missing would be a gate on their calendar rather than on our work. The drawing checks still
+    RUN and still appear in Review - "FIG. 3 is described but no sheet is attached" is exactly the
+    thing somebody needs to be told - they simply do not veto the version.
+    """
+    return _blockers(report, drawings=False, text=True)
 
 
 def text_blockers(report: Mapping[str, Any]) -> list[str]:
@@ -934,67 +941,6 @@ def restore_sources_after_figure_plan_review(workspace: Path, snapshot: Mapping[
     if numerals_changed:
         draft_workspace.write_numerals(workspace, baseline_numerals)
     return sections_changed or numerals_changed
-
-
-def figures_for_qa(project_id: int, user_id: int,
-                   figure_specs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Replace requested numerals with vision-detected pixels for every drawn sheet."""
-    try:
-        import draft_figures
-        drawn = draft_figures.listing(project_id, user_id)
-    except Exception:
-        # Never substitute the intended labels for pixels that could not be loaded. The review may
-        # continue, but it must carry a blocking, visible inspection result rather than a false pass.
-        return [{**dict(item), "numerals": [], "drawn": False,
-                 "numeral_audit": {"inspected": False,
-                                     "error": "The drawing store could not be read."},
-                 "leader_audit": {"inspected": False,
-                                    "errors": ["The drawing store could not be read."]}}
-                for item in figure_specs]
-
-    def key(value):
-        return draft_figures.figure_key(value)
-
-    by_label = {key(item.get("figure_label")): item for item in drawn}
-    out = []
-    for spec in figure_specs:
-        item = dict(spec)
-        image = by_label.pop(key(spec.get("label")), None)
-        item["drawn"] = False
-        # A figure specification is not a drawing. Until an active image exists it contributes no
-        # visible numerals to the bidirectional QA check.
-        item["numerals"] = []
-        if image:
-            active = next((version for version in image.get("versions") or []
-                           if int(version.get("version_no") or 0) ==
-                           int(image.get("active_version") or 0)), None) or {}
-            audit = active.get("numeral_audit") or {}
-            semantic = active.get("semantic_audit") or {}
-            leaders = active.get("leader_audit") or {}
-            item["drawn"] = bool(active)
-            if audit.get("inspected"):
-                item["numerals"] = list(active.get("detected_numerals") or [])
-            item["numeral_audit"] = dict(audit)
-            item["semantic_audit"] = dict(semantic)
-            item["leader_audit"] = dict(leaders)
-        out.append(item)
-    # Stored sheets whose figure specification disappeared are still real pixels. Include them so
-    # an unexpected numeral or obsolete drawing cannot vanish from QA merely because the text side
-    # was edited first.
-    for image in by_label.values():
-        active = next((version for version in image.get("versions") or []
-                       if int(version.get("version_no") or 0) ==
-                       int(image.get("active_version") or 0)), None) or {}
-        audit = active.get("numeral_audit") or {}
-        semantic = active.get("semantic_audit") or {}
-        leaders = active.get("leader_audit") or {}
-        out.append({"label": image.get("figure_label"), "caption": image.get("caption") or "",
-                    "numerals": (list(active.get("detected_numerals") or [])
-                                 if audit.get("inspected") else []),
-                    "drawn": bool(active), "orphan": True, "numeral_audit": dict(audit)})
-        out[-1]["semantic_audit"] = dict(semantic)
-        out[-1]["leader_audit"] = dict(leaders)
-    return out
 
 
 # =============================================================================================
@@ -1787,6 +1733,20 @@ class StudioRepository:
                         "WHERE id=%s", (chosen, int(project_id)))
         return chosen
 
+    def set_terminal_model(self, project_id: int, model: str) -> str:
+        """Remember the model the interactive drafting agent was switched to.
+
+        The same column, a different vocabulary: the terminal names a model the way the CLI's
+        ``/model`` does (``claude-opus-5``), while the headless turn path names a tier alias
+        (``opus``). Stored unnormalised on purpose, because the caller has already had the CLI
+        itself accept the id - which is a stronger check than any list held here.
+        """
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("UPDATE app_drafting_projects SET draft_model=%s,updated_at=now() "
+                        "WHERE id=%s", (str(model or "")[:120], int(project_id)))
+        return str(model or "")
+
     def cancel_turn(self, project_id: int, turn_id: int) -> None:
         self._ready()
         with self._cursor() as cur:
@@ -1997,7 +1957,9 @@ class StudioRepository:
                             sections: Mapping[str, str], citations: Sequence[str],
                             edited_sections: Sequence[str],
                             numerals: Sequence[Mapping[str, Any]] = (),
-                            figures: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+                            figures: Sequence[Mapping[str, Any]] = (),
+                            origin: str = "manual",
+                            change_note: str = "") -> dict[str, Any]:
         """Publish a version the USER typed, continuing their editing session where there is one.
 
         Autosave and a version are at odds: a version per debounced keystroke turns History into
@@ -2010,8 +1972,13 @@ class StudioRepository:
         A manual version is marked ``origin='manual'`` and is deliberately NOT put through the
         filing gates here. The user is allowed to write what they mean and see it saved; the Review
         tab is what tells them whether it still passes, and it can be re-run on demand.
+
+        ``origin='agent'`` is the interactive drafting agent publishing its own work from the
+        terminal. It never continues an editing session: the agent publishes a whole coherent
+        change, so every publish is its own entry in History with the note it passed.
         """
         self._ready()
+        origin = "agent" if str(origin) == "agent" else "manual"
         touched = [str(key) for key in edited_sections if key]
         with self._cursor() as cur:
             cur.execute("SELECT * FROM app_drafting_projects WHERE id=%s FOR UPDATE",
@@ -2030,6 +1997,7 @@ class StudioRepository:
                     (int(project_id), head_no))
                 head = cur.fetchone()
             continuing = bool(
+                origin == "manual" and
                 head and str(head.get("origin") or "") == "manual" and
                 int(head.get("created_by_user_id") or 0) == int(user_id) and
                 head.get("fresh") and not head.get("turn_id"))
@@ -2041,7 +2009,10 @@ class StudioRepository:
                     continuing = False
             already = set(_json(head.get("edited_sections"), []) if continuing else [])
             markdown = render_markdown(sections)
-            note = _manual_change_note(sorted(already | set(touched)))
+            note = (str(change_note).strip()[:4000] if origin == "agent" and change_note
+                    else "The drafting agent revised the application."
+                    if origin == "agent"
+                    else _manual_change_note(sorted(already | set(touched))))
             if continuing:
                 cur.execute(
                     "UPDATE app_draft_versions SET sections=%s::jsonb,markdown=%s,"
@@ -2059,12 +2030,14 @@ class StudioRepository:
                     "INSERT INTO app_draft_versions (project_id,version_no,base_version_no,"
                     "project_revision,sections,markdown,citations,model_name,created_by_user_id,"
                     "change_note,numerals,figure_specs,origin,edited_sections) "
-                    "VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s::jsonb,'',%s,%s,%s::jsonb,%s::jsonb,"
-                    "'manual',%s::jsonb) RETURNING *",
+                    "VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s::jsonb,%s,%s,%s,%s::jsonb,%s::jsonb,"
+                    "%s,%s::jsonb) RETURNING *",
                     (int(project_id), version_no, head_no or None, project["revision"],
-                     _dumps(dict(sections)), markdown, _dumps(list(citations)), int(user_id),
+                     _dumps(dict(sections)), markdown, _dumps(list(citations)),
+                     "the drafting agent" if origin == "agent" else "", int(user_id),
                      note, _dumps([dict(item) for item in numerals]),
-                     _dumps([dict(item) for item in figures]), _dumps(sorted(set(touched)))))
+                     _dumps([dict(item) for item in figures]), origin,
+                     _dumps(sorted(set(touched)))))
             version = dict(cur.fetchone())
             version["sections"] = _json(version.get("sections"), {})
             for key in ("citations", "numerals", "figure_specs", "edited_sections"):
@@ -2268,6 +2241,40 @@ class TurnRunner:
             figures = _json(row["figure_specs"], []) if row else []
         return {"project": project, "references": references, "sections": sections,
                 "numerals": numerals, "figures": figures}
+
+    def build_workspace(self, project_id: int) -> dict[str, Any]:
+        """Lay the workspace out from the published record, with no turn in play.
+
+        What the interactive drafting agent starts from. Deliberately NOT ``prepare``: that reads
+        the retry-candidate machinery, which is about resuming a failed automatic turn and would
+        hand a person's agent a half-finished candidate somebody else's gate rejected. This is the
+        published truth and nothing else, so "restart the agent" always means "start again from
+        what the page is showing".
+        """
+        project_id = int(project_id)
+        loaded = self._load(project_id)
+        project = loaded["project"]
+        documents = self.repository.documents(project_id)
+        sections = loaded["sections"]
+        seeded = False
+        if sections is None:
+            source = next((d for d in documents if d["kind"] == "source_draft"), None)
+            raw = (source or {}).get("body") or (
+                project.get("disclosure_text") if project.get("input_kind") == "existing_draft"
+                else "")
+            if raw:
+                seeded_sections = self.workspace.seed_sections_from_document(raw)
+                if seeded_sections:
+                    sections, seeded = seeded_sections, True
+        numerals = (self.workspace.numerals_from_sections(sections) if seeded
+                    else loaded["numerals"])
+        workspace = self.workspace.build(
+            project=project, references=loaded["references"], documents=documents,
+            sections=sections, numerals=numerals, figures=loaded["figures"],
+            conversation=[], request="", qa_report=self.repository.latest_qa(project_id))
+        return {"workspace": workspace, "project": project, "seeded": seeded,
+                "had_version": loaded["sections"] is not None,
+                "references": loaded["references"], "documents": documents}
 
     def prepare(self, turn: Mapping[str, Any]) -> dict[str, Any]:
         project_id = int(turn["project_id"])
@@ -2887,12 +2894,11 @@ class TurnRunner:
         says which half ran rather than letting a clean verdict read as a full review.
         """
         started = time.time()
+        #  The figure SPECIFICATIONS, not a pixel audit. ``figures_for_qa`` used to join these to
+        #  the vision inspections of every generated sheet; with no generation there is nothing to
+        #  inspect, and passing figures that carry a `drawn` key would make the checks report every
+        #  sheet the applicant has not uploaded yet as a failed pixel review.
         qa_figures = list(figures)
-        try:
-            loaded = self._load(project_id)
-            qa_figures = figures_for_qa(project_id, int(loaded["project"]["user_id"]), figures)
-        except Exception:                                       # noqa: BLE001 - checks still run
-            pass
         try:
             checks = self.qa.run_checks(sections=sections, numerals=numerals, figures=qa_figures,
                                         allowed_references=allowed)
@@ -3264,8 +3270,11 @@ class TurnRunner:
         # Even a text phase whose stored drawings still pass must run the final package reviewer:
         # wording may have changed relationships or citations that only the complete text-plus-
         # pixels review can judge. The continuation is automatic and uses the saved candidate.
-        needs_drawing_continuation = bool(
-            not drawing_continuation and snapshot.get("sections"))
+        #  There is no drawing lane any more, so no turn ever continues into one. Left as a name
+        #  rather than deleted because the two call sites below read far better for it, and
+        #  because a `gate_resume` turn already in the queue from before this change must still
+        #  complete on the text path rather than looking for an image phase that has gone.
+        needs_drawing_continuation = False
         continuation = None
         if needs_drawing_continuation:
             continuation = {
@@ -3299,13 +3308,9 @@ class TurnRunner:
                  turn_id: int = 0, lease: str = "") -> dict[str, Any]:
         """Evaluate a workspace without publishing either the version or the report."""
         started = time.time()
+        #  Specifications only: see the note in ``mechanical_report``. Nothing generates pixels
+        #  any more, so there is no audit to join and a sheet is present or it is not.
         qa_figures = list(figures)
-        try:
-            loaded = self._load(project_id)
-            qa_figures = figures_for_qa(
-                project_id, int(loaded["project"]["user_id"]), figures)
-        except Exception:
-            pass
         try:
             checks = self.qa.run_checks(sections=sections, numerals=numerals, figures=qa_figures,
                                         allowed_references=allowed)

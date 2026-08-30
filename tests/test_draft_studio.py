@@ -866,180 +866,49 @@ def test_letter_qualified_reference_numerals_are_compared_exactly():
     assert checks["Every specification numeral appears in a drawing"]["status"] == "pass"
 
 
-def test_qa_uses_numerals_detected_in_the_active_drawing_pixels(monkeypatch):
-    import draft_figures
-    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
-        "figure_label": "FIG. 1", "active_version": 2,
-        "versions": [{"version_no": 2, "detected_numerals": ["10", "44"],
-                      "numeral_audit": {"inspected": True}}],
-    }])
-    merged = draft_studio.figures_for_qa(
-        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body", "12 pump"]}])
-    assert merged[0]["numerals"] == ["10", "44"]
+def test_the_review_never_reads_drawing_pixels():
+    """Nothing generates a sheet any more, so nothing inspects one.
+
+    ``figures_for_qa`` used to join every figure specification to the vision audits of the sheet
+    the product had drawn for it. With no generation there is no audit, and a check keyed on a
+    ``drawn`` or ``numeral_audit`` field would report every sheet the applicant has not uploaded
+    yet as a FAILED pixel review - the worst possible reading of "you have not sent us your
+    drawings". The specifications go to the checks exactly as the agent wrote them.
+    """
+    assert not hasattr(draft_studio, "figures_for_qa")
+    names = set(checks_for(figures=FIGURES))
+    assert "Drawing pixels were inspected" not in names
+    assert "Drawing content matches its specification" not in names
+    assert "Drawing leaders identify the named features" not in names
+    #  The checks that are about the TEXT of the drawings still run, because a figure described
+    #  and never listed, or listed and never described, is a real defect in the application.
+    assert "Every figure used is described" in names
+    assert "Every drawing sheet is described" in names
 
 
-def test_qa_fails_closed_when_drawing_pixels_cannot_be_inspected(monkeypatch):
-    import draft_figures
-    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
-        "figure_label": "FIG. 1", "active_version": 2,
-        "versions": [{"version_no": 2, "detected_numerals": [],
-                      "numeral_audit": {"inspected": False, "error": "vision unavailable"}}],
-    }])
-    merged = draft_studio.figures_for_qa(
-        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
-    checks = {item["name"]: item for item in draft_qa.run_checks(
-        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
-    assert checks["Drawing pixels were inspected"]["status"] == "fail"
+def test_a_missing_drawing_does_not_block_a_filing_ready_version():
+    """A sheet the applicant has not supplied is their calendar, not our gate.
 
-
-def test_qa_fails_closed_when_drawing_geometry_does_not_match_the_spec(monkeypatch):
-    import draft_figures
-    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
-        "figure_label": "FIG. 1", "active_version": 2,
-        "versions": [{"version_no": 2, "detected_numerals": ["10"],
-                      "numeral_audit": {"inspected": True, "ok": True},
-                      "semantic_audit": {"inspected": True, "ok": False,
-                                         "errors": ["pump is absent"]}}],
-    }])
-    merged = draft_studio.figures_for_qa(
-        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
-    checks = {item["name"]: item for item in draft_qa.run_checks(
-        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
-    assert checks["Drawing content matches its specification"]["status"] == "fail"
-
-
-def test_qa_fails_closed_when_a_printed_leader_does_not_reach_its_named_feature(monkeypatch):
-    import draft_figures
-    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
-        "figure_label": "FIG. 1", "active_version": 2,
-        "versions": [{"version_no": 2, "detected_numerals": ["10"],
-                      "numeral_audit": {"inspected": True, "ok": True},
-                      "semantic_audit": {"inspected": True, "ok": True},
-                      "leader_audit": {"inspected": True, "ok": False,
-                                         "errors": ["10 ends in blank space"]}}],
-    }])
-    merged = draft_studio.figures_for_qa(
-        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
-    checks = {item["name"]: item for item in draft_qa.run_checks(
-        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
-    assert checks["Drawing leaders identify the named features"]["status"] == "fail"
-    assert "blank space" in checks["Drawing leaders identify the named features"]["items"][0]
-
-
-def test_qa_fails_closed_when_the_drawing_store_is_unavailable(monkeypatch):
-    import draft_figures
-
-    def unavailable(project_id, user_id):
-        raise RuntimeError("database offline")
-
-    monkeypatch.setattr(draft_figures, "listing", unavailable)
-    merged = draft_studio.figures_for_qa(
-        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
-    checks = {item["name"]: item for item in draft_qa.run_checks(
-        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
-    assert checks["Drawing pixels were inspected"]["status"] == "fail"
-    assert merged[0]["numerals"] == []
-
-
-def test_an_undrawn_figure_spec_is_not_counted_as_visible_pixels(monkeypatch):
-    import draft_figures
-    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [])
-    merged = draft_studio.figures_for_qa(
-        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
-    assert merged == [{"label": "FIG. 1", "caption": "view", "numerals": [], "drawn": False}]
-    checks = {item["name"]: item for item in draft_qa.run_checks(
-        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
-    assert checks["Every specification numeral appears in a drawing"]["status"] == "fail"
-    assert checks["Each described figure has a drawing sheet"]["status"] == "fail"
-    assert checks["Each described figure has a drawing sheet"]["severity"] == "error"
-
-
-def test_an_application_without_a_drawing_plan_cannot_pass_the_filing_gate():
-    sections = {**GOOD, "drawing_descriptions": "Not applicable.",
-                "detailed_description": re.sub(r"\bFIG\.\s*\d+\b", "the drawings",
-                                                GOOD["detailed_description"])}
-    check = checks_for(sections, figures=[])["Application includes a drawing plan"]
-    assert check["status"] == "fail" and check["severity"] == "error"
-
-
-def test_section_view_requires_the_same_cutting_line_designation_on_its_source_view():
-    sections = {
-        **GOOD,
-        "drawing_descriptions": (
-            GOOD["drawing_descriptions"] +
-            "\n\nFIG. 3 is a sectional view through the body of FIG. 1, taken on line 3-3 "
-            "of FIG. 1."),
-        "detailed_description": (
-            GOOD["detailed_description"] +
-            " FIG. 3 is taken on line 3-3 of FIG. 1 and shows the body in section."),
+    While the product drew its own figures, a drawing defect was ours and blocking on it was
+    right. It uploads them now, so refusing to call the TEXT filing-ready because FIG. 3 has not
+    arrived would be the product holding a draft hostage over a file it cannot produce itself.
+    The finding still appears in Review; it just does not veto the version.
+    """
+    report = {
+        "status": "complete",
+        "checks": [
+            {"name": "Every drawing sheet is described", "status": "fail",
+             "category": "figures_and_numerals", "detail": "FIG. 3 has no sheet."},
+            {"name": "Every section is written", "status": "fail",
+             "detail": "The Abstract is empty."},
+        ],
+        "findings": [],
     }
-    figures = [
-        {**FIGURES[0], "caption": (
-            "Side elevation. A broken cutting-plane line crosses the body. Arrows at both ends "
-            "point right, and each end carries 3 so it reads as line 3-3.")},
-        FIGURES[1],
-        {"label": "FIG. 3", "caption": "Section through the body.", "numerals": ["12 body"]},
-    ]
-
-    passing = checks_for(sections, figures=figures)[
-        "Section views have matching source-view cutting lines"]
-    broken = checks_for(sections, figures=[
-        {**figures[0], "caption": "Side elevation of the body."}, *figures[1:]
-    ])["Section views have matching source-view cutting lines"]
-
-    assert passing["status"] == "pass"
-    assert broken["status"] == "fail" and "FIG. 1" in " ".join(broken["items"])
-
-    with pytest.raises(
-            draft_studio.FilingPreflightError,
-            match="Section views have matching source-view cutting lines") as caught:
-        draft_studio.validate_snapshot(
-            {"sections": sections, "numerals": NUMERALS, "figures": [
-                {**figures[0], "caption": "Side elevation of the body."}, *figures[1:]
-            ]},
-            ALLOWED)
-    assert caught.value.category == "figures_and_numerals"
-
-
-def test_section_view_accepts_lettered_cutting_lines_from_the_live_draft_wording():
-    sections = {
-        **GOOD,
-        "drawing_descriptions": (
-            "FIG. 5 is a cross-sectional view taken on cutting line A-A of FIG. 2.\n\n"
-            "FIG. 8 is a cross-sectional view taken on cutting line B-B of FIG. 2."
-        ),
-    }
-    figures = [
-        {"label": f"FIG. {number}", "caption": f"View {number}.", "numerals": []}
-        for number in range(1, 9)
-    ]
-    figures[1]["caption"] = (
-        "A broken cutting line A-A is drawn vertically through the first carriage, with viewing "
-        "arrows pointing to the right, indicating the sectional view shown in FIG. 5. A second "
-        "broken cutting line B-B is drawn vertically through the second carriage, with viewing "
-        "arrows pointing to the right, indicating the sectional view shown in FIG. 8."
-    )
-
-    check = checks_for(sections, figures=figures)[
-        "Section views have matching source-view cutting lines"
-    ]
-
-    assert check["status"] == "pass", check["items"]
-
-
-def test_an_orphaned_drawing_remains_in_bidirectional_qa(monkeypatch):
-    import draft_figures
-    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
-        "figure_label": "FIG. 9", "caption": "obsolete", "active_version": 1,
-        "versions": [{"version_no": 1, "detected_numerals": ["44"],
-                      "numeral_audit": {"inspected": True}}],
-    }])
-    merged = draft_studio.figures_for_qa(7, 91, [])
-    assert merged[0]["orphan"] is True and merged[0]["numerals"] == ["44"]
-    checks = {item["name"]: item for item in draft_qa.run_checks(
-        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
-    assert checks["Every drawing sheet is described"]["status"] == "fail"
-    assert checks["Numerals on the drawings are defined"]["items"] == ["44"]
+    blockers = draft_studio.filing_blockers(report)
+    assert any("Every section is written" in item for item in blockers)
+    assert not any("Every drawing sheet is described" in item for item in blockers)
+    #  And the drawing side is still classified, so Review can show it under its own heading.
+    assert draft_studio.drawing_blockers(report)
 
 
 def test_measurements_and_years_are_not_read_as_reference_numerals():
@@ -4502,8 +4371,15 @@ def test_client_qa_fix_cannot_reuse_a_prior_turn_gate_checkpoint():
     }) is None
 
 
-def test_turn_runner_publishes_text_and_atomically_queues_the_drawing_gate(
+def test_turn_runner_publishes_text_and_queues_no_drawing_gate(
         monkeypatch, tmp_path):
+    """A finished turn is finished. There is no second, automatic drawing phase behind it.
+
+    The runner used to publish the text and then queue itself a `gate_resume` turn that generated
+    every sheet, inspected the pixels, and only then let the project be called filing-ready. That
+    lane is gone with the image generation it drove, so what has to be true now is the opposite of
+    what this test used to assert: no continuation, and no candidate held back waiting for one.
+    """
     class Repository:
         def __init__(self):
             self.saved_versions = []
@@ -4600,13 +4476,10 @@ def test_turn_runner_publishes_text_and_atomically_queues_the_drawing_gate(
     assert len(repository.saved_reports) == 1
     assert repository.saved_reports[0]["report"]["verdict"] == "pass"
     assert repository.retry_candidates[0][0]["sections"] == GOOD
-    assert "_gate_resume" in repository.retry_candidates[0][1]
     mechanical.assert_called_once()
     final_review.assert_not_called()
-    assert out["turn"]["discard_candidates"] is False
-    assert out["turn"]["continuation"]["kind"] == "gate_resume"
-    assert out["turn"]["continuation"]["idempotency_key"] == \
-        "auto-filing-repair-3-1"
+    assert out["turn"]["continuation"] is None
+    assert out["turn"]["discard_candidates"] is True
     assert out["version"]["version_no"] == 1
 
 
@@ -5224,8 +5097,14 @@ def test_resumed_figure_plan_repair_is_source_locked_before_validation(monkeypat
     final_review.assert_not_called()
 
 
-def test_figure_plan_defect_publishes_text_and_queues_automatic_drawings(
+def test_figure_plan_defect_publishes_the_text_and_reports_the_defect(
         monkeypatch, tmp_path):
+    """An overcrowded drawing brief is a finding, not a second turn.
+
+    It used to be both: the text published, the defect was reported, and a `gate_resume` turn was
+    queued to redraw the sheet and re-inspect it. Nothing redraws now, so the finding stands on
+    its own in Review for the agent or the applicant to act on.
+    """
     monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",
                         lambda _turn_id: False)
     repository = Mock()
@@ -5307,9 +5186,8 @@ def test_figure_plan_defect_publishes_text_and_queues_automatic_drawings(
     assert any(check.get("category") == "figures_and_numerals"
                for check in report["checks"] if check.get("status") != "pass")
     completion = repository.complete_turn.call_args.kwargs
-    assert completion["discard_candidates"] is False
-    assert completion["continuation"]["kind"] == "gate_resume"
-    assert completion["continuation"]["idempotency_key"] == "auto-filing-repair-3-1"
+    assert completion["discard_candidates"] is True
+    assert completion["continuation"] is None
     final_review.assert_not_called()
 
 
@@ -5349,33 +5227,49 @@ def test_a_drawing_prompt_gets_only_the_numerals_for_that_figure():
     assert "20 = passage" in draft_studio_service._expected_numerals(version, "FIG. 2")
 
 
-def test_an_orphan_drawing_edit_explicitly_forbids_all_numerals(monkeypatch):
-    """An unmatched photo must not inherit every numeral in the whole application."""
+def test_uploading_a_sheet_lands_on_the_figure_the_draft_is_missing(monkeypatch):
+    """An upload with no label goes where the specification says it belongs.
+
+    The alternative - numbering it after however many sheets already exist - makes the first
+    upload against a two-figure draft "FIG. 3", an orphan the reviewer then reports and the
+    applicant has to explain to the agent. The draft already says which sheets it wants.
+    """
     import draft_figures
     import draft_studio_service
 
     class DraftingService:
         def get_project(self, _principal, project_id, include_versions=True):
             assert project_id == 7 and include_versions is True
-            return {
-                "id": 7, "user_id": 91, "latest_version_no": 1,
-                "disclosure_text": GOOD["detailed_description"],
-                "versions": [{"version_no": 1, "sections": GOOD,
-                              "numerals": NUMERALS, "figure_specs": FIGURES}],
-            }
+            return {"id": 7, "user_id": 91, "latest_version_no": 1,
+                    "versions": [{"version_no": 1, "sections": GOOD, "numerals": NUMERALS,
+                                  "figure_specs": FIGURES}]}
 
-    captured = {}
+    made = {}
+    monkeypatch.setattr(draft_figures, "normalize_source_image",
+                        lambda data, content_type="": b"PNG:" + data)
+    #  FIG. 1 is already supplied; FIG. 2 is the sheet the draft is still waiting for.
+    monkeypatch.setattr(draft_figures, "listing", lambda *_a: [
+        {"id": 4, "figure_label": FIGURES[0]["label"], "sort_order": 1}])
+    monkeypatch.setattr(draft_figures, "create_figure",
+                        lambda project_id, user_id, label, caption="", sort_order=0:
+                        made.setdefault("figure", {"id": 5, "label": label,
+                                                   "caption": caption}))
+    monkeypatch.setattr(draft_figures, "add_version",
+                        lambda figure_id, **kwargs: made.update(
+                            {"version": {"figure_id": figure_id, **kwargs}}))
 
-    def render(*_args, **kwargs):
-        captured.update(kwargs)
-        return {"figure_id": 9, "version_no": 2}
+    class Repository:
+        def add_message(self, *_args, **_kwargs):
+            made["announced"] = True
 
-    monkeypatch.setattr(draft_figures, "render_figure", render)
-    service = draft_studio_service.StudioService(DraftingService(), repository=object())
-    service.draw_figure(object(), 7, label="FIG. 3", caption="photo-derived view",
-                        instruction="simplify this area", figure_id=9,
-                        region=[10, 10, 80, 80])
-    assert captured["numerals"] == []
+    service = draft_studio_service.StudioService(DraftingService(), repository=Repository())
+    out = service.upload_figure(object(), 7, image=b"raw", content_type="image/png")
+
+    assert out["label"] == FIGURES[1]["label"]
+    assert made["version"]["figure_id"] == 5
+    assert made["version"]["png"] == b"PNG:raw"
+    assert made["version"]["source_kind"] == "uploaded"
+    assert made["announced"] is True
 
 
 def test_rejected_studio_message_does_not_pollute_the_conversation(monkeypatch):

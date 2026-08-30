@@ -15,17 +15,10 @@
   const BASE = window.APP_BASE || '';
   const PID = root.dataset.project;
   let S = JSON.parse(document.getElementById('studioState').textContent || '{}');
-  let lastMessageId = 0;
   let polling = null;
   let searchPolling = null;
-  let pending = [];
   let reviewing = false;
-  let drawing = false;
-  let drawingEditor = null;
   let refreshSerial = Promise.resolve();
-  let C = null;
-  let compilerLoading = false;
-  const COMPILER_ROUTE = '#/compiler';
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s)
@@ -61,126 +54,1191 @@
     return data;
   }
 
-  // ── conversation ───────────────────────────────────────────────────────────
-  const VERDICT = {
-    pass: ['good', 'consistent'], warn: ['warn', 'points to settle'],
-    fail: ['bad', 'not consistent yet'], unknown: ['muted', 'not reviewed'],
+  // ── the drafting agent's terminal ──────────────────────────────────────────
+  /* The agent is a real Claude Code session with this draft as its working directory, and this is
+     that session's screen. It is the operators' own terminal, ported: the same append-only line
+     renderer, the same clean view, the same live indicator lifted out of the transcript so a
+     ticking counter never repaints the page. What is NOT here is everything that belongs to
+     running a fleet - auto-push, idle nudge, skills, profiles, a session list, and the clean-view
+     switch itself. There is one session, it is this application's, and clean is simply how it is
+     drawn.
+
+     THE RENDERER IS APPEND-ONLY AND THAT IS A HARD INVARIANT. It paints one <div class="tl"> per
+     line and diffs by common prefix and suffix, so untouched lines keep their DOM node - which is
+     what stops the view jumping and what lets a selection survive an update. It only holds if
+     everything upstream is append-only too: if a function's output for line i can change when
+     line i+1 arrives, it will move the page under the reader. Two plausible-looking things broke
+     that before (a global de-indent, and a look-ahead window in the wrap estimate) and both were
+     found by measuring rather than by reading. */
+
+  //  One session, so one state object rather than the dashboard's map of them.
+  //  `frozen`/`frozenAtLines` hold the PAINT while a selection is being made; polling and
+  //  `fullText` carry on regardless. `painted` is the HTML of every line on screen, which is what
+  //  the diff runs against. `_bodyText` is the transcript with the live counter already stripped,
+  //  so a repaint of the counter alone is a no-op. `live` is what that counter said.
+  const TERM = {
+    polling: false, timer: null, knownLines: 0, userScrolledUp: false, visibleHash: '',
+    firstLoad: true, fullText: '', paneWidth: 132, frozen: false, frozenAtLines: 0,
+    painted: null, _bodyText: null, _flowMode: null, live: null, _pendingRender: false,
   };
+  function getRawState() { return TERM; }
 
-  function agentCard(message) {
-    const p = message.payload || {};
-    const parts = [];
-    const scope = p.section_heading ? ` · ${esc(p.section_heading)}` : '';
-    parts.push(`<div class="msgwho">Drafting agent${scope}${p.version_no ?
-      ' · updated the draft' : ' · no change to the draft'}</div>`);
-    parts.push(`<div class="msgbody">${para(message.body || p.summary)}</div>`);
-    if (p.consequences && p.consequences.length) {
-      parts.push(`<div class="msgask"><b>Now inconsistent elsewhere</b>${list(p.consequences)}
-        <div class="askchips">${p.consequences.map((item, i) =>
-          `<button type="button" class="chip askchip" data-q="${esc(item)}">Ask for #${i + 1}</button>`)
-          .join('')}</div></div>`);
-    }
-    if (p.changes && p.changes.length) {
-      parts.push(`<details class="msgmore" open><summary>What changed (${p.changes.length})</summary>
-        ${list(p.changes, 'changelist')}</details>`);
-    }
-    if (p.reasoning && p.reasoning.length) {
-      parts.push(`<details class="msgmore"><summary>Why - the agent's reasoning this iteration
-        (${p.reasoning.length})</summary>${list(p.reasoning, 'reasonlist')}</details>`);
-    }
-    if (p.prior_art_strategy) {
-      parts.push(`<details class="msgmore"><summary>How this draft steps around the prior art</summary>
-        <div class="msgbody">${para(p.prior_art_strategy)}</div></details>`);
-    }
-    if (p.questions && p.questions.length) {
-      parts.push(`<div class="msgask"><b>The agent needs from you</b>${list(p.questions)}
-        <div class="askchips">${p.questions.map((q, i) =>
-          `<button type="button" class="chip askchip" data-q="${esc(q)}">Answer #${i + 1}</button>`).join('')}
-        </div></div>`);
-    }
-    if (p.steps && p.steps.length) {
-      parts.push(`<details class="msgmore"><summary>The agent's working notes
-        (${p.steps.length} steps)</summary><div class="steplog">${p.steps.map(stepLine).join('')}</div></details>`);
-    }
-    if (p.cost_usd) {
-      parts.push(`<div class="msgfoot small muted">${when(message.created_at)} · $${
-        Number(p.cost_usd).toFixed(2)}</div>`);
-    }
-    return parts.join('');
+  let agentState = { status: 'unknown', detail: '', running: false, available: true, reason: '' };
+  function termBusy() { return agentState.status === 'busy'; }
+
+  const _LEADING_BULLET_RE=/^[\s]*[●⏺•·]/;
+  // Output markers: Claude's ⎿, Codex's └. `│` is a wrapped *command* row. The
+  // box-drawing ones must be indented — Codex's start-up banner draws its frame
+  // with │ at column 0 and we do not want to eat that.
+  const _OUTPUT_MARKER_RE=/^[\s]*⎿|^\s+[└╰]\s/;
+  const _CALL_CONT_RE=/^\s+│/;
+  // A rendered markdown TABLE is drawn with the same `│` Codex uses for a wrapped
+  // command row, and its rules start with the same `└`/`├` used for tool output:
+  //
+  //   ┌──────────────┬──────────┐
+  //   │   channel    │ visitors │     <- matched _CALL_CONT_RE -> mode='call'
+  //   ├──────────────┼──────────┤
+  //
+  // so clean view used to swallow the whole table from its second line on, and
+  // every indented line after it (the prose that followed the table) with it. The
+  // discriminator is the column count: a wrapped command row carries exactly one
+  // leading `│`, a table row has one per column boundary. Rule rows are pure
+  // box-drawing. ASCII tables must open AND close with `|` — a bare `|` mid-line
+  // is a shell pipe in a wrapped command, not a column.
+  const _BOX_RULE_RE=/^[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬╭╮╯╰━┃┏┓┗┛┣┫┳┻╋\s]+$/;
+  function _isTableRow(line){
+    const s=(line||'').trim();
+    if(!s)return false;
+    if(s.charAt(0)==='│')return (s.match(/│/g)||[]).length>=2;
+    if('┌├└╭╰┏┣┗┬┼┴═╔╠╚'.indexOf(s.charAt(0))>=0)return _BOX_RULE_RE.test(s)&&s.length>=3;
+    if(s.charAt(0)==='|'&&s.charAt(s.length-1)==='|')return (s.match(/\|/g)||[]).length>=2;
+    return false;
   }
-
-  function stepLine(step) {
-    if (step.kind === 'tool') {
-      return `<div class="stepr"><span class="steptool">${esc(step.tool)}</span>
-        <code>${esc(step.detail)}</code></div>`;
-    }
-    if (step.kind === 'thinking') {
-      return `<div class="stepr think">${esc(step.text).slice(0, 1200)}</div>`;
-    }
-    if (step.kind === 'error') return `<div class="stepr bad">${esc(step.text)}</div>`;
-    return `<div class="stepr say">${esc(step.text)}</div>`;
+  const _ANY_DECORATION_RE=/^[\s●⏺•·■□▶▸→↳⎼└├│>*\-​]+/;
+  // Claude-style `ToolName(args)`. The "(" is required so ordinary prose starting
+  // with a word like "Read"/"Write"/"Update"/"Add"/"Task" is never swallowed.
+  const _TOOL_PAREN_RE=/^(?:(?:Bash|BashOutput|Fetch|WebFetch|Read|Edit|MultiEdit|Write|NotebookEdit|Update|Grep|Glob|Task|Search|WebSearch|TodoWrite|Kill|Add|Agent|Artifact|Skill|Workflow|ToolSearch)\s*\(|mcp__[^(\s]+\s*\()/i;
+  // Codex verbs that are only ever emitted as a tool header, never as prose.
+  const _CODEX_VERB_RE=/^(?:Ran|Explored|Called|Searched|Listed|Viewed|Applied patch|Proposed patch|Reviewed|Running|Exploring|Reading|Editing|Writing)\b/;
+  // Codex file ops carry a diff stat: "Edited app.py (+12 -3)", "Added x.md (+40)".
+  // The stat is what tells them apart from prose ("Added swap and a monitor").
+  const _CODEX_FILEOP_RE=/^(?:Edited|Added|Created|Wrote|Updated|Deleted|Removed|Renamed|Moved|Read|Patched)\b.*\([+-]?\d+(?:\s+[+-]\d+)?\)\s*$/;
+  function _isToolHeader(line,followerIsMarker){
+    const stripped=line.replace(_ANY_DECORATION_RE,'');
+    if(_TOOL_PAREN_RE.test(stripped))return true;
+    if(_CODEX_VERB_RE.test(stripped))return true;
+    if(_CODEX_FILEOP_RE.test(stripped))return true;
+    // Structural fallback: a bullet whose next non-empty row is a `│`/`└`/`⎿`
+    // marker is a tool block whatever the verb is. Prose bullets never are.
+    return !!followerIsMarker;
   }
-
-  /* Drawing names, so a drawing defect can be kept out of the places that are about the text. */
-  const DRAWING_CHECKS = [
-    'passes geometry, leader, and OCR inspection', 'drawing numeral', 'drawing sheet',
-    'Drawing briefs', 'drawing plan', 'Figure brief', 'Figure-sheet', 'figure used',
-    'described figure', 'numerals on one sheet', 'Numerals on the drawings',
-    'specification numeral appears in a drawing', 'Section views',
+  // Kept for compatibility with the old two-toggle helper name.
+  function _isBashFetchHeader(line){return _isToolHeader(line,false)}
+  // Package/self-update chatter, plus the per-turn bookkeeping and footer hint
+  // bars both CLIs print. These wrap, so a match opens a suppression block.
+  const _NOISE_RES=[
+    /^checking for updates?/i,
+    /^installing\b.*\b(claude|codex|update|npm|node|package|version|v?\d)/i,
+    /^downloading\b.*\b(claude|codex|update|npm|version|package|v?\d)/i,
+    /\b(update (installed|complete|available)|successfully updated|already up to date|(claude code|codex) v?\d[\d.]* installed)\b/i,
+    /^npm\b/i,
+    /\bnpm (warn|notice|info|err|http|verb|sill|deprecated|audit|fund)\b/i,
+    /^(added|changed|removed|audited)\s+\d+\s+packages?\b/i,
+    /\bpackages?\b[^\n]*\blooking for funding\b/i,
+    /^found \d+ vulnerabilit/i,
+    /\bnpm audit\b/i,
+    /\bto (apply|finish|complete) the update\b/i,
+    /^restart (claude|codex)\b/i,
+    /^[\[(][#=>\-.\s]{3,}[\])]/,
+    /^token usage:\s/i,
+    /^to continue this session, run (codex|claude) resume\b/i,
+    /^…\s*\+\d+\s+lines?\b/,
+    /^\+\d+\s+lines?\b/,
+    /^tip:\s/i,
+    /^context (left|remaining|window):/i,
+    /^esc to interrupt\b/i,
+    /^shell cwd was reset\b/i,
+    /\(ctrl ?\+ ?[to] to (view transcript|expand)\)/i,
+    /^made \d+\s+\S+.*\b(edit|change)/i,
+    /^⏵/,
+    /\bnew task\?\s*\/clear to save\b/i,
+    /^shift\+tab to cycle\b/i,
   ];
-  const isDrawingCheck = (name) =>
-    DRAWING_CHECKS.some((needle) => String(name || '').toLowerCase().includes(needle.toLowerCase()));
-
-  function qaCard(message) {
-    const p = message.payload || {};
-    const [tone, label] = VERDICT[p.verdict] || VERDICT.unknown;
-    const c = p.counts || {};
-    const bits = [];
-    if (c.checks_passed != null) bits.push(`${c.checks_passed}/${c.checks} checks passed`);
-    if (c.critical) bits.push(`${c.critical} critical`);
-    if (c.major) bits.push(`${c.major} major`);
-    if (c.minor) bits.push(`${c.minor} minor`);
-    return `<div class="msgwho">Consistency review${p.version_no ?
-        ` · version ${p.version_no}` : ''}</div>
-      <div class="qaline"><span class="verdict ${tone}">${label}</span>
-        <span class="small muted">${esc(bits.join(' · '))}</span></div>
-      <div class="msgbody">${para(message.body)}</div>
-      ${(() => {
-        //  A drawing defect belongs under Drawings and Filing, not in a conversation about the
-        //  text. Owner's instruction: do not show the figures on the drafting tab.
-        const failed = (p.failed || []).filter((name) => !isDrawingCheck(name));
-        const drawings = (p.failed || []).length - failed.length;
-        return (failed.length ? list(failed, 'failedlist') : '') +
-          (drawings ? `<div class="small muted">${drawings} drawing check(s) also failed. The
-            text is not waiting on them; they are under Drawings and they still hold up
-            filing.</div>` : '');
-      })()}
-      <button type="button" class="chip openreview">Open the review</button>`;
+  function _isNoise(line){
+    if(!line)return false;
+    const s=line.replace(/^[\s⎿●⏺•·│└├>*\-]+/,'').trim();
+    if(!s)return false;
+    for(let i=0;i<_NOISE_RES.length;i++){if(_NOISE_RES[i].test(s))return true;}
+    return false;
+  }
+  // Kept for compatibility with the old two-toggle helper name.
+  function _isUpdateNoise(line){return _isNoise(line)}
+  // Structural furniture the pane draws at column 0: the `›`/`❯` composer prompt,
+  // the start-up banner box, and the horizontal rules between turns. These always
+  // end a hidden block.
+  const _PANE_STRUCTURE_RE=/^[›❯>]\s|^[╭╰╮╯│├┤─━═]/;
+  // A shell prompt line ("nimo@host:~/dir$ codex --yolo") and the `export DASH_…`
+  // / `cd -- …` plumbing the dashboard types to start a session. Only stripped in
+  // panes that are actually running an agent — a plain shell session would
+  // otherwise render as an empty page.
+  const _SHELL_PROMPT_RE=/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[^\s]*\s*[$#]\s?/;
+  function _looksLikeAgentPane(text){
+    return /^[\s]*[●⏺•]/m.test(text)||text.indexOf('⎿')>=0||
+           text.indexOf('OpenAI Codex')>=0||text.indexOf('Claude Code')>=0;
   }
 
-  function renderFeed() {
-    const feed = $('chatFeed');
-    const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 120;
-    feed.innerHTML = (S.messages || []).map((message) => {
-      const cls = 'msg msg-' + message.role;
-      if (message.role === 'user') {
-        return `<article class="${cls}"><div class="msgbody">${para(message.body)}</div>
-          <div class="msgfoot small muted">${when(message.created_at)}</div></article>`;
+  // ── The live status block, and the chrome around it ─────────────────────────
+  // Both CLIs keep a status area pinned to the foot of the pane and repaint it
+  // several times a second:
+  //
+  //   · Gitifying… (1m 36s · ↓ 2.9k tokens · thought for 1s)
+  //   ────────────────────────────────────────────────────────
+  //   ❯
+  //   ────────────────────────────────────────────────────────
+  //     ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
+  //
+  // None of it is transcript. The counter alone changed the buffer every second,
+  // which forced a repaint every second, which is why the page moved under anyone
+  // trying to read or copy. The spinner row is cut out of the text in BOTH views
+  // and re-drawn by us outside the scroll area (see updateLiveBar); the rules, the
+  // composer and the hint bar are cut in clean view.
+  //
+  // The glyph set deliberately excludes ●, ⏺ and • — those are the agent's real
+  // prose/tool bullets. `·` doubles as a spinner frame, so a match also has to
+  // carry evidence: a clock, a token tally, or the interrupt hint.
+  const _LIVE_HEAD_RE=/^ {0,6}([✻✽✢✳✴✱✲✵✶✷✸✹✺✧✦·⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒▌▐])[ \t]+(\S.*)$/;
+  const _LIVE_EVID_RE=/\(\s*\d+\s*[hms]\b|\bfor\s+\d+\s*[hms]\b|\besc to interrupt\b|\btokens?\b|\bthought for\b|…\s*\(/i;
+  const _LIVE_VERB_RE=/^([A-Za-z][A-Za-zÀ-ÿ'’-]{1,24})/;   // accents count: "Sautéing…" is one word
+  const _LIVE_TIME_RE=/(?:^|[\s(·•])(?:(\d+)\s*h\s*)?(?:(\d+)\s*m\s*)?(\d+)\s*s\b/;
+  const _LIVE_TOK_RE=/([↑↓⇡⇣])?\s*([\d.]+\s*[kKmM]?)\s*tokens?/;
+  function _isLiveStatusLine(line){
+    const m=_LIVE_HEAD_RE.exec(line||'');
+    return !!m&&_LIVE_EVID_RE.test(m[2]);
+  }
+  function _readLiveStatus(line,live){
+    const m=_LIVE_HEAD_RE.exec(line||'');
+    if(!m)return;
+    const rest=m[2];
+    const v=_LIVE_VERB_RE.exec(rest);
+    if(v)live.verb=v[1];
+    const t=_LIVE_TIME_RE.exec(rest);
+    if(t)live.sec=(parseInt(t[1]||'0',10)*3600)+(parseInt(t[2]||'0',10)*60)+parseInt(t[3]||'0',10);
+    const k=_LIVE_TOK_RE.exec(rest);
+    if(k){live.dir=k[1]||'';live.tok=k[2].replace(/\s+/g,'')}
+    live.esc=/esc to interrupt/i.test(rest);
+    live.seen=true;
+  }
+  // Full-width horizontal rule. Box-drawing only, and long: an agent printing a
+  // markdown `---` or a table border must survive (a table border opens with
+  // ┌ ├ └, never with a bare ─).
+  const _CHROME_RULE_RE=/^\s*[─━═]{18,}\s*$/;
+  // The composer, and it has to be an EMPTY one: Claude Code echoes every message
+  // you sent back with the same `❯` prefix, and those are the transcript, not
+  // chrome. `>` is left out entirely — it starts a quoted line in prose.
+  const _CHROME_COMPOSER_RE=/^\s*[❯›»][\s █▌│]*$/;
+  // The hint bar under it, and the badges the CLIs park beside it.
+  const _CHROME_HINT_RE=/^\s*(?:⏵|\?\s*for shortcuts|shift\+tab\b|ctrl\+[a-z0-9]+ to\b|esc to (?:interrupt|undo|clear)\b|⧉\s*In\b|↑\s*to (?:edit|recall)\b|⌥|bypassing permissions\b|\d+%\s+context left\b|←\s*for agents\b)/i;
+  function _isPaneChrome(line){
+    return _CHROME_RULE_RE.test(line)||_CHROME_COMPOSER_RE.test(line)||_CHROME_HINT_RE.test(line);
+  }
+  // Pull the live status out of the buffer and read it. Runs in both views, and
+  // runs before anything else, so a repaint of the counter alone never reaches the
+  // renderer. Returns the body with those rows (and the trailing blank rows the
+  // pane pads itself with) removed.
+  function splitLiveTail(lines){
+    const live={verb:'',sec:null,tok:'',dir:'',esc:false,seen:false};
+    const body=[];
+    for(let i=0;i<lines.length;i++){
+      if(_isLiveStatusLine(lines[i])){_readLiveStatus(lines[i],live);continue}
+      body.push(lines[i]);
+    }
+    while(body.length&&body[body.length-1].trim()==='')body.pop();
+    return {body:body,live:live};
+  }
+  // The dashboard starts a session by typing a shell line into it:
+  //
+  //   nimrod_rotem@instance-3:~/tmux-dashboard-original$ export DASH_USER=Nimo …
+  //   DASH_PROJECT_DIR=/home/… GIT_AUTHOR_NAME=… GIT_COMMITTER_EMAIL=…
+  //
+  // which the terminal then wraps over half a dozen rows. It is the first thing
+  // anyone opening the session reads and it means nothing to them. Cut everything
+  // from the top down to the first row that is actually the agent talking. Scoped
+  // to the head of the buffer and to panes that did start an agent, so a plain
+  // shell session is never blanked.
+  const _ENV_ASSIGN_RE=/^[A-Za-z_][A-Za-z0-9_]*=/;
+  // The launch line itself, for the case where the prompt that carried it has
+  // already scrolled out of tmux's history and only the command is left.
+  const _LAUNCH_CMD_RE=/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:claude|codex)\b|--dangerously-skip-permissions|CLAUDE_CODE_OAUTH_TOKEN=|^(?:source|\.)\s+\S*\/\.tmux-dashboard\/launch\//;
+  function _stripStartupPreamble(lines){
+    let i=0,sawShell=false;
+    const limit=Math.min(lines.length,120);
+    while(i<limit){
+      const l=lines[i],t=l.trim();
+      if(t===''){i++;continue}
+      if(_SHELL_PROMPT_RE.test(l)||_LAUNCH_CMD_RE.test(t)){sawShell=true;i++;continue}
+      if(!sawShell)break;
+      // Wrapped tail of that command: bare VAR=value pairs, `export`/`cd`/`&&`
+      // fragments, and the CLI's own "starting…" chatter.
+      if(_ENV_ASSIGN_RE.test(t)||/^(export|cd|source|env|exec|nohup|&&|\|\|)\b/.test(t)||
+         /^--?[a-z]/.test(t)||/^(claude|codex)\b/.test(t)){i++;continue}
+      // The compact start-up banner, which is the CLI's block-glyph logo with the
+      // version, the model and the cwd set beside it. Not drawn as a box, so
+      // _stripStartupBanner cannot see it; three or more logo glyphs on a row is
+      // the tell.
+      if((l.match(/[▐▛▜▌▝▘█▄▀]/g)||[]).length>=3){i++;continue}
+      break;
+    }
+    return sawShell?lines.slice(i):lines;
+  }
+  // The welcome box each CLI draws on start-up ("✻ Welcome to Claude Code", cwd,
+  // model, /help hint). It is a box so _isTableRow keeps it; drop it by content.
+  const _BANNER_HINT_RE=/welcome (to|back)\b|(claude code|openai codex)\s+v?\d|\/help for help|\/init to create|release-notes|tips for getting|what's new|cwd:|workdir:|model:\s|approval:|sandbox:|press enter to continue/i;
+  function _stripStartupBanner(lines){
+    const out=[];
+    let box=null;
+    for(let i=0;i<lines.length;i++){
+      const t=lines[i].trim();
+      const opens=/^[╭┌]/.test(t),closes=/^[╰└]/.test(t);
+      if(box===null&&opens){box={rows:[lines[i]],hit:false};continue}
+      if(box!==null){
+        box.rows.push(lines[i]);
+        if(_BANNER_HINT_RE.test(t))box.hit=true;
+        if(closes||box.rows.length>14){
+          if(!box.hit)for(const r of box.rows)out.push(r);
+          box=null;
+        }
+        continue;
       }
-      if (message.role === 'agent') return `<article class="${cls}">${agentCard(message)}</article>`;
-      if (message.role === 'qa') return `<article class="${cls}">${qaCard(message)}</article>`;
-      return `<article class="${cls}"><div class="msgbody">${para(message.body)}</div></article>`;
-    }).join('');
-    feed.querySelectorAll('.askchip').forEach((chip) => chip.addEventListener('click', () => {
-      const input = $('chatInput');
-      input.value = (input.value ? input.value + '\n' : '') + chip.dataset.q + '\n\n';
-      input.focus();
+      out.push(lines[i]);
+    }
+    if(box!==null&&!box.hit)for(const r of box.rows)out.push(r);
+    return out;
+  }
+  function applyRawFilter(text){
+    if(!true)return text;
+    if(!text)return text;
+    let lines=text.split('\n');
+    // Decided on the ORIGINAL text: the start-up banner is one of the tells, and
+    // we are about to delete it.
+    const agentPane=_looksLikeAgentPane(text);
+    if(agentPane){
+      lines=_stripStartupPreamble(lines);
+      lines=_stripStartupBanner(lines);
+    }
+    lines=lines.filter(l=>!_isPaneChrome(l));
+    // Index of the next non-empty line, for the structural tool-block test and
+    // for deciding whether a blank row ends a hidden block or sits inside one.
+    const nextNonEmpty=new Array(lines.length).fill(-1);
+    for(let i=lines.length-2;i>=0;i--){
+      nextNonEmpty[i]=lines[i+1].trim()===''?nextNonEmpty[i+1]:i+1;
+    }
+    const out=[];
+    // One suppression state machine:
+    //   'call'   — a hidden tool-call header and its wrapped command rows.
+    //   'output' — a hidden ⎿/└ result block and its indented continuation rows.
+    //   'noise'  — a hidden bookkeeping/update line and its wrapped rows.
+    //   'shell'  — a hidden shell command and its wrapped rows.
+    // Suppression ends at a bullet, at pane structure, or at a blank row that is
+    // followed by something starting at column 0 — so the agent's spoken text and
+    // its paragraph breaks always survive.
+    let mode='';
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i];
+      // Table rows are content, and they end any block that was being hidden —
+      // tested before the marker rules, which would otherwise claim them. Two
+      // blocks still win: a `⎿`/`└` result (a table printed BY a command is tool
+      // output, and breaking out would leak the rest of the block) and the
+      // launch-command block (whose tail is Claude Code's own `╭…│…╰` banner).
+      if(mode!=='output'&&mode!=='shell'&&_isTableRow(line)){mode='';out.push(line);continue;}
+      if(_isNoise(line)){mode='noise';continue;}
+      if(_CALL_CONT_RE.test(line)){mode='call';continue;}
+      if(_OUTPUT_MARKER_RE.test(line)){mode='output';continue;}
+      // A tool call that is still RUNNING is drawn without its bullet — Claude
+      // only stamps the ● once the call returns. So `  Bash(cd …` sits there at an
+      // indent with nothing to mark it, and the bullet branch below never sees it.
+      // `Name(` at the start of a line is never prose, so match it on its own.
+      if(_TOOL_PAREN_RE.test(line.replace(_ANY_DECORATION_RE,''))){mode='call';continue;}
+      if(_LEADING_BULLET_RE.test(line)){
+        const nx=nextNonEmpty[i];
+        const followerIsMarker=nx>=0&&(_OUTPUT_MARKER_RE.test(lines[nx])||_CALL_CONT_RE.test(lines[nx]));
+        if(_isToolHeader(line,followerIsMarker)){mode='call';continue;}
+        mode='';out.push(line);continue;   // prose bullet
+      }
+      if(agentPane&&_SHELL_PROMPT_RE.test(line)){mode='shell';continue;}
+      if(line.trim()===''){
+        // A blank row inside a hidden block (command output routinely has them)
+        // must not end the suppression, or the tail of the block leaks out. It
+        // ends when the block does — when the next real row is a bullet or
+        // starts at column 0.
+        const nx=nextNonEmpty[i];
+        if(mode&&nx>=0&&/^\s/.test(lines[nx])&&!_LEADING_BULLET_RE.test(lines[nx]))continue;
+        mode='';out.push(line);continue;
+      }
+      if(/^\S/.test(line)){
+        // Column-0 non-space. Inside an agent pane every spoken word sits inside
+        // a `•` bullet at an indent, so a column-0 row reached while a block is
+        // being hidden is that block's wrapped tail, not prose — drop it. Pane
+        // structure (rules, banner, `›` prompt) still breaks out.
+        if(mode&&agentPane&&!_PANE_STRUCTURE_RE.test(line))continue;
+        if(mode==='shell')continue;
+        mode='';out.push(line);continue;
+      }
+      // Indented continuation row — dropped if it belongs to a hidden block.
+      if(mode)continue;
+      out.push(line);
+    }
+    // Removing whole blocks leaves ragged runs of blank rows behind. Collapse
+    // them to a single separator so the conversation reads as prose.
+    const tidy=[];
+    for(const l of out){
+      if(l.trim()===''&&(!tidy.length||tidy[tidy.length-1].trim()===''))continue;
+      tidy.push(l);
+    }
+    return tidy.join('\n');
+  }
+  function _escTermHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  // Linkify http(s):// URLs and absolute file paths in raw terminal output.
+  // URL handling:
+  //  (1) URL on one logical line — escape, trim trailing punctuation, wrap in <a>.
+  //  (2) URL split across multiple rows by Claude Code's alt-screen TUI — when a
+  //      whitespace/newline appears at column ≥ paneWidth-4 followed by row
+  //      padding and a URL-valid char on the next row, treat as a soft wrap:
+  //      strip padding+newline from href but emit per-chunk <a> tags so the
+  //      visual layout matches the terminal and every chunk is clickable.
+  // URLs only. The operators' dashboard also turns an absolute path into a link to
+  // its file viewer; the studio has no file viewer, and a patent draft is not a
+  // place to browse the server from, so a path here stays text.
+  function _findNextLinkable(text,from){
+    const urlIdx=text.slice(from).search(/https?:\/\//);
+    return urlIdx>=0?{kind:'url',start:from+urlIdx}:null;
+  }
+  function _renderUrlSpan(text,start,paneWidth){
+    const pw=Math.max(20,paneWidth||80);
+    const wrapCol=pw-4;
+    const MAX_WRAP_LINES=20;
+    const MAX_URL_LEN=4096;
+    let j=start;
+    let crossedNewlines=0;
+    while(j<text.length&&(j-start)<MAX_URL_LEN){
+      const ch=text[j];
+      if(ch==='<'||ch==='>'||ch==='"'||ch==="'"||ch==='`')break;
+      if(/\s/.test(ch)){
+        let ls=j;
+        while(ls>0&&text[ls-1]!=='\n')ls--;
+        const col=j-ls;
+        if(col<wrapCol)break;
+        let k=j;
+        while(k<text.length&&(text[k]===' '||text[k]==='\t'))k++;
+        if(k>=text.length||text[k]!=='\n')break;
+        if(crossedNewlines>=MAX_WRAP_LINES)break;
+        const next=text[k+1];
+        if(!next||/\s/.test(next))break;
+        if(next==='<'||next==='>'||next==='"'||next==="'"||next==='`')break;
+        const nextSlice=text.slice(k+1,k+9);
+        if(nextSlice.startsWith('http://')||nextSlice.startsWith('https://'))break;
+        crossedNewlines++;
+        j=k+1;
+        continue;
+      }
+      j++;
+    }
+    const urlRaw=text.slice(start,j);
+    const hasNewlines=urlRaw.indexOf('\n')>=0;
+    let href=urlRaw.replace(/[ \t]*\n[ \t]*/g,'');
+    let trailText='';
+    if(!hasNewlines){
+      while(href.length>0&&_RAW_URL_TRAIL_RE.test(href[href.length-1])){
+        trailText=href[href.length-1]+trailText;
+        href=href.slice(0,-1);
+      }
+    }
+    let html;
+    if(href.length===0){
+      html=_escTermHtml(urlRaw);
+    }else if(!hasNewlines){
+      const dispText=urlRaw.slice(0,urlRaw.length-trailText.length);
+      html='<a href="'+_escTermHtml(href)+'" target="_blank" rel="noopener noreferrer" class="raw-link">'+_escTermHtml(dispText)+'</a>'+_escTermHtml(trailText);
+    }else{
+      const parts=urlRaw.split(/(\s+)/);
+      const hrefEsc=_escTermHtml(href);
+      html='';
+      for(const part of parts){
+        if(!part)continue;
+        if(/^\s+$/.test(part)){
+          html+=_escTermHtml(part);
+        }else{
+          html+='<a href="'+hrefEsc+'" target="_blank" rel="noopener noreferrer" class="raw-link">'+_escTermHtml(part)+'</a>';
+        }
+      }
+    }
+    return {html:html,end:j};
+  }
+  function _linkifyTerminalText(text,paneWidth){
+    if(!text)return '(empty)';
+    let out='';
+    let i=0;
+    while(i<text.length){
+      const hit=_findNextLinkable(text,i);
+      if(!hit){out+=_escTermHtml(text.slice(i));break;}
+      out+=_escTermHtml(text.slice(i,hit.start));
+      const rendered=_renderUrlSpan(text,hit.start,paneWidth);
+      out+=rendered.html;
+      i=rendered.end;
+      if(i<=hit.start)i=hit.start+1;
+    }
+    return out;
+  }
+  // Which rendered line is this node in? Used to decide whether a paint would
+  // actually disturb the reader's selection, rather than assuming it would.
+  function _lineIndexOf(el,node){
+    let x=node;
+    while(x&&x.parentNode!==el)x=x.parentNode;
+    if(!x)return -1;
+    return Array.prototype.indexOf.call(el.children,x);
+  }
+  // A paint only destroys a selection if it rewrites a line the selection is in.
+  // The agent appends at the tail, so a reader highlighting something further up
+  // is not affected and there is no reason to hold the update back.
+  function _selectionBelow(el,fromIdx){
+    const sel=window.getSelection?window.getSelection():null;
+    if(!sel||sel.isCollapsed||sel.rangeCount===0)return false;
+    for(let i=0;i<sel.rangeCount;i++){
+      const r=sel.getRangeAt(i);
+      if(!(el.contains(r.startContainer)||el.contains(r.endContainer)))continue;
+      const a=_lineIndexOf(el,r.startContainer),b=_lineIndexOf(el,r.endContainer);
+      if(a<0||b<0)return true;                 // can't place it — play safe
+      if(Math.max(a,b)>=fromIdx)return true;
+    }
+    return false;
+  }
+  // Once the user's selection moves off the lines a paint wanted to rewrite, flush
+  // it. renderRawText re-tests the overlap itself, so this can just ask again.
+  function _flushDeferredRawRenders(){
+    const st=getRawState();
+    if(st._pendingRender&&!st.frozen&&$('termOut'))renderRawText();
+  }
+  document.addEventListener('selectionchange',_flushDeferredRawRenders);
+  // A selection that does not exist yet cannot be detected by selectionchange: for
+  // the first pixels of a drag the range is still collapsed, so a re-render landing
+  // in that window rips the nodes out from under the mouse and the highlight never
+  // starts. Hold every terminal paint while a button is down inside one, and flush
+  // on release. Delegated at the document level on purpose — the terminal element
+  // is rebuilt on every detail re-render, so per-element listeners would leak.
+  let _rawDragEl=null;
+  document.addEventListener('mousedown',function(e){
+    _rawDragEl=(e.target&&e.target.closest)?e.target.closest('.raw-output'):null;
+  },true);
+  document.addEventListener('mouseup',function(){
+    if(!_rawDragEl)return;
+    _rawDragEl=null;
+    _flushDeferredRawRenders();
+  },true);
+  // ── Undoing the terminal's own line breaks ──────────────────────────────────
+  // Claude Code and Codex hard-wrap their output to the pane width before tmux
+  // ever sees it, so a paragraph arrives as N rows of ~78 columns and a long URL
+  // arrives cut in half. That is the whole of two complaints at once: the text is
+  // stuck at 80 columns (too wide for a phone, half the screen wasted on a
+  // desktop) and a link split across two rows is not a link any more.
+  //
+  // A row continues the one above it only if the first word of the row would NOT
+  // have fitted on it — the exact inverse of the greedy wrap that produced them.
+  // "Did the row reach the right margin" is not enough on its own: two short lines
+  // that happen to be long-ish get glued together, and a two-column list turns
+  // into porridge. The word test never merges those, because the next line's first
+  // word plainly would have fitted.
+  const _BLOCK_START_RE=/^\s*(?:[●⏺•✱✲✳✴✵✶✷✸✹✺✧✦⎿└├┌┐┘╭╮╯╰│┤┬┴┼─━═║╔╗╚╝▌▐❯›»>]|[-*+]\s|\d+[.)]\s|#{1,6}\s|[✓✔✗✘◻☐☑▢]\s)/;
+  // A token too long to finish the row is cut at the very last column and picked
+  // up at column 0 on the next one, whatever the paragraph's indent was — which is
+  // exactly how a URL comes through:
+  //
+  //     (https://docs.google.com/spreadsheets/d/1I5Lii…UNfAUe8oObwbE/edit    <- col 80
+  //   ?gid=1321488188).                                                     <- col 0
+  //
+  // So a column-0 row is still a continuation when the row above filled the pane
+  // and the two halves join into one token. Without this the link stays in two
+  // pieces and neither half is clickable.
+  function _isTokenCut(prev,row,limit){
+    return prev.length>=limit&&_wrapGlue(prev,row,limit)==='';
+  }
+  function _isWrapContinuation(prev,row,limit){
+    if(!prev||!row)return false;
+    if(!prev.trim()||!row.trim())return false;
+    if(_isTableRow(prev)||_isTableRow(row))return false;
+    if(_BLOCK_START_RE.test(row))return false;
+    const pIndent=prev.length-prev.replace(/^\s+/,'').length;
+    const rIndent=row.length-row.replace(/^\s+/,'').length;
+    // back at column 0 — structure, not a wrap, unless a token was cut there
+    if(rIndent===0&&pIndent>0&&!_isTokenCut(prev,row,limit))return false;
+    if(rIndent>pIndent+6)return false;        // a deeper block of its own
+    const word=row.replace(/^\s+/,'').split(/\s/)[0]||'';
+    if(!word)return false;
+    // The row above has to have been nearly full for a wrap to be plausible at
+    // all, and the word below has to be one that would not have finished it. The
+    // 2-column slack absorbs the fact that `limit` is an estimate: the widest row
+    // we can see is a lower bound on where the CLI actually broke.
+    if(prev.length<limit-10)return false;
+    return (prev.length+1+word.length)>limit-2;
+  }
+  function _wrapGlue(prev,row,limit){
+    // A word wrap ate the space that was between the two halves; a token too long
+    // for one row was cut with no space at all. Only the second may be rejoined
+    // tight, and it is exactly the case that used to leave a URL split down the
+    // middle and therefore dead.
+    // A token is only ever cut when it fills the row to the very last column. One
+    // column short of that and the break was at a space, so the space goes back.
+    if(prev.length<limit)return ' ';
+    const tail=prev.slice(prev.lastIndexOf(' ')+1);
+    const head=row.replace(/^\s+/,'');
+    const CH=/[A-Za-z0-9\/._~:?#\[\]@!$&'()*+,;=%-]/;
+    if(!CH.test(tail.slice(-1))||!CH.test(head.charAt(0)))return ' ';
+    // Anything that ends in punctuation is a finished word, whatever else it looks
+    // like. "…cost me a cycle:" ends a clause; it is not half of a URL, and gluing
+    // it gave "cycle:the".
+    if(/[.,;:!?)\]}'"]$/.test(tail))return ' ';
+    // A path that already carries its extension, or ends at a directory slash, is
+    // finished too — what follows is the next word, not the rest of the token.
+    if((/\.[A-Za-z]{2,5}$/.test(tail)||tail.slice(-1)==='/')&&/^[A-Za-z]/.test(head))return ' ';
+    const looksCut=/:\/\//.test(tail)         // carries a scheme
+                || /^[~.]?\//.test(tail)      // is a path
+                || tail.indexOf('/')>=0       // has a path segment in it
+                || /@[A-Za-z0-9-]+$/.test(tail)
+                || tail.length>=22;           // one long unbroken token
+    return looksCut?'':' ';
+  }
+  // The wrap column is what the agent actually drew to, not what tmux says the
+  // pane is — and it is not one number for the whole buffer. Inside a bordered box
+  // (a quoted user message, a plan) the CLI wraps several columns narrower than it
+  // does in open prose, so a single buffer-wide maximum makes every paragraph in
+  // the box look "not full" and none of it gets rejoined. Estimate it locally.
+  //
+  // The window looks BACKWARDS only, and that is the whole point. A window that
+  // also peeked ahead meant one new row at the bottom could change the estimate
+  // for rows above it, re-join them differently, and shift the text under a reader
+  // who was nowhere near the bottom. Looking only at what is already settled makes
+  // the result append-only: everything above the new row is decided for good.
+  const _WRAP_WINDOW=16;
+  function _localWrapLimits(rs,paneWidth){
+    const n=rs.length,pw=Math.max(40,paneWidth||80),out=new Array(n);
+    for(let i=0;i<n;i++){
+      let w=0;
+      const lo=Math.max(0,i-_WRAP_WINDOW);
+      for(let j=lo;j<=i;j++)if(rs[j].length>w)w=rs[j].length;
+      out[i]=Math.min(Math.max(w,40),pw);
+    }
+    return out;
+  }
+  function _unwrapRows(lines,paneWidth){
+    const n=lines.length,rs=new Array(n);
+    for(let i=0;i<n;i++)rs[i]=lines[i].replace(/\s+$/,'');
+    const limits=_localWrapLimits(rs,paneWidth);
+    const out=[];
+    let cur=null,lastRow='',lastIdx=0;
+    for(let i=0;i<n;i++){
+      const row=rs[i],limit=limits[lastIdx];
+      if(cur!==null&&_isWrapContinuation(lastRow,row,limit)){
+        cur+=_wrapGlue(lastRow,row,limit)+row.replace(/^\s+/,'');
+        lastRow=row;lastIdx=i;
+        continue;
+      }
+      if(cur!==null)out.push(cur);
+      cur=row;lastRow=row;lastIdx=i;
+    }
+    if(cur!==null)out.push(cur);
+    return out;
+  }
+  // There is deliberately no global de-indent here. Stripping the pane's common
+  // left margin looks tidier, but the common margin is a property of the WHOLE
+  // buffer: one new line at column 0 arriving at the bottom re-indents every line
+  // above it and the page jumps under the reader. The margin is two columns and
+  // the CSS hanging indent handles the rest, so it stays.
+
+  // ── Fitting the grid to the screen ──────────────────────────────────────────
+  // Exact mode has to keep the terminal's character grid, so the only free
+  // variable is the type size. Fit pane_width columns to the column that is
+  // actually there: a phone stops needing to scroll sideways, and a wide desktop
+  // stops rendering an 80-column ribbon down the middle of a 1400px window.
+  let _termCharRatio=0;
+  function _measureCharRatio(el){
+    if(_termCharRatio)return _termCharRatio;
+    const probe=document.createElement('span');
+    probe.style.cssText='position:absolute;visibility:hidden;white-space:pre;left:-9999px;top:0';
+    probe.textContent='0123456789'.repeat(10);
+    el.appendChild(probe);
+    const w=probe.getBoundingClientRect().width;
+    const fs=parseFloat(getComputedStyle(probe).fontSize)||13;
+    el.removeChild(probe);
+    if(w>0&&fs>0)_termCharRatio=(w/100)/fs;
+    return _termCharRatio||0.6;
+  }
+  function fitTerminalFont(el,paneWidth,flow){
+    if(flow){el.style.fontSize='';return}
+    const ratio=_measureCharRatio(el);
+    const cs=getComputedStyle(el);
+    const avail=el.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0)-2;
+    if(avail<=0)return;
+    const cols=Math.max(20,paneWidth||80);
+    const size=Math.max(9,Math.min(15,avail/(cols*ratio)));
+    el.style.fontSize=size.toFixed(2)+'px';
+  }
+
+  // ── Painting: replace only the lines that changed ───────────────────────────
+  // One <div class="tl"> per line, diffed by common prefix and common suffix. In
+  // the normal case the agent appends at the tail, the prefix covers everything
+  // above it, and not one node the reader is looking at is touched — so nothing
+  // shifts, and a highlight in that region survives the update intact.
+  function _lineDiff(prev,next){
+    const n=next.length,m=prev.length;
+    let p=0;
+    while(p<n&&p<m&&next[p]===prev[p])p++;
+    let s=0;
+    while(s<(n-p)&&s<(m-p)&&next[n-1-s]===prev[m-1-s])s++;
+    return {from:p,remove:(m-s)-p,insert:(n-s)-p};
+  }
+  function _applyLineDiff(el,d,next){
+    const kids=el.children;
+    const reuse=Math.min(d.remove,d.insert);
+    for(let k=0;k<reuse;k++){
+      const c=kids[d.from+k];
+      if(c)c.innerHTML=next[d.from+k]||'';
+    }
+    if(d.remove>d.insert){
+      for(let k=d.remove-1;k>=reuse;k--){
+        const c=kids[d.from+k];
+        if(c)el.removeChild(c);
+      }
+    }else if(d.insert>d.remove){
+      const before=kids[d.from+reuse]||null;
+      const frag=document.createDocumentFragment();
+      for(let k=reuse;k<d.insert;k++){
+        const div=document.createElement('div');
+        div.className='tl';
+        div.innerHTML=next[d.from+k]||'';
+        frag.appendChild(div);
+      }
+      el.insertBefore(frag,before);
+    }
+  }
+  function _setRawScroll(el,target){
+    const max=Math.max(0,el.scrollHeight-el.clientHeight);
+    target=Math.max(0,Math.min(target,max));
+    if(Math.abs(el.scrollTop-target)<1)return;
+    el.scrollTop=target;
+  }
+  // A very long scrollback is bounded, with hysteresis so the window does not
+  // crawl forward a line at a time (which would repaint everything, every poll).
+  const RAW_MAX_LINES=5000;
+
+  function renderRawText(force){
+    const st=getRawState();
+    const rawEl=$('termOut');
+    if(!rawEl)return;
+    // The live counter comes off FIRST, in both views. It changes every second,
+    // and everything below this line would otherwise re-run every second.
+    const split=splitLiveTail((st.fullText||'').split('\n'));
+    if(split.live.seen){
+      split.live.at=_nowMs();
+      st.live=split.live;
+    }
+    updateLiveBar();
+    // Frozen: keep buffering into st.fullText and leave the screen alone. The
+    // agent is untouched — only the paint waits, and unfreezing shows the lot.
+    if(!force&&st.frozen){st._pendingRender=true;updateFreezeUi();return;}
+
+    const flow=true;
+    // A fresh element — switching session or tab rebuilds the whole detail panel —
+    // has none of our line divs in it, so whatever we last painted is gone with
+    // the old node. Drop the memo BEFORE the no-change short-circuit below, or the
+    // new element stays stuck on "Loading Claude Code…" until the text changes.
+    if(rawEl._lineMode!==true){rawEl.textContent='';rawEl._lineMode=true;st.painted=null;st._bodyText=null}
+    const bodyText=split.body.join('\n');
+    if(!force&&bodyText===st._bodyText&&flow===st._flowMode&&st.painted){st._pendingRender=false;return;}
+
+    let body=applyRawFilter(bodyText);
+    let rows=body?body.split('\n'):[];
+    if(flow){
+      rows=_unwrapRows(rows,st.paneWidth);
+      while(rows.length&&rows[rows.length-1].trim()==='')rows.pop();
+    }else{
+      // tmux pads every row out to the pane width. Those trailing spaces are
+      // invisible, but they count towards the line box and would wrap a row that
+      // otherwise fits exactly.
+      rows=rows.map(l=>l.replace(/\s+$/,''));
+    }
+    if(rows.length>RAW_MAX_LINES+400)rows=rows.slice(rows.length-RAW_MAX_LINES);
+    let htmlLines;
+    if(!rows.length||!rows.join('').trim()){
+      htmlLines=(st.fullText||'').trim()
+        ? ['<span style="color:#6e7681">Nothing on this screen but the agent&rsquo;s own chrome. It is waiting for you.</span>']
+        : [];
+    }else{
+      // Linkified as one string so the exact-mode rejoining of URLs and paths
+      // split across rows still works; neither renderer ever emits a tag that
+      // straddles a newline, so splitting the result back per line is safe.
+      htmlLines=_linkifyTerminalText(rows.join('\n'),flow?1000000:st.paneWidth).split('\n');
+    }
+
+    const prev=st.painted||[];
+    const d=_lineDiff(prev,htmlLines);
+    if(!d.remove&&!d.insert){
+      st.painted=htmlLines;st._bodyText=bodyText;st._flowMode=flow;st._pendingRender=false;
+      return;
+    }
+    // Hold the paint only if it would actually rip out what the reader is holding:
+    // a drag in progress here, or a selection that reaches into the lines about to
+    // be rewritten. A highlight further up is left alone and the update goes ahead.
+    if(!force&&(_rawDragEl===rawEl||_selectionBelow(rawEl,d.from))){st._pendingRender=true;return;}
+
+    rawEl.classList.toggle('flow',flow);
+    rawEl.classList.toggle('exact',!flow);
+    if(st._flowMode!==flow||rawEl._fitW!==rawEl.clientWidth||rawEl._fitPw!==st.paneWidth){
+      fitTerminalFont(rawEl,st.paneWidth,flow);
+      rawEl._fitW=rawEl.clientWidth;rawEl._fitPw=st.paneWidth;
+    }
+
+    const atBottom=!st.userScrolledUp;
+    const beforeH=rawEl.scrollHeight,beforeTop=rawEl.scrollTop;
+    const anchor=rawEl.children[d.from];
+    const anchorTop=anchor?anchor.offsetTop:beforeH;
+    _applyLineDiff(rawEl,d,htmlLines);
+    st.painted=htmlLines;st._bodyText=bodyText;st._flowMode=flow;st._pendingRender=false;
+    if(atBottom){
+      _setRawScroll(rawEl,rawEl.scrollHeight);
+    }else if(anchorTop<beforeTop){
+      // Something above the fold moved (a resync, or the scrollback cap trimming
+      // the head). Give the reader back the line they were on.
+      const delta=rawEl.scrollHeight-beforeH;
+      if(delta)_setRawScroll(rawEl,beforeTop+delta);
+    }
+    // Scrolled up and the change was at or below the top of the viewport: nothing
+    // the reader can see has moved, so scrollTop is not touched at all.
+    updateFreezeUi();
+  }
+  // The exact-mode type size is a function of the container width, so it has to be
+  // recomputed when the window changes shape (rotating a phone, most of all).
+  let _refitTimer=null;
+  window.addEventListener('resize',function(){
+    clearTimeout(_refitTimer);
+    _refitTimer=setTimeout(function(){
+    
+      const el=$('termOut');
+      if(!el)return;
+      const st=getRawState();
+      fitTerminalFont(el,st.paneWidth,true);
+      el._fitW=el.clientWidth;el._fitPw=st.paneWidth;
+      if(!st.userScrolledUp)_setRawScroll(el,el.scrollHeight);
+    },180);
+  });
+
+  // ── Our own live indicator ──────────────────────────────────────────────────
+  // Everything the CLIs animate into the pane is stripped upstream; this is what
+  // replaces it. It sits outside the scroll area and updates by writing text into
+  // three spans, so a second passing moves nothing in the transcript. The clock
+  // runs locally off the last value we parsed, which is why it stays smooth even
+  // though we no longer care how often the terminal redraws it.
+  function _nowMs(){return (window.performance&&performance.now)?performance.now():new Date().getTime()}
+  function _fmtElapsed(sec){
+    sec=Math.max(0,Math.floor(sec||0));
+    const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;
+    if(h)return h+'h '+String(m).padStart(2,'0')+'m';
+    if(m)return m+'m '+String(s).padStart(2,'0')+'s';
+    return s+'s';
+  }
+  function _liveSeconds(st,busy){
+    const live=st.live||{};
+    if(live.sec===null||live.sec===undefined)return null;
+    if(!busy)return live.sec;
+    return live.sec+Math.max(0,(_nowMs()-(live.at||_nowMs()))/1000);
+  }
+  let _liveTicker=null;
+  function startLiveTicker(){
+    if(_liveTicker)return;
+    _liveTicker=setInterval(function(){
+      const st=getRawState();
+      if(!st.live||!st.live.seen||!termBusy())return;
+      const e=$('termTime');
+      const secs=_liveSeconds(st,true);
+      if(e&&secs!==null)e.textContent=_fmtElapsed(secs);
+    },1000);
+  }
+  function updateLiveBar(){
+    const bar=$('termLive');
+    if(!bar)return;
+    startLiveTicker();
+    const st=getRawState();
+    const live=st.live||{};
+    const busy=termBusy();
+    const show=busy||!!live.seen;
+    bar.classList.toggle('on',show);
+    if(!show)return;
+    bar.classList.toggle('idle',!busy);
+    const set=function(id,txt){
+      const e=$(id);
+      if(e&&e.textContent!==txt)e.textContent=txt;
+    };
+    // The verb is the CLI's whimsical spinner word ("Sketching", "Cogitated") and
+    // it only means anything while the turn is running. Once it is over the
+    // useful fact is how long the turn took, not what it was called.
+    const verb=(live.verb||'').replace(/[.…]+$/,'');
+    set('termVerb',busy?(verb||'Working'):'Idle');
+    const secs=_liveSeconds(st,busy);
+    set('termTime',secs===null?'':(busy?'':'last turn ')+_fmtElapsed(secs));
+    set('termTok',live.tok?((live.dir?live.dir+' ':'')+live.tok+' tokens'):'');
+    const note=$('termNote');
+    if(note){
+      const txt=busy&&live.esc?'Stop to interrupt':'';
+      if(note.textContent!==txt)note.textContent=txt;
+    }
+  }
+
+  // ── Holding the paint still ─────────────────────────────────────────────────
+  // The operators' dashboard has a Freeze button on this row. There is no button
+  // here - the simplified terminal has three - but the mechanism it drives is
+  // still what stops a repaint tearing a selection out from under the reader, so
+  // `st.frozen` and `_pendingRender` stay and this is what renderRawText calls.
+  function _frozenNewLines(st){
+    if(!st.frozen)return 0;
+    return Math.max(0,(st.fullText||'').split('\n').length-(st.frozenAtLines||0));
+  }
+  function updateFreezeUi(){
+    const rawEl=$('termOut');
+    if(rawEl)rawEl.classList.toggle('frozen',!!getRawState().frozen);
+  }
+
+
+  // ── reading the pane ────────────────────────────────────────────────────────
+  /* A delta poll, not a full capture. The server answers with a full screen, a tail plus a small
+     overlap the client splices on, or nothing at all. The overlap is what makes the splice safe:
+     if the rows we already hold do not match the rows the tail repeats, the buffer has drifted
+     and we resync from a full capture rather than glue two unrelated screens together. */
+  function ensureTermScrollTracking(el) {
+    if (el._scrollTracked) return;
+    el._scrollTracked = true;
+    //  Follow-the-tail is decided by WHERE the pane is, never by who scrolled it. A flag that
+    //  tried to tell our own scrolls from the reader's threw away any wheel event that landed
+    //  between a paint and its scroll event, so a flick during an update did nothing and the
+    //  view snapped back to the bottom. Position cannot lie.
+    el.addEventListener('scroll', () => {
+      TERM.userScrolledUp = (el.scrollHeight - el.scrollTop - el.clientHeight) > 24;
+    }, { passive: true });
+  }
+
+  async function pollTermDelta() {
+    const el = $('termOut');
+    if (!el) return;
+    ensureTermScrollTracking(el);
+    try {
+      const query = `?known_lines=${TERM.knownLines}&last_hash=${encodeURIComponent(TERM.visibleHash || '')}`;
+      const response = await fetch(`${BASE}/api/drafts/${PID}/terminal/tail${query}`,
+        { credentials: 'same-origin', cache: 'no-store' });
+      const data = await response.json();
+      if (typeof data.visible_hash === 'string') TERM.visibleHash = data.visible_hash;
+      if (typeof data.pane_width === 'number' && data.pane_width > 0) TERM.paneWidth = data.pane_width;
+      if (data.exists === false) {
+        if (!TERM.fullText) el.textContent = agentState.available
+          ? 'No drafting agent is running on this draft. Press Restart to open one.'
+          : agentState.reason || 'The drafting agent is not available on this server.';
+        return;
+      }
+      if (data.mode === 'full') {
+        TERM.fullText = data.raw || '';
+        TERM.knownLines = data.pane_total;
+        TERM.firstLoad = false;
+        renderRawText();
+      } else if (data.mode === 'delta' && data.raw) {
+        const arriving = data.raw.split('\n');
+        const held = (TERM.fullText || '').split('\n');
+        let matched = false;
+        if (data.overlap && held.length >= data.overlap) {
+          matched = held.slice(-data.overlap).join('\n') === arriving.slice(0, data.overlap).join('\n');
+        }
+        if (matched) {
+          const appended = arriving.slice(data.overlap).join('\n');
+          if (appended) TERM.fullText = (TERM.fullText ? TERM.fullText + '\n' : '') + appended;
+          TERM.knownLines = data.pane_total;
+          renderRawText();
+        } else {
+          TERM.knownLines = 0;
+          const full = await (await fetch(
+            `${BASE}/api/drafts/${PID}/terminal/tail?known_lines=0`,
+            { credentials: 'same-origin', cache: 'no-store' })).json();
+          if (full.mode === 'full') {
+            TERM.fullText = full.raw || '';
+            TERM.knownLines = full.pane_total;
+            if (full.pane_width > 0) TERM.paneWidth = full.pane_width;
+            renderRawText();
+          }
+        }
+      }
+    } catch (error) { /* a dropped poll is the next poll's problem */ }
+  }
+
+  function startTermPolling() {
+    if (TERM.polling) return;
+    TERM.polling = true;
+    pollTermDelta();
+    //  Fast for the first six seconds while the CLI's TUI is booting, then once a second. A
+    //  drafting turn is minutes long; a 300 ms poll for all of it is a request every three
+    //  frames for output that arrives in paragraphs.
+    let ticks = 0;
+    TERM.timer = setInterval(() => {
+      pollTermDelta();
+      if (++ticks === 20) {
+        clearInterval(TERM.timer);
+        TERM.timer = setInterval(pollTermDelta, 1000);
+      }
+    }, 300);
+  }
+
+  async function reloadTerm() {
+    Object.assign(TERM, {
+      knownLines: 0, userScrolledUp: false, visibleHash: '', firstLoad: true, fullText: '',
+      painted: null, _bodyText: null, live: null, frozen: false, frozenAtLines: 0,
+    });
+    const el = $('termOut');
+    if (el) { el.textContent = 'Reading the terminal…'; el._lineMode = false; }
+    await pollTermDelta();
+  }
+
+  // ── what the agent is doing ─────────────────────────────────────────────────
+  const AGENT_LABEL = { busy: 'working', idle: 'ready', stopped: 'stopped', unknown: 'starting' };
+
+  function renderAgentStatus() {
+    const pill = $('termStatus');
+    if (!pill) return;
+    const status = agentState.status || 'unknown';
+    pill.className = 'status-pill ' + status;
+    pill.innerHTML = '<span class="status-dot"></span><span class="status-label">' +
+      esc(AGENT_LABEL[status] || status) + '</span>' +
+      (agentState.detail && status !== 'busy'
+        ? '<span class="statusdetail"> · ' + esc(agentState.detail) + '</span>' : '');
+    const stop = $('termStop');
+    if (stop) stop.classList.toggle('visible', status === 'busy');
+    updateLiveBar();
+  }
+
+  function applyAgentState(next) {
+    agentState = Object.assign({}, agentState, next || {});
+    renderAgentStatus();
+  }
+
+  async function loadAgentState() {
+    try {
+      applyAgentState(await api(`/api/drafts/${PID}/terminal`));
+    } catch (error) { /* the pill keeps whatever it last knew */ }
+  }
+
+  // ── typing into it ──────────────────────────────────────────────────────────
+  async function sendToAgent(text) {
+    const body = String(text || '').trim();
+    if (!body) return;
+    const input = $('termInput');
+    const send = $('termSend');
+    if (send) send.disabled = true;
+    if (input) { input.value = ''; sizeComposer(); }
+    //  Say so straight away. Starting a cold agent takes a few seconds and an unacknowledged
+    //  send reads as a lost message, which is what makes people send it twice.
+    applyAgentState({ status: 'busy', detail: 'Working' });
+    try {
+      await api(`/drafts/${PID}/studio/message`, {
+        method: 'POST', body: JSON.stringify({ message: body }),
+      });
+    } catch (error) {
+      if (input) input.value = body;
+      const hint = $('termHint');
+      if (hint) { hint.textContent = error.message; hint.className = 'small bad'; }
+      applyAgentState({ status: 'idle', detail: '' });
+    } finally {
+      if (send) send.disabled = false;
+      sizeComposer();
+      startTermPolling();
+    }
+  }
+
+  function sizeComposer() {
+    const input = $('termInput');
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = Math.min(180, Math.max(38, input.scrollHeight)) + 'px';
+  }
+
+  // ── the three buttons, and the two chips beside them ────────────────────────
+  function openChipMenu(anchor, options, current, choose) {
+    document.querySelectorAll('.tmenu').forEach((node) => node.remove());
+    const menu = document.createElement('div');
+    menu.className = 'tmenu';
+    menu.innerHTML = options.map((option) =>
+      `<button type="button" class="tmenuitem${option.id === current ? ' on' : ''}"
+        data-id="${esc(option.id)}">${esc(option.label)}</button>`).join('');
+    anchor.parentNode.insertBefore(menu, anchor.nextSibling);
+    menu.querySelectorAll('.tmenuitem').forEach((button) => button.addEventListener('click', () => {
+      menu.remove();
+      choose(button.dataset.id);
     }));
-    feed.querySelectorAll('.openreview').forEach((button) =>
-      button.addEventListener('click', () => showPane('review')));
-    if (atBottom) feed.scrollTop = feed.scrollHeight;
-    const messages = S.messages || [];
-    lastMessageId = messages.length ? messages[messages.length - 1].id : 0;
+    const away = (event) => {
+      if (menu.contains(event.target) || event.target === anchor) return;
+      menu.remove();
+      document.removeEventListener('mousedown', away);
+    };
+    setTimeout(() => document.addEventListener('mousedown', away), 0);
+  }
+
+  function labelFor(list, id, fallback) {
+    const found = (list || []).find((item) => item.id === id);
+    return found ? found.label : fallback;
+  }
+
+  function renderAgentChips() {
+    const model = $('termModel');
+    const effort = $('termEffort');
+    if (model) {
+      model.innerHTML = esc(labelFor(agentState.models, currentModel(), 'Model')) +
+        ' <span class="caret">&#9662;</span>';
+    }
+    if (effort) {
+      effort.innerHTML = esc(labelFor(agentState.efforts, currentEffort(), 'Effort')) +
+        ' <span class="caret">&#9662;</span>';
+    }
+  }
+
+  function currentModel() {
+    return chosen.model || S.project.draft_model || agentState.default_model || '';
+  }
+  function currentEffort() {
+    return chosen.effort || agentState.default_effort || '';
+  }
+  const chosen = { model: '', effort: '' };
+
+  async function switchModel(id) {
+    chosen.model = id;
+    renderAgentChips();
+    try {
+      const data = await api(`/drafts/${PID}/terminal/model`, {
+        method: 'POST', body: JSON.stringify({ model: id }),
+      });
+      chosen.model = data.model || id;
+      S.project.draft_model = chosen.model;
+    } catch (error) {
+      chosen.model = '';
+      const hint = $('termHint');
+      if (hint) { hint.textContent = error.message; hint.className = 'small bad'; }
+    }
+    renderAgentChips();
+  }
+
+  async function switchEffort(id) {
+    chosen.effort = id;
+    renderAgentChips();
+    try {
+      await api(`/drafts/${PID}/terminal/effort`, {
+        method: 'POST', body: JSON.stringify({ effort: id }),
+      });
+    } catch (error) {
+      chosen.effort = '';
+      const hint = $('termHint');
+      if (hint) { hint.textContent = error.message; hint.className = 'small bad'; }
+    }
+    renderAgentChips();
+  }
+
+  async function restartAgent() {
+    const button = $('termRestart');
+    if (!window.confirm('Start a new drafting agent on this application?\n\n' +
+        'The current one is stopped and everything it has not published is lost. The new agent ' +
+        'starts from the published draft with no memory of the old conversation.')) return;
+    if (button) { button.disabled = true; button.textContent = 'Starting…'; }
+    try {
+      applyAgentState(await api(`/drafts/${PID}/terminal/start`, {
+        method: 'POST', body: JSON.stringify({ fresh: true }),
+      }));
+      await reloadTerm();
+    } catch (error) {
+      const hint = $('termHint');
+      if (hint) { hint.textContent = error.message; hint.className = 'small bad'; }
+    } finally {
+      if (button) { button.disabled = false; button.textContent = 'Restart'; }
+    }
+  }
+
+  //  A drag on the handle under the terminal, remembered per browser. The studio is a two-column
+  //  page and the right height for this pane depends on the screen it is being read on.
+  const TERM_HEIGHT_KEY = 'iptorch.termheight';
+  function applyTermHeight() {
+    const el = $('termOut');
+    if (!el) return;
+    let stored = 0;
+    try { stored = parseInt(localStorage.getItem(TERM_HEIGHT_KEY) || '0', 10); } catch (e) { stored = 0; }
+    if (stored >= 140 && stored <= 1400) el.style.height = stored + 'px';
+  }
+  function startTermResize(event) {
+    const el = $('termOut');
+    if (!el) return;
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = el.getBoundingClientRect().height;
+    const move = (moved) => {
+      const height = Math.max(140, Math.min(1400, startHeight + (moved.clientY - startY)));
+      el.style.height = height + 'px';
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      try { localStorage.setItem(TERM_HEIGHT_KEY, String(Math.round(
+        el.getBoundingClientRect().height))); } catch (e) { /* private mode */ }
+      if (!TERM.userScrolledUp) el.scrollTop = el.scrollHeight;
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  }
+
+  function wireTerminal() {
+    applyTermHeight();
+    const form = $('termForm');
+    if (form) form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      sendToAgent($('termInput').value);
+    });
+    const input = $('termInput');
+    if (input) {
+      input.addEventListener('input', sizeComposer);
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          sendToAgent(input.value);
+        }
+      });
+    }
+    const mic = $('termMic');
+    if (mic) mic.addEventListener('click', () => dictateInto(input, mic));
+    const stop = $('termStop');
+    if (stop) stop.addEventListener('click', async () => {
+      try {
+        await api(`/drafts/${PID}/terminal/interrupt`, { method: 'POST' });
+      } catch (error) { /* the pane shows what happened */ }
+      startTermPolling();
+    });
+    const reload = $('termReload');
+    if (reload) reload.addEventListener('click', () => { reloadTerm(); loadAgentState(); });
+    const restart = $('termRestart');
+    if (restart) restart.addEventListener('click', restartAgent);
+    const model = $('termModel');
+    if (model) model.addEventListener('click', () => openChipMenu(
+      model, agentState.models || [], currentModel(), switchModel));
+    const effort = $('termEffort');
+    if (effort) effort.addEventListener('click', () => openChipMenu(
+      effort, agentState.efforts || [], currentEffort(), switchEffort));
+    const handle = $('termResize');
+    if (handle) handle.addEventListener('mousedown', startTermResize);
+    document.querySelectorAll('.termkeys .chip[data-key]').forEach((button) =>
+      button.addEventListener('click', async () => {
+        try {
+          await api(`/drafts/${PID}/terminal/keys`, {
+            method: 'POST', body: JSON.stringify({ keys: [button.dataset.key] }),
+          });
+        } catch (error) { /* the pane shows what happened */ }
+        startTermPolling();
+      }));
   }
 
   // ── the draft ──────────────────────────────────────────────────────────────
@@ -208,6 +1266,37 @@
     3.5 0 1 1-7 0H5z"/></svg>`;
 
   const SPEECH = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+
+  /* One dictation implementation for the terminal's microphone and for every per-section ask box.
+     Describing a change to a claim out loud is faster than typing it, and the text lands in the
+     box rather than being sent, so it can be corrected before it goes. */
+  function dictateInto(area, button, after) {
+    if (!SPEECH || !area || !button) return;
+    if (dictateInto.active) { dictateInto.active.stop(); return; }
+    const recognition = new SPEECH();
+    recognition.lang = document.documentElement.lang || 'en-US';
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    const before = area.value;
+    button.classList.add('on');
+    recognition.onresult = (event) => {
+      let heard = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        heard += event.results[i][0].transcript;
+      }
+      area.value = (before ? before.replace(/\s*$/, ' ') : '') + heard;
+      if (after) after();
+    };
+    const done = () => {
+      button.classList.remove('on');
+      dictateInto.active = null;
+      if (after) after();
+    };
+    recognition.onerror = done;
+    recognition.onend = done;
+    dictateInto.active = recognition;
+    recognition.start();
+  }
 
   function sectionText(key) {
     return ((S.version || {}).sections || {})[key] || '';
@@ -487,65 +1576,27 @@
   }
 
   // ── review ─────────────────────────────────────────────────────────────────
-  function drawingAuditChecks() {
-    return (S.figures || []).filter((figure) => figure.drawn).map((figure) => {
-      const audit = figure.numeral_audit || {};
-      if (!audit.inspected) return {
-        name: `${figure.label} pixel numeral check`, status: 'fail', severity: 'error',
-        detail: audit.error || 'The visible numerals could not be inspected.', items: [],
-        figureMismatch: true,
-      };
-      const items = [];
-      if (audit.missing && audit.missing.length) items.push(`Missing: ${audit.missing.join(', ')}`);
-      if (audit.unexpected && audit.unexpected.length) {
-        items.push(`Not in draft: ${audit.unexpected.join(', ')}`);
-      }
-      if (audit.duplicates && audit.duplicates.length) {
-        items.push(`Duplicated: ${audit.duplicates.join(', ')}`);
-      }
-      return {
-        name: `${figure.label} pixel numeral check`, status: audit.ok ? 'pass' : 'fail',
-        severity: 'error', figureMismatch: !audit.ok, items,
-        detail: audit.ok ? 'Visible labels match the current figure specification.' :
-          'The numerals detected in the drawing pixels do not match the current draft.',
-      };
-    });
-  }
-
-  function figureReviewFindings(figure) {
-    const match = String(figure.label || '').match(/\bFIG(?:URE)?[\s._-]*(\d{1,2})\b/i);
-    if (!match) return [];
-    const figureToken = new RegExp(`\\bFIG(?:URE)?[\\s._-]*${match[1]}\\b`, 'i');
-    return (((S.qa || {}).findings) || []).filter((finding) => figureToken.test([
-      finding.title, finding.where, finding.detail, finding.evidence, finding.fix,
-    ].map((value) => String(value || '')).join(' ')));
-  }
-
   function renderReview() {
     const body = $('reviewBody');
     const qa = S.qa;
-    const pixelChecks = drawingAuditChecks();
-    if (!qa && !pixelChecks.length) {
+    if (!qa) {
       body.innerHTML = `<div class="emptypane"><h3>Nothing reviewed yet</h3>
         <p>Every iteration is checked automatically: reference numerals against the text and the
         drawings, claim numbering and dependency, whether each citation resolves to a real
         publication, and whether the claims are supported by what was disclosed.</p></div>`;
       return;
     }
-    const hasPixelFailure = pixelChecks.some((check) => check.status === 'fail');
-    const [tone, label] = hasPixelFailure ? VERDICT.fail :
-      (VERDICT[(qa || {}).verdict] || VERDICT.unknown);
-    const checks = pixelChecks.concat((qa || {}).checks || []);
+    const [tone, label] = VERDICT[(qa || {}).verdict] || VERDICT.unknown;
+    const checks = (qa || {}).checks || [];
     const findings = (qa || {}).findings || [];
     const order = { fail: 0, warn: 1, pass: 2 };
     checks.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
     body.innerHTML = `
       <div class="rvhead">
         <span class="verdict big ${tone}">${label}</span>
-        <div><b>${esc(hasPixelFailure ? 'A drawing does not match the current draft.' :
-          ((qa || {}).summary || 'Drawing pixels checked.'))}</b>
+        <div><b>${esc((qa || {}).summary || 'Checked.')}</b>
           <div class="small muted">version ${(qa || {}).version_no || 'current'} · reviewed by
-            ${esc((qa || {}).model_name || 'the deterministic drawing check')}${(qa || {}).last_error ?
+            ${esc((qa || {}).model_name || 'the deterministic checks')}${(qa || {}).last_error ?
               ' · reviewer error: ' + esc(qa.last_error) : ''}</div></div>
         <span class="grow"></span>
         <button type="button" class="btn ghost sm" id="rvRerun">Re-run the review</button>
@@ -559,9 +1610,14 @@
         '<p class="muted small">The reviewer raised nothing.</p>'}`;
     const rerun = $('rvRerun');
     if (rerun) rerun.addEventListener('click', rerunReview);
+    //  A finding with a repair chip hands the wording straight to the agent's composer rather
+    //  than sending it: the person decides whether that is the change they want.
     body.querySelectorAll('.fixchip').forEach((button) => button.addEventListener('click', () => {
-      $('chatInput').value = button.dataset.q || '';
-      $('chatInput').focus();
+      const input = $('termInput');
+      if (!input) return;
+      input.value = button.dataset.q || '';
+      sizeComposer();
+      input.focus();
     }));
     body.querySelectorAll('.openfigrepair').forEach((button) =>
       button.addEventListener('click', () => showPane('figures')));
@@ -571,7 +1627,7 @@
     const tone = { pass: 'good', warn: 'warn', fail: 'bad' }[check.status] || 'muted';
     const advisory = check.severity === 'advisory'
       ? '<span class="chip tiny">heuristic</span>' : '';
-    const numeralMismatch = check.figureMismatch || (check.status === 'fail' && (
+    const numeralMismatch = (check.status === 'fail' && (
       check.name === 'Every drawing numeral appears in the specification' ||
       check.name === 'Every specification numeral appears in a drawing'));
     const repair = numeralMismatch ? `<div class="ffix">
@@ -600,118 +1656,14 @@
   }
 
   // ── drawings ───────────────────────────────────────────────────────────────
-  /* The agent writes the final specification for each drawing. The drafting worker generates and
-     inspects every sheet before it publishes the text. Controls here are optional revision tools. */
-  function renderFigures() {
-    // A state poll must not destroy unsaved canvas work. The pane is rebuilt after the editor
-    // closes, when there is no local-only bitmap left to preserve.
-    if (drawingEditor && document.body.contains(drawingEditor.canvas)) return;
-    const figures = S.figures || [];
-    $('figuresBody').innerHTML = `
-      <div class="photosketch">
-        <div><b>Turn a product photo into a drawing</b>
-          <div class="small muted">Upload a real product or part. AI removes the background,
-          colour, texture, reflections, and logos while preserving visible geometry.</div></div>
-        <input type="file" id="photoSketchFile" accept="image/png,image/jpeg,image/webp">
-        <input type="text" id="photoSketchCaption" maxlength="400"
-          placeholder="View or part, for example: front view of pump housing">
-        <button type="button" class="btn ghost sm" id="photoSketchBtn">Make line drawing</button>
-        <span class="small" id="photoSketchMsg" role="status"></span>
-      </div>
-      <div class="drawreconcile">
-        <div><b>Re-run every drawing check</b>
-          <div class="small muted">Every drafting turn checks all required sheets before it can
-            publish. Use this supplemental pass after an audit upgrade or a manual drawing change.
-            It checks the current version without running the drafting agent.</div></div>
-        <button type="button" class="btn sm" id="figReconcile">Recheck drawings</button>
-        <span class="small" id="figReconcileMsg" role="status"></span>
-      </div>
-      <p class="small muted">Each drawing is checked against the reference numerals actually
-        visible in its pixels and against the structures required by its specification.</p>
-      ${figures.length ? figures.map(figureCard).join('') :
-        `<div class="emptypane"><h3>No checked drawings published yet</h3><p>The active drafting
-         turn creates every described sheet automatically before the version becomes available.
-         </p></div>`}
-      <div id="figureEditorHost"></div>`;
-    document.querySelectorAll('.figdraw').forEach((button) =>
-      button.addEventListener('click', () => drawFigure(button)));
-    document.querySelectorAll('.figedit').forEach((button) =>
-      button.addEventListener('click', () => openFigureEditor(Number(button.dataset.figure))));
-    document.querySelectorAll('.figdel').forEach((button) =>
-      button.addEventListener('click', () => deleteFigure(Number(button.dataset.figure))));
-    document.querySelectorAll('.figfix').forEach((button) =>
-      button.addEventListener('click', () => fixFigureNumerals(button)));
-    document.querySelectorAll('.figfixtext').forEach((button) =>
-      button.addEventListener('click', () => fixDraftNumerals(button)));
-    document.querySelectorAll('.figversion').forEach((button) =>
-      button.addEventListener('click', () => activateFigureVersion(button)));
-    $('photoSketchBtn').addEventListener('click', photoToSketch);
-    const reconcile = $('figReconcile');
-    if (reconcile) reconcile.addEventListener('click', async () => {
-      const message = $('figReconcileMsg');
-      reconcile.disabled = true;
-      message.className = 'small muted';
-      message.textContent = 'Drawing and inspecting every sheet. You can keep working on the text.';
-      try {
-        await api(`/drafts/${PID}/studio/drawings`, { method: 'POST' });
-        startPolling();
-      } catch (error) {
-        message.textContent = error.message;
-        message.className = 'small bad';
-        reconcile.disabled = false;
-      }
-    });
-  }
+  /* NOTHING HERE DRAWS. This product used to generate its sheets, inspect their pixels and gate a
+     version on the result; it does not any more, and the difference is not cosmetic. A drawing is
+     now a file the applicant made and uploaded, so what this pane owes them is: which sheets the
+     specification asks for, which of those they have supplied, and a way to supply the rest.
 
-  function numeralValue(value) {
-    const match = String(value || '').match(/\b([A-Za-z]?\d{1,4}[A-Za-z]?)\b/);
-    return match ? match[1].toUpperCase() : '';
-  }
-
-  function auditHtml(figure) {
-    if (!figure.drawn) return '';
-    const audit = figure.numeral_audit || {};
-    const semantic = figure.semantic_audit || {};
-    const leaders = figure.leader_audit || {};
-    if (!semantic.inspected || !semantic.ok) {
-      const reasons = (semantic.errors || []).join('; ') ||
-        'The image has not passed the automatic specification review.';
-      return `<div class="fignumaudit bad"><b>Drawing content check failed.</b>
-        ${esc(reasons)}</div>`;
-    }
-    if (!leaders.inspected || !leaders.ok) {
-      const reasons = (leaders.errors || []).join('; ') ||
-        'The printed leaders have not been traced to the named drawing features.';
-      return `<div class="fignumaudit bad"><b>Leader placement check failed.</b>
-        ${esc(reasons)}</div>`;
-    }
-    if (!audit.inspected) return `<div class="fignumaudit warn"><b>Numeral check unavailable.</b>
-      ${esc(audit.error || 'Run an AI redraw or re-save the drawing to inspect it again.')}</div>`;
-    const filingFindings = figureReviewFindings(figure);
-    if (audit.ok && filingFindings.length) {
-      const titles = filingFindings.map((finding) => finding.title).filter(Boolean).join('; ');
-      return `<div class="fignumaudit bad"><b>Later filing review blocked this drawing.</b>
-        ${esc(titles || 'The whole-application review found a drawing fault.')}
-        The individual sheet checks passed, but the drawing remains blocked until a complete
-        filing review clears it.</div>`;
-    }
-    if (audit.ok) return `<div class="fignumaudit good"><b>Drawing passed.</b>
-      Its visible structure matches the specification, every leader reaches the named feature,
-      and every label is exact and unique.</div>`;
-    const issues = [];
-    if (audit.missing && audit.missing.length) issues.push(`missing: ${audit.missing.join(', ')}`);
-    if (audit.unexpected && audit.unexpected.length) {
-      issues.push(`not in draft: ${audit.unexpected.join(', ')}`);
-    }
-    if (audit.duplicates && audit.duplicates.length) {
-      issues.push(`duplicated: ${audit.duplicates.join(', ')}`);
-    }
-    return `<div class="fignumaudit bad"><b>Numerals do not match.</b> ${esc(issues.join(' · '))}
-      <button type="button" class="chip figfix" data-figure="${figure.figure_id}">Fix drawing</button>
-      <button type="button" class="chip figfixtext" data-figure="${figure.figure_id}">Update draft text</button>
-    </div>`;
-  }
-
+     The drafting agent still owns the drawing TEXT - the Brief Description, each figure's brief,
+     and the numeral table - and it can open every sheet uploaded here, because each one is
+     written into its workspace as a PNG. */
   function figureCard(figure) {
     const src = figure.figure_id
       ? `${BASE}/drafts/${PID}/figures/${figure.figure_id}.png?version=${figure.active_version}`
@@ -719,96 +1671,95 @@
     return `<article class="figblock${figure.orphan ? ' orphan' : ''}">
       <div class="fighead"><b>${esc(figure.label)}</b>
         <span class="small muted">${esc(figure.caption || '')}</span></div>
-      ${figure.orphan ? `<div class="small warn">This drawing is no longer described in the
-        specification.</div>` : ''}
-      ${src ? `<img class="figimg" loading="lazy" alt="${esc(figure.label)}" src="${src}">` : ''}
-      ${(figure.expected_numerals || figure.numerals || []).length ?
-        `<div class="fignums" title="Numerals required by the current draft">${
-          (figure.expected_numerals || figure.numerals).map((n) =>
-          `<span class="chip tiny">${esc(n)}</span>`).join('')}</div>` : ''}
-      ${auditHtml(figure)}
+      ${figure.orphan ? `<div class="small warn">This sheet is no longer described in the
+        specification. Either the agent should describe it again, or it should be deleted.</div>` : ''}
+      ${src ? `<img class="figimg" loading="lazy" alt="${esc(figure.label)}" src="${src}">`
+            : `<div class="fignone">No sheet has been uploaded for this figure yet.</div>`}
+      ${(figure.expected_numerals || []).length ?
+        `<div class="fignums" title="Numerals this figure's brief says appear on the sheet">${
+          figure.expected_numerals.map((n) => `<span class="chip tiny">${esc(n)}</span>`).join('')}</div>` : ''}
       ${figure.n_versions > 1 ? `<div class="figversions"><span class="small muted">Versions</span>${
         (figure.versions || []).map((version) => `<button type="button" class="chip tiny figversion"
           data-figure="${figure.figure_id}" data-version="${version.version_no}"
           ${Number(version.version_no) === Number(figure.active_version) ? 'disabled' : ''}>v${
-            version.version_no}${Number(version.version_no) === Number(figure.active_version) ? ' current' : ''}</button>`).join('')}
+            version.version_no}${Number(version.version_no) === Number(figure.active_version)
+              ? ' current' : ''}</button>`).join('')}
         </div>` : ''}
       <div class="figrow2">
-        <input type="text" class="figinstr" maxlength="1000"
-          placeholder="${figure.drawn ? 'AI change, for example: move the pump into the handle'
-                                      : 'Anything to add before it is drawn'}">
-        <button type="button" class="btn ghost sm figdraw"
-          data-label="${esc(figure.label)}" data-caption="${esc(figure.caption || '')}"
-          ${figure.figure_id ? `data-figure="${figure.figure_id}"` : ''}>${
-          figure.drawn ? 'Redraw' : 'Draw this figure'}</button>
-        ${figure.figure_id ? `<button type="button" class="btn ghost sm figedit"
-          data-figure="${figure.figure_id}">Edit by hand</button>
-          <button type="button" class="chip figdel" data-figure="${figure.figure_id}">Delete</button>` : ''}
+        <label class="btn ghost sm figupload">
+          ${figure.uploaded ? 'Replace this sheet' : 'Upload this sheet'}
+          <input type="file" accept="image/png,image/jpeg,image/webp" hidden
+            data-label="${esc(figure.label)}"
+            ${figure.figure_id ? `data-figure="${figure.figure_id}"` : ''}>
+        </label>
+        ${figure.figure_id ? `<button type="button" class="chip figdel"
+          data-figure="${figure.figure_id}">Delete</button>` : ''}
         <span class="small figmsg" role="status"></span>
       </div></article>`;
   }
 
-  async function drawFigure(button) {
-    const card = button.closest('.figblock');
-    const message = card.querySelector('.figmsg');
-    const was = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Drawing…';
-    message.textContent = 'About five seconds.';
+  function renderFigures() {
+    const figures = S.figures || [];
+    const missing = figures.filter((figure) => !figure.uploaded).length;
+    $('figuresBody').innerHTML = `
+      <div class="figintro">
+        <div><b>Upload your drawings</b>
+          <div class="small muted">PNG, JPEG or WebP, one file per sheet. Each one is stored with
+            the draft, offered in the filing package, and put in the drafting agent's workspace so
+            it can read the sheet while it writes the Brief Description of the Drawings.</div></div>
+        <label class="btn sm figupload">Add a drawing
+          <input type="file" id="figAddFile" accept="image/png,image/jpeg,image/webp" hidden></label>
+        <span class="small" id="figAddMsg" role="status"></span>
+      </div>
+      ${figures.length ? `<p class="small muted">${
+        missing ? `${missing} of ${figures.length} described sheet(s) still have no drawing.`
+                : 'Every sheet the specification describes has a drawing.'}</p>` : ''}
+      ${figures.length ? figures.map(figureCard).join('') :
+        `<div class="emptypane"><h3>No drawings yet</h3><p>Once the draft describes its figures
+         they are listed here, each with a place to upload the sheet. You can also add a drawing
+         before the text mentions it, and ask the agent to describe it.</p></div>`}`;
+    document.querySelectorAll('.figupload input[type=file]').forEach((input) =>
+      input.addEventListener('change', () => uploadFigure(input)));
+    document.querySelectorAll('.figdel').forEach((button) =>
+      button.addEventListener('click', () => deleteFigure(Number(button.dataset.figure))));
+    document.querySelectorAll('.figversion').forEach((button) =>
+      button.addEventListener('click', () => activateFigureVersion(button)));
+  }
+
+  async function uploadFigure(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const card = input.closest('.figblock');
+    const message = card ? card.querySelector('.figmsg') : $('figAddMsg');
+    if (message) { message.className = 'small muted'; message.textContent = 'Uploading…'; }
+    const form = new FormData();
+    form.append('image', file);
+    if (input.dataset.label) form.append('label', input.dataset.label);
+    if (input.dataset.figure) form.append('figure_id', input.dataset.figure);
     try {
-      await api(`/drafts/${PID}/studio/figure`, {
-        method: 'POST',
-        body: JSON.stringify({
-          label: button.dataset.label, caption: button.dataset.caption,
-          instruction: card.querySelector('.figinstr').value.trim(),
-          figure_id: button.dataset.figure || null,
-        }),
+      const response = await fetch(`${BASE}/drafts/${PID}/studio/figure/upload`, {
+        method: 'POST', credentials: 'same-origin', body: form,
+        headers: { 'X-CSRF-Token': window.CSRF_TOKEN || '' },
       });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'That drawing could not be stored.');
       await refresh();
-      showPane('figures');
     } catch (error) {
-      message.textContent = error.message;
-      message.className = 'small figmsg bad';
-      button.disabled = false;
-      button.textContent = was;
+      if (message) { message.className = 'small bad'; message.textContent = error.message; }
+    } finally {
+      input.value = '';
     }
   }
 
-  async function photoToSketch() {
-    const input = $('photoSketchFile');
-    const button = $('photoSketchBtn');
-    const message = $('photoSketchMsg');
-    if (!input.files.length) { message.textContent = 'Choose a photo first.'; return; }
-    const form = new FormData();
-    form.append('image', input.files[0]);
-    form.append('caption', $('photoSketchCaption').value.trim());
-    button.disabled = true;
-    message.textContent = 'Removing the photographic detail and drawing clean line art…';
-    try {
-      const response = await fetch(`${BASE}/drafts/${PID}/studio/photo-to-sketch`, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'X-CSRF-Token': window.CSRF_TOKEN || '' }, body: form,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not convert that photo.');
-      input.value = '';
-      $('photoSketchCaption').value = '';
-      await refresh();
-      showPane('figures');
-    } catch (error) {
-      message.textContent = error.message;
-      message.className = 'small bad';
-    } finally { button.disabled = false; }
-  }
-
   async function deleteFigure(figureId) {
-    if (!window.confirm('Delete this drawing and all of its versions?')) return;
+    if (!window.confirm('Delete this drawing and every version of it?')) return;
     try {
       await api(`/drafts/${PID}/studio/figure/${figureId}/delete`, { method: 'POST' });
-      if (location.hash.includes(`/figures/${figureId}/`)) location.hash = '#/figures';
       await refresh();
-      showPane('figures');
-    } catch (error) { window.alert(error.message); }
+    } catch (error) {
+      const message = $('figAddMsg');
+      if (message) { message.className = 'small bad'; message.textContent = error.message; }
+    }
   }
 
   async function activateFigureVersion(button) {
@@ -817,273 +1768,13 @@
       await api(`/drafts/${PID}/figures/${button.dataset.figure}/activate`, {
         method: 'POST', body: JSON.stringify({ version_no: Number(button.dataset.version) }),
       });
-      await refresh(); showPane('figures');
-    } catch (error) { button.textContent = error.message; }
-  }
-
-  async function fixFigureNumerals(button) {
-    const figure = (S.figures || []).find((item) => item.figure_id === Number(button.dataset.figure));
-    if (!figure) return;
-    const audit = figure.numeral_audit || {};
-    const instruction = `Correct reference numerals only. Use exactly ${
-      (audit.expected || []).join(', ') || 'no numerals'}; remove extras and duplicates.`;
-    const card = button.closest('.figblock');
-    const draw = card.querySelector('.figdraw');
-    card.querySelector('.figinstr').value = instruction;
-    await drawFigure(draw);
-  }
-
-  async function fixDraftNumerals(button) {
-    const figure = (S.figures || []).find((item) => item.figure_id === Number(button.dataset.figure));
-    if (!figure) return;
-    const audit = figure.numeral_audit || {};
-    const message = `Resolve the reference numeral mismatch for ${figure.label}. The drawing ` +
-      `inspection found ${JSON.stringify(audit.detected || [])}; the current draft expects ` +
-      `${JSON.stringify(audit.expected || [])}. Update the specification and numeral table only ` +
-      `where the visible part is supported by the inventor disclosure. Otherwise remove the ` +
-      `unsupported numeral from the drawing.`;
-    try {
-      await api(`/drafts/${PID}/studio/message`, {
-        method: 'POST', body: JSON.stringify({ message, kind: 'qa_fix' }),
-      });
-      showPane('draft');
       await refresh();
-      startPolling();
-    } catch (error) { window.alert(error.message); }
-  }
-
-  // ── manual drawing editor ─────────────────────────────────────────────────
-  function discardDrawingEditor() {
-    const host = $('figureEditorHost');
-    if (host) host.innerHTML = '';
-    drawingEditor = null;
-  }
-
-  function openFigureEditor(figureId) {
-    const figure = (S.figures || []).find((item) => item.figure_id === Number(figureId));
-    if (!figure) return;
-    showPane('figures', false);
-    if (location.hash !== `#/figures/${figureId}/edit`) {
-      location.hash = `#/figures/${figureId}/edit`;
+    } catch (error) {
+      const card = button.closest('.figblock');
+      const message = card && card.querySelector('.figmsg');
+      if (message) { message.className = 'small bad'; message.textContent = error.message; }
+      button.disabled = false;
     }
-    const host = $('figureEditorHost');
-    host.innerHTML = `<section class="draweditor" aria-label="Drawing editor">
-      <div class="draweditor-head"><div><b>Edit ${esc(figure.label)}</b>
-        <div class="small muted">Every save creates a new version. Undo stays local until save.</div></div>
-        <button type="button" class="chip" id="drawClose">Close</button></div>
-      <div class="drawtools" role="toolbar" aria-label="Drawing tools">
-        <button type="button" class="chip on" data-tool="select">Select and move</button>
-        <button type="button" class="chip" data-tool="pen">Pen</button>
-        <button type="button" class="chip" data-tool="line">Line</button>
-        <button type="button" class="chip" data-tool="erase">Delete tool</button>
-        <button type="button" class="chip" data-tool="numeral">Place numeral</button>
-        <input type="text" id="drawNumeral" inputmode="numeric" maxlength="5" placeholder="12">
-        <button type="button" class="chip" id="drawDeleteSelection">Delete selected area</button>
-        <button type="button" class="chip" id="drawUndo">Undo</button>
-      </div>
-      <div class="drawcanvaswrap"><canvas id="drawCanvas"></canvas><canvas id="drawOverlay"></canvas></div>
-      <div class="drawaifix"><input type="text" id="drawAiInstruction" maxlength="1000"
-          placeholder="Select an area, then describe what AI should redo in that area">
-        <button type="button" class="btn ghost sm" id="drawAi">AI fix selected area</button>
-        <button type="button" class="btn sm" id="drawSave">Save new version</button>
-        <span class="small" id="drawMsg" role="status"></span></div>
-    </section>`;
-    host.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setupCanvasEditor(figure);
-  }
-
-  function setupCanvasEditor(figure) {
-    const canvas = $('drawCanvas');
-    const overlay = $('drawOverlay');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const octx = overlay.getContext('2d');
-    const editor = drawingEditor = {
-      figure, canvas, overlay, ctx, octx, tool: 'select', down: false, start: null,
-      selection: null, undo: [], before: null, moving: false, pixels: null, ready: false,
-    };
-    $('drawMsg').textContent = 'Loading drawing…';
-    const image = new Image();
-    image.onload = () => {
-      canvas.width = overlay.width = image.naturalWidth;
-      canvas.height = overlay.height = image.naturalHeight;
-      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0);
-      editor.ready = true;
-      $('drawMsg').textContent = '';
-    };
-    image.onerror = () => { $('drawMsg').textContent = 'The drawing could not be loaded.'; };
-    image.src = `${BASE}/drafts/${PID}/figures/${figure.figure_id}.png?version=${figure.active_version}`;
-
-    document.querySelectorAll('.drawtools [data-tool]').forEach((button) => {
-      button.addEventListener('click', () => {
-        editor.tool = button.dataset.tool;
-        document.querySelectorAll('.drawtools [data-tool]').forEach((item) =>
-          item.classList.toggle('on', item === button));
-      });
-    });
-    overlay.addEventListener('pointerdown', (event) => editorDown(editor, event));
-    overlay.addEventListener('pointermove', (event) => editorMove(editor, event));
-    overlay.addEventListener('pointerup', (event) => editorUp(editor, event));
-    overlay.addEventListener('pointercancel', (event) => editorUp(editor, event));
-    $('drawDeleteSelection').addEventListener('click', () => deleteSelection(editor));
-    $('drawUndo').addEventListener('click', () => undoDrawing(editor));
-    $('drawSave').addEventListener('click', () => saveDrawing(editor));
-    $('drawAi').addEventListener('click', () => aiFixRegion(editor));
-    $('drawClose').addEventListener('click', () => { location.hash = '#/figures'; });
-  }
-
-  function canvasPoint(editor, event) {
-    const box = editor.overlay.getBoundingClientRect();
-    return { x: Math.round((event.clientX - box.left) * editor.canvas.width / box.width),
-      y: Math.round((event.clientY - box.top) * editor.canvas.height / box.height) };
-  }
-  function keepUndo(editor, snapshot) {
-    editor.undo.push(snapshot || editor.ctx.getImageData(0, 0, editor.canvas.width, editor.canvas.height));
-    if (editor.undo.length > 20) editor.undo.shift();
-  }
-  function clearOverlay(editor) { editor.octx.clearRect(0, 0, editor.overlay.width, editor.overlay.height); }
-  function showSelection(editor, rect) {
-    clearOverlay(editor);
-    if (!rect) return;
-    editor.octx.save(); editor.octx.strokeStyle = '#2878ff'; editor.octx.lineWidth = 2;
-    editor.octx.setLineDash([8, 6]); editor.octx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-    editor.octx.restore();
-  }
-  function rectFrom(a, b) {
-    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
-      w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
-  }
-  function inside(point, rect) {
-    return rect && point.x >= rect.x && point.y >= rect.y &&
-      point.x <= rect.x + rect.w && point.y <= rect.y + rect.h;
-  }
-  function movedSelection(editor, point) {
-    const rect = editor.selection;
-    const x = Math.max(0, Math.min(editor.canvas.width - rect.w,
-      rect.x + point.x - editor.start.x));
-    const y = Math.max(0, Math.min(editor.canvas.height - rect.h,
-      rect.y + point.y - editor.start.y));
-    return { ...rect, x, y };
-  }
-
-  function editorDown(editor, event) {
-    event.preventDefault();
-    if (!editor.ready) return;
-    editor.overlay.setPointerCapture(event.pointerId);
-    const point = canvasPoint(editor, event); editor.down = true; editor.start = point;
-    if (editor.tool === 'numeral') {
-      const value = numeralValue($('drawNumeral').value);
-      if (!value) { $('drawMsg').textContent = 'Enter a reference numeral first.'; editor.down = false; return; }
-      keepUndo(editor); editor.ctx.fillStyle = '#000'; editor.ctx.font = '24px Arial';
-      editor.ctx.fillText(value, point.x, point.y); editor.down = false; return;
-    }
-    if (editor.tool === 'select' && inside(point, editor.selection)) {
-      keepUndo(editor); editor.before = editor.undo[editor.undo.length - 1];
-      editor.pixels = editor.ctx.getImageData(
-        editor.selection.x, editor.selection.y, editor.selection.w, editor.selection.h);
-      editor.moving = true; return;
-    }
-    if (editor.tool === 'pen' || editor.tool === 'erase') {
-      keepUndo(editor); editor.ctx.beginPath(); editor.ctx.moveTo(point.x, point.y);
-      editor.ctx.strokeStyle = editor.tool === 'erase' ? '#fff' : '#000';
-      editor.ctx.lineWidth = editor.tool === 'erase' ? 22 : 3;
-      editor.ctx.lineCap = 'round'; editor.ctx.lineJoin = 'round';
-    } else if (editor.tool === 'line') keepUndo(editor);
-  }
-
-  function editorMove(editor, event) {
-    if (!editor.down) return;
-    const point = canvasPoint(editor, event);
-    if (editor.tool === 'pen' || editor.tool === 'erase') {
-      editor.ctx.lineTo(point.x, point.y); editor.ctx.stroke(); return;
-    }
-    if (editor.tool === 'line') {
-      clearOverlay(editor); editor.octx.beginPath(); editor.octx.moveTo(editor.start.x, editor.start.y);
-      editor.octx.lineTo(point.x, point.y); editor.octx.strokeStyle = '#000'; editor.octx.lineWidth = 3;
-      editor.octx.stroke(); return;
-    }
-    if (editor.tool === 'select' && editor.moving) {
-      const moved = movedSelection(editor, point);
-      editor.ctx.putImageData(editor.before, 0, 0); editor.ctx.fillStyle = '#fff';
-      editor.ctx.fillRect(editor.selection.x, editor.selection.y, editor.selection.w, editor.selection.h);
-      editor.ctx.putImageData(editor.pixels, moved.x, moved.y);
-      showSelection(editor, moved);
-    } else if (editor.tool === 'select') showSelection(editor, rectFrom(editor.start, point));
-  }
-
-  function editorUp(editor, event) {
-    if (!editor.down) return;
-    const point = canvasPoint(editor, event);
-    if (editor.tool === 'line') {
-      editor.ctx.beginPath(); editor.ctx.moveTo(editor.start.x, editor.start.y);
-      editor.ctx.lineTo(point.x, point.y); editor.ctx.strokeStyle = '#000'; editor.ctx.lineWidth = 3;
-      editor.ctx.stroke(); clearOverlay(editor);
-    } else if (editor.tool === 'select') {
-      if (editor.moving) {
-        editor.selection = movedSelection(editor, point);
-        editor.moving = false;
-      } else {
-        const rect = rectFrom(editor.start, point);
-        editor.selection = rect.w >= 5 && rect.h >= 5 ? rect : null;
-      }
-      showSelection(editor, editor.selection);
-    }
-    editor.down = false;
-  }
-
-  function deleteSelection(editor) {
-    if (!editor.selection) { $('drawMsg').textContent = 'Select an area first.'; return; }
-    keepUndo(editor); editor.ctx.fillStyle = '#fff';
-    editor.ctx.fillRect(editor.selection.x, editor.selection.y,
-      editor.selection.w, editor.selection.h); editor.selection = null; clearOverlay(editor);
-  }
-  function undoDrawing(editor) {
-    const prior = editor.undo.pop(); if (!prior) return;
-    editor.ctx.putImageData(prior, 0, 0); editor.selection = null; clearOverlay(editor);
-  }
-
-  async function saveDrawing(editor) {
-    const message = $('drawMsg'); $('drawSave').disabled = true;
-    if (!editor.ready) { message.textContent = 'Wait for the drawing to finish loading.';
-      $('drawSave').disabled = false; return; }
-    message.textContent = 'Saving and checking visible numerals…';
-    try {
-      const blob = await new Promise((resolve) => editor.canvas.toBlob(resolve, 'image/png'));
-      const form = new FormData(); form.append('image', blob, 'manual-edit.png');
-      form.append('instruction', 'Manual canvas edit');
-      const response = await fetch(`${BASE}/drafts/${PID}/studio/figure/${editor.figure.figure_id}/manual`, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'X-CSRF-Token': window.CSRF_TOKEN || '' }, body: form,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not save the drawing.');
-      discardDrawingEditor();
-      location.hash = '#/figures'; await refresh(); showPane('figures');
-    } catch (error) { message.textContent = error.message; message.className = 'small bad'; }
-    finally { if ($('drawSave')) $('drawSave').disabled = false; }
-  }
-
-  async function aiFixRegion(editor) {
-    const instruction = $('drawAiInstruction').value.trim();
-    const message = $('drawMsg');
-    if (!editor.ready) { message.textContent = 'Wait for the drawing to finish loading.'; return; }
-    if (!editor.selection || !instruction) {
-      message.textContent = 'Select an area and describe the correction first.'; return;
-    }
-    $('drawAi').disabled = true; message.textContent = 'Redrawing only the selected area…';
-    const r = editor.selection;
-    try {
-      await api(`/drafts/${PID}/studio/figure`, { method: 'POST', body: JSON.stringify({
-        figure_id: editor.figure.figure_id, label: editor.figure.label,
-        caption: editor.figure.caption, instruction,
-        region: [r.x, r.y, r.x + r.w, r.y + r.h],
-      }) });
-      const figureId = editor.figure.figure_id;
-      discardDrawingEditor();
-      await refresh();
-      if (!drawingEditor || drawingEditor.figure.figure_id !== figureId) openFigureEditor(figureId);
-    } catch (error) { message.textContent = error.message; message.className = 'small bad'; }
-    finally { if ($('drawAi')) $('drawAi').disabled = false; }
   }
 
   // ── sources ────────────────────────────────────────────────────────────────
@@ -1221,6 +1912,16 @@
         <span class="small muted" id="srcMsg">Resolved against the local corpus before it is
           added, so a number that does not exist is refused rather than cited.</span>
       </div>
+      <div class="srcadd">
+        <label for="srcFiles">Upload a document</label>
+        <div class="srcrow">
+          <input type="file" id="srcFiles" accept=".pdf,.docx,.txt" multiple>
+        </div>
+        <span class="small muted" id="srcUpMsg">A PDF, Word file or plain text. Its text is
+          extracted and put in the drafting agent's workspace, where it can read it and cite it.
+          This used to live on the paperclip beside the message box; the message box is a terminal
+          now, and a terminal is not a place to hand somebody a file.</span>
+      </div>
       <h4 class="rvsub">References <span class="small muted">${references.length}</span></h4>
       ${references.length ? references.map((reference) => `
         <div class="srcitem">
@@ -1247,6 +1948,7 @@
         </div>`).join('') : '<p class="muted small">Nothing uploaded.</p>'}`;
 
     $('srcAdd').addEventListener('click', addReference);
+    $('srcFiles').addEventListener('change', (event) => uploadDocuments(event.target));
     $('draftSearchBtn').addEventListener('click', startDraftSearch);
     $('srcPub').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') { event.preventDefault(); addReference(); }
@@ -1260,6 +1962,31 @@
     if (searchRunning) startSearchPolling();
     renderResearch();
     loadResearch(false);
+  }
+
+  async function uploadDocuments(input) {
+    const files = Array.from(input.files || []);
+    const message = $('srcUpMsg');
+    if (!files.length) return;
+    message.className = 'small muted';
+    message.textContent = `Reading ${files.length} document(s)…`;
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    form.append('kind', 'prior_art');
+    try {
+      const response = await fetch(`${BASE}/drafts/${PID}/studio/upload`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': window.CSRF_TOKEN || '' }, body: form,
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'That upload could not be read.');
+      await refresh();
+    } catch (error) {
+      message.className = 'small bad';
+      message.textContent = error.message;
+    } finally {
+      input.value = '';
+    }
   }
 
   async function startDraftSearch() {
@@ -1336,252 +2063,34 @@
   }
 
   // ── history ────────────────────────────────────────────────────────────────
+  /* Versions, and only versions. This used to carry a second list of "iterations" - one row per
+     queued turn of the headless drafting worker, with its token count and its spend. That worker
+     no longer drafts: the agent runs in the terminal, where what it is doing is visible while it
+     does it, and every published version is already a row here with the note the agent wrote. A
+     list that can never grow again is furniture. */
+  const ORIGIN_CHIP = {
+    manual: 'edited by hand',
+    agent: 'published by the drafting agent',
+  };
+
   function renderHistory() {
-    const turns = S.turns || [];
     const versions = S.versions || [];
     $('historyBody').innerHTML = `
-      <h4 class="rvsub">Versions</h4>
+      <h4 class="rvsub">Versions <span class="small muted">every state this application has been
+        in, newest first</span></h4>
       ${versions.length ? versions.map((version) => {
         const [tone, label] = VERDICT[version.verdict] || VERDICT.unknown;
+        const chip = ORIGIN_CHIP[version.origin] || '';
         return `<div class="srcitem"><div><b>Version ${version.version_no}</b>
-          ${version.origin === 'manual' ? '<span class="chip tiny">edited by hand</span>' : ''}
+          ${chip ? `<span class="chip tiny">${esc(chip)}</span>` : ''}
           <span class="verdict ${tone} tiny">${label}</span>
-          <div class="small muted">${esc(version.change_note || '')}</div></div>
+          <div class="small muted">${esc(version.change_note || '')}${
+            version.created_at ? ' · ' + esc(when(version.created_at)) : ''}</div></div>
           <span class="grow"></span>
-          <a class="small" href="${BASE}/drafts/${PID}?version=${version.version_no}">edit ↗</a>
           <a class="small" href="${BASE}/drafts/${PID}/download/docx?version=${version.version_no}">Word</a>
         </div>`;
-      }).join('') : '<p class="muted small">No versions yet.</p>'}
-      <h4 class="rvsub">Iterations</h4>
-      ${turns.map((turn) => `<div class="srcitem">
-        <div><b>#${turn.turn_no}</b> <span class="chip tiny">${esc(turn.status)}</span>
-          <div class="small muted">${esc(turn.summary || turn.stage || '')}</div>
-          ${turn.last_error ? `<div class="small bad">${esc(turn.last_error)}</div>` : ''}</div>
-        <span class="grow"></span>
-        <span class="small muted turnspend">${turn.version_no ? 'v' + turn.version_no + ' · ' : ''}${
-          [turn.agent_runs ? turn.agent_runs + (turn.agent_runs === 1 ? ' run' : ' runs') : '',
-           turn.model_ms ? (turn.model_ms < 60000
-             ? Math.round(turn.model_ms / 1000) + 's in models'
-             : Math.round(turn.model_ms / 60000) + 'm in models') : '',
-           turn.tokens_input != null ? tokens(
-             (turn.tokens_input || 0) + (turn.tokens_output || 0) +
-             (turn.tokens_cache_read || 0) + (turn.tokens_cache_write || 0)) + ' tokens' : '',
-           Number(turn.spend_usd || turn.cost_usd) ? money(turn.spend_usd || turn.cost_usd) : '',
-          ].filter(Boolean).join(' · ')}</span>
-      </div>`).join('')}`;
-  }
-
-  // ── deterministic filing-figure compiler ───────────────────────────────────
-  const COMPILER_STAGES = [
-    'INGESTED', 'PARSED', 'DISCLOSURE_EXTRACTED', 'MODEL_RECONCILED', 'MODEL_APPROVED',
-    'FIGURES_PLANNED', 'MANIFEST_APPROVED', 'FIGURE_SPECS_COMPILED', 'RENDERED',
-    'ANNOTATED', 'COMPOSED', 'VALIDATED', 'FINAL_REVIEW', 'APPROVED', 'EXPORTED',
-  ];
-  const compilerStage = (name) => COMPILER_STAGES.indexOf(name || '');
-
-  async function loadCompiler(force) {
-    if (compilerLoading || (C !== null && !force)) return;
-    compilerLoading = true;
-    const body = $('compilerBody');
-    body.innerHTML = '<p class="muted small">Reading the versioned figure artifacts…</p>';
-    try {
-      C = (await api(`/api/drafts/${PID}/figure-compiler`)).compiler;
-      renderCompiler();
-    } catch (error) {
-      body.innerHTML = `<div class="emptypane"><h3>Compiler unavailable</h3><p>${esc(error.message)}</p></div>`;
-    } finally { compilerLoading = false; }
-  }
-
-  async function compilerPost(path, payload, button) {
-    if (button) button.disabled = true;
-    const message = $('compilerMsg');
-    if (message) { message.className = 'small muted'; message.textContent = 'Working…'; }
-    try {
-      C = (await api(`/drafts/${PID}/figure-compiler/${path}`, {
-        method: 'POST', body: JSON.stringify(payload || {}),
-      })).compiler;
-      renderCompiler();
-    } catch (error) {
-      if (message) { message.className = 'small bad'; message.textContent = error.message; }
-      if (button) button.disabled = false;
-    }
-  }
-
-  function compilerSteps(stage) {
-    const at = compilerStage(stage);
-    const rows = [
-      ['Canonical model', 'MODEL_APPROVED'], ['Figure plan', 'MANIFEST_APPROVED'],
-      ['Semantic sheets', 'COMPOSED'], ['Validation', 'FINAL_REVIEW'],
-      ['Final approval', 'APPROVED'],
-    ];
-    return `<ol class="compilersteps">${rows.map(([label, target]) => {
-      const done = at >= compilerStage(target);
-      const current = !done && rows.findIndex((row) => compilerStage(row[1]) > at) ===
-        rows.findIndex((row) => row[0] === label);
-      return `<li class="${done ? 'done' : current ? 'current' : ''}"><span>${done ? '✓' : ''}</span>${esc(label)}</li>`;
-    }).join('')}</ol>`;
-  }
-
-  function compilerRegistry(pir) {
-    if (!pir) return '';
-    const entities = pir.entities || [];
-    const conflicts = (pir.reference_conflicts || []).filter((row) => row.status !== 'resolved');
-    const coverage = pir.claim_coverage || [];
-    const uncovered = coverage.filter((row) => row.drawable && !row.figure_ids.length);
-    return `<section class="compilercard">
-      <div class="compilerh"><div><h3>Canonical reference registry</h3>
-        <p>${entities.length} disclosed objects · ${pir.relations.length} sourced relations ·
-        ${coverage.length} claim limitations</p></div>
-        <span class="compilerflag ${conflicts.length ? 'bad' : 'good'}">${conflicts.length ?
-          conflicts.length + ' conflict(s)' : 'reconciled'}</span></div>
-      ${conflicts.length ? `<div class="compilerissues bad"><b>Material conflicts block compilation.</b>
-        ${conflicts.map((row) => `<div><code>${esc(row.reference || row.entity)}</code>
-          ${esc((row.candidates || []).join(' / '))} · ${esc(row.status)}
-          ${row.kind === 'one_reference_multiple_entities' ? `<span class="compilerchoices">${
-            (row.candidates || []).map((choice) => `<button type="button" class="chip compilerresolve"
-              data-conflict="${esc(row.id)}" data-choice="${esc(choice)}">Use ${esc(choice)}</button>`).join('')}</span>` :
-            '<small>Revise the draft reference table to distinguish these signs.</small>'}</div>`).join('')}</div>` : ''}
-      <div class="compilerregistry">${entities.map((entity) => `<div title="${esc(
-        (entity.source_span_ids || []).join(', '))}"><b>${esc(entity.reference)}</b>
-        <span>${esc(entity.name)}</span><small>${(entity.source_span_ids || []).length} source span(s)</small></div>`).join('')}</div>
-      <details class="compilerdetails"><summary>Claim-to-figure coverage · ${uncovered.length ?
-        uncovered.length + ' uncovered' : 'all drawable limitations covered'}</summary>
-        ${(coverage || []).map((row) => `<div class="coverrow"><code>${esc(row.limitation_id)}</code>
-          <span>${row.drawable ? esc((row.figure_ids || []).join(', ') || 'not covered') : 'not drawable'}</span></div>`).join('')}
-      </details></section>`;
-  }
-
-  function compilerManifest(manifest) {
-    if (!manifest) return '';
-    return `<section class="compilercard"><div class="compilerh"><div><h3>Figure manifest</h3>
-      <p>The smallest proposed set. Approving fixes what may be rendered.</p></div>
-      <span class="compilerflag ${manifest.approval ? 'good' : ''}">${manifest.approval ? 'approved' : 'review'}</span></div>
-      <div class="manifestgrid">${(manifest.figures || []).map((figure) => `<details class="manifestitem">
-        <summary><b>${esc(figure.label)}</b><small>${esc(figure.view_type)} ·
-          ${(figure.entity_ids || []).length} objects · ${(figure.relation_ids || []).length} relations</small></summary>
-        <p>${esc(figure.caption)}</p></details>`).join('')}</div></section>`;
-  }
-
-  function compilerSvgUrl(svg) {
-    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(String(svg || ''));
-  }
-
-  function compilerPackage(packageData, validation, approved) {
-    if (!packageData) return '';
-    const issues = (validation || {}).issues || [];
-    const patchRows = (packageData.figures || []).flatMap((figure) =>
-      (figure.labels || []).map((label) => {
-        const entity = (figure.entities || []).find((row) => row.entity_id === label.entity_id) || label;
-        return `<div class="compilerpatchrow"><b>${esc(figure.label)} · ${esc(label.reference)}</b>
-          <select data-patch-type aria-label="Edit ${esc(label.reference)}">
-            <option value="move_label" data-x="${esc(label.x)}" data-y="${esc(label.y)}">Move numeral</option>
-            <option value="move_entity" data-x="${esc(entity.x)}" data-y="${esc(entity.y)}">Move object</option>
-            <option value="reroute_leader" data-x="${esc(label.target_x)}" data-y="${esc(label.target_y)}">Move leader end</option>
-            <option value="delete_visible_entity">Delete object</option>
-          </select>
-          <label>X <input type="number" step="1" value="${esc(label.x)}" data-patch-x></label>
-          <label>Y <input type="number" step="1" value="${esc(label.y)}" data-patch-y></label>
-          <button type="button" class="chip compilerpatch" data-figure="${esc(figure.id)}"
-            data-reference="${esc(label.reference)}">Apply</button></div>`;
-      })).join('');
-    return `<section class="compilercard"><div class="compilerh"><div><h3>Compiled sheets</h3>
-      <p>Semantic vector geometry · ${esc(packageData.renderer_version)} ·
-      artifact v${packageData.artifact_version}</p></div>
-      <span class="compilerflag ${issues.length ? 'bad' : 'good'}">${issues.length ?
-        issues.length + ' issue(s)' : 'valid'}</span></div>
-      ${(packageData.sheets || []).map((sheet, index) => `<article class="compilersheet">
-        <div class="compilersheetbar"><b>Sheet ${index + 1}</b><span>${esc(sheet.figure_id)}</span>
-        ${approved ? `<a href="${BASE}/drafts/${PID}/figure-compiler/export.svg?sheet=${index + 1}">SVG ↓</a>` : ''}</div>
-        <div class="compilersvg"><img src="${esc(compilerSvgUrl(sheet.svg))}"
-          alt="${esc(sheet.figure_id)} semantic patent drawing"></div></article>`).join('')}
-      ${!approved ? `<details class="compilerdetails"><summary>Edit objects, numerals, and leader lines</summary>
-        <p class="small muted">Every edit is a typed patch and creates a new artifact version.</p>
-        <div class="compilerpatches">${patchRows}</div>
-      </details>` : ''}
-      ${issues.length ? `<div class="compilerissues bad"><b>Validation does not alter the sheet.</b>
-        ${issues.map((issue) => `<div><code>${esc(issue.code)}</code> ${esc(issue.message)}
-          <small>${esc(issue.repair_action)}</small></div>`).join('')}</div>` :
-        '<div class="compilerissues good"><b>No deterministic blockers.</b> Numerals match the draft in both directions.</div>'}
-      ${approved ? `<div class="compilerexports"><a class="btn sm" href="${BASE}/drafts/${PID}/figure-compiler/export.pdf">PDF package ↓</a>
-        <span class="small muted">Approved artifacts are immutable.</span></div>` : ''}</section>`;
-  }
-
-  function renderCompiler() {
-    const body = $('compilerBody');
-    if (!body) return;
-    if (C === null) {
-      body.innerHTML = '<div class="emptypane"><h3>Filing figure compiler</h3><p>Open this tab to load the compiler artifacts.</p></div>';
-      return;
-    }
-    if (!C.run) {
-      body.innerHTML = `<div class="compilerintro"><span class="eyebrow">Draft → semantic SVG</span>
-        <h2>Compile disclosed facts, not generated pixels.</h2>
-        <p>The compiler builds a source-linked object registry, checks claim coverage, asks you to
-        approve the model and figure plan, then emits deterministic SVG and PDF sheets.</p>
-        <div class="compilerstart"><select id="compilerRules"><option value="uspto-letter-2026.1">USPTO · US Letter</option>
-          <option value="pct-a4-2026.1">PCT · A4</option></select>
-          <button class="btn sm" id="compilerStart" type="button" ${S.project.latest_version_no ? '' : 'disabled'}>Build from version ${S.project.latest_version_no || '-'}</button>
-          <span class="small" id="compilerMsg"></span></div></div>`;
-      const start = $('compilerStart');
-      if (start) start.addEventListener('click', () => compilerPost('start', {
-        ruleset: $('compilerRules').value, version_no: S.project.latest_version_no,
-      }, start));
-      return;
-    }
-    const run = C.run;
-    const at = compilerStage(run.stage);
-    const blockers = ((C.pir || {}).hard_blockers || []).length;
-    const finalApproved = at >= compilerStage('APPROVED');
-    const stale = Number(run.draft_version_no) !== Number(S.project.latest_version_no);
-    let action = '';
-    if (run.stage === 'MODEL_RECONCILED') action = `<button class="btn sm" id="compilerApproveModel" ${blockers ? 'disabled' : ''}>Approve canonical model</button>`;
-    else if (run.stage === 'FIGURES_PLANNED') action = '<button class="btn sm" id="compilerApproveManifest">Approve figure plan</button>';
-    else if (run.stage === 'MANIFEST_APPROVED') action = '<button class="btn sm" id="compilerCompile">Compile + validate</button>';
-    else if (C.package && (C.validation || {}).approved_for_export && !finalApproved) action = '<button class="btn sm" id="compilerApproveFinal">Approve filing package</button>';
-    body.innerHTML = `<div class="compilerbar"><div><span class="eyebrow">${esc(run.ruleset)}</span>
-      <b>Draft version ${run.draft_version_no}</b></div><span class="compilerstage">${esc(run.stage.replace(/_/g, ' '))}</span>
-      <span class="grow"></span><button class="btn ghost xs" id="compilerRestart">Rebuild from current draft</button></div>
-      ${stale ? '<div class="compilerstale">The draft changed after this run. Rebuild before filing so the registry and sheets use the current text.</div>' : ''}
-      ${compilerSteps(run.stage)}${compilerRegistry(C.pir)}${compilerManifest(C.manifest)}
-      ${compilerPackage(C.package, C.validation, finalApproved)}
-      <div class="compileractions">${action}<span class="small" id="compilerMsg"></span></div>`;
-    const actions = [
-      ['compilerApproveModel', 'model/approve'], ['compilerApproveManifest', 'manifest/approve'],
-      ['compilerCompile', 'compile'], ['compilerApproveFinal', 'approve'],
-    ];
-    actions.forEach(([id, path]) => { const button = $(id); if (button) button.addEventListener(
-      'click', () => compilerPost(path, {}, button)); });
-    const restart = $('compilerRestart');
-    if (restart) restart.addEventListener('click', () => compilerPost('start', {
-      ruleset: run.ruleset, version_no: S.project.latest_version_no,
-    }, restart));
-    body.querySelectorAll('[data-patch-type]').forEach((select) => select.addEventListener('change', () => {
-      const row = select.closest('.compilerpatchrow');
-      const option = select.selectedOptions[0];
-      const deleting = select.value === 'delete_visible_entity';
-      const x = row.querySelector('[data-patch-x]');
-      const y = row.querySelector('[data-patch-y]');
-      x.disabled = deleting;
-      y.disabled = deleting;
-      if (!deleting) { x.value = option.dataset.x; y.value = option.dataset.y; }
-    }));
-    body.querySelectorAll('.compilerpatch').forEach((button) => button.addEventListener('click', () => {
-      const row = button.parentElement;
-      const type = row.querySelector('[data-patch-type]').value;
-      if (type === 'delete_visible_entity' && !window.confirm(
-        `Delete visible object ${button.dataset.reference} from this artifact version?`)) return;
-      const patch = { type, figure_id: button.dataset.figure,
-        reference: button.dataset.reference, reason: 'Manual semantic figure edit' };
-      if (type !== 'delete_visible_entity') {
-        patch.x = Number(row.querySelector('[data-patch-x]').value);
-        patch.y = Number(row.querySelector('[data-patch-y]').value);
-      }
-      compilerPost('patch', patch, button);
-    }));
-    body.querySelectorAll('.compilerresolve').forEach((button) => button.addEventListener(
-      'click', () => compilerPost('model/resolve', {
-        conflict_id: button.dataset.conflict, choice: button.dataset.choice,
-      }, button)));
+      }).join('') : '<p class="muted small">No versions yet. The drafting agent publishes one by ' +
+        'running its publish command, and it appears here.</p>'}`;
   }
 
   // ── filing ─────────────────────────────────────────────────────────────────
@@ -1768,17 +2277,20 @@
     button.setAttribute('aria-expanded', open ? 'true' : 'false');
     button.classList.toggle('on', !!open);
   }
-  /* Folding the conversation is remembered, because a person who wants the page for the draft
-     wants it for more than one reload. */
+  /* Folding the agent away gives the application the whole page, which is what you want the
+     moment you are reading rather than instructing. Remembered, because a person who wants the
+     page for the draft wants it for more than one reload. */
   const CHAT_FOLD_KEY = 'iptorch.chatfold';
   function foldChat(folded) {
     document.querySelector('.studio').classList.toggle('chathidden', !!folded);
     const button = $('chatFold');
     if (button) {
       button.setAttribute('aria-expanded', folded ? 'false' : 'true');
-      button.title = folded ? 'Show the conversation' : 'Hide the conversation';
+      button.title = folded ? 'Show the drafting agent' : 'Hide the drafting agent';
       button.setAttribute('aria-label', button.title);
     }
+    //  The renderer measures the pane to fit its type, so a fold is a resize.
+    if (!folded) setTimeout(() => renderRawText(true), 0);
     try { window.localStorage.setItem(CHAT_FOLD_KEY, folded ? '1' : '0'); } catch (error) { /* private mode */ }
   }
   const chatFold = $('chatFold');
@@ -1837,172 +2349,13 @@
   }
   $('stFileBtn').addEventListener('click', () => showPane('filing'));
 
-  // ── the model ───────────────────────────────────────────────────────────────
-  /* Chosen per project, and it takes effect on the NEXT turn: a turn already in flight is a
-     started conversation with a particular model and cannot change tier halfway through. */
-  const modelSelect = $('stModel');
-  if (modelSelect) {
-    modelSelect.addEventListener('change', async () => {
-      const previous = S.project.draft_model || '';
-      modelSelect.disabled = true;
-      try {
-        const data = await api(`/drafts/${PID}/studio/model`, {
-          method: 'POST', body: JSON.stringify({ model: modelSelect.value }),
-        });
-        S.project.draft_model = data.draft_model || '';
-        modelSelect.value = S.project.draft_model;
-        modelSelect.title = `The drafting agent runs on ${data.label} from the next turn.`;
-      } catch (error) {
-        modelSelect.value = previous;
-        window.alert(error.message);
-      } finally { modelSelect.disabled = false; }
-    });
-  }
-
   function routeFromHash() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
     const pane = ['draft', 'review', 'figures', 'sources', 'history', 'filing']
       .includes(parts[0]) ? parts[0] : 'draft';
     showPane(pane, false);
-    if (pane === 'figures' && parts[2] === 'edit' && /^\d+$/.test(parts[1] || '')) {
-      const figureId = Number(parts[1]);
-      if (!drawingEditor || drawingEditor.figure.figure_id !== figureId) openFigureEditor(figureId);
-    } else if (drawingEditor) {
-      discardDrawingEditor();
-      renderFigures();
-    }
   }
   window.addEventListener('hashchange', routeFromHash);
-
-  // ── composing ──────────────────────────────────────────────────────────────
-  const modeButton = $('chatModeBtn');
-  modeButton.addEventListener('click', () => {
-    const asking = modeButton.dataset.kind === 'revise';
-    modeButton.dataset.kind = asking ? 'question' : 'revise';
-    modeButton.textContent = asking ? 'Ask a question' : 'Revise the draft';
-    modeButton.classList.toggle('asking', asking);
-    $('chatInput').placeholder = asking
-      ? 'Ask about the draft - the agent answers without changing anything. For example: “Why is the seal in claim 1 at all?”'
-      : 'Ask for a change, add a fact, or ask a question.';
-  });
-
-  $('chatFiles').addEventListener('change', async (event) => {
-    pending = Array.from(event.target.files || []);
-    renderAttached();
-    if (!pending.length) return;
-    const form = new FormData();
-    pending.forEach((file) => form.append('files', file));
-    form.append('kind', 'prior_art');
-    $('chatAttached').innerHTML = '<span class="small muted">Reading the documents…</span>';
-    try {
-      const response = await fetch(`${BASE}/drafts/${PID}/studio/upload`, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'X-CSRF-Token': window.CSRF_TOKEN || '' }, body: form,
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || 'upload failed');
-      pending = [];
-      event.target.value = '';
-      await refresh();
-      $('chatAttached').innerHTML =
-        `<span class="small good">${data.documents.length} document(s) added to the sources.
-         Say what you want done with them and send.</span>`;
-    } catch (error) {
-      $('chatAttached').innerHTML = `<span class="small bad">${esc(error.message)}</span>`;
-    }
-  });
-
-  function renderAttached() {
-    const box = $('chatAttached');
-    box.hidden = !pending.length;
-    box.innerHTML = pending.map((file) => `<span class="chip">${esc(file.name)}</span>`).join('');
-  }
-
-  $('chatForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await send();
-  });
-  $('chatInput').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }
-  });
-
-  /* A message box, not a form. It grows with what you type, it offers the microphone while it is
-     empty and the send button once it is not, and Enter sends. */
-  const chatInput = $('chatInput');
-  const chatMic = $('chatMic');
-  const chatSendButton = $('chatSend');
-
-  function sizeComposer() {
-    chatInput.style.height = 'auto';
-    chatInput.style.height = Math.min(220, Math.max(38, chatInput.scrollHeight)) + 'px';
-    const typed = chatInput.value.trim().length > 0;
-    if (chatSendButton) chatSendButton.hidden = !typed;
-    if (chatMic) chatMic.hidden = typed || !SPEECH;
-  }
-  chatInput.addEventListener('input', sizeComposer);
-  if (chatMic) {
-    if (!SPEECH) chatMic.hidden = true;
-    chatMic.addEventListener('click', () => dictateInto(chatInput, chatMic, sizeComposer));
-  }
-
-  /* One dictation implementation for the composer and for every per-section ask box. */
-  function dictateInto(area, button, after) {
-    if (!SPEECH) return;
-    if (dictateInto.active) { dictateInto.active.stop(); return; }
-    const recognition = new SPEECH();
-    recognition.lang = document.documentElement.lang || 'en-US';
-    recognition.interimResults = true;
-    recognition.continuous = true;
-    const before = area.value;
-    button.classList.add('on');
-    recognition.onresult = (event) => {
-      let heard = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        heard += event.results[i][0].transcript;
-      }
-      area.value = (before ? before.replace(/\s*$/, ' ') : '') + heard;
-      if (after) after();
-    };
-    const done = () => { button.classList.remove('on'); dictateInto.active = null; if (after) after(); };
-    recognition.onerror = done;
-    recognition.onend = done;
-    dictateInto.active = recognition;
-    recognition.start();
-  }
-
-  async function send() {
-    const input = $('chatInput');
-    const text = input.value.trim();
-    if (!text) return;
-    const button = $('chatSend');
-    button.disabled = true;
-    try {
-      await api(`/drafts/${PID}/studio/message`, {
-        method: 'POST',
-        body: JSON.stringify({ message: text, kind: modeButton.dataset.kind }),
-      });
-      input.value = '';
-      sizeComposer();
-      await refresh();
-      startPolling();
-    } catch (error) {
-      $('chatAttached').hidden = false;
-      $('chatAttached').innerHTML = `<span class="small bad">${esc(error.message)}</span>`;
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  $('chatCancel').addEventListener('click', async () => {
-    const turn = S.active_turn;
-    if (!turn) return;
-    try {
-      await api(`/drafts/${PID}/studio/cancel`, {
-        method: 'POST', body: JSON.stringify({ turn_id: turn.id }),
-      });
-      await refresh();
-    } catch (error) { /* the turn finished on its own; the next poll settles it */ }
-  });
 
   async function rerunReview() {
     const button = $('rvRerun');
@@ -2018,80 +2371,6 @@
     }
   }
 
-  // ── live ───────────────────────────────────────────────────────────────────
-  const STAGE_TEXT = {
-    queued: 'queued - the drafting agent will pick this up in a moment',
-    'applying the change': 'applying the change to this section',
-    preparing: 'gathering your disclosure, the prior art and the current draft',
-    drafting: 'reading the sources and writing - this is the long part',
-    'checking the draft': 'checking the draft before storing it',
-    reviewing: 'the reviewer is checking numerals, claims and citations',
-    'waiting to retry': 'that attempt failed; trying once more',
-    'resuming after a restart': 'resuming after a server restart',
-  };
-
-  /* WHAT THIS TURN HAS COST SO FAR. It used to be invisible until the turn finished, which is how
-     one ran for eight hours and twenty minutes and spent about $343 with the page showing nothing
-     but a spinner and the word "independent review". */
-  function money(value) {
-    const n = Number(value || 0);
-    return n >= 10 ? '$' + n.toFixed(0) : '$' + n.toFixed(2);
-  }
-  function tokens(value) {
-    const n = Number(value || 0);
-    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M';
-    if (n >= 1e3) return Math.round(n / 1e3) + 'k';
-    return String(n);
-  }
-  function elapsed(since) {
-    const started = new Date(since);
-    if (isNaN(started)) return '';
-    const mins = Math.max(0, Math.round((Date.now() - started.getTime()) / 60000));
-    if (mins < 60) return mins + 'm';
-    return Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
-  }
-  function spendLine(turn) {
-    if (!turn) return '';
-    const bits = [];
-    const wall = elapsed(turn.started_at);
-    if (wall) bits.push(wall);
-    if (turn.agent_runs) bits.push(`${turn.agent_runs} agent run${turn.agent_runs === 1 ? '' : 's'}`);
-    if (turn.tokens_total) bits.push(`${tokens(turn.tokens_total)} tokens`);
-    if (turn.spend_usd) bits.push(money(turn.spend_usd));
-    return bits.join(' · ');
-  }
-
-  function renderBusy() {
-    const turn = S.active_turn;
-    const box = $('chatStatus');
-    box.hidden = !turn && !reviewing && !drawing;
-    if (turn) {
-      //  A queue this application is not at the front of is the difference between "any moment
-      //  now" and "after somebody else's drawing repair finishes", and saying which is the whole
-      //  point of showing a status line at all.
-      const ahead = Number(turn.queue_ahead || 0);
-      $('chatStage').textContent = (turn.stage === 'queued' && ahead)
-        ? `queued behind ${ahead} other drafting turn${ahead === 1 ? '' : 's'} on this server`
-        : (STAGE_TEXT[turn.stage] || turn.stage || 'working…');
-    } else if (drawing) {
-      $('chatStage').textContent =
-        'rechecking every drawing against the current published text';
-    } else if (reviewing) {
-      $('chatStage').textContent = 'the reviewer is re-checking the current draft';
-    }
-    const meter = $('chatSpend');
-    if (meter) {
-      const line = spendLine(turn);
-      meter.textContent = line;
-      meter.hidden = !line;
-    }
-    $('chatCancel').hidden = !turn;
-    $('chatSend').disabled = !!turn;
-    $('chatInput').placeholder = turn
-      ? 'The agent is working. Your next message will be sent when it finishes.'
-      : 'Ask for a change, add a fact, or ask a question.';
-  }
-
   function renderChrome() {
     $('stStatus').textContent = S.project.status;
     $('stStatus').className = 'statuspill status-' + S.project.status;
@@ -2099,14 +2378,7 @@
     //  that would be filed today; the numbering is bookkeeping and lives in History.
     $('stVersion').textContent = S.project.latest_version_no ? '' : 'no draft yet';
     $('stTitle').textContent = S.project.title;
-    const select = $('stModel');
-    if (select && document.activeElement !== select) {
-      select.value = S.project.draft_model || '';
-    }
     const verdictBox = $('stVerdict');
-    const pixelFailures = drawingAuditChecks().filter((check) => check.status === 'fail').length;
-    //  A drawing mismatch no longer speaks for the whole draft in the masthead: it is reported
-    //  where the drawings are, and it still refuses a filing package.
     if (S.qa) {
       const [tone, label] = VERDICT[S.qa.verdict] || VERDICT.unknown;
       verdictBox.innerHTML = `<span class="verdict ${tone} tiny">${label}</span>`;
@@ -2117,14 +2389,15 @@
       $('stDownloadDocx').href = `${BASE}/drafts/${PID}/download/docx?version=${version}`;
     }
     const counts = (S.qa && S.qa.counts) || {};
-    const bad = (counts.checks_failed || 0) + (counts.critical || 0) + pixelFailures;
+    const bad = (counts.checks_failed || 0) + (counts.critical || 0);
     $('tabReview').textContent = bad ? bad : '';
     $('tabReview').className = 'tabbadge' + (bad ? ' bad' : '');
     $('tabSources').textContent =
       (S.references || []).length + (S.documents || []).length || '';
-    const undrawn = (S.figures || []).filter((f) => !f.drawn).length;
+    const missing = (S.figures || []).filter((figure) => !figure.uploaded).length;
     $('tabFigures').textContent = (S.figures || []).length || '';
-    $('tabFigures').title = undrawn ? `${undrawn} figure(s) described but not drawn` : '';
+    $('tabFigures').title = missing
+      ? `${missing} described figure(s) have no drawing uploaded yet` : '';
     //  One number on the fold, so nothing important disappears just because it is folded.
     const badge = $('tabMoreBadge');
     if (badge) {
@@ -2136,14 +2409,12 @@
   function renderAll() {
     renderChrome();
     renderJump();
-    renderFeed();
     renderDraft();
     renderReview();
     renderSources();
     renderFigures();
-    renderCompiler();
     renderHistory();
-    renderBusy();
+    renderAgentChips();
   }
 
   function refresh() {
@@ -2158,9 +2429,11 @@
     return job;
   }
 
-  /* Poll while a turn is in flight, and for a short while after the page loads so a turn started
-     in another tab is noticed.  The poll endpoint is small on purpose; the full state is fetched
-     only when something has actually changed. */
+  /* Poll the RECORD, not the terminal: the terminal has its own one-second poll and its own
+     append-only renderer. This one is the cheap three-second read that notices a new version, a
+     new review, or the agent's own state changing, and re-fetches the whole studio only when
+     something has actually moved. It never stops while an agent is alive, because the agent
+     publishes on its own schedule and the Draft tab has to follow it. */
   function startPolling() {
     if (polling) return;
     let idle = 0;
@@ -2169,28 +2442,26 @@
       try {
         state = await api(`/api/drafts/${PID}/studio/poll`);
       } catch (error) { return; }
-      //  Repaint on the stage OR the spend moving, so the meter ticks while a long turn runs.
-      if (state.turn && S.active_turn && (
-          state.turn.stage !== (S.active_turn || {}).stage ||
-          state.turn.agent_runs !== (S.active_turn || {}).agent_runs ||
-          state.turn.tokens_total !== (S.active_turn || {}).tokens_total)) {
-        S.active_turn = Object.assign({}, S.active_turn, state.turn);
-        renderBusy();
-      }
-      const changed = state.last_message_id !== lastMessageId ||
-        state.latest_version_no !== S.project.latest_version_no ||
-        (!!state.busy) !== (!!S.active_turn);
+      if (state.agent) applyAgentState(state.agent);
+      const changed = state.latest_version_no !== S.project.latest_version_no ||
+        (state.qa && (!S.qa || state.qa.id !== S.qa.id));
       if (changed) { await refresh(); idle = 0; }
       reviewing = !!state.reviewing;
-      drawing = !!state.drawing;
-      if (!state.busy && !reviewing && !drawing) {
+      const working = reviewing || (state.agent || {}).status === 'busy';
+      if (!working) {
         idle += 1;
-        if (idle > 4) { clearInterval(polling); polling = null; }
+        //  Ten minutes of a quiet agent before the page stops asking. Long, deliberately: the
+        //  agent is a person's collaborator and can be given work from another tab, and the cost
+        //  of this poll is one small query.
+        if (idle > 200) { clearInterval(polling); polling = null; }
       } else idle = 0;
     }, 3000);
   }
 
+  wireTerminal();
   renderAll();
   routeFromHash();
+  loadAgentState();
+  startTermPolling();
   startPolling();
 })();

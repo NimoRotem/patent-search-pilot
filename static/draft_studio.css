@@ -469,8 +469,8 @@
   max-width: 100%;
 }
 
-/* ── folding the conversation away ───────────────────────────────────────────── */
-.studiochat { position: relative; }
+/* ── folding the drafting agent away ─────────────────────────────────────────── */
+.studioterm { position: relative; }
 .chatfold {
   position: absolute;
   top: 6px;
@@ -497,10 +497,10 @@
 }
 .chatfold:hover { color: var(--ink); border-color: var(--faint); }
 
-/* Collapsed: the conversation becomes a spine, and the draft takes the page. */
+/* Collapsed: the agent becomes a spine, and the draft takes the page. */
 .studio.chathidden .studiobody { grid-template-columns: 34px minmax(0, 1fr); }
-.studio.chathidden .studiochat > *:not(.chatfold) { display: none; }
-.studio.chathidden .studiochat {
+.studio.chathidden .studioterm > *:not(.chatfold) { display: none; }
+.studio.chathidden .studioterm {
   min-height: 0;
   background: var(--s3);
 }
@@ -548,4 +548,309 @@ body.modalopen { overflow: hidden; }
   .studio.chathidden .studiobody { grid-template-columns: 1fr; }
   .setmodal { padding: 0; }
   .setmodalcard { max-height: 100vh; border-radius: 0; border: 0; }
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   THE DRAFTING AGENT'S TERMINAL
+   ═════════════════════════════════════════════════════════════════════════════
+   A terminal, drawn as one. The studio is a light page and this panel is dark on purpose: it is
+   not a chat transcript styled to look technical, it is the actual screen of the actual session,
+   and reading it as anything else would be a lie about what it is.
+
+   The type is monospaced and the lines are `pre-wrap` with a hanging indent, because the renderer
+   paints one element per terminal row and the row's own leading spaces are its structure.
+   ═════════════════════════════════════════════════════════════════════════════ */
+.studioterm {
+  display: flex;
+  flex-direction: column;
+  background: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  /*  AS TALL AS ITS TERMINAL, not as tall as the page. The conversation panel that used to sit
+      here filled the column and its feed scrolled inside it. A terminal is a fixed grid: making
+      it full height gives it a stretch of empty screen above a composer pinned to the bottom, and
+      the drag handle then has nothing to do because flex-grow overrules whatever it sets. So the
+      panel sizes to its parts, the pane carries the height, and the handle owns it. */
+  height: auto;
+  min-height: 0;
+  align-self: start;
+}
+
+.termbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 8px 34px 8px 12px;      /* room on the right for the fold button */
+  border-bottom: 1px solid var(--line);
+  background: var(--s3);
+}
+.termname {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/*  The status pill, and the four states an agent is actually in. */
+.termbar .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line2);
+  background: var(--s1);
+  font-size: 11.5px;
+  font-weight: 620;
+  color: var(--muted);
+}
+.termbar .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.termbar .status-pill.busy { color: var(--accent); border-color: rgba(23, 92, 211, .35);
+  background: var(--accent-soft); }
+.termbar .status-pill.busy .status-dot { background: var(--accent);
+  animation: termpulse 1.2s ease-in-out infinite; }
+.termbar .status-pill.idle { color: var(--good); border-color: rgba(24, 121, 78, .3);
+  background: var(--good-soft); }
+.termbar .status-pill.idle .status-dot { background: var(--good); }
+.termbar .status-pill.stopped { color: var(--bad); border-color: rgba(180, 35, 24, .3);
+  background: var(--bad-soft); }
+.termbar .status-pill.stopped .status-dot { background: var(--bad); }
+.statusdetail { font-weight: 400; opacity: .75; }
+@keyframes termpulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .termbar .status-pill.busy .status-dot { animation: none; }
+}
+
+/*  The model and effort chips, beside Reload and Restart. This is the ONE place a model is
+    chosen: the studio used to carry a second picker in the composer, which meant two controls
+    for one decision and a page that could show them disagreeing. */
+.tchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s1);
+  font-size: 11.5px;
+  font-weight: 620;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.tchip:hover { color: var(--ink); border-color: var(--faint); }
+.tchip .caret { opacity: .55; font-size: 9px; }
+.tmenu {
+  position: absolute;
+  z-index: 20;
+  margin-top: 26px;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--s1);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+.tmenuitem {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 4px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.tmenuitem:hover { background: var(--s2); }
+.tmenuitem.on { font-weight: 700; color: var(--accent); }
+
+.termbar .btn.xs { padding: 3px 9px; font-size: 11.5px; }
+.termbar .btn.danger { color: var(--bad); border-color: rgba(180, 35, 24, .3); }
+.termbar .btn.danger:hover { background: var(--bad-soft); }
+/*  Stop is only meaningful while it is working, and a dead button on a toolbar is worse than no
+    button: it invites a click that does nothing. */
+#termStop { display: none; }
+#termStop.visible { display: inline-flex; }
+
+/* ── the pane ──────────────────────────────────────────────────────────────── */
+.raw-output {
+  position: relative;
+  flex: 0 1 auto;                /* the drag handle owns this height; see .studioterm */
+  min-height: 160px;
+  height: 46vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-anchor: none;         /* the renderer does its own scroll anchoring */
+  padding: 12px 14px;
+  margin: 0;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.raw-output .tl {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: 1.5em;
+  padding-left: 2.2em;
+  text-indent: -2.2em;           /* a wrapped row hangs under its own first column */
+}
+.raw-output.frozen { opacity: .96; }
+.raw-output a.raw-link { color: #79c0ff; text-decoration: underline; text-underline-offset: 2px; }
+.raw-output::-webkit-scrollbar { width: 11px; }
+.raw-output::-webkit-scrollbar-track { background: #0d1117; }
+.raw-output::-webkit-scrollbar-thumb { background: #484f58; border-radius: 6px;
+  border: 2px solid #0d1117; }
+.raw-output { scrollbar-width: thin; scrollbar-color: #484f58 #0d1117; }
+
+/*  The CLI's spinner, its seconds counter and its token tally are cut OUT of the transcript
+    upstream and redrawn here, outside the scroll area, off a clock that ticks locally. Leaving
+    them in the buffer is what forced a full repaint every second. */
+.term-live {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: #0d1117;
+  border-top: 1px solid #21262d;
+  color: #8b949e;
+  font-size: 11px;
+  min-height: 14px;
+}
+.term-live.on { display: flex; }
+.tl-dots { display: inline-flex; gap: 3px; }
+.tl-dots i {
+  width: 5px; height: 5px; border-radius: 50%; background: #58a6ff; display: block;
+  animation: tl-pulse 1.25s ease-in-out infinite;
+}
+.tl-dots i:nth-child(2) { animation-delay: .18s; }
+.tl-dots i:nth-child(3) { animation-delay: .36s; }
+.term-live.idle .tl-dots i { animation: none; opacity: .3; background: #484f58; }
+@keyframes tl-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tl-dots i { animation: none; } }
+.tl-verb { color: #c9d1d9; font-weight: 600; white-space: nowrap; }
+.tl-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-tok { color: #6e7681; white-space: nowrap; }
+.tl-spacer { flex: 1; }
+.tl-note { color: #6e7681; white-space: nowrap; }
+
+.raw-resize-handle {
+  height: 8px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--s3);
+  border-top: 1px solid var(--line);
+}
+.raw-resize-handle::after {
+  content: "";
+  width: 38px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line2);
+}
+.raw-resize-handle:hover::after { background: var(--faint); }
+
+/* ── typing into it ────────────────────────────────────────────────────────── */
+.cmd-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  border-top: 1px solid var(--line);
+  background: var(--s1);
+}
+.cmd-prompt {
+  padding: 11px 4px 11px 12px;
+  color: var(--faint);
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.cmd-input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.45;
+  padding: 10px 8px;
+  min-height: 38px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.cmd-input::placeholder { color: var(--faint); }
+.cmd-send, .cmd-mic {
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: var(--s3);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 14px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.cmd-send { color: var(--accent); }
+.cmd-send:hover, .cmd-mic:hover { background: var(--s2); color: var(--ink); }
+.cmd-send svg, .cmd-mic svg { width: 17px; height: 17px; fill: currentColor; }
+.cmd-mic.on { color: var(--bad); }
+.cmd-send:disabled { opacity: .45; cursor: default; }
+
+.termkeys {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 7px 12px 9px;
+  border-top: 1px solid var(--line);
+  background: var(--s3);
+}
+.termkeys .chip { cursor: pointer; }
+.termkeys #termHint { margin-left: auto; }
+
+/* ── drawings: uploaded, never generated ───────────────────────────────────── */
+.figintro {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s3);
+}
+.figintro > div:first-child { flex: 1; min-width: 240px; }
+.figupload { cursor: pointer; }
+.fignone {
+  padding: 22px 14px;
+  border: 1px dashed var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s3);
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  /*  Stacked, so the terminal does not take a whole screen before the draft begins. */
+  .raw-output { height: 38vh; }
 }

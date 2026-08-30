@@ -8,6 +8,7 @@ import pytest
 
 import accounts
 import auth
+import draft_studio_service
 import drafting
 import webapp
 
@@ -340,99 +341,133 @@ def test_studio_search_runs_in_background_and_can_import_without_navigation(
     assert studio.imported == (7, slug, ["US-11223344-B2", "EP-1234567-A1"])
 
 
-def test_studio_exposes_manual_photo_and_delete_drawing_actions(draft_client, monkeypatch):
+def test_the_only_drawing_route_is_an_upload(draft_client, monkeypatch):
+    """Uploading and deleting a sheet, and nothing that makes one.
+
+    The three routes this replaced - generate, edit-a-region, photo-to-sketch - are the whole of
+    the removed drawing lane, and the assertion that they are GONE matters as much as the one
+    that says upload works: a route left behind is a route the front end can still be talked
+    into calling.
+    """
     client, _service = draft_client
 
     class Studio:
         calls = []
 
-        def save_figure(self, principal, project_id, figure_id, png, instruction=""):
-            self.calls.append(("save", project_id, figure_id, png, instruction))
-            return {"figure_id": figure_id, "version_no": 2}
-
-        def photo_to_sketch(self, principal, project_id, **values):
-            self.calls.append(("photo", project_id, values))
-            return {"figure_id": 10, "version_no": 1}
+        def upload_figure(self, principal, project_id, **values):
+            self.calls.append(("upload", project_id, values))
+            return {"figure_id": 10, "label": values.get("label") or "FIG. 1"}
 
         def delete_figure(self, principal, project_id, figure_id):
             self.calls.append(("delete", project_id, figure_id))
 
     studio = Studio()
     monkeypatch.setattr(webapp, "_studio", lambda: studio)
-    edited = client.post("/drafts/7/studio/figure/9/manual", data={
-        "image": (io.BytesIO(b"png bytes"), "edited.png"), "instruction": "move 12",
+    uploaded = client.post("/drafts/7/studio/figure/upload", data={
+        "image": (io.BytesIO(b"png bytes"), "sheet.png"), "label": "FIG. 2",
         "csrf_token": "csrf-draft",
     })
-    assert edited.status_code == 200 and studio.calls[-1][0] == "save"
-    photo = client.post("/drafts/7/studio/photo-to-sketch", data={
-        "image": (io.BytesIO(b"jpeg bytes"), "part.jpg"), "caption": "front view",
-        "csrf_token": "csrf-draft",
-    })
-    assert photo.status_code == 200 and studio.calls[-1][0] == "photo"
+    assert uploaded.status_code == 200
+    assert studio.calls[-1][0] == "upload"
+    assert studio.calls[-1][2]["image"] == b"png bytes"
+    assert studio.calls[-1][2]["label"] == "FIG. 2"
+
     deleted = client.post("/drafts/7/studio/figure/9/delete", json={},
                           headers={"X-CSRF-Token": "csrf-draft"})
     assert deleted.status_code == 200 and studio.calls[-1] == ("delete", 7, 9)
 
+    routes = {rule.rule for rule in webapp.app.url_map.iter_rules()}
+    assert "/drafts/<int:project_id>/studio/figure" not in routes
+    assert "/drafts/<int:project_id>/studio/figure/<int:figure_id>/manual" not in routes
+    assert "/drafts/<int:project_id>/studio/photo-to-sketch" not in routes
+    assert "/drafts/<int:project_id>/studio/drawings" not in routes
+    assert not any("figure-compiler" in rule for rule in routes)
+
 
 def test_figure_version_actions_cannot_cross_between_the_users_projects(
         draft_client, monkeypatch):
+    """A figure id in a URL names a figure, not a permission. It has to be inside THIS project."""
     client, _service = draft_client
     monkeypatch.setattr(webapp.draft_figures, "get_figure", lambda figure_id, user_id: {
         "id": figure_id, "user_id": user_id, "project_id": 8,
     })
+
+    class Studio(draft_studio_service.StudioService):
+        def _project(self, _principal, project_id):
+            return {"id": project_id, "user_id": USER["id"]}
+
+    monkeypatch.setattr(webapp, "_studio", lambda: Studio(object(), repository=object()))
     response = client.post(
         "/drafts/7/figures/9/activate", json={"version_no": 1},
         headers={"X-CSRF-Token": "csrf-draft"})
     assert response.status_code == 404
 
 
-def test_figure_version_activation_is_bound_to_the_current_specification(
-        draft_client, monkeypatch):
+def test_figure_version_activation_is_the_users_own_choice(draft_client, monkeypatch):
+    """Choosing which of your own uploads is the live one is a decision, not a check.
+
+    The gate that stood here compared a version's stored pixel audit against a hash of the current
+    drawing specification. That was right while the product generated and inspected its own
+    sheets. It uploads them now, so a version that "did not pass the current drawing
+    specification" is a sentence about a check that no longer exists.
+    """
     client, _service = draft_client
-    spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10 body"]}
-    project = {"id": 7, "user_id": USER["id"], "latest_version_no": 2, "versions": [{
-        "version_no": 2, "figure_specs": [spec],
-        "numerals": [{"numeral": "10", "part": "body"}]}]}
-    monkeypatch.setattr(webapp, "_figure_project", lambda principal, project_id: project)
-    monkeypatch.setattr(webapp, "_figure_in_project", lambda user_id, project_id, figure_id: {
-        "id": figure_id, "project_id": project_id, "figure_label": "FIG. 1"})
-    captured = {}
+    chosen = {}
 
-    def activate(figure_id, user_id, version_no, **values):
-        captured.update(values)
-        return True
+    class Studio:
+        def activate_figure_version(self, principal, project_id, figure_id, version_no):
+            chosen.update({"project": project_id, "figure": figure_id, "version": version_no})
+            return version_no
 
-    monkeypatch.setattr(webapp.draft_figures, "set_active", activate)
+    monkeypatch.setattr(webapp, "_studio", lambda: Studio())
     response = client.post(
-        "/drafts/7/figures/9/activate", json={"version_no": 1},
+        "/drafts/7/figures/9/activate", json={"version_no": 3},
         headers={"X-CSRF-Token": "csrf-draft"})
-    expected = webapp.draft_figures.specification_hash(
-        "FIG. 1", "side view", ["10 = body"])
-    assert response.status_code == 200
-    assert captured["expected_specification_hash"] == expected
+    assert response.status_code == 200 and response.get_json()["version_no"] == 3
+    assert chosen == {"project": 7, "figure": 9, "version": 3}
 
 
-def test_studio_ui_exposes_sketch_tools_and_reload_safe_navigation():
+def test_the_studio_ui_has_a_terminal_and_no_way_to_draw():
+    """What the page offers, read from the page.
+
+    Half of this is the absence of things. A sketch canvas, a photo-to-sketch box or a Draw button
+    left in the bundle is a control somebody can still reach, whatever the routes behind it now
+    answer, so their names are asserted gone rather than assumed gone.
+    """
     root = Path(__file__).resolve().parents[1]
     script = (root / "static" / "draft_studio.js").read_text()
-    css = (root / "static" / "style.css").read_text()
-    assert "Select and move" in script and "Delete selected area" in script
-    assert "AI fix selected area" in script and "photo-to-sketch" in script
+    template = (root / "templates" / "draft_studio.html").read_text()
+    css = (root / "static" / "draft_studio.css").read_text()
+
+    #  Nothing draws.
+    for absent in ("photo-to-sketch", "Make line drawing", "Draw this figure", "Redraw",
+                   "AI fix selected area", "Delete selected area", "Edit by hand",
+                   "setupCanvasEditor", "discardDrawingEditor", "figure-compiler",
+                   "Recheck drawings"):
+        assert absent not in script, absent
+    #  Uploading is the whole of the drawing feature.
+    assert "studio/figure/upload" in script
+    assert "Upload this sheet" in script and "Add a drawing" in script
+
+    #  The agent is a terminal, and it is the ONE place a model is chosen: the composer's own
+    #  "Server default" picker is gone with the turn queue it configured.
+    assert "renderRawText" in script and "applyRawFilter" in script
+    assert "terminal/tail" in script and "terminal/interrupt" in script
+    assert "termModel" in template and "termEffort" in template
+    assert "Server default" not in template and "stModel" not in template
+    #  ...and none of the fleet controls the operators' dashboard carries beside it.
+    for absent in ("Auto-push", "Idle nudge", "ADHD", "Clean view", "autopush"):
+        assert absent not in template, absent
+        assert absent not in script, absent
+
     assert "Search current draft" in script and "importsearch" in script
-    assert "hashchange" in script and "#/figures/" in script
+    assert "hashchange" in script
     assert "cache: 'no-store'" in script
     assert "refreshSerial" in script
-    assert "function discardDrawingEditor" in script
-    assert script.count("discardDrawingEditor();") >= 3
-    assert ".chatstatus[hidden]{display:none!important}" in css
-
-
-def test_drawing_cards_do_not_claim_pass_after_later_filing_review_found_a_fault():
-    script = (Path(__file__).resolve().parents[1] / "static" / "draft_studio.js").read_text()
-
-    assert "function figureReviewFindings(figure)" in script
-    assert "Later filing review blocked this drawing." in script
-    assert "figureReviewFindings(figure)" in script
+    #  The terminal is sized to fit beside the draft and can be dragged, rather than filling the
+    #  column the way the conversation panel did.
+    assert "raw-resize-handle" in template and "startTermResize" in script
+    assert ".raw-output {" in css
 
 
 def test_report_draft_action_is_a_csrf_protected_direct_post():
@@ -464,11 +499,11 @@ def test_draft_workspace_status_and_queue_are_authenticated_and_csrf_protected(d
     assert denied.status_code == 400
 
     class Studio:
-        started = None
+        sent = None
 
-        def start_turn(self, principal, project_id, **values):
-            self.started = (project_id, values)
-            return {"id": 18, "turn_no": 2, "status": "queued"}
+        def send_to_agent(self, principal, project_id, message):
+            self.sent = (project_id, message)
+            return {"sent": True}
 
     studio = Studio()
     monkeypatch.setattr(webapp, "_studio", lambda: studio)
@@ -478,8 +513,9 @@ def test_draft_workspace_status_and_queue_are_authenticated_and_csrf_protected(d
     })
     assert queued.status_code == 302
     assert queued.headers["Location"].endswith("/drafts/7/studio")
-    assert studio.started == (7, {"message": "Apparatus claims", "kind": "revise",
-                                  "idempotency_key": "one-click"})
+    #  The legacy one-click door now types into this draft's agent. One drafting agent per
+    #  project and one way to reach it, rather than a second queue behind the same button.
+    assert studio.sent == (7, "Apparatus claims")
     assert service.queued is None
     status = client.get("/api/drafts/7/status")
     assert status.status_code == 200

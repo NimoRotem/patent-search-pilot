@@ -29,6 +29,7 @@ import draft_agent
 import draft_cite
 import draft_settings
 import draft_studio
+import draft_terminal
 import draft_workspace
 import drafting
 
@@ -68,9 +69,6 @@ _STATE: dict[str, Any] = {"running": False, "last_turn_id": None, "last_result":
 #  Projects with a review running outside the turn queue. One per project: a second concurrent
 #  review would spend twice and produce two reports of the same version that disagree.
 _REVIEWING: set[int] = set()
-#  Projects whose sheets are being reconciled outside the turn queue. One per project: two image
-#  passes on the same figures would race each other's active version.
-_DRAWING: set[int] = set()
 
 
 # =============================================================================================
@@ -247,20 +245,37 @@ class StudioService:
         self.repository.add_message(
             project["id"], "system",
             _opening_note(bool(references), search_slug, len(list(uploads))))
+        #  A NEW AGENT PER DRAFT. The workspace is built, its own CLAUDE.md and private home are
+        #  written, a fresh Claude Code session opens in it with no memory of any other project,
+        #  and the opening instruction is typed into it. Started in the background because the CLI
+        #  takes a few seconds to reach its composer and the person should be looking at their
+        #  studio by then, not at a spinner on the intake form.
+        threading.Thread(
+            target=self._open_first_agent, name=f"draft-open-{project['id']}", daemon=True,
+            args=(principal, int(project["id"]), input_kind)).start()
+        return project
+
+    def _open_first_agent(self, principal: drafting.Principal, project_id: int,
+                          input_kind: str) -> None:
+        opening = ("Write the first draft of this application. Everything you need is in input/ "
+                   "and prior_art/. Publish it when it is complete."
+                   if input_kind == "description" else
+                   "Take the draft in input/ and improve it into a filing-quality application. "
+                   "Do not discard the user's own text. Publish it when it is complete.")
         try:
-            self.start_turn(principal, project["id"], message=(
-                "Write the first draft." if input_kind == "description"
-                else "Take my existing draft and improve it into a filing-quality application."),
-                kind="initial")
-        except drafting.DraftingError as exc:
+            self.send_to_agent(principal, project_id, opening)
+        except Exception as exc:                                # noqa: BLE001 - report, never raise
+            traceback.print_exc()
             # The project exists and holds everything the user gave us. Losing it because the
             # agent happens to be unconfigured would be the worst possible trade: they would have
             # to re-enter the disclosure and re-upload the art to find out the same thing.
-            self.repository.add_message(
-                project["id"], "system",
-                f"The first draft could not be started: {exc} Everything you supplied is saved - "
-                "send a message here to try again once that is fixed.")
-        return project
+            try:
+                self.repository.add_message(
+                    project_id, "system",
+                    f"The drafting agent could not be started: {str(exc)[:300]} Everything you "
+                    "supplied is saved - press Restart above the terminal once that is fixed.")
+            except Exception:                                   # noqa: BLE001
+                traceback.print_exc()
 
     def _store_upload(self, project_id: int, user_id: int,
                       upload: Mapping[str, Any]) -> dict[str, Any]:
@@ -381,11 +396,11 @@ class StudioService:
         if not version_no:
             raise drafting.DraftingValidationError(
                 "There is no draft yet. Ask for the first draft in the conversation.")
-        active = self.repository.latest_turn(project_id)
-        if active and active.get("status") in ("queued", "running"):
+        if draft_terminal.activity(project_id).get("status") == "busy":
             raise drafting.DraftingConflict(
                 "The drafting agent is working on this application, and the version it publishes "
-                "would overwrite this. Nothing was saved; your text is still in the box.")
+                "would overwrite this. Nothing was saved; your text is still in the box. Press "
+                "Stop above the terminal if you want it to stand down.")
         text = str(text or "").replace("\x00", "").strip()
         if len(text) > MAX_SECTION_CHARS:
             raise drafting.DraftingValidationError("That section is too large to store.")
@@ -420,6 +435,16 @@ class StudioService:
             project_id, principal.user_id, sections=sections,
             citations=draft_studio.citations_of(sections), edited_sections=[section_key],
             numerals=version.get("numerals") or [], figures=version.get("figure_specs") or [])
+        #  Put the hand edit in the workspace as well. The drafting agent reads draft/ and
+        #  publishes what it finds there, so a section edited on the page and not mirrored here is
+        #  a section the agent silently reverts the next time it publishes anything at all.
+        try:
+            name = draft_workspace.SECTION_BY_KEY[section_key][0]
+            path = draft_workspace.for_project(int(project_id)) / "draft" / name
+            if path.parent.is_dir():
+                path.write_text(sections[section_key].rstrip() + "\n", encoding="utf-8")
+        except OSError:
+            traceback.print_exc()
         return {"saved": True, "version_no": int(saved["version_no"]),
                 "continued": bool(saved.get("continued")),
                 "change_note": saved.get("change_note") or ""}
@@ -427,6 +452,170 @@ class StudioService:
     def cancel(self, principal: drafting.Principal, project_id: int, turn_id: int) -> None:
         self._project(principal, project_id)
         self.repository.cancel_turn(project_id, turn_id)
+
+    # -- the drafting agent's terminal ------------------------------------------------------------
+    #
+    #  Every method here re-checks ownership first, exactly like the rest of the class, because a
+    #  drafting terminal is a shell with the draft in it: reading its screen, typing into it and
+    #  killing it are all things only this project's owner may do.
+    def terminal_state(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
+        self._project(principal, project_id)
+        available = draft_terminal.availability()
+        state = draft_terminal.state(project_id)
+        return {**state, "available": bool(available.get("ok")),
+                "reason": available.get("reason") or "",
+                "models": available.get("models") or [],
+                "efforts": available.get("efforts") or [],
+                "default_model": available.get("default_model") or "",
+                "default_effort": available.get("default_effort") or ""}
+
+    def start_terminal(self, principal: drafting.Principal, project_id: int, *,
+                       restart: bool = False, fresh: bool = False) -> dict[str, Any]:
+        """Start (or restart) this draft's agent, over a workspace rebuilt from the record.
+
+        ``fresh`` also deletes the agent's private home, which is what "a new agent with blank
+        memory" means in practice: a new conversation, no transcript of the old one, and nothing
+        it learned last week.
+        """
+        project = self._project(principal, project_id)
+        if project.get("status") == "archived":
+            raise drafting.DraftingConflict("Restore this project before drafting on it.")
+        try:
+            built = _runner().build_workspace(project_id)
+        except Exception as exc:                                # noqa: BLE001 - report, never 500
+            traceback.print_exc()
+            raise drafting.DraftingConflict(
+                f"The draft workspace could not be built: {str(exc)[:200]}") from exc
+        workspace = built["workspace"]
+        draft_terminal.sync_figure_images(workspace, project_id, int(project["user_id"]))
+        model = draft_terminal.normalize_model(project.get("draft_model"))
+        try:
+            if fresh:
+                return draft_terminal.reset(project_id, workspace, model=model)
+            if restart:
+                return draft_terminal.restart(project_id, workspace, model=model)
+            return draft_terminal.ensure(project_id, workspace, model=model,
+                                         effort=draft_terminal.DEFAULT_EFFORT)
+        except draft_terminal.TerminalError as exc:
+            raise drafting.DraftingConflict(str(exc)) from exc
+
+    def terminal_tail(self, principal: drafting.Principal, project_id: int, *,
+                      known_lines: int = 0, last_hash: str = "") -> dict[str, Any]:
+        self._project(principal, project_id)
+        return draft_terminal.tail(project_id, known_lines=known_lines, last_hash=last_hash)
+
+    def send_to_agent(self, principal: drafting.Principal, project_id: int,
+                      message: str) -> dict[str, Any]:
+        """Type a message into the drafting agent, starting it first if it is not running."""
+        project = self._project(principal, project_id)
+        if project.get("status") == "archived":
+            raise drafting.DraftingConflict("Restore this project before drafting on it.")
+        body = str(message or "").replace("\x00", "").strip()
+        if not body:
+            raise drafting.DraftingValidationError("Say what you would like changed.")
+        if not draft_terminal.exists(project_id):
+            self.start_terminal(principal, project_id)
+            #  The CLI needs a moment to reach its composer. Typing into the shell that is still
+            #  loading it delivers the message to bash, which answers "command not found" and
+            #  loses what the person wrote.
+            for _ in range(40):
+                time.sleep(0.5)
+                if draft_terminal.activity(project_id).get("status") in ("idle", "busy") and \
+                        "❯" in draft_terminal.capture_recent(project_id, 20):
+                    break
+        try:
+            draft_terminal.send(project_id, body[:draft_studio.MAX_MESSAGE_CHARS])
+        except draft_terminal.TerminalError as exc:
+            raise drafting.DraftingConflict(str(exc)) from exc
+        return {"sent": True}
+
+    def terminal_keys(self, principal: drafting.Principal, project_id: int,
+                      keys: Sequence[str]) -> list[str]:
+        self._project(principal, project_id)
+        try:
+            return draft_terminal.send_keys(project_id, keys)
+        except draft_terminal.TerminalError as exc:
+            raise drafting.DraftingValidationError(str(exc)) from exc
+
+    def interrupt_terminal(self, principal: drafting.Principal, project_id: int) -> bool:
+        self._project(principal, project_id)
+        return draft_terminal.interrupt(project_id)
+
+    def set_terminal_model(self, principal: drafting.Principal, project_id: int,
+                           model: str) -> str:
+        self._project(principal, project_id)
+        try:
+            chosen = draft_terminal.set_model(project_id, model)
+        except draft_terminal.TerminalError as exc:
+            raise drafting.DraftingConflict(str(exc)) from exc
+        #  Remembered on the project so a restarted agent comes back on the model the person
+        #  chose, rather than silently dropping to the server default.
+        self.repository.set_terminal_model(project_id, chosen)
+        return chosen
+
+    def set_terminal_effort(self, principal: drafting.Principal, project_id: int,
+                            effort: str) -> str:
+        self._project(principal, project_id)
+        try:
+            return draft_terminal.set_effort(project_id, effort)
+        except draft_terminal.TerminalError as exc:
+            raise drafting.DraftingConflict(str(exc)) from exc
+
+    def stop_terminal(self, principal: drafting.Principal, project_id: int) -> bool:
+        self._project(principal, project_id)
+        return draft_terminal.kill(project_id)
+
+    # -- what the agent publishes -----------------------------------------------------------------
+    def publish_workspace(self, project_id: int, token: str, *, note: str = "",
+                          check: bool = False) -> dict[str, Any]:
+        """Store the workspace as a new version, on the agent's own say-so.
+
+        NO principal: this is the agent inside the workspace calling back over loopback, and its
+        capability is the per-project token the server wrote into its private home. Ownership is
+        not in question - the version is attributed to the project's own user - so what this has
+        to get right is the CONTENT: the same validation the automatic turn ran, so a terminal
+        agent cannot publish something the queue would have refused.
+        """
+        loaded = _runner()._load(int(project_id))
+        project = loaded["project"]
+        workspace = draft_workspace.for_project(int(project_id))
+        if not draft_terminal.verify_publish_token(workspace, token):
+            raise drafting.DraftingPermissionDenied("That is not this draft's publish token.")
+        try:
+            snapshot = draft_workspace.snapshot(workspace)
+        except drafting.DraftingError as exc:
+            return {"ok": False, "error": str(exc), "problems": []}
+        allowed = draft_studio.allowed_reference_keys(
+            loaded["references"], self.repository.documents(int(project_id)))
+        problems = draft_studio.section_problems(snapshot["sections"], allowed)
+        if problems:
+            return {"ok": False, "checked": bool(check), "problems": problems,
+                    "error": "The draft is not publishable yet."}
+        if check:
+            return {"ok": True, "checked": True, "problems": [],
+                    "message": "Every section is present and every citation resolves."}
+        version = self.repository.save_manual_version(
+            int(project_id), int(project["user_id"]),
+            sections=draft_studio.normalize_sections(snapshot["sections"]),
+            citations=draft_studio.citations_of(snapshot["sections"]),
+            edited_sections=[], numerals=snapshot["numerals"], figures=snapshot["figures"],
+            origin="agent", change_note=str(note or "").strip()[:400])
+        self.repository.add_message(
+            project_id, "agent",
+            (str(note or "").strip() or "Published a new version of the draft.")[:2000],
+            payload={"version_no": version["version_no"], "source": "terminal"})
+        #  The mechanical half of the review, straight away. It costs nothing, it runs the same
+        #  way every time, and it means the Review tab is never stale about a version that has
+        #  just appeared under it.
+        try:
+            report = _runner().mechanical_report(
+                int(project_id), sections=snapshot["sections"], numerals=snapshot["numerals"],
+                figures=snapshot["figures"], allowed=allowed, scope="The drafting agent")
+            self.repository.save_qa(int(project_id), turn_id=None,
+                                    version_no=int(version["version_no"]), report=report)
+        except Exception:                                       # noqa: BLE001 - never fail a publish
+            traceback.print_exc()
+        return {"ok": True, "version_no": int(version["version_no"]), "problems": []}
 
     # -- sources ---------------------------------------------------------------------------------
     def add_uploads(self, principal: drafting.Principal, project_id: int,
@@ -527,7 +716,9 @@ class StudioService:
             "documents": self.repository.documents(project_id),
             "searches": self.repository.searches(project_id),
             "version": latest_version,
-            "agent": draft_agent.availability(),
+            #  The drafting agent IS the terminal now, so what the page needs to know about it is
+            #  whether one can run here and whether this draft's own session is up.
+            "agent": self.terminal_state(principal, project_id),
         }
 
     def search_material(self, principal: drafting.Principal, project_id: int) -> dict[str, str]:
@@ -588,109 +779,133 @@ class StudioService:
 
     def figures(self, project: Mapping[str, Any],
                 version: Mapping[str, Any] | None) -> list[dict[str, Any]]:
-        """The drawings, as the SPEC the agent wrote joined to the image (if one was drawn yet).
+        """The drawings: the SPEC the drafting agent wrote, joined to the sheet the user uploaded.
 
-        Two halves of the same thing kept in one list on purpose: a figure specification with no
-        drawing is the actionable state - it is what the Draw button acts on - and a drawing whose
-        specification the agent has since removed is the other, which is worth seeing rather than
-        silently hiding.
+        Both halves are worth showing on their own. A specification with no sheet is the actionable
+        state - it is what the Upload button acts on. A sheet whose specification the agent has
+        since removed is the other, and hiding it would be how a drawing quietly stops being part
+        of the application without anybody deciding that.
+
+        Nothing here inspects pixels. This product does not draw, so a sheet is what the person
+        supplied and the only thing to say about it is that it is present.
         """
         specs = list((version or {}).get("figure_specs") or [])
         try:
             import draft_figures
-            drawn = draft_figures.listing(project["id"], project["user_id"])
+            uploaded = draft_figures.listing(project["id"], project["user_id"])
         except Exception:                                      # noqa: BLE001 - never break the page
             traceback.print_exc()
-            drawn = []
-        by_label = {_figure_key(d.get("figure_label")): d for d in drawn}
+            uploaded = []
+        by_label = {_figure_key(item.get("figure_label")): item for item in uploaded}
         out = []
         for spec in specs:
             image = by_label.pop(_figure_key(spec.get("label")), None)
-            versions = (image or {}).get("versions") or []
-            active = next((item for item in versions
-                           if int(item.get("version_no") or 0) ==
-                           int((image or {}).get("active_version") or 0)), None) or {}
-            expected = list(spec.get("numerals") or [])
-            audit = dict(active.get("numeral_audit") or {})
-            semantic = dict(active.get("semantic_audit") or {})
-            leaders = dict(active.get("leader_audit") or {})
-            detected = list(active.get("detected_numerals") or [])
-            out.append({"label": spec.get("label"), "caption": spec.get("caption"),
-                        # QA reads the detected pixels when inspection succeeded. Expected stays
-                        # separate so the UI can explain and repair either side of a mismatch.
-                        "numerals": detected if audit.get("inspected") else expected,
-                        "expected_numerals": expected, "detected_numerals": detected,
-                        "numeral_audit": audit, "semantic_audit": semantic,
-                        "leader_audit": leaders,
-                        "drawn": bool(image),
-                        "figure_id": (image or {}).get("id"),
-                        "active_version": (image or {}).get("active_version"),
-                        "n_versions": (image or {}).get("n_versions") or 0,
-                        "versions": versions})
+            out.append({
+                "label": spec.get("label"), "caption": spec.get("caption"),
+                "numerals": list(spec.get("numerals") or []),
+                "expected_numerals": list(spec.get("numerals") or []),
+                "uploaded": bool(image),
+                "figure_id": (image or {}).get("id"),
+                "active_version": (image or {}).get("active_version"),
+                "n_versions": (image or {}).get("n_versions") or 0,
+                "versions": [{"version_no": item.get("version_no"),
+                              "created_at": str(item.get("created_at") or "")}
+                             for item in (image or {}).get("versions") or []]})
         for orphan in by_label.values():
-            versions = orphan.get("versions") or []
-            active = next((item for item in versions
-                           if int(item.get("version_no") or 0) ==
-                           int(orphan.get("active_version") or 0)), None) or {}
-            out.append({"label": orphan.get("figure_label"), "caption": orphan.get("caption"),
-                        "numerals": list(active.get("detected_numerals") or []),
-                        "expected_numerals": [],
-                        "detected_numerals": list(active.get("detected_numerals") or []),
-                        "numeral_audit": dict(active.get("numeral_audit") or {}),
-                        "semantic_audit": dict(active.get("semantic_audit") or {}),
-                        "leader_audit": dict(active.get("leader_audit") or {}),
-                        "drawn": True, "figure_id": orphan.get("id"),
-                        "active_version": orphan.get("active_version"),
-                        "n_versions": orphan.get("n_versions") or 0,
-                        "versions": versions, "orphan": True})
+            out.append({
+                "label": orphan.get("figure_label"), "caption": orphan.get("caption") or "",
+                "numerals": [], "expected_numerals": [],
+                "uploaded": True, "figure_id": orphan.get("id"),
+                "active_version": orphan.get("active_version"),
+                "n_versions": orphan.get("n_versions") or 0,
+                "versions": [{"version_no": item.get("version_no"),
+                              "created_at": str(item.get("created_at") or "")}
+                             for item in orphan.get("versions") or []],
+                "orphan": True})
         return out
 
-    def draw_figure(self, principal: drafting.Principal, project_id: int, *, label: str,
-                    caption: str, instruction: str = "",
-                    figure_id: int | None = None, region=None) -> dict[str, Any]:
-        """Draw (or redraw) one figure from the draft's own description and numerals."""
+    def upload_figure(self, principal: drafting.Principal, project_id: int, *, image: bytes,
+                      content_type: str, label: str = "", caption: str = "",
+                      figure_id: int | None = None) -> dict[str, Any]:
+        """Store a finished sheet the user drew themselves.
+
+        The only way a drawing enters this product. Uploading against an existing figure adds a
+        version to it rather than a second sheet with the same label, because a redrawn FIG. 3 is
+        still FIG. 3 and the History of that sheet is worth keeping.
+        """
         import draft_figures
         project = self.drafting_service.get_project(principal, project_id, include_versions=True)
+        if not image:
+            raise drafting.DraftingValidationError("Choose a drawing file first.")
+        try:
+            png = draft_figures.normalize_source_image(image, content_type)
+        except draft_figures.FigureError as exc:
+            raise drafting.DraftingValidationError(str(exc)) from exc
+
+        existing = draft_figures.listing(project_id, project["user_id"])
         version_no = int(project.get("latest_version_no") or 0)
         version = next((item for item in project.get("versions", [])
                         if int(item.get("version_no") or 0) == version_no), {}) or {}
-        sections = version.get("sections") or {}
-        expected = _expected_numerals(version, label)
-        # An uploaded or legacy drawing with no current figure specification is intentionally
-        # label-free. Passing None would make render_figure infer every numeral in the entire
-        # application, so an AI edit could introduce labels the drawing was never assigned.
-        if expected is None:
-            expected = []
-        try:
-            return draft_figures.render_figure(
-                project_id, project["user_id"], label=str(label or "")[:80],
-                caption=str(caption or "")[:400], sections=sections,
-                instruction=str(instruction or "")[:1000], figure_id=figure_id,
-                disclosure=str(project.get("disclosure_text") or "")[:4000], region=region,
-                numerals=expected)
-        except draft_figures.FigureError as exc:
-            raise drafting.DraftingValidationError(str(exc)) from exc
+        specs = list(version.get("figure_specs") or [])
 
-    def save_figure(self, principal: drafting.Principal, project_id: int, figure_id: int,
-                    png: bytes, instruction: str = "Manual drawing edit") -> dict[str, Any]:
-        """Flatten a browser canvas into a new immutable, audited figure version."""
-        import draft_figures
-        project = self.drafting_service.get_project(principal, project_id, include_versions=True)
-        version_no = int(project.get("latest_version_no") or 0)
-        version = next((item for item in project.get("versions", [])
-                        if int(item.get("version_no") or 0) == version_no), {})
-        figures = self.figures(project, version)
-        target = next((item for item in figures if int(item.get("figure_id") or 0) ==
-                       int(figure_id)), None)
-        if not target:
-            raise drafting.DraftingNotFound("That drawing is not part of this draft.")
+        target = None
+        if figure_id:
+            target = next((item for item in existing
+                           if int(item.get("id") or 0) == int(figure_id)), None)
+            if not target:
+                raise drafting.DraftingNotFound("That drawing is not part of this draft.")
+            label = str(target.get("figure_label") or label)
+        else:
+            label = str(label or "").strip()[:80]
+            if label:
+                target = next((item for item in existing
+                               if _figure_key(item.get("figure_label")) == _figure_key(label)),
+                              None)
+            else:
+                #  No label given: take the first sheet the specification asks for that nobody
+                #  has supplied yet, so an upload lands where the draft says it belongs instead
+                #  of becoming an orphan the reviewer then complains about.
+                supplied = {_figure_key(item.get("figure_label")) for item in existing}
+                label = next((str(spec.get("label")) for spec in specs
+                              if _figure_key(spec.get("label")) not in supplied), "")
+                if not label:
+                    number = len(existing) + 1
+                    while _figure_key(f"FIG. {number}") in supplied:
+                        number += 1
+                    label = f"FIG. {number}"
+        if target is None and len(existing) >= draft_figures.MAX_FIGURES:
+            raise drafting.DraftingValidationError(
+                f"A draft can hold at most {draft_figures.MAX_FIGURES} drawings.")
+
+        spec = next((item for item in specs
+                     if _figure_key(item.get("label")) == _figure_key(label)), {})
+        caption = str(caption or spec.get("caption") or "").strip()[:400]
+        if target is None:
+            target = draft_figures.create_figure(
+                project_id, project["user_id"], label, caption=caption,
+                sort_order=len(existing) + 1)
+        elif caption:
+            draft_figures.update_figure_metadata(
+                int(target["id"]), project["user_id"], label, caption=caption,
+                sort_order=int(target.get("sort_order") or 0))
+        draft_figures.add_version(
+            int(target["id"]), prompt="", instruction="Uploaded by the user",
+            numerals=list(spec.get("numerals") or []), png=png, mime="image/png",
+            source_kind="uploaded")
+
+        #  The agent can open what it has been given. Without this the sheet exists only as rows
+        #  in Postgres and the drawing brief it is meant to match is written blind.
         try:
-            return draft_figures.save_manual_version(
-                project_id, project["user_id"], figure_id, png,
-                instruction=str(instruction or "Manual drawing edit")[:1000],
-                numerals=target.get("expected_numerals") or [])
-        except draft_figures.FigureError as exc:
-            raise drafting.DraftingValidationError(str(exc)) from exc
+            draft_terminal.sync_figure_images(
+                draft_workspace.for_project(int(project_id)), int(project_id),
+                int(project["user_id"]))
+        except Exception:                                       # noqa: BLE001 - cosmetic only
+            traceback.print_exc()
+        self.repository.add_message(
+            project_id, "system",
+            f"A drawing sheet was uploaded for {label}. It is in the workspace as a PNG the "
+            "drafting agent can open, and it appears in the Drawings tab.")
+        return {"figure_id": int(target["id"]), "label": label, "caption": caption}
 
     def delete_figure(self, principal: drafting.Principal, project_id: int,
                       figure_id: int) -> None:
@@ -701,45 +916,30 @@ class StudioService:
             raise drafting.DraftingNotFound("That drawing is not part of this draft.")
         if not draft_figures.delete_figure(figure_id, project["user_id"]):
             raise drafting.DraftingNotFound("That drawing was already removed.")
-
-    def photo_to_sketch(self, principal: drafting.Principal, project_id: int, *, image: bytes,
-                        content_type: str, label: str = "", caption: str = "",
-                        instruction: str = "") -> dict[str, Any]:
-        """Turn a real product/part photo into a versioned patent line drawing."""
-        import draft_figures
-        project = self.drafting_service.get_project(principal, project_id, include_versions=True)
-        existing = draft_figures.listing(project_id, project["user_id"])
-        if len(existing) >= draft_figures.MAX_FIGURES:
-            raise drafting.DraftingValidationError(
-                f"A draft can hold at most {draft_figures.MAX_FIGURES} drawings.")
         try:
-            source = draft_figures.normalize_source_image(image, content_type)
-            version_no = int(project.get("latest_version_no") or 0)
-            version = next((item for item in project.get("versions", [])
-                            if int(item.get("version_no") or 0) == version_no), {}) or {}
-            sections = version.get("sections") or {}
-            if not label:
-                used_labels = {_figure_key(item.get("figure_label")) for item in existing}
-                number = 1
-                while _figure_key(f"FIG. {number}") in used_labels:
-                    number += 1
-                label = f"FIG. {number}"
-            expected = _expected_numerals(version, label)
-            if expected is None:
-                expected = []
-            photo_instruction = (
-                "Convert the supplied product or part photograph into a clean utility patent "
-                "line drawing. Remove the photographic background, colour, reflections, logos, "
-                "surface texture, and decorative detail. Preserve the visible geometry and "
-                "component relationships. " + str(instruction or ""))
-            return draft_figures.render_figure(
-                project_id, project["user_id"], label=str(label)[:80],
-                caption=str(caption or "view derived from a product photograph")[:400],
-                sections=sections, instruction=photo_instruction[:1000],
-                disclosure=str(project.get("disclosure_text") or "")[:4000],
-                source_png=source, numerals=expected)
-        except draft_figures.FigureError as exc:
-            raise drafting.DraftingValidationError(str(exc)) from exc
+            draft_terminal.sync_figure_images(
+                draft_workspace.for_project(int(project_id)), int(project_id),
+                int(project["user_id"]))
+        except Exception:                                       # noqa: BLE001 - cosmetic only
+            traceback.print_exc()
+
+    def activate_figure_version(self, principal: drafting.Principal, project_id: int,
+                                figure_id: int, version_no: int) -> int:
+        """Go back to an earlier sheet the user uploaded for this figure."""
+        import draft_figures
+        project = self._project(principal, project_id)
+        figure = draft_figures.get_figure(figure_id, project["user_id"])
+        if not figure or int(figure.get("project_id") or 0) != int(project_id):
+            raise drafting.DraftingNotFound("That drawing is not part of this draft.")
+        if not draft_figures.set_active(figure_id, project["user_id"], int(version_no)):
+            raise drafting.DraftingValidationError("That version of the drawing does not exist.")
+        try:
+            draft_terminal.sync_figure_images(
+                draft_workspace.for_project(int(project_id)), int(project_id),
+                int(project["user_id"]))
+        except Exception:                                       # noqa: BLE001 - cosmetic only
+            traceback.print_exc()
+        return int(version_no)
 
     def poll(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
         """The small, cheap read the page polls while a turn is in flight.
@@ -773,7 +973,9 @@ class StudioService:
                     "version_no": qa.get("version_no")} if qa else None),
             "busy": bool(turn and turn["status"] in ("queued", "running")),
             "reviewing": int(project_id) in _REVIEWING,
-            "drawing": int(project_id) in _DRAWING,
+            #  The drafting agent's own state comes from the terminal, not from the turn queue:
+            #  the page needs to know whether it is running so it can show Stop and the pill.
+            "agent": draft_terminal.activity(project_id),
         }
 
     def _queue_ahead(self, turn_id: int) -> int:
@@ -784,56 +986,6 @@ class StudioService:
             return 0
 
     # -- drawings on demand -----------------------------------------------------------------------
-    def reconcile_drawings(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
-        """Recheck a published version's sheets on request, without changing its filing text."""
-        project = self._project(principal, project_id)
-        version_no = int(project.get("latest_version_no") or 0)
-        if not version_no:
-            raise drafting.DraftingValidationError("There is no draft to draw from yet.")
-        active = self.repository.latest_turn(project_id)
-        if active and active.get("status") in ("queued", "running"):
-            raise drafting.DraftingConflict(
-                "The drafting agent is working on this application. Its own drawing pass runs "
-                "with it.")
-        if int(project_id) in _DRAWING:
-            raise drafting.DraftingConflict("The drawings are already being reconciled.")
-        version = self.drafting_service.repository.get_version(principal, project_id, version_no)
-        _DRAWING.add(int(project_id))
-        threading.Thread(target=self._reconcile_now,
-                         args=(int(project_id), int(project["user_id"]), version),
-                         name=f"draft-drawings-{project_id}", daemon=True).start()
-        return {"queued": True, "version_no": version_no}
-
-    def _reconcile_now(self, project_id: int, user_id: int, version: Mapping[str, Any]) -> None:
-        try:
-            import draft_figures
-            runner = _runner()
-            sections = version.get("sections") or {}
-            numerals = version.get("numerals") or []
-            figures = version.get("figure_specs") or []
-            disclosure = str((runner._load(project_id)["project"] or {}).get(
-                "disclosure_text") or "")
-            generated = draft_figures.ensure_project_figures(
-                project_id, user_id, sections=sections, disclosure=disclosure,
-                numeral_table=numerals, figure_specs=figures)
-            faults = [] if generated.get("ok") else [
-                str(item) for item in generated.get("errors") or ()]
-            report = runner.mechanical_report(
-                project_id, sections=sections, numerals=numerals, figures=figures,
-                allowed=[], scope="", carried=faults)
-            self.repository.save_qa(
-                project_id, turn_id=None, version_no=int(version["version_no"]), report=report)
-            self.repository.add_message(
-                project_id, "system",
-                ("Every drawing sheet now matches the published text."
-                 if not faults else
-                 f"The drawing pass finished with {len(faults)} sheet(s) still failing checks. "
-                 "The current version remains not filing-ready; Filing lists every defect."))
-        except Exception:                                      # noqa: BLE001 - never kill the thread
-            traceback.print_exc()
-        finally:
-            _DRAWING.discard(int(project_id))
-
     # -- review on demand -------------------------------------------------------------------------
     def rerun_review(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
         """Re-review the current version without drafting anything.
