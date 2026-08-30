@@ -5150,6 +5150,21 @@ def test_deterministic_stirring_scene_accepts_current_filing_brief_wording():
     ),
     (
         """
+        A block diagram of the edge controller 106 and its external connections.
+        The controller 106 is enclosed in a dashed rectangle. The numeral 106 has a leader line
+        pointing to the dashed rectangle. The branch current sensor 104 is shown as a block
+        outside the controller 106, with a line connecting it to the top boundary of the
+        controller 106. A line extends downwards from the bottom of the controller 106.
+        """,
+        [
+            "104 = branch current sensor", "106 = edge controller",
+            "110 = isolated local bus", "306 = network interface",
+            "308 = service input",
+        ],
+        "edge_controller_external_connections",
+    ),
+    (
+        """
         A flat process flow diagram. Eight empty shapes with blank interiors stand in one vertical
         column. In order they are four rectangles, a diamond, a rectangle, a diamond, and a
         rectangle. The upper diamond has a left return path to the topmost rectangle. The lower
@@ -5202,6 +5217,13 @@ def test_deterministic_control_diagrams_are_text_free_and_anchor_every_part(
         constraints = geometry["certified_constraints"]
         assert constraints["controller_full_port_blocks"]["ok"] is True
         assert constraints["controller_full_connections"]["ok"] is True
+    if renderer == "edge_controller_external_connections":
+        constraints = geometry["certified_constraints"]
+        assert constraints["charging_sensor_controller_path"]["ok"] is True
+        assert constraints["charging_local_bus_connectivity"]["ok"] is True
+        assert constraints["controller_network_interface_path"]["ok"] is True
+        assert constraints["controller_service_input_path"]["ok"] is True
+        assert constraints["controller_boundary_ports"]["ok"] is True
 
 
 def test_flat_charging_installation_template_tracks_reviewed_endpoint_geometry():

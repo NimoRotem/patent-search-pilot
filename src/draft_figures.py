@@ -2391,6 +2391,13 @@ def _control_diagram_kind(caption: str) -> str:
             "shown above the edge controller",
             "shown below the edge controller",
         ),
+        "edge_controller_external_connections": (
+            "block diagram of the edge controller",
+            "external connections",
+            "enclosed in a dashed rectangle",
+            "branch current sensor",
+            "top boundary of the controller",
+        ),
         "edge_controller_flat": (
             "flat block diagram of the edge controller",
             "one large rectangle",
@@ -2760,6 +2767,19 @@ def _deterministic_control_diagram_anchors(
                 1230, 300, "well inside the fault-indicator rectangle"),
             "nonvolatile memory": (
                 700, 290, "well inside the nonvolatile-memory rectangle"),
+        }
+    if kind == "edge_controller_external_connections":
+        return kind, {
+            "branch current sensor": (
+                700, 100, "well inside the branch-current-sensor rectangle"),
+            "edge controller": (
+                430, 500, "on the left dashed edge-controller boundary"),
+            "isolated local bus": (
+                700, 790, "on the isolated-local-bus line below the controller"),
+            "network interface": (
+                1010, 400, "on the right network-interface connection"),
+            "service input": (
+                390, 500, "on the left service-input connection"),
         }
     if kind == "edge_controller_flat":
         return kind, {
@@ -3888,6 +3908,13 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         draw.line((1050, 300, 1120, 300), **line)
         draw.line((700, 120, 700, 180), **line)
         draw.line((700, 720, 700, 780), **line)
+    elif kind == "edge_controller_external_connections":
+        dashed_box((430, 200, 970, 700))
+        box((580, 50, 820, 150))
+        draw.line((700, 150, 700, 200), **line)
+        draw.line((700, 700, 700, 820), **line)
+        draw.line((360, 500, 430, 500), **line)
+        draw.line((970, 400, 1040, 400), **line)
     elif kind == "edge_controller_flat":
         box((250, 120, 1050, 760))
         box((560, 200, 760, 300))
@@ -7258,6 +7285,7 @@ def _deterministic_control_diagram_constraint_certificate(
             "charging_control_three_connectors", "charging_installation_flat",
             "edge_controller_flat",
             "edge_controller_flat_full_ports",
+            "edge_controller_external_connections",
             "allocation_flow_split_first", "allocation_flow_split_second",
             "allocation_flow_vertical", "branch_current_safety_flow",
             "current_allocation_cycle", "overcurrent_protection_flow",
@@ -7410,6 +7438,52 @@ def _deterministic_control_diagram_constraint_certificate(
                     "ok": all(ink(point) for point in connection_samples),
                     "connection_count": 5,
                     "line_samples": [list(point) for point in connection_samples],
+                },
+            }
+
+        if kind == "edge_controller_external_connections":
+            sensor_outline = [
+                (580, 100), (820, 100), (700, 50), (700, 150)]
+            sensor_path = [(700, 150), (700, 175), (700, 200)]
+            bus_path = [(700, 700), (700, 760), (700, 820)]
+            network_path = [(970, 400), (1005, 400), (1040, 400)]
+            service_path = [(360, 500), (395, 500), (430, 500)]
+            return {
+                "charging_sensor_controller_path": {
+                    "ok": all(ink(point) for point in sensor_outline + sensor_path),
+                    "sensor_outline_samples": [list(point) for point in sensor_outline],
+                    "path_samples": [list(point) for point in sensor_path],
+                    "controller_top_endpoint": [700, 200],
+                },
+                "charging_local_bus_connectivity": {
+                    "ok": (all(ink(point) for point in bus_path) and
+                           clear((700, 850))),
+                    "line_samples": [list(point) for point in bus_path],
+                    "controller_bottom_endpoint": [700, 700],
+                    "clear_after_endpoint": [700, 850],
+                },
+                "controller_network_interface_path": {
+                    "ok": (all(ink(point) for point in network_path) and
+                           clear((1070, 400))),
+                    "direction": "right",
+                    "path_samples": [list(point) for point in network_path],
+                    "clear_after_endpoint": [1070, 400],
+                },
+                "controller_service_input_path": {
+                    "ok": (all(ink(point) for point in service_path) and
+                           clear((330, 500))),
+                    "direction": "left",
+                    "path_samples": [list(point) for point in service_path],
+                    "clear_after_endpoint": [330, 500],
+                },
+                "controller_boundary_ports": {
+                    "ok": all(ink(point) for point in (
+                        sensor_path[-1], bus_path[0], network_path[0], service_path[-1])),
+                    "boundary_count": 1,
+                    "line_samples": [
+                        list(sensor_path[-1]), list(bus_path[0]),
+                        list(network_path[0]), list(service_path[-1]),
+                    ],
                 },
             }
 
@@ -8243,6 +8317,14 @@ def _deterministic_control_diagram_constraint_certificate(
             return {
                 "controller_full_port_blocks": {"ok": False},
                 "controller_full_connections": {"ok": False},
+            }
+        if kind == "edge_controller_external_connections":
+            return {
+                "charging_sensor_controller_path": {"ok": False},
+                "charging_local_bus_connectivity": {"ok": False},
+                "controller_network_interface_path": {"ok": False},
+                "controller_service_input_path": {"ok": False},
+                "controller_boundary_ports": {"ok": False},
             }
         if kind == "edge_controller_flat":
             return {
