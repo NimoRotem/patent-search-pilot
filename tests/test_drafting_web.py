@@ -427,6 +427,14 @@ def test_studio_ui_exposes_sketch_tools_and_reload_safe_navigation():
     assert ".chatstatus[hidden]{display:none!important}" in css
 
 
+def test_drawing_cards_do_not_claim_pass_after_later_filing_review_found_a_fault():
+    script = (Path(__file__).resolve().parents[1] / "static" / "draft_studio.js").read_text()
+
+    assert "function figureReviewFindings(figure)" in script
+    assert "Later filing review blocked this drawing." in script
+    assert "figureReviewFindings(figure)" in script
+
+
 def test_report_draft_action_is_a_csrf_protected_direct_post():
     root = Path(__file__).resolve().parents[1]
     template = (root / "templates" / "report.html").read_text()
