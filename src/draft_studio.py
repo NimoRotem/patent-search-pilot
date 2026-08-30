@@ -463,9 +463,12 @@ Flowchart directed edges: 200->202, 202->200, 202->END.
 Replace the example IDs and graph with the exact drawing. Allowed shapes are process, decision,
 terminator, connector, and start. Every listed reference numeral must appear once as a node. Every
 arrow visible in the drawing, including each branch, loop, and exit, must appear once as a directed
-edge. Declare START or END when an unnumbered connector or terminator is drawn. Decision nodes
-need at least two outgoing edges, and terminators have none. Keep the same routes described in
-ordinary geometric prose so the renderer can draw them. Put no verbal text inside any shape.
+edge. For a flow split across sheets, end the first sheet at a blank connector declared as
+END=connector and begin the next sheet at a blank connector declared as START=connector. Never
+label a continuation connector with a letter, word, or other drawing text. Use END=terminator only
+for an actual process termination. Decision nodes need at least two outgoing edges, and terminators
+have none. Keep the same routes described in ordinary geometric prose so the renderer can draw
+them. Put no verbal text inside any shape.
 
 FILES
   input/disclosure.md     the invention (read-only authority)
