@@ -2071,11 +2071,34 @@ class StudioRepository:
     def complete_turn(self, turn_id: int, lease_token: str, *, result: Mapping[str, Any],
                       session_id: str, cost_usd: float, duration_ms: int, model_name: str,
                       transcript_path: str = "", discard_candidates: bool = True,
-                      continuation: Mapping[str, Any] | None = None
+                      continuation: Mapping[str, Any] | None = None,
+                      required_figure_count: int = 0
                       ) -> dict[str, Any]:
         self._ready()
         with self._cursor() as cur:
             turn = self._verify(cur, turn_id, lease_token)
+            required_figures = max(0, int(required_figure_count or 0))
+            if required_figures:
+                # Lock the project while the final checked PNG inventory is compared and the
+                # ready state is stored. A passing review is evidence about exact image bytes,
+                # not permission to publish after those rows have disappeared.
+                cur.execute("SELECT user_id FROM app_drafting_projects WHERE id=%s FOR UPDATE",
+                            (int(turn["project_id"]),))
+                project = cur.fetchone() or {}
+                cur.execute(
+                    "SELECT count(DISTINCT f.id)::int AS figure_count,"
+                    "count(DISTINCT f.id) FILTER (WHERE v.id IS NOT NULL AND v.png IS NOT NULL "
+                    "AND v.status='ready')::int AS active_png_count "
+                    "FROM app_draft_figures f LEFT JOIN app_draft_figure_versions v "
+                    "ON v.figure_id=f.id AND v.version_no=f.active_version "
+                    "WHERE f.project_id=%s AND f.user_id=%s AND f.archived_at IS NULL",
+                    (int(turn["project_id"]), int(project.get("user_id") or 0)))
+                inventory = cur.fetchone() or {}
+                if (int(inventory.get("figure_count") or 0) != required_figures or
+                        int(inventory.get("active_png_count") or 0) != required_figures):
+                    raise drafting.DraftingValidationError(
+                        "The checked drawing set changed before filing readiness could be "
+                        "stored. Automatic drawing repair will run again.")
             cur.execute(
                 "UPDATE app_draft_turns SET status='complete',stage='complete',"
                 "completed_at=now(),updated_at=now(),lease_token_hash=NULL,lease_expires_at=NULL,"
@@ -3244,7 +3267,9 @@ class TurnRunner:
             duration_ms=total_duration, model_name=final_run.model,
             transcript_path=str(transcript),
             discard_candidates=not needs_drawing_continuation,
-            continuation=continuation)
+            continuation=continuation,
+            required_figure_count=(len(snapshot.get("figures") or ())
+                                   if drawing_continuation else 0))
         try:
             import draft_figures
             draft_figures.discard_project_figure_checkpoint(turn_id)
