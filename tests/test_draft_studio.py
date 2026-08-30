@@ -151,6 +151,53 @@ def test_reference_numeral_leader_cannot_end_in_an_arrowhead():
         "Drawing briefs are concise and renderable"]["status"] == "pass"
 
 
+def test_flowchart_briefs_cannot_request_verbal_text_inside_shapes():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A process flow diagram. The process starts at a block labeled "
+            "\"Monitor branch current\" and proceeds to a decision block that asks "
+            "\"Is current above the limit?\"."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "verbal drawing text" in " ".join(check["items"]).lower()
+    assert "reference numerals" in " ".join(check["items"]).lower()
+
+
+def test_flowchart_briefs_must_number_their_process_and_decision_shapes():
+    figures = [{
+        "label": "FIG. 1",
+        "caption": (
+            "A process flow diagram with four empty process rectangles connected in order "
+            "and a return path from the last rectangle to the first rectangle."
+        ),
+        "numerals": [],
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "process-flow drawing has no numbered steps" in " ".join(check["items"]).lower()
+
+
+def test_flowchart_briefs_with_numbered_steps_remain_renderable():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A process flow diagram with a monitoring step 10 and a response step 12. "
+            "A downward flow arrow connects the monitoring step 10 to the response step 12."
+        ),
+        "numerals": ["10 vacuum lifting tool", "12 body"],
+    }, FIGURES[1]]
+
+    assert checks_for(figures=figures)[
+        "Drawing briefs are concise and renderable"]["status"] == "pass"
+
+
 def test_verdict_never_fails_on_an_advisory_check_alone():
     """A heuristic must not be able to condemn a draft — see the calibration note in draft_qa."""
     advisory = [{"name": "Antecedent basis", "status": "fail", "severity": "advisory",
