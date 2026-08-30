@@ -14489,6 +14489,65 @@ def expected_entries(spec, numeral_table) -> list[str]:
     return entries
 
 
+def _rendered_figure_audit_faults(result) -> list[str]:
+    """Return actionable reasons when a retained rendered sheet is not current."""
+    result = result if isinstance(result, dict) else {}
+    semantic = result.get("semantic_audit") or {}
+    pixel = semantic.get("pixel_anchor_audit") or {}
+    if isinstance(pixel, dict) and not pixel.get("ok"):
+        endpoints = []
+        for item in pixel.get("ungrounded") or ():
+            if not isinstance(item, dict):
+                continue
+            numeral = _clean_numeral(item.get("numeral")) or "unknown"
+            part = str(item.get("part") or "").strip()
+            reason = str(item.get("reason") or "endpoint is not grounded").strip()
+            heading = f"numeral {numeral}" + (f" ({part})" if part else "")
+            endpoints.append(f"{heading}: {reason[:500]}")
+        details = endpoints or [
+            str(item)[:500] for item in pixel.get("errors") or () if str(item).strip()
+        ]
+        if details:
+            return ["final pixel-anchor review failed: " + "; ".join(details)[:1300]]
+        return ["final pixel-anchor review is incomplete"]
+
+    if not current_semantic_audit(semantic):
+        details = [str(item)[:500] for item in semantic.get("errors") or ()
+                   if str(item).strip()]
+        if semantic.get("missing"):
+            details.append("missing numerals " + ", ".join(
+                _clean_numeral(item) for item in semantic["missing"]
+                if _clean_numeral(item)))
+        return ["final semantic review failed" +
+                ((": " + "; ".join(details)[:1200]) if details else "")]
+
+    numeral = result.get("numeral_audit") or {}
+    if not numeral.get("ok"):
+        details = []
+        for key in ("missing", "unexpected", "duplicates", "other_text"):
+            if numeral.get(key):
+                details.append(key.replace("_", " ") + " " + ", ".join(
+                    str(item) for item in numeral[key]))
+        return ["final OCR review failed" +
+                ((": " + "; ".join(details)[:1200]) if details else "")]
+
+    leader = result.get("leader_audit") or {}
+    if not current_leader_audit(leader):
+        details = [str(item)[:500] for item in leader.get("errors") or ()
+                   if str(item).strip()]
+        if leader.get("incorrect"):
+            details.append("misplaced numerals " + ", ".join(
+                _clean_numeral(item) for item in leader["incorrect"]
+                if _clean_numeral(item)))
+        if leader.get("missing"):
+            details.append("untraced numerals " + ", ".join(
+                _clean_numeral(item) for item in leader["missing"]
+                if _clean_numeral(item)))
+        return ["final leader review failed" +
+                ((": " + "; ".join(details)[:1200]) if details else "")]
+    return []
+
+
 def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosure: str,
                            numeral_table, figure_specs, check_cancel=None) -> dict:
     """Generate or repair every described sheet; return only after all pixel gates pass."""
@@ -14600,6 +14659,10 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
             continue
         generated += 1
         results.append(result)
+        retained_faults = _rendered_figure_audit_faults(result)
+        errors.extend(
+            f"{canonical_figure_label(label)}: {fault[:1400]}"
+            for fault in retained_faults)
     return {"generated": generated, "reused": reused, "archived": archived,
             "budget_spent": budget_spent, "errors": errors,
             "figures": results, "ok": len(results) == len(specs) and
