@@ -41,6 +41,7 @@ import run_queue                                   # gate-full searches wait in 
 import drafting, draft_export, draft_worker
 #  Phase two: the drafting CONVERSATION. A Claude Code agent edits a workspace of files, a second
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
+import draft_novelty, draft_research                # re-search rounds and their reading
 import draft_studio, draft_studio_service, draft_uspto, draft_workspace
 import figure_compiler, figure_compiler_service       # deterministic filing-drawing compiler
 import claim_chart, translate, drawings          # ported per-card enrichment
@@ -76,7 +77,7 @@ def _asset_version():
     if override:
         return override
     digest = hashlib.sha256()
-    for name in ("style.css", "app.js", "draft_studio.js"):
+    for name in ("style.css", "app.js", "draft_studio.js", "draft_studio.css"):
         path = Path(app.static_folder) / name
         try:
             digest.update(path.read_bytes())
@@ -4035,15 +4036,28 @@ def draft_figure_png(project_id, figure_id):
 def draft_figure_activate(project_id, figure_id):
     user, principal = _draft_identity()
     auth.require_csrf()
-    _figure_project(principal, project_id)
-    _figure_in_project(user["id"], project_id, figure_id)
+    project = _figure_project(principal, project_id)
+    figure = _figure_in_project(user["id"], project_id, figure_id)
     body = request.get_json(silent=True) or request.form.to_dict() or {}
     try:
         n = int(body.get("version_no"))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "which version?"}), 400
-    if not draft_figures.set_active(figure_id, user["id"], n):
-        return jsonify({"ok": False, "error": "no such version"}), 404
+    current_no = int(project.get("latest_version_no") or 0)
+    current = next((item for item in (project.get("versions") or [])
+                    if int(item.get("version_no") or 0) == current_no), None) or {}
+    spec = next((item for item in (current.get("figure_specs") or [])
+                 if draft_figures.figure_key(item.get("label")) ==
+                 draft_figures.figure_key(figure.get("figure_label"))), None)
+    if not spec:
+        return jsonify({"ok": False, "error": "that drawing is not in the current draft"}), 409
+    expected = draft_figures.expected_entries(spec, current.get("numerals") or [])
+    expected_hash = draft_figures.specification_hash(
+        spec.get("label"), spec.get("caption"), expected)
+    if not draft_figures.set_active(
+            figure_id, user["id"], n, expected_specification_hash=expected_hash):
+        return jsonify({"ok": False,
+                        "error": "that version did not pass the current drawing specification"}), 409
     return jsonify({"ok": True, "version_no": n})
 
 
@@ -5277,7 +5291,8 @@ def _draft_error_status(exc):
 
 
 def _draft_error_redirect(project_id, exc):
-    return redirect(url_for("draft_detail", project_id=project_id, error=str(exc)[:300]))
+    error = str(draft_studio.human_text(str(exc)))
+    return redirect(url_for("draft_detail", project_id=project_id, error=error[:300]))
 
 
 def _draft_report_choices(user, limit=300):
@@ -5298,6 +5313,16 @@ def _draft_report_choices(user, limit=300):
     return choices
 
 
+def _draft_party_defaults(user, values=None):
+    values = dict(values or {})
+    if not values.get("inventors"):
+        values["inventors"] = user.get("default_inventors") or user.get("full_name") or ""
+    if not values.get("applicant"):
+        values["applicant"] = (user.get("default_applicant") or user.get("organization") or
+                               user.get("full_name") or "")
+    return values
+
+
 def _draft_new_context(user, principal, slug, selected=None, values=None, error=""):
     choices = _draft_report_choices(user)
     report_view = None
@@ -5306,11 +5331,7 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
             report_view = _draft_report_loader(principal, slug, user["id"])
         except drafting.DraftingError as exc:
             error = error or str(exc)
-    values = dict(values or {})
-    if not values.get("applicant"):
-        values["applicant"] = user.get("default_applicant") or user.get("organization") or ""
-    if not values.get("inventors"):
-        values["inventors"] = user.get("default_inventors") or user.get("full_name") or ""
+    values = _draft_party_defaults(user, values)
     if report_view:
         account_search = accounts.get_search(user["id"], slug) or {}
         source_document = report_view.get("query_document") or {}
@@ -5333,20 +5354,31 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
 def _structured_drafting_notes(values) -> str:
     """Turn explicit intake choices into a stable brief instead of accepting a catch-all box."""
     priority = str(values.get("priority_status") or "unknown")
+    priority_details = str(values.get("priority_details") or "").strip()[:1000]
+    if priority == "claim" and not priority_details:
+        raise drafting.DraftingValidationError(
+            "Provide the application number, country, and filing date for the priority claim.")
     priority_text = {
-        "none": "No domestic or foreign priority claim is expected.",
-        "claim": "A priority claim may be required: " +
-                 (str(values.get("priority_details") or "details not supplied; ask for them")[:1000]),
-        "unknown": "Priority status is not confirmed; leave a drafting note requesting it.",
-    }.get(priority, "Priority status is not confirmed; leave a drafting note requesting it.")
+        "none": "No domestic or foreign priority claim was supplied. Use 'Not applicable.' in "
+                "the cross-reference section.",
+        "claim": "Claim priority using these supplied filing details: " + priority_details,
+        "unknown": "No domestic or foreign priority claim was supplied. Use 'Not applicable.' in "
+                   "the cross-reference section.",
+    }.get(priority, "No domestic or foreign priority claim was supplied. Use 'Not applicable.' "
+                    "in the cross-reference section.")
     support = str(values.get("government_support") or "unknown")
+    support_details = str(values.get("government_support_details") or "").strip()[:1000]
+    if support == "yes" and not support_details:
+        raise drafting.DraftingValidationError(
+            "Provide the agency, award, or contract details for government support.")
     support_text = {
-        "none": "No federally sponsored research or government contract was identified.",
-        "yes": "Government support may apply: " +
-               (str(values.get("government_support_details") or
-                    "award and contract details not supplied; ask for them")[:1000]),
-        "unknown": "Government support status is not confirmed; leave a drafting note requesting it.",
-    }.get(support, "Government support status is not confirmed; leave a drafting note requesting it.")
+        "none": "No government support was supplied. Use 'Not applicable.' in the government "
+                "support section.",
+        "yes": "Use these supplied government support details: " + support_details,
+        "unknown": "No government support was supplied. Use 'Not applicable.' in the government "
+                   "support section.",
+    }.get(support, "No government support was supplied. Use 'Not applicable.' in the government "
+                   "support section.")
     strategy = {
         "balanced": "Use a broad, disclosure-supported independent claim with a graduated fallback ladder.",
         "broad": "Prioritize the broadest disclosure-supported independent claim and retain narrower fallbacks.",
@@ -5378,7 +5410,7 @@ def _structured_drafting_notes(values) -> str:
     return "\n".join(parts)
 
 
-@app.route("/drafts")
+@app.route("/drafts", strict_slashes=False)
 def drafts_list():
     try:
         user, principal = _draft_identity()
@@ -5392,32 +5424,19 @@ def drafts_list():
 
 @app.route("/drafts/new", methods=["GET", "POST"])
 def draft_new():
-    try:
-        user, principal = _draft_identity()
-    except drafting.DraftingError as exc:
-        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
-    slug = (request.values.get("search_slug") or request.values.get("slug") or "").strip()
-    selected = request.values.getlist("pubs")
-    # Selection-bar GET links encode the publications as one comma-separated value.
+    """Send every legacy intake link or form through the gated Studio pipeline."""
+    if request.method == "POST":
+        # 307 preserves the old form body and CSRF token. /drafts/start performs the only
+        # creation, launches the reviewed agent turn, and publishes nothing before all gates pass.
+        return redirect(url_for("draft_start"), code=307)
+    slug = (request.args.get("search_slug") or request.args.get("slug") or "").strip()
+    selected = request.args.getlist("pubs")
     if len(selected) == 1 and "," in selected[0]:
         selected = [value for value in selected[0].split(",") if value]
-    if request.method == "POST":
-        auth.require_csrf()
-        values = {"title": request.form.get("title", ""),
-                  "disclosure_text": request.form.get("disclosure_text", ""),
-                  "inventor_notes": request.form.get("inventor_notes", "")}
-        try:
-            service = _drafting_service()
-            project = service.create_project_with_references(
-                principal, search_slug=slug, title=values["title"],
-                disclosure_text=values["disclosure_text"], inventor_notes=values["inventor_notes"],
-                publication_numbers=selected)
-            return redirect(url_for("draft_detail", project_id=project["id"], created="1"))
-        except drafting.DraftingError as exc:
-            ctx = _draft_new_context(user, principal, slug, selected, values, str(exc))
-            return render_template("draft_new.html", **ctx), _draft_error_status(exc)
-    ctx = _draft_new_context(user, principal, slug, selected)
-    return render_template("draft_new.html", **ctx)
+    target = {"search_slug": slug} if slug else {}
+    if selected:
+        target["pubs"] = ",".join(selected)
+    return redirect(url_for("draft_start", **target))
 
 
 def _draft_detail_context(principal, project_id):
@@ -5470,11 +5489,8 @@ def _figures_for(project):
 
 @app.route("/drafts/<int:project_id>")
 def draft_detail(project_id):
-    try:
-        _user, principal = _draft_identity()
-        return render_template("draft.html", **_draft_detail_context(principal, project_id))
-    except drafting.DraftingError as exc:
-        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+    """Retire the unreviewed section editor without breaking saved links."""
+    return redirect(url_for("draft_studio_page", project_id=project_id))
 
 
 @app.route("/drafts/<int:project_id>/project", methods=["POST"])
@@ -5513,16 +5529,11 @@ def draft_generate(project_id):
     try:
         _user, principal = _draft_identity()
         idem = request.form.get("idempotency_key") or secrets.token_urlsafe(18)
-        job = _drafting_service().queue_generation(
-            principal, project_id, instructions=request.form.get("instructions", ""),
-            idempotency_key=idem)
-        draft_worker.kick()
-        state = job.get("status") or "queued"
-        message = ("Draft generation queued. You may leave this page safely."
-                   if state in {"queued", "running"}
-                   else f"That generation request is already {state}. Reload to start another.")
-        return redirect(url_for("draft_detail", project_id=project_id,
-                                message=message))
+        message = str(request.form.get("instructions") or "").strip() or (
+            "Finalize the current application into a complete filing-ready draft.")
+        _studio().start_turn(
+            principal, project_id, message=message, kind="revise", idempotency_key=idem)
+        return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
 
@@ -5532,14 +5543,11 @@ def draft_retry(project_id, job_id):
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
-        job = _drafting_service().get_generation(principal, job_id)
-        if int(job["project_id"]) != project_id:
-            raise drafting.DraftingNotFound("Draft generation was not found.")
-        _drafting_service().retry_generation(
-            principal, job_id, idempotency_key=secrets.token_urlsafe(18))
-        draft_worker.kick()
-        return redirect(url_for("draft_detail", project_id=project_id,
-                                message="Draft generation queued again."))
+        _studio().start_turn(
+            principal, project_id,
+            message="Finalize the current application and repair every filing gate failure.",
+            kind="qa_fix", idempotency_key=f"legacy-retry-{job_id}-{secrets.token_urlsafe(8)}")
+        return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
 
@@ -5561,15 +5569,12 @@ def draft_cancel(project_id, job_id):
 
 @app.route("/drafts/<int:project_id>/versions", methods=["POST"])
 def draft_save_version(project_id):
+    """Retired: direct section edits cannot bypass the text, drawing, and review gates."""
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
-        sections = {key: request.form.get(key, "") for key, _heading in drafting.SECTION_ORDER}
-        version = _drafting_service().save_edited_version(
-            principal, project_id, sections,
-            base_version_no=request.form.get("base_version_no", type=int))
-        return redirect(url_for("draft_detail", project_id=project_id,
-                                version=version["version_no"], message="Edits saved as a new version."))
+        _drafting_service().get_project(principal, project_id, include_versions=False)
+        return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
 
@@ -5589,16 +5594,12 @@ def draft_version_status(project_id, version_no):
 
 @app.route("/drafts/<int:project_id>/versions/<int:version_no>/restore", methods=["POST"])
 def draft_restore_version(project_id, version_no):
+    """Retired: an old version must never become current without passing every gate again."""
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
-        service = _drafting_service()
-        prior = service.get_version(principal, project_id, version_no)
-        restored = service.save_edited_version(
-            principal, project_id, prior["sections"], base_version_no=version_no)
-        return redirect(url_for(
-            "draft_detail", project_id=project_id, version=restored["version_no"],
-            message=f"Version {version_no} restored as new version {restored['version_no']}."))
+        _drafting_service().get_version(principal, project_id, version_no)
+        return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
 
@@ -5654,6 +5655,9 @@ def draft_download(project_id, fmt):
             raise drafting.DraftingNotFound("No draft version is ready to download.")
         version = service.get_version(principal, project_id, version_no)
         refs = project.get("references") or []
+        draft_studio.validate_sections(
+            version.get("sections") or {},
+            [str(reference.get("publication_number") or "") for reference in refs])
         name = draft_export.download_name(project, version_no, fmt)
         if fmt == "md":
             return Response(
@@ -5681,6 +5685,7 @@ def draft_print(project_id):
         if not version_no:
             raise drafting.DraftingNotFound("No draft version is ready to print.")
         version = service.get_version(principal, project_id, version_no)
+        version = {**version, "sections": draft_export.application_sections(version)}
         return render_template("draft_print.html", project=project, version=version,
                                section_order=drafting.SECTION_ORDER,
                                notice=draft_export.WORKING_DRAFT_NOTICE)
@@ -5716,14 +5721,16 @@ def _turn_runner():
 
 
 def _studio_error(exc):
-    return jsonify({"ok": False, "error": str(exc)}), _draft_error_status(exc)
+    error = str(draft_studio.human_text(str(exc)))
+    return jsonify({"ok": False, "error": error}), _draft_error_status(exc)
 
 
 def _figure_compiler_error(exc):
     status = 409 if isinstance(
         exc, (figure_compiler.ApprovalRequired, figure_compiler.CompilationBlocked)) else \
         _draft_error_status(exc)
-    return jsonify({"ok": False, "error": str(exc)}), status
+    error = str(draft_studio.human_text(str(exc)))
+    return jsonify({"ok": False, "error": error}), status
 
 
 def _uploads_from_request(default_kind="prior_art"):
@@ -5767,6 +5774,7 @@ def draft_start():
                    "government_support_details", "claim_strategy", "means_plus_function",
                    "protected_terms", "filing_deadline")}
         values["claim_types"] = request.form.getlist("claim_types")
+        values = _draft_party_defaults(user, values)
         try:
             # A finished owned search is already a complete intake. The action on the report is a
             # POST so one click can create durable state without turning a GET into a mutation.
@@ -5833,6 +5841,8 @@ def draft_studio_page(project_id):
     try:
         _user, principal = _draft_identity()
         state = _studio().state(principal, project_id)
+    except drafting.DraftingPermissionDenied:
+        return redirect(url_for("auth.login", next=request.path))
     except drafting.DraftingError as exc:
         return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
     #  The page renders itself from exactly the same JSON the poller fetches, so there is one
@@ -5863,7 +5873,7 @@ def _studio_payload(state):
         #  re-fetched on every change during a turn.
         "project": dict({key: project.get(key) for key in
                          ("id", "title", "status", "revision", "latest_version_no", "search_slug",
-                          "input_kind", "applicant", "inventors")},
+                          "input_kind", "applicant", "inventors", "draft_model")},
                         disclosure_excerpt=str(project.get("disclosure_text") or "")[:4000],
                         disclosure_chars=len(str(project.get("disclosure_text") or ""))),
         "messages": [{"id": m["id"], "role": m["role"], "body": m["body"],
@@ -5871,7 +5881,9 @@ def _studio_payload(state):
                      for m in state["messages"]],
         "turns": [{key: t.get(key) for key in
                    ("id", "turn_no", "kind", "status", "stage", "summary", "version_no",
-                    "cost_usd", "duration_ms", "model_name", "last_error")}
+                    "cost_usd", "duration_ms", "model_name", "last_error", "section_key",
+                    "agent_runs", "model_ms", "spend_usd", "tokens_input", "tokens_output",
+                    "tokens_cache_read", "tokens_cache_write", "started_at", "completed_at")}
                   for t in state["turns"][:40]],
         "active_turn": state.get("active_turn"),
         "version": {"version_no": version.get("version_no"), "sections": version.get("sections"),
@@ -5881,6 +5893,7 @@ def _studio_payload(state):
         "versions": [{"version_no": v["version_no"], "status": v.get("status"),
                       "created_at": str(v.get("created_at") or ""),
                       "change_note": v.get("change_note") or "",
+                      "origin": v.get("origin") or "agent",
                       "verdict": (state["qa_by_version"].get(v["version_no"]) or {}).get("verdict")}
                      for v in project.get("versions", [])],
         "qa": qa,
@@ -6033,9 +6046,172 @@ def draft_studio_message(project_id):
         turn = _studio().start_turn(
             principal, project_id, message=str(body.get("message") or ""),
             kind=str(body.get("kind") or "revise"),
+            section_key=str(body.get("section_key") or ""),
             idempotency_key=str(body.get("idempotency_key") or "") or None)
         return jsonify({"ok": True, "turn": {"id": turn["id"], "turn_no": turn["turn_no"],
                                              "status": turn["status"]}})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/section", methods=["POST"])
+def draft_studio_section(project_id):
+    """Save one section of the application exactly as the user typed it."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form
+        saved = _studio().save_section(
+            principal, project_id, section_key=str(body.get("section_key") or ""),
+            text=str(body.get("text") or ""))
+        return jsonify({"ok": True, **saved})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/research", methods=["POST"])
+def draft_studio_research(project_id):
+    """Re-search: search from the draft as it stands, measure the art, then draft away from it.
+
+    The search launch has to happen here because the pipeline, the report store and the account
+    ledger are this module's wiring. Everything after it is `draft_research`, which is handed the
+    four things it needs as callables so it can be exercised without any of that.
+    """
+    auth.require_csrf()
+    try:
+        user, principal = _draft_identity()
+        studio = _studio()
+        if draft_research.is_running(project_id):
+            return jsonify({"ok": False,
+                            "error": "A re-search round is already running on this draft."}), 409
+        state_now = studio.state(principal, project_id)
+        active = state_now.get("active_turn")
+        if active:
+            return jsonify({"ok": False, "error": "The drafting agent is still working. A round "
+                                                  "must search a draft that is standing still."}), 409
+        version_no = int((state_now.get("project") or {}).get("latest_version_no") or 0)
+        material = studio.search_material(principal, project_id)
+        query = material["query"]
+        mode, focus, wide = "novelty", "all_text", True
+        chosen = _studio().settings(principal, project_id)["values"]
+        slug = search_slug(query, mode, wide=wide, search_focus=focus)
+        state, detail = ensure_report(
+            slug, query=query, mode=mode, wide=wide, search_focus=focus,
+            owner_user_id=(user or {}).get("id"))
+        if state == "busy":
+            return jsonify({"ok": False, "error": f"The search server is busy: {detail}"}), 429
+        (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
+            {"query": query, "mode": mode, "subject": None, "wide": wide,
+             "ood": None, "doc_token": None, "search_focus": focus,
+             "draft_project_id": int(project_id)}))
+        accounts.record_search(
+            user["id"], slug, query, mode, focus, None, notify_email=False,
+            status="complete" if state == "ready" else "running", saved=False)
+        studio.record_search(principal, project_id, slug=slug, query=query,
+                             status="complete" if state == "ready" else "running")
+        opened = draft_research.open_round(project_id, version_no=version_no, slug=slug)
+        history = [item for item in draft_research.rounds(project_id)
+                   if item["round_no"] < opened["round_no"]
+                   and item.get("closest_coverage") is not None]
+
+        def is_ready(item_slug):
+            with _JOB_LOCK:
+                job = dict(_JOBS.get(item_slug, {}))
+            event = _job_event(item_slug, job)
+            return bool(event.get("done") and event.get("ready"))
+
+        def load_view(item_slug):
+            return _draft_report_loader(principal, item_slug, principal.user_id)
+
+        def attach(item_slug, pubs):
+            keep = max(1, min(int(chosen.get("research_references") or 5), 10))
+            return studio.import_search(principal, project_id, item_slug, list(pubs)[:keep])
+
+        def enqueue(message):
+            turn = studio.repository.enqueue_turn_safely(
+                project_id, principal.user_id, kind="revise", user_message=message,
+                project_revision=int(state_now["project"]["revision"]),
+                idempotency_key=f"research-round-{opened['id']}")
+            draft_studio_service.kick()
+            return int(turn["id"])
+
+        draft_research.run_round_in_background(
+            project_id=int(project_id), user_id=int(principal.user_id),
+            round_id=int(opened["id"]), slug=slug, load_view=load_view, is_ready=is_ready,
+            attach=attach, enqueue=enqueue,
+            previous=(history[0] if history else None))
+        return jsonify({"ok": True, "round": _research_payload(opened), "slug": slug,
+                        "status": state})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # search launch boundary
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"Could not start the round: {str(exc)[:200]}"}), 502
+
+
+def _research_payload(row):
+    return {key: row.get(key) for key in
+            ("id", "round_no", "version_no", "slug", "status", "imported_count",
+             "closest_coverage", "mean_top3", "combination", "n_elements", "n_charted",
+             "closest_pub", "closest_title", "turn_id", "note")}
+
+
+@app.route("/api/drafts/<int:project_id>/research")
+def api_draft_research(project_id):
+    try:
+        _user, principal = _draft_identity()
+        _studio()._project(principal, project_id)
+        data = draft_research.series(project_id)
+        return jsonify({"ok": True, "running": draft_research.is_running(project_id),
+                        "measured": data.get("measured", 0),
+                        "delta": data.get("delta"),
+                        "improvement": data.get("improvement"),
+                        "rounds": [_research_payload(item) for item in data["rounds"]]})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/settings")
+def api_draft_settings(project_id):
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, **_studio().settings(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/settings", methods=["POST"])
+def draft_studio_settings(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or {}
+        return jsonify({"ok": True, **_studio().save_settings(
+            principal, project_id, body if isinstance(body, dict) else {})})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/drawings", methods=["POST"])
+def draft_studio_drawings(project_id):
+    """Reconcile the sheets with the published text, without running a drafting agent."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, **_studio().reconcile_drawings(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/model", methods=["POST"])
+def draft_studio_model(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form
+        return jsonify({"ok": True, **_studio().set_model(
+            principal, project_id, str(body.get("model") or ""))})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
 
@@ -6258,6 +6434,49 @@ def _readiness_for(principal, project_id):
     return project, version, report, references
 
 
+def _filing_figure_images(project, version):
+    """The exact active PNGs that passed both live drawing gates, in filing order."""
+    images = []
+    figures = _figures_for(project)
+    specs = (version or {}).get("figure_specs") or []
+    if isinstance(specs, str):
+        try:
+            specs = json.loads(specs)
+        except json.JSONDecodeError:
+            specs = []
+    specs_by_key = {
+        draft_figures.figure_key(item.get("label")): item
+        for item in specs if isinstance(item, dict)
+    }
+    for sheet_index, figure in enumerate(figures, 1):
+        spec = specs_by_key.get(draft_figures.figure_key(figure.get("figure_label")))
+        versions = figure.get("versions") or []
+        active = next((row for row in versions
+                       if int(row.get("version_no") or 0) ==
+                       int(figure.get("active_version") or 0)), None) or {}
+        if not (draft_figures.current_geometry_binding(
+                    figure, project.get("user_id"), active,
+                    (spec or {}).get("caption") or "") and
+                draft_figures.current_ocr_audit(
+                    active.get("numeral_audit") or {},
+                    expected_sheet_number=f"{sheet_index}/{len(figures)}",
+                    expected_section_designations=(
+                        draft_figures.section_designations(spec.get("caption") or "")
+                        if spec else None)) and
+                draft_figures.current_semantic_audit(active.get("semantic_audit") or {}) and
+                draft_figures.current_leader_audit(active.get("leader_audit") or {})):
+            raise drafting.DraftingValidationError(
+                f"{figure.get('figure_label') or 'A drawing'} has not passed all drawing checks.")
+        _mime, png = draft_figures.png_bytes(
+            figure["id"], project["user_id"], int(figure.get("active_version") or 0))
+        if not png:
+            raise drafting.DraftingValidationError(
+                f"{figure.get('figure_label') or 'A drawing'} has no active image.")
+        images.append({"label": draft_figures.canonical_figure_label(
+            figure.get("figure_label")), "png": png})
+    return images
+
+
 @app.route("/api/drafts/<int:project_id>/filing")
 def api_draft_filing(project_id):
     try:
@@ -6276,6 +6495,9 @@ def draft_filing_download(project_id, fmt):
     try:
         _user, principal = _draft_identity()
         project, version, report, references = _readiness_for(principal, project_id)
+        if not report.get("ready"):
+            raise drafting.DraftingValidationError(
+                "The filing gate still has blockers; no filing document was created.")
         stem = draft_export._clean_filename(str(project.get("title") or ""))
         name = f"{stem}-filing-v{version['version_no']}.{fmt}"
         if fmt == "txt":
@@ -6283,7 +6505,8 @@ def draft_filing_download(project_id, fmt):
                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
         return send_file(
             draft_uspto.render_filing_docx(project, version, readiness_report=report,
-                                           references=references),
+                                           references=references,
+                                           figure_images=_filing_figure_images(project, version)),
             as_attachment=True, download_name=name,
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     except drafting.DraftingError as exc:
