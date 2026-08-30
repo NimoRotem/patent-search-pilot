@@ -760,7 +760,8 @@ _FIGURE_ID_RE = re.compile(
 _SHEET_NUMBER_RE = re.compile(
     r"(?<![A-Za-z0-9])(\d{1,3})\s*/\s*(\d{1,3})(?![A-Za-z0-9])")
 _SECTION_DESIGNATION_RE = re.compile(
-    r"(?i:\bline)\s*,?\s+([0-9]{1,3}[A-Za-z]?|[A-Z]{1,3})"
+    r"(?i:\bline)\s*,?\s+(?:(?i:designated)\s+)?"
+    r"([0-9]{1,3}[A-Za-z]?|[A-Z]{1,3})"
     r"\s*[-\u2012-\u2015]\s*\1\b")
 _REPEATED_SECTION_END_RE = re.compile(
     r"\brepeated designation\s+[\"'\u2018\u2019\u201c\u201d]?"

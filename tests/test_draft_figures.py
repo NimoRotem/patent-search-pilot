@@ -486,6 +486,16 @@ def test_section_designations_accept_lettered_cutting_plane_lines():
     assert draft_figures.section_designations(source_view) == ["A", "B"]
 
 
+def test_section_designations_accept_designated_lettered_cutting_plane_lines():
+    source_view = (
+        "A broken cutting-plane line, designated A-A, is drawn vertically through the first "
+        "guide carriage 50, with its viewing arrows pointing to the right. A second broken "
+        "cutting-plane line, designated B-B, is drawn vertically through the second guide "
+        "carriage 70, with its viewing arrows pointing to the right.")
+
+    assert draft_figures.section_designations(source_view) == ["A", "B"]
+
+
 def test_section_designations_accept_explicit_repeated_marks_without_line_shorthand():
     source_view = (
         "A broken cutting-plane line for FIG. 5 passes transversely through the first carriage. "
