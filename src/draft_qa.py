@@ -552,8 +552,8 @@ def _numeral_checks(spec_text: str, claims_text: str,
     if overcrowded:
         out.append(_check(
             "Drawing sheets are not overcrowded", "fail",
-            "A generated sheet cannot be inspected reliably when it carries too many labeled "
-            "parts. Split the geometry across focused views and synchronize the drawing "
+            "A sheet carrying this many labelled parts is hard to read at filing size and hard "
+            "to draw at all. Split the geometry across focused views and synchronize the drawing "
             "descriptions.", items=overcrowded))
     elif figures:
         out.append(_check(
@@ -923,14 +923,15 @@ def _figure_checks(sections: Mapping[str, str],
                     "grouping shape consistently")
     if brief_issues:
         out.append(_check(
-            "Drawing briefs are concise and renderable", "fail",
-            "An over-specified or self-contradictory drawing brief makes the image generator "
-            "invent or miss visual constraints. Keep only consistent, disclosure-grounded "
-            "geometry, relationships, and numeral anchors needed to identify the listed parts.",
+            "Drawing briefs are concise and drawable", "fail",
+            "An over-specified or self-contradictory brief cannot be drawn as written: whoever "
+            "draws the sheet has to guess which of two conflicting statements to follow. Keep "
+            "only consistent, disclosure-grounded geometry, relationships, and numeral anchors "
+            "needed to identify the listed parts.",
             severity="error", items=brief_issues))
     else:
         out.append(_check(
-            "Drawing briefs are concise and renderable", "pass",
+            "Drawing briefs are concise and drawable", "pass",
             f"Every drawing brief is at most {MAX_FIGURE_BRIEF_CHARS} characters."))
 
     declaration_issues = []
@@ -956,8 +957,9 @@ def _figure_checks(sections: Mapping[str, str],
     if declaration_issues:
         out.append(_check(
             "Figure brief numeral declarations match sheet lists", "fail",
-            "A drawing brief explicitly declares a different numeral set from the sheet's "
-            "machine-readable list. Reconcile the brief and list before generating an image.",
+            "A drawing brief explicitly declares a different numeral set from the one listed "
+            "for that sheet. Reconcile the two before the sheet is drawn: they are the "
+            "instructions somebody draws from.",
             severity="error", items=declaration_issues))
     elif figures:
         out.append(_check(

@@ -133,7 +133,7 @@ def test_reference_numeral_leader_cannot_end_in_an_arrowhead():
         },
         FIGURES[1],
     ]
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
     assert check["status"] == "fail"
     assert any("terminal dot" in item for item in check["items"])
 
@@ -148,7 +148,7 @@ def test_reference_numeral_leader_cannot_end_in_an_arrowhead():
         FIGURES[1],
     ]
     assert checks_for(figures=section_arrow)[
-        "Drawing briefs are concise and renderable"]["status"] == "pass"
+        "Drawing briefs are concise and drawable"]["status"] == "pass"
 
 
 def test_flowchart_briefs_cannot_request_verbal_text_inside_shapes():
@@ -161,7 +161,7 @@ def test_flowchart_briefs_cannot_request_verbal_text_inside_shapes():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "verbal drawing text" in " ".join(check["items"]).lower()
@@ -178,7 +178,7 @@ def test_flowchart_briefs_must_number_their_process_and_decision_shapes():
         "numerals": [],
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "process-flow drawing has no numbered steps" in " ".join(check["items"]).lower()
@@ -196,7 +196,7 @@ def test_flowchart_briefs_with_numbered_steps_remain_renderable():
         "numerals": ["10 vacuum lifting tool", "12 body"],
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
     assert check["status"] == "pass", check["items"]
 
 
@@ -210,7 +210,7 @@ def test_flowchart_briefs_require_an_exact_machine_readable_topology():
         "numerals": ["10 vacuum lifting tool", "12 body"],
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     text = " ".join(check["items"]).lower()
@@ -227,7 +227,7 @@ def test_drafting_contract_uses_blank_start_and_end_connectors_for_split_flows()
 def test_an_empty_figure_brief_is_refused_before_drawing():
     figures = [{**FIGURES[0], "caption": " \n\t "}, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "empty drawing brief" in " ".join(check["items"]).lower()
@@ -349,13 +349,13 @@ def test_an_overlong_drawing_brief_is_refused_before_image_generation():
         {**FIGURES[0], "caption": "plain rectangular body " * 160},
         FIGURES[1],
     ]
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
     assert check["status"] == "fail"
     assert "FIG. 1" in check["items"][0]
 
     with pytest.raises(
             draft_studio.FilingPreflightError,
-            match="Drawing briefs are concise and renderable") as caught:
+            match="Drawing briefs are concise and drawable") as caught:
         draft_studio.validate_snapshot(
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
     assert caught.value.category == "figures_and_numerals"
@@ -368,7 +368,7 @@ def test_a_legacy_figure_label_cut_off_mid_word_is_refused_before_drawing():
         "caption": "The chamber 22 is bounded by the perimeter member 24.",
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "cut off mid-word" in check["items"][0]
@@ -383,7 +383,7 @@ def test_a_complete_word_at_character_sixty_is_not_treated_as_a_cutoff():
         "caption": "The view shows the body 12 and pump 14.",
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "pass"
 
@@ -397,14 +397,14 @@ def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "FIG. 1" in check["items"][0]
     assert "contradictory" in check["items"][0].lower()
     with pytest.raises(
             draft_studio.FilingPreflightError,
-            match="Drawing briefs are concise and renderable"):
+            match="Drawing briefs are concise and drawable"):
         draft_studio.validate_snapshot(
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
@@ -421,7 +421,7 @@ def test_an_axial_hollow_cylinder_cannot_be_specified_as_an_annulus():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "axial section" in check["items"][0]
@@ -442,7 +442,7 @@ def test_live_axial_bushing_word_order_cannot_bypass_annulus_preflight():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "axial section" in check["items"][0]
@@ -461,7 +461,7 @@ def test_vertical_bore_axis_cannot_be_aligned_with_longitudinal_slot_axis():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "vertical bore axis" in check["items"][0]
@@ -483,7 +483,7 @@ def test_a_figure_numeral_cannot_target_a_different_grouping_shape():
         ],
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "numeral 10" in check["items"][0]
@@ -491,7 +491,7 @@ def test_a_figure_numeral_cannot_target_a_different_grouping_shape():
     assert "square bracket" in check["items"][0]
     with pytest.raises(
             draft_studio.FilingPreflightError,
-            match="Drawing briefs are concise and renderable"):
+            match="Drawing briefs are concise and drawable"):
         draft_studio.validate_snapshot(
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
@@ -502,7 +502,7 @@ def test_a_figure_numeral_cannot_target_a_different_grouping_shape():
         ),
     }, FIGURES[1]]
     assert checks_for(figures=consistent)[
-        "Drawing briefs are concise and renderable"]["status"] == "pass"
+        "Drawing briefs are concise and drawable"]["status"] == "pass"
 
 
 def test_a_remote_part_numeral_cannot_label_its_offsheet_connection_stub():
@@ -519,7 +519,7 @@ def test_a_remote_part_numeral_cannot_label_its_offsheet_connection_stub():
         ],
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "numeral 14" in check["items"][0]
@@ -549,7 +549,7 @@ def test_a_remote_part_numeral_cannot_label_its_offsheet_connection_stub():
         ],
     }, FIGURES[1]]
     assert checks_for(figures=corrected)[
-        "Drawing briefs are concise and renderable"]["status"] == "pass"
+        "Drawing briefs are concise and drawable"]["status"] == "pass"
 
 
 def test_a_drawn_tile_cannot_coexist_with_a_no_other_panel_constraint():
@@ -562,13 +562,13 @@ def test_a_drawn_tile_cannot_coexist_with_a_no_other_panel_constraint():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "contradictory sheet exclusivity" in check["items"][0].lower()
     with pytest.raises(
             draft_studio.FilingPreflightError,
-            match="Drawing briefs are concise and renderable"):
+            match="Drawing briefs are concise and drawable"):
         draft_studio.validate_snapshot(
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
@@ -583,7 +583,7 @@ def test_blanket_shape_background_and_stroke_controls_are_refused_before_drawing
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     issues = " ".join(check["items"]).lower()
@@ -592,7 +592,7 @@ def test_blanket_shape_background_and_stroke_controls_are_refused_before_drawing
     assert "exact stroke count" in issues
     with pytest.raises(
             draft_studio.FilingPreflightError,
-            match="Drawing briefs are concise and renderable"):
+            match="Drawing briefs are concise and drawable"):
         draft_studio.validate_snapshot(
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
@@ -606,7 +606,7 @@ def test_an_arbitrary_blank_drawing_area_is_refused_before_drawing():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "background exclusion" in check["items"][0]
@@ -622,13 +622,13 @@ def test_generic_negative_boundary_controls_are_refused_before_drawing():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "generic negative linework control" in " ".join(check["items"]).lower()
     with pytest.raises(
             draft_studio.FilingPreflightError,
-            match="Drawing briefs are concise and renderable"):
+            match="Drawing briefs are concise and drawable"):
         draft_studio.validate_snapshot(
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
@@ -643,7 +643,7 @@ def test_generic_face_linework_controls_are_refused_before_drawing(control):
         "caption": "A slab stands on a separate band and carries two closed housings. " + control,
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "generic face-linework control" in " ".join(check["items"]).lower()
@@ -655,7 +655,7 @@ def test_an_exact_separator_line_count_is_refused_before_drawing():
         "caption": "Three stacked hatched bands are separated by one horizontal line.",
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "exact stroke count" in " ".join(check["items"]).lower()
@@ -677,7 +677,7 @@ def test_a_white_interior_cord_strip_is_refused_before_drawing(caption):
         "caption": caption,
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "ambiguous multi-stroke cord" in " ".join(check["items"]).lower()
@@ -690,7 +690,7 @@ def test_a_white_interior_cord_strip_is_refused_before_drawing(caption):
 def test_renderer_only_open_paper_between_solid_bodies_is_refused(caption):
     figures = [{**FIGURES[0], "caption": caption}, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "open-paper spacing" in " ".join(check["items"]).lower()
@@ -705,7 +705,7 @@ def test_renderer_only_open_paper_between_solid_bodies_is_refused(caption):
 def test_figure_linework_cannot_be_directed_to_a_physical_sheet_edge(caption):
     figures = [{**FIGURES[0], "caption": caption}, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "physical sheet edge" in " ".join(check["items"]).lower()
@@ -717,7 +717,7 @@ def test_a_clear_sheet_margin_instruction_remains_renderable():
         "caption": "The whole of the drawing stands clear of the edges of the sheet.",
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "pass"
 
@@ -731,7 +731,7 @@ def test_every_open_paper_spacing_on_one_sheet_is_reported_together():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
     issues = [item for item in check["items"] if "open-paper spacing" in item]
 
     assert len(issues) == 2
@@ -746,13 +746,13 @@ def test_an_endpoint_deliberately_disconnected_from_its_named_part_is_refused():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "disconnected endpoint" in check["items"][0].lower()
     with pytest.raises(
             draft_studio.FilingPreflightError,
-            match="Drawing briefs are concise and renderable"):
+            match="Drawing briefs are concise and drawable"):
         draft_studio.validate_snapshot(
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
@@ -775,13 +775,13 @@ def test_an_arbitrary_exact_numeral_target_is_refused_before_drawing(target):
         "caption": "The pump 20 is a visible rectangular body. " + target,
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "fail"
     assert "arbitrary exact endpoint" in check["items"][0].lower()
     with pytest.raises(
             draft_studio.FilingPreflightError,
-            match="Drawing briefs are concise and renderable"):
+            match="Drawing briefs are concise and drawable"):
         draft_studio.validate_snapshot(
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
@@ -795,7 +795,7 @@ def test_every_arbitrary_target_on_one_sheet_is_reported_together():
         ),
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
     issues = [item for item in check["items"] if item.startswith("FIG. 1")]
 
     assert len(issues) == 2
@@ -815,7 +815,7 @@ def test_a_broad_stable_numeral_target_remains_renderable(target):
         "caption": "The pump 20 is a visible rectangular body. " + target,
     }, FIGURES[1]]
 
-    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    check = checks_for(figures=figures)["Drawing briefs are concise and drawable"]
 
     assert check["status"] == "pass"
 
@@ -3546,7 +3546,7 @@ def test_source_locks_never_restore_an_empty_or_incomplete_baseline(tmp_path):
     before = draft_workspace.snapshot(tmp_path)
     figure_plan_report = {
         "checks": [{
-            "name": "Drawing briefs are concise and renderable",
+            "name": "Drawing briefs are concise and drawable",
             "status": "fail", "category": "figures_and_numerals",
         }],
         "findings": [],
@@ -5837,3 +5837,50 @@ def test_a_numbered_list_is_not_a_set_of_reference_numerals():
 def test_a_numeral_at_the_end_of_a_sentence_still_counts():
     """The list-marker rule must not swallow a real numeral; one never OPENS a sentence."""
     assert sorted(draft_qa.numerals_used("The tool comprises a body 12."), key=int) == ["12"]
+
+
+def test_a_misnamed_figure_file_is_renamed_rather_than_deleted(tmp_path):
+    """The canonical name is in the file. Throwing the file away to enforce it is not a trade.
+
+    Measured on the first real drafting agent to meet this convention: it wrote six figure briefs,
+    ran publish, and had all six deleted for being on filenames nobody had told it about. The name
+    is derived from each file's own heading, so it was recoverable the whole time and the work was
+    not.
+    """
+    figures = tmp_path / "figures"
+    figures.mkdir()
+    (figures / "fig1.md").write_text(
+        "# FIG. 1 - side view of the clamp\n\nThe clamp 10 in side view.\n", encoding="utf-8")
+    (figures / "notes.txt").write_text("scratch", encoding="utf-8")
+
+    with pytest.raises(drafting.DraftingValidationError) as caught:
+        draft_workspace._reject_noncanonical_figure_entries(figures)
+
+    #  The brief survived, on its canonical name.
+    kept = figures / "FIG-1-SIDE-VIEW-OF-THE-CLAMP.md"
+    assert kept.exists() and "clamp 10 in side view" in kept.read_text(encoding="utf-8")
+    assert not (figures / "fig1.md").exists()
+    #  Only the thing that could not be placed is removed, and only that is reported.
+    assert not (figures / "notes.txt").exists()
+    assert "notes.txt" in str(caught.value)
+    assert "fig1.md" not in str(caught.value)
+
+
+def test_a_renamed_figure_file_alone_does_not_refuse_the_publish(tmp_path):
+    figures = tmp_path / "figures"
+    figures.mkdir()
+    (figures / "whatever.md").write_text("# FIG. 2 - end view\n\nThe body 12.\n", encoding="utf-8")
+    draft_workspace._reject_noncanonical_figure_entries(figures)      # no exception
+    assert (figures / "FIG-2-END-VIEW.md").exists()
+
+
+def test_two_files_claiming_one_heading_is_a_conflict_not_a_rename(tmp_path):
+    figures = tmp_path / "figures"
+    figures.mkdir()
+    (figures / "FIG-3-DETAIL.md").write_text("# FIG. 3 - detail\n\nKeep me.\n", encoding="utf-8")
+    (figures / "copy.md").write_text("# FIG. 3 - detail\n\nDrop me.\n", encoding="utf-8")
+
+    with pytest.raises(drafting.DraftingValidationError, match="duplicates"):
+        draft_workspace._reject_noncanonical_figure_entries(figures)
+    assert "Keep me." in (figures / "FIG-3-DETAIL.md").read_text(encoding="utf-8")
+    assert not (figures / "copy.md").exists()

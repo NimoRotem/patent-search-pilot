@@ -93,6 +93,20 @@ def test_install_writes_the_instructions_the_tools_and_the_credential(workspace)
     assert (workspace / "tools" / "publish.py").stat().st_mode & 0o111
 
 
+def test_the_instructions_state_the_figure_naming_rule_the_tool_enforces(workspace):
+    """The one rule the agent cannot guess and pays for getting wrong.
+
+    A figure file is stored under a name derived from its own heading, and the first agent to
+    meet this convention wrote six briefs, published, and had them all deleted for being on the
+    wrong filenames - a rule that was nowhere in its instructions. The workspace renames them now
+    rather than deleting them, and the instructions say so.
+    """
+    draft_terminal.install(workspace, 15)
+    claude_md = (workspace / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "named after its own heading" in claude_md
+    assert "publish renames it" in claude_md
+
+
 def test_the_publish_tool_imports_nothing_that_needs_installing(workspace):
     """It runs under whatever python3 the agent's shell finds, which is the system one.
 
@@ -396,3 +410,49 @@ def test_a_pane_back_at_its_shell_is_stopped_not_idle(monkeypatch):
 def test_no_session_reads_as_stopped(monkeypatch):
     monkeypatch.setattr(draft_terminal, "exists", lambda _pid: False)
     assert draft_terminal.activity(15)["status"] == "stopped"
+
+
+# =============================================================================================
+# Slash commands
+# =============================================================================================
+def test_a_slash_command_clears_the_line_and_waits_for_the_autocomplete(monkeypatch):
+    """Type, WAIT, Enter. The wait is the whole point.
+
+    The CLI opens an autocomplete popup the instant a `/` is typed, and that popup takes the
+    Enter for itself: press it too early and a completion is selected instead of the line being
+    submitted. Measured on the live agent - a `/effort medium` sent straight after a `/model`
+    vanished without a trace, and the pane was left showing the palette.
+    """
+    fake = FakeTmux()
+    waits = []
+    monkeypatch.setattr(draft_terminal, "_tmux", fake)
+    monkeypatch.setattr(draft_terminal, "exists", lambda _pid: True)
+    monkeypatch.setattr(draft_terminal, "_claude_running", lambda _pid: True)
+    monkeypatch.setattr(draft_terminal.time, "sleep", waits.append)
+
+    assert draft_terminal.set_effort(15, "medium") == "medium"
+    typed = [call for call in fake.calls if call[0] == "send-keys"]
+    assert typed[0][-1] == "C-u"                       # nothing half-typed is carried in
+    assert typed[1][-2:] == ["-l", "/effort medium"]
+    assert typed[2][-1] == "Enter"
+    assert max(waits) >= 0.6, waits
+
+
+def test_a_model_the_cli_rejects_is_reported_and_not_recorded(monkeypatch):
+    #  `scrollback`, not `screen`: set_model reads the tail through capture_recent, which joins
+    #  wrapped rows with -J. Getting that wrong makes the test pass an empty string and see no
+    #  rejection, which is the same shape as the bug it is here to catch.
+    fake = FakeTmux(scrollback="Unknown model: claude-opus-5")
+    monkeypatch.setattr(draft_terminal, "_tmux", fake)
+    monkeypatch.setattr(draft_terminal, "exists", lambda _pid: True)
+    monkeypatch.setattr(draft_terminal, "_claude_running", lambda _pid: True)
+    monkeypatch.setattr(draft_terminal.time, "sleep", lambda _seconds: None)
+    with pytest.raises(draft_terminal.TerminalError, match="rejected"):
+        draft_terminal.set_model(15, "claude-opus-5")
+
+
+def test_switching_a_model_needs_a_running_agent(monkeypatch):
+    monkeypatch.setattr(draft_terminal, "exists", lambda _pid: True)
+    monkeypatch.setattr(draft_terminal, "_claude_running", lambda _pid: False)
+    with pytest.raises(draft_terminal.TerminalError, match="not running"):
+        draft_terminal.set_model(15, "claude-opus-5")

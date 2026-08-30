@@ -335,22 +335,47 @@ def _noncanonical_figure_entries(directory: Path) -> list[tuple[Path, str]]:
 
 
 def _reject_noncanonical_figure_entries(directory: Path) -> None:
+    """Put every figure file on its canonical name, and refuse only what cannot be placed.
+
+    A MIS-NAMED file is renamed, not deleted. The canonical name is derived from the file's own
+    ``# FIG.`` heading, so a file that has a heading already carries the answer and there is
+    nothing to ask anybody. Deleting it instead - which is what this did - threw away a drafting
+    agent's six finished figure briefs on its first publish and made it write them again, over a
+    filename convention it had no way to know. That is the wrong trade whichever way you read it:
+    the name is recoverable and the work is not.
+
+    What is still removed and still refuses the publish: a directory, a symlink, a non-Markdown
+    file, and a Markdown file with no figure heading to derive a name from. Those cannot be placed
+    and would be read back as figures that do not exist.
+    """
     invalid = _noncanonical_figure_entries(directory)
     if not invalid:
         return
     problems = []
     for entry, expected in invalid:
-        problems.append(
-            f"{entry.name} must be named {expected}" if expected else
-            f"{entry.name} is not a canonical Markdown figure specification")
+        if expected:
+            target = entry.parent / expected
+            #  A collision means two files claim one heading, which is a real conflict rather
+            #  than a naming slip: keep the one already on the canonical name.
+            if target.exists():
+                problems.append(
+                    f"{entry.name} duplicates {expected}, which already exists")
+                entry.unlink(missing_ok=True)
+                continue
+            entry.rename(target)
+            continue
+        problems.append(f"{entry.name} is not a Markdown figure specification with a "
+                        f"# FIG. heading")
         if entry.is_dir() and not entry.is_symlink():
             shutil.rmtree(entry)
         else:
             entry.unlink(missing_ok=True)
+    if not problems:
+        return
     detail = (
-        "Removed noncanonical figure files created during the drafting turn: "
-        + "; ".join(problems)
-        + ". Each Markdown filename must be derived from its own # FIG. heading."
+        "Removed figure files that could not be placed: " + "; ".join(problems)
+        + ". Every file in figures/ must be Markdown opening with its own # FIG. heading, or a "
+          "rendered-*.png sheet."
     )
     error_type = drafting.DraftingValidationError if drafting is not None else ValueError
     raise error_type(detail)

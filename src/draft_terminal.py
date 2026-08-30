@@ -374,13 +374,20 @@ the files - fix it and run it again rather than working around it.
 | `prior_art/<PUB>.md` | One file per reference: abstract, claims, and why the search returned it. |
 | `draft/01-title.md` … `draft/10-abstract.md` | **The application.** One file per section, body text only, no heading line. |
 | `draft/numerals.md` | The reference-numeral table. One row per part. |
-| `figures/` | One `FIG-N.md` per sheet: what it shows and which numerals appear on it. Sheets the user uploaded are `rendered-*.png` beside them. |
+| `figures/` | One Markdown file per sheet: what it shows and which numerals appear on it. Sheets the user has uploaded sit beside them as `rendered-*.png`, and you can open those. |
 | `review/previous-qa.md` | What the reviewer found last time. Fix all of it. |
 | `tools/` | `publish.py` (above) and `patent_lookup.py` (below). |
 
 Write the section files as **body text only**. `draft/09-claims.md` holds the numbered claims and
 nothing else. Do not create files in `draft/` other than the ten sections and `numerals.md`:
 publish deletes them and refuses the run.
+
+**A figure file is named after its own heading.** Open it with `# FIG. 3 - enlarged section
+through the magnet array` and publish will place it at
+`figures/FIG-3-ENLARGED-SECTION-THROUGH-THE-MAGNET-ARRAY.md` - the heading, uppercased, every run
+of non-alphanumerics turned into a single hyphen, cut at 60 characters. You do not have to compute
+that: write the heading, name the file whatever is convenient, and publish renames it. Two files
+with the same heading is a real conflict and one of them is dropped.
 
 ## Drawings
 
@@ -630,6 +637,10 @@ def ensure(project_id: int, workspace: Path, *, model: str = "",
         #  silently truncates the scrollback of a long drafting session. Global on this socket,
         #  which is private to the drafting agents.
         _tmux("set-option", "-g", "history-limit", "20000")
+        #  Without this the CLI prints a line into the pane telling the reader to edit
+        #  ~/.tmux.conf, which is advice for somebody sitting at a terminal, not for somebody
+        #  reading a patent draft in a browser. Our server, so we simply turn it on.
+        _tmux("set-option", "-g", "focus-events", "on")
         command = [
             "new-session", "-d", "-s", session_name(project_id), "-c", str(workspace),
             "-x", str(PANE_COLS), "-y", str(PANE_ROWS),
@@ -751,10 +762,21 @@ def interrupt(project_id: int) -> bool:
 
 
 def _slash(project_id: int, command: str) -> None:
+    """Run one of the CLI's own slash commands by typing it, the way a person would.
+
+    Three deliberate steps. ``C-u`` clears whatever is in the composer, because a slash command
+    appended to a half-typed message runs neither. The wait is for the CLI's autocomplete popup:
+    it opens as soon as ``/`` is typed and it takes the Enter for itself, so pressing Enter too
+    early selects a completion instead of submitting the line. And the second wait lets the
+    command land before the next one is typed - two of these back to back is how a `/effort`
+    silently did nothing while its `/model` was still rendering.
+    """
     target = _target(project_id)
+    _tmux("send-keys", "-t", target, "C-u")
     _tmux("send-keys", "-t", target, "-l", command)
-    time.sleep(0.3)
+    time.sleep(0.9)
     _tmux("send-keys", "-t", target, "Enter")
+    time.sleep(0.6)
 
 
 def set_model(project_id: int, model: str) -> str:
