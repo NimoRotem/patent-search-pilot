@@ -272,6 +272,7 @@ def run_checks(*, sections: Mapping[str, str], numerals: Sequence[Mapping[str, s
     checks.append(_abstract_form(text_sections["abstract"]))
     checks.extend(_numeral_checks(spec_text, claims_text, numerals, figures))
     checks.extend(_figure_checks(text_sections, figures))
+    checks.append(_prose_parallel_verb_forms(spec_text))
     checks.extend(_claim_checks(claims_text, spec_text))
     checks.extend(_citation_checks(text_sections, allowed_references, allow_remote=allow_remote))
     checks.append(_open_notes(text_sections))
@@ -1113,6 +1114,7 @@ def claim_dependencies(claim_text: str) -> list[int]:
 
 _CLAIM_ACTION_FORMS = {
     "advance": "advancing",
+    "activate": "activating",
     "apply": "applying",
     "assign": "assigning",
     "calculate": "calculating",
@@ -1155,12 +1157,12 @@ def _claim_parallel_verb_forms(claims: Sequence[Mapping[str, Any]]) -> dict[str,
         re.escape(value)
         for value in sorted(_CLAIM_ACTION_FORMS.values(), key=len, reverse=True))
     base_then_gerund = re.compile(
-        rf"(?:^|,\s+)(?P<first>{base_pattern})\b[^;]{{0,700}}?,\s+and\s+"
+        rf"(?:^|,\s+)(?P<first>{base_pattern})\b[^;]{{0,700}}?,?\s+and\s+"
         rf"(?P<second>{gerund_pattern})\b",
         re.IGNORECASE,
     )
     gerund_then_base = re.compile(
-        rf"(?:^|,\s+)(?P<first>{gerund_pattern})\b[^;]{{0,700}}?,\s+and\s+"
+        rf"(?:^|,\s+)(?P<first>{gerund_pattern})\b[^;]{{0,700}}?,?\s+and\s+"
         rf"(?P<second>{base_pattern})\b",
         re.IGNORECASE,
     )
@@ -1189,6 +1191,51 @@ def _claim_parallel_verb_forms(claims: Sequence[Mapping[str, Any]]) -> dict[str,
     return _check(
         "Method claim steps use parallel verb forms", "pass",
         "No coordinated method step mixes base-form and gerund-form action verbs.")
+
+
+def _third_person_action(base: str) -> str:
+    if base.endswith("y") and len(base) > 1 and base[-2].lower() not in "aeiou":
+        return base[:-1] + "ies"
+    if base.endswith(("s", "sh", "ch", "x", "z", "o")):
+        return base + "es"
+    return base + "s"
+
+
+def _prose_parallel_verb_forms(spec_text: str) -> dict[str, Any]:
+    """Reject a finite third-person action coordinated directly with a base-form action."""
+    third_forms = {
+        _third_person_action(base): base for base in _CLAIM_ACTION_FORMS
+    }
+    third_pattern = "|".join(
+        re.escape(value) for value in sorted(third_forms, key=len, reverse=True))
+    base_pattern = "|".join(
+        re.escape(value) for value in sorted(_CLAIM_ACTION_FORMS, key=len, reverse=True))
+    mismatch = re.compile(
+        rf"\b(?P<first>{third_pattern})\b(?P<middle>[^.;]{{0,500}}?)"
+        rf"\s+and\s+(?P<second>{base_pattern})\b",
+        re.IGNORECASE,
+    )
+    text = re.sub(r"\s+", " ", str(spec_text or "")).strip()
+    problems = []
+    for match in mismatch.finditer(text):
+        context_start = max(0, text.rfind(". ", 0, match.start()) + 2)
+        context_end = text.find(".", match.end())
+        if context_end < 0:
+            context_end = min(len(text), match.end() + 180)
+        context = text[context_start:context_end + 1].strip()
+        problems.append(
+            f"coordinated verbs mix “{match.group('first')}” with "
+            f"“{match.group('second')}”: {context[:240]}")
+    if problems:
+        return _check(
+            "Filing prose uses parallel coordinated verbs", "fail",
+            "A prose clause coordinates a third-person action with an uninflected action. "
+            "Rewrite both actions to agree with their shared subject.",
+            severity="error", items=problems,
+        )
+    return _check(
+        "Filing prose uses parallel coordinated verbs", "pass",
+        "No prose clause mixes a third-person action with a coordinated base-form action.")
 
 
 def _claim_checks(claims_text: str, spec_text: str) -> list[dict[str, Any]]:

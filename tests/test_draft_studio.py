@@ -1070,6 +1070,45 @@ def test_method_claim_rejects_a_gerund_mixed_into_coordinated_base_verbs():
     assert any("claim 1" in item and "distributing" in item for item in check["items"])
 
 
+def test_dependent_method_claim_rejects_mixed_verbs_without_serial_comma():
+    broken = dict(GOOD)
+    broken["claims"] = """
+    1. A method for managing charging, the method comprising:
+    detecting an overcurrent condition; and
+    opening a contactor in response to the overcurrent condition.
+
+    2. The method of claim 1, further comprising:
+    determining that a welded-contactor condition exists; and
+    in response to determining the welded-contactor condition, inhibiting operation of other
+    connector assemblies and activate a fault indicator.
+    """
+
+    check = checks_for(broken)["Method claim steps use parallel verb forms"]
+
+    assert check["status"] == "fail"
+    assert any(
+        "claim 2" in item and "inhibiting" in item and "activate" in item
+        for item in check["items"])
+
+
+def test_filing_prose_rejects_third_person_and_base_verb_coordination():
+    broken = dict(GOOD)
+    broken["detailed_description"] += (
+        " In response, the controller inhibits operation of the other connector assemblies "
+        "and activate a fault indicator."
+    )
+
+    check = checks_for(broken)["Filing prose uses parallel coordinated verbs"]
+
+    assert check["status"] == "fail"
+    assert any(
+        "inhibits" in item and "activate" in item for item in check["items"])
+    clean = dict(broken)
+    clean["detailed_description"] = clean["detailed_description"].replace(
+        "and activate a fault indicator", "and activates a fault indicator")
+    assert checks_for(clean)["Filing prose uses parallel coordinated verbs"]["status"] == "pass"
+
+
 def test_method_claim_accepts_coordinated_base_verbs_with_matching_forms():
     clean = dict(GOOD)
     clean["claims"] = """
