@@ -456,3 +456,32 @@ def test_switching_a_model_needs_a_running_agent(monkeypatch):
     monkeypatch.setattr(draft_terminal, "_claude_running", lambda _pid: False)
     with pytest.raises(draft_terminal.TerminalError, match="not running"):
         draft_terminal.set_model(15, "claude-opus-5")
+
+
+def test_a_confirmation_the_cli_puts_up_is_answered(monkeypatch):
+    """Raising the effort level asks before it acts, and parks the pane on the question.
+
+    Seen live: `/effort max` reported success while the agent sat on "1. Yes, switch to max / 2.
+    No, go back" waiting for somebody. The list opens with the affirmative selected, so the answer
+    is one Enter.
+    """
+    fake = FakeTmux(scrollback="Change effort level?\n\n ❯ 1. Yes, switch to max\n   2. No, go back")
+    monkeypatch.setattr(draft_terminal, "_tmux", fake)
+    monkeypatch.setattr(draft_terminal, "exists", lambda _pid: True)
+    monkeypatch.setattr(draft_terminal, "_claude_running", lambda _pid: True)
+    monkeypatch.setattr(draft_terminal.time, "sleep", lambda _seconds: None)
+
+    draft_terminal.set_effort(15, "max")
+    enters = [call for call in fake.calls if call[0] == "send-keys" and call[-1] == "Enter"]
+    assert len(enters) == 2, "the slash command's own Enter, then the confirmation's"
+
+
+def test_nothing_is_pressed_when_there_is_no_question(monkeypatch):
+    """An Enter into a composer somebody is typing into sends their half-written message."""
+    fake = FakeTmux(scrollback="Set effort level to medium\n\n❯ \n")
+    monkeypatch.setattr(draft_terminal, "_tmux", fake)
+    monkeypatch.setattr(draft_terminal, "exists", lambda _pid: True)
+    monkeypatch.setattr(draft_terminal.time, "sleep", lambda _seconds: None)
+
+    assert draft_terminal._confirm_if_prompted(15) is False
+    assert not any(call[0] == "send-keys" for call in fake.calls)

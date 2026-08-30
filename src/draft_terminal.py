@@ -779,6 +779,28 @@ def _slash(project_id: int, command: str) -> None:
     time.sleep(0.6)
 
 
+#  The CLI asks before a change it cannot undo cheaply - raising the effort level re-reads the
+#  whole conversation, so it wants a yes. The list opens with the affirmative selected.
+_CONFIRM_OPTION_RE = re.compile(r"^\s*[❯›>]\s*1\.\s+\S")
+
+
+def _confirm_if_prompted(project_id: int, *, attempts: int = 4) -> bool:
+    """Answer a numbered confirmation the CLI put up, and only that.
+
+    Never a blind Enter: an Enter into an empty composer sends an empty message, and an Enter into
+    a composer somebody is typing into sends THEIR half-written message. The pane has to be
+    showing a choice list with its first option selected before this touches anything.
+    """
+    for _ in range(max(1, attempts)):
+        time.sleep(0.6)
+        visible = capture_recent(project_id, 24)
+        if any(_CONFIRM_OPTION_RE.match(line) for line in visible.splitlines()):
+            _tmux("send-keys", "-t", _target(project_id), "Enter")
+            time.sleep(0.5)
+            return True
+    return False
+
+
 def set_model(project_id: int, model: str) -> str:
     name = normalize_model(model)
     if not name:
@@ -786,6 +808,7 @@ def set_model(project_id: int, model: str) -> str:
     if not exists(project_id) or not _claude_running(project_id):
         raise TerminalError("The drafting agent is not running - restart it first.")
     _slash(project_id, "/model " + name)
+    _confirm_if_prompted(project_id)
     time.sleep(1.2)
     tail = capture_recent(project_id, 10).lower()
     if "unknown model" in tail or "invalid model" in tail or "not a valid model" in tail:
@@ -805,6 +828,10 @@ def set_effort(project_id: int, effort: str) -> str:
     if not exists(project_id) or not _claude_running(project_id):
         raise TerminalError("The drafting agent is not running - restart it first.")
     _slash(project_id, "/effort " + level)
+    #  Raising the effort invalidates the conversation cache, so the CLI asks first and parks the
+    #  pane on the question. Without this the switch reports success and the agent sits waiting
+    #  for an answer nobody is there to give.
+    _confirm_if_prompted(project_id)
     return level
 
 
