@@ -180,6 +180,15 @@ def test_first_use_numeral_check_ignores_figure_labels():
     assert check["status"] == "pass"
 
 
+def test_first_use_numeral_check_ignores_claim_numbers():
+    check = draft_qa._first_use_introduces(
+        "11. A spring closes a valve through an outlet screen.\n\n"
+        "12. The pressure relief cartridge 12 includes a retaining ring.",
+        {"12": "pressure relief cartridge"})
+
+    assert check["status"] == "pass"
+
+
 def test_two_numerals_for_the_same_part_are_caught():
     numerals = NUMERALS + [{"numeral": "24", "part": "sealing ring"}]
     broken = dict(GOOD)

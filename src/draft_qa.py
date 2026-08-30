@@ -606,7 +606,7 @@ def _first_use_introduces(spec_text: str, table: Mapping[str, str]) -> dict[str,
     cup 10" is a real defect, but so is a false positive here, so this can only ever advise.
     """
     problems = []
-    scan_text = _FIG_RE.sub("FIGURE", spec_text)
+    scan_text = _CLAIM_START_RE.sub("CLAIM ", _FIG_RE.sub("FIGURE", spec_text))
     for numeral, part in table.items():
         head = _head_noun(part)
         if not head:
