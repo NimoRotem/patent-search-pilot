@@ -193,13 +193,30 @@ def _title_words(terms) -> list:
     return out[:10]
 
 
-def plan(query_specs, brief: str = "", claims=None) -> dict:
+def _claim_first() -> bool:
+    """Whether the claim's own combinations go in front of the cross-industry analogies."""
+    try:
+        import search_settings as _ss
+        return bool(_ss.get("external_claim_first"))
+    except Exception:
+        return os.environ.get("EXTERNAL_CLAIM_FIRST", "1") != "0"
+
+
+def plan(query_specs, brief: str = "", claims=None, analysis=None) -> dict:
     """The full search plan: aspects (LLM, product-neutral) + whole-invention queries.
 
     -> {"aspects": [...], "queries": [subquery dicts for /api/bulk_search]}
 
     The whole-invention queries are the deterministic floor: if the LLM is down the fan-out still
     happens, it is just narrower. Every aspect query is additive.
+
+    THE CLAIM COMES FIRST, THE ANALOGIES SECOND. Cross-domain reach is what this module is for and
+    it stays; the ORDER was wrong. Audited on report adhoc-f1410b74df48: the eight aspects reached
+    laptops, smartphones, electric vehicles, camera tripods, furniture, tyre monitors and medical
+    ventilators, and not one of the 57 queries asked about a seal section exposed through
+    peripheral openings, a differential hardness between two seal portions, or pressing a seal
+    through an opening to bridge a step, which is what the claim is. `MAX_QUERIES` is a hard cap,
+    so the order is not cosmetic: whatever sits past it is never asked at all.
     """
     specs = list(query_specs or [])
     by_kind = {}
@@ -234,15 +251,56 @@ def plan(query_specs, brief: str = "", claims=None) -> dict:
 
     queries: list[dict] = []
 
+    _asked = set()
+
     def add(source, q, element, why, cpc=None):
         q = q if isinstance(q, str) else str(q)
         if len(q.strip()) < 6 or len(queries) >= MAX_QUERIES:
             return
+        #  THE SAME QUESTION TWICE IS ONE QUESTION AND TWO SLOTS. `MAX_QUERIES` is a hard cap, so
+        #  a duplicate does not merely waste a call, it evicts a query that would have been asked.
+        key = (source, q.strip().lower()[:400], tuple(sorted(cpc or ())))
+        if key in _asked:
+            return
+        _asked.add(key)
         queries.append({"source": source, "q": q.strip()[:2000], "element": element,
                         "why": why, "cpc": list(cpc or [])})
 
-    #  WHOLE INVENTION. PQAI is a semantic engine and does best on the raw disclosure; the
-    #  keyword sources get the essence and the first independent claim.
+    #  ---- 1. THE CLAIM'S OWN NOVELTY COMBINATIONS, before anything analogical ------------------
+    #  These are the queries that ask for what the claim actually turns on, in the words the art
+    #  uses. They come from `novelty_units`, so they carry the relationship and the mechanism, not
+    #  a list of the components.
+    claim_aspects = []
+    if analysis and (analysis.get("clusters") or analysis.get("units")) and _claim_first():
+        try:
+            import novelty_units
+            claim_aspects = novelty_units.claim_first_aspects(analysis, max_aspects=5)
+        except Exception:
+            traceback.print_exc()
+            claim_aspects = []
+    for i, a in enumerate(claim_aspects):
+        kw = " ".join(a["keywords"][:8])
+        if a["blurb"]:
+            add("pqai", a["blurb"], a["name"], "claim combination, semantic")
+        for c4 in (a["cpc"] or [])[:CPC_PER_ASPECT]:
+            if kw:
+                add("bigquery_gpatents", kw, f"{a['name']} / {c4}",
+                    "claim combination keywords, one CPC subclass", cpc=[c4])
+        if kw:
+            add("uspto", kw, a["name"], "claim combination keywords, US titles")
+        if i < 2 and a["keywords"]:
+            boolean = " ".join(f'"{k}"' if " " in k else k for k in a["keywords"][:4])
+            add("serpapi_gpatents", boolean, a["name"],
+                "claim combination keywords, Google Patents")
+    #  The individual requirements that carry the most novelty, semantically, one query each. A
+    #  relative property and a causal mechanism are the two shapes a keyword engine cannot express
+    #  at all, so they go to the semantic source.
+    for u in _novelty_first_units(analysis, limit=4):
+        add("pqai", u, "claim requirement", "novelty-bearing requirement, semantic")
+
+    #  ---- 2. WHOLE INVENTION ---------------------------------------------------------------------
+    #  PQAI is a semantic engine and does best on the raw disclosure; the keyword sources get the
+    #  essence and the first independent claim.
     whole_cpc = sorted({c for a in aspects for c in a["cpc"]})[:8]
     if brief:
         add("pqai", brief, "whole invention", "raw brief, semantic")
@@ -257,7 +315,7 @@ def plan(query_specs, brief: str = "", claims=None) -> dict:
         add("bigquery_gpatents", brief[:400], "whole invention", "brief keywords in field",
             cpc=whole_cpc)
 
-    #  PER ASPECT. This is the part that reaches outside the indexed field.
+    #  ---- 3. PER ANALOGY ASPECT. This is the part that reaches outside the indexed field. -------
     for i, a in enumerate(aspects):
         kw = " ".join(a["keywords"][:8])
         if a["blurb"]:
@@ -277,7 +335,36 @@ def plan(query_specs, brief: str = "", claims=None) -> dict:
             boolean = " ".join(f'"{k}"' if " " in k else k for k in a["keywords"][:4])
             add("serpapi_gpatents", boolean, a["name"], "aspect keywords, Google Patents")
 
-    return {"aspects": aspects, "queries": queries}
+    return {"aspects": claim_aspects + aspects, "queries": queries,
+            "n_claim_aspects": len(claim_aspects)}
+
+
+def _novelty_first_units(analysis, limit=4) -> list:
+    """The individual requirements that carry the novelty, best first, as query text.
+
+    A relative property ("harder than the portion beneath it") and a causal mechanism ("pressed
+    through the opening so the gap at a step is reduced") are the two things a title-keyword
+    engine cannot express, so these go to the semantic source and nowhere else.
+    """
+    if not analysis:
+        return []
+    try:
+        import novelty_units as nu
+    except Exception:
+        return []
+    units = [u for u in (analysis.get("units") or []) if u.get("kind") in nu.CORE_KINDS]
+    units.sort(key=lambda u: (nu.PRIORITY[u["kind"]], -float(u.get("specificity") or 0.0)))
+    out = []
+    for u in units[:limit]:
+        text = " ".join(str(u.get("concept") or u.get("verbatim") or "").split())
+        rel, fn = u.get("relationship") or "", u.get("function") or ""
+        if rel and rel.lower() not in text.lower():
+            text = f"{text}, {rel}"
+        if fn and fn.lower() not in text.lower():
+            text = f"{text}, {fn}"
+        if len(text.split()) >= 5:
+            out.append(text[:600])
+    return out
 
 
 #  A canary that every source can answer, used to prove a source is ALIVE rather than merely
@@ -954,7 +1041,8 @@ def credit_sources(cands, fam_of, kept):
              for s, fams in by_source.items()})
 
 
-def run(query_specs, brief: str = "", claims=None, on_event=None, timeout=None) -> dict:
+def run(query_specs, brief: str = "", claims=None, on_event=None, timeout=None,
+        analysis=None) -> dict:
     """Plan, fan out, materialise, rank. Never raises.
 
     -> {"ok", "families": [(fam, score, pid)], "aspects", "queries", "stats", "n_candidates",
@@ -966,7 +1054,7 @@ def run(query_specs, brief: str = "", claims=None, on_event=None, timeout=None) 
                 "aspects": [], "queries": [], "stats": {}, "n_candidates": 0, "n_new": 0,
                 "elapsed": 0.0}
     try:
-        p = plan(query_specs, brief=brief, claims=claims)
+        p = plan(query_specs, brief=brief, claims=claims, analysis=analysis)
     except Exception as e:
         traceback.print_exc()
         return {"ok": False, "families": [], "error": f"plan failed: {str(e)[:200]}",
@@ -1027,11 +1115,13 @@ def run(query_specs, brief: str = "", claims=None, on_event=None, timeout=None) 
         traceback.print_exc()
         return {"ok": False, "families": [], "error": f"ranking failed: {str(e)[:200]}",
                 "aspects": p["aspects"], "queries": p["queries"],
+                "n_claim_aspects": p.get("n_claim_aspects", 0),
                 "stats": res.get("stats") or {}, "n_candidates": len(cands), "n_new": 0,
                 "elapsed": round(time.time() - t0, 1)}
 
     return {"ok": bool(res.get("ok")), "families": fams,
             "aspects": p["aspects"], "queries": p["queries"],
+            "n_claim_aspects": p.get("n_claim_aspects", 0),
             "stats": res.get("stats") or {}, "errors": res.get("errors") or [],
             "n_candidates": len(cands), "n_records": len(records), "n_in_corpus": len(have),
             "n_new": n_new, "n_channels": len(chans),
@@ -1055,6 +1145,9 @@ def summary(ext: dict) -> dict:
         "aspects": [{"name": a.get("name"), "cpc": a.get("cpc"),
                      "keywords": a.get("keywords", [])[:6]}
                     for a in (ext.get("aspects") or [])],
+        #  How many of those aspects are the claim's own combinations rather than a cross-industry
+        #  analogy. They are first in the list, and first is what MAX_QUERIES protects.
+        "n_claim_aspects": ext.get("n_claim_aspects", 0),
         "n_queries": len(ext.get("queries") or []),
         "n_candidates": ext.get("n_candidates", 0),
         "n_new": ext.get("n_new", 0),

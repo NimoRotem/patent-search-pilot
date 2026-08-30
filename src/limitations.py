@@ -297,6 +297,83 @@ def _snap(text, claim, at_head=False):
     return span, False
 
 
+#  A clause boundary inside a claim: the semicolons a claim is drafted with, and a full stop that
+#  is followed by more claim text rather than ending it.
+_CLAUSE_SPLIT = re.compile(r"\s*;\s*|\s*(?<=[a-z0-9\)])\.\s+(?=[A-Za-z])")
+
+
+def dedupe_claim_text(text: str) -> str:
+    """The claim, once. Repeated clauses removed; order, wording and punctuation untouched.
+
+    WHY A CLAIM ARRIVES REPEATED. The document extractor emits the claim body, then each of its
+    clauses again. Claim 1 of US 2025/0033224 A1 arrived as 4,352 characters of which 2,675 were
+    the same words a second and third time, and claim 2 as 327 characters of which 171 were.
+
+    IT IS NOT COSMETIC. It cost twice, in two different stages:
+
+      RETRIEVAL   the claim is embedded as one vector, so a clause that appears three times pulls
+                  that vector three times as hard as one that appears once. Nobody chose that
+                  weighting; the extractor did.
+      THE LEDGER  the structural split emits one limitation per clause, so 20 claims produced 80
+                  limitations of which half were duplicates of each other. Every duplicate is a
+                  chart row, a screening decision and a retrieval pass paid for twice, and a
+                  cluster built out of two of them asks the same question twice in one query.
+
+    Deliberately conservative: a clause is dropped ONLY when the same normalised words already
+    appeared, or when it is contained whole inside an earlier clause. Nothing is rewritten, so
+    what is left is still the claim verbatim and is still safe to quote and to chart.
+    """
+    t = " ".join(str(text or "").split())
+    if not t:
+        return ""
+    parts = [p.strip(" ;") for p in _CLAUSE_SPLIT.split(t) if p and p.strip(" ;")]
+    if len(parts) < 2:
+        return t
+    kept, norms = [], []
+    for p in parts:
+        n = " ".join(re.sub(r"[^a-z0-9 ]+", " ", p.lower()).split())
+        if len(n) < 12:
+            kept.append(p)
+            norms.append(n)
+            continue
+        if any(n == m or (len(n) >= 25 and n in m) for m in norms):
+            continue
+        kept.append(p)
+        norms.append(n)
+    return "; ".join(kept) or t
+
+
+def _labelled(claim_items) -> list:
+    """Claim rows with a `label`, whatever shape they arrived in.
+
+    THE BUG THIS CLOSES, and it had been silently costing every document-started search its entire
+    limitation search. `label` is what the model's output is keyed on and what every limitation id
+    below is built from, and it is NOT a field a claim carries when it comes from a document. The
+    stash `webapp._stash_doc` writes holds `claim_no`, `text` and `independent` and nothing else,
+    so `c["label"]` raised KeyError; `deep_rank` never saw it because it builds its own rows with
+    a label first, and `query_set._limitation_texts` never reported it because it caught
+    `Exception` and returned `[]`. The visible result on report adhoc-f1410b74df48: a
+    "Third-party submission" profile, whose stated unit of work is the claim limitation, produced
+    65 limitations for the ledger and searched none of them.
+
+    Deriving the label here rather than demanding it means no caller can reintroduce this.
+    """
+    out = []
+    for i, c in enumerate(claim_items or []):
+        if not isinstance(c, dict):
+            continue
+        text = str(c.get("text") or "").strip()
+        if not text:
+            continue
+        claim_no = c.get("claim_no") or (i + 1)
+        row = dict(c)
+        row["text"] = dedupe_claim_text(text)
+        row["claim_no"] = claim_no
+        row["label"] = str(c.get("label") or "").strip() or f"claim {claim_no}"
+        out.append(row)
+    return out
+
+
 def split_claims(claim_items, use_llm=True, log=print):
     """[claim] -> [limitation]. Each limitation is independently searchable and independently owned.
 
@@ -304,7 +381,7 @@ def split_claims(claim_items, use_llm=True, log=print):
     it inherits from, because a dependent claim is only invalid if its parent is too and the report
     has to be able to say so.
     """
-    claims = [c for c in (claim_items or []) if str(c.get("text") or "").strip()]
+    claims = _labelled(claim_items)
     if not claims:
         return []
     parsed = {}

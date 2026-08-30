@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import os
 import time
+import traceback
 import embed, llm, query_set
 import retrieval
 from retrieval import Retriever
@@ -28,6 +29,11 @@ FIELD = "vacuum gripping / suction lifting devices"
 #  screen consumes.
 SEED_TOPK = int(os.environ.get("AGENT_SEED_TOPK", "800"))
 ELEMENT_TOPK = int(os.environ.get("AGENT_ELEMENT_TOPK", "200"))
+#  A NOVELTY CLUSTER GETS MORE THAN A WHOLE-INVENTION QUERY DOES. A cluster asks for the 2 to 4
+#  requirements the claim actually turns on, so a document deep in its list is a document that has
+#  most of the combination, which is worth more to a novelty attack than the 800th document that
+#  merely looks like the product. This is the "largest retrieval budget" the priority order is for.
+CLUSTER_TOPK = int(os.environ.get("AGENT_CLUSTER_TOPK", str(SEED_TOPK + SEED_TOPK // 2)))
 
 
 def _default_search_workers():
@@ -54,6 +60,7 @@ class CoverageLedger:
         self.citation_branches = set()
         self.families_seen = set()
         self.query_set = []                             # the short queries the search actually ran
+        self.novelty = {"units": [], "clusters": []}    # structured limitations + their clusters
         self.family_score = {}                          # family -> best fused score (any search)
         self.family_seed = {}                           # family -> fused score from the whole-query seed search
         self.family_elem = {}                           # family -> best fused score from an element search
@@ -169,16 +176,45 @@ class CoverageAgent:
 
     # ---- LLM language tasks (with robust fallbacks) --------------------------------------
     def decompose(self, text, subject=None):
-        sys = ("You are a patent prior-art search analyst. Break an invention into the DISTINCT "
-               "technical elements a prior-art search must separately cover. Return JSON "
-               '{"elements":[short phrases]} with 5-12 concise element phrases.\n'
-               "Write each element in the words ANOTHER patent would use, not in this document's "
+        """The technical elements, WITH the relationships between them left intact.
+
+        THE INSTRUCTION THIS REPLACES said "break an invention into the DISTINCT technical
+        elements". Audited on report adhoc-f1410b74df48 that is exactly what it did, and the two
+        least conventional ideas in claim 1 did not survive it. The claim requires a first seal
+        portion that is HARDER OR LESS COMPRESSIBLE THAN the second, and requires the two to
+        cooperate so the first is PRESSED THROUGH an opening and REDUCES THE GAP AT A STEP in the
+        object surface. What came out was "a vacuum seal element with a flexible, stretchable
+        first portion exposed through openings" and "a compressible and deformable second portion
+        supporting the first portion": three components, no relative property, no mechanism. A
+        component list is a list of things ten thousand patents also have. Novelty lives in the
+        relationship, so the relationship has to survive the decomposition.
+        """
+        sys = ("You are a patent prior-art search analyst preparing the searches for one "
+               "invention. Return JSON {\"elements\":[short phrases]} with 5-12 phrases.\n\n"
+               "Extract the technical elements AND, separately, the technically distinctive "
+               "RELATIONSHIPS between them. Do NOT reduce a relationship into independent "
+               "component descriptions. Preserve relative properties, spatial relationships, "
+               "causal mechanisms and functional results whenever those relationships may be what "
+               "distinguishes this invention from conventional ones.\n\n"
+               "So, alongside the parts, emit phrases of these shapes wherever the text states "
+               "them:\n"
+               "  RELATIVE PROPERTY   'an outer seal layer harder and less compressible than the "
+               "layer beneath it', never 'a seal layer'.\n"
+               "  SPATIAL RELATION    'seal sections exposed through openings around the rim of "
+               "the base', never 'a base with openings'.\n"
+               "  CAUSAL MECHANISM    'the seal pressed out through an opening to bridge a step "
+               "in the workpiece surface', never 'a seal'.\n"
+               "  FUNCTIONAL RESULT   the effect the text says the arrangement must produce.\n\n"
+               "Rank them: the distinctive relationships first, the unusual mechanisms next, the "
+               "conventional supporting parts last. A battery, an alarm, a switch, a handle, a "
+               "controller or a manual backup is in an enormous number of patents; emit at most "
+               "two such phrases and put them at the end.\n\n"
+               "Write every phrase in the words ANOTHER patent would use, not in this document's "
                "own drafting: no 'at least one', no 'said', no reference numerals, no private "
                "reference frame ('the second side of the base element' -> 'on the underside of "
-               "the base'). Keep what distinguishes the invention — 'a loop-shaped elastic seal "
-               "around the rim', not 'a sealing element'. These phrases are matched against "
-               "documents written decades earlier in other languages, so a phrase only this "
-               "applicant would write is a phrase nothing will match.")
+               "the base'). These phrases are matched against documents written decades earlier "
+               "in other languages, so a phrase only this applicant would write is a phrase "
+               "nothing will match.")
         out = llm.chat_json(sys, f"Field: {FIELD}\n\nInvention text:\n{text[:4000]}") or {}
         raw = out.get("elements") or []                      # key may be present-but-null
         els = [e.strip() for e in raw if isinstance(e, str) and e.strip()]
@@ -190,7 +226,13 @@ class CoverageAgent:
                '"queries" (2-4 natural-language search strings), "synonyms" (terms/phrases), '
                '"phrases" (exact multiword phrases to match), "cpc" (CPC symbols like B66C1/0225 '
                'if relevant), "assignees" (company names if the element implies a known maker), '
-               '"de" (a German translation of the element for cross-lingual recall).')
+               '"de" (a German translation of the element for cross-lingual recall).\n\n'
+               "KEEP THE RELATIONSHIP. If the element states a relative property ('harder than'), "
+               "a spatial relation ('exposed through openings in') or a causal mechanism ('pressed "
+               "through the opening so the gap at a step is reduced), every query you write must "
+               "still contain it. Dropping it back to the component leaves a query that returns "
+               "the whole field: 'seal support structure' is every seal ever made, while 'seal "
+               "layer harder than the layer under it' is a small set and it is the right one.")
         usr = (f"Field: {FIELD}\nElement: {element}\nAlready-tried synonyms: {tried}\n"
                f"Seed CPC context: { {k: SEED_CPC_TITLES[k] for k in SEED_CPC} }")
         out = llm.chat_json(sys, usr) or {}                  # never trust the LLM to return a dict
@@ -358,8 +400,9 @@ class CoverageAgent:
         split_claim_seed = self._search_config == "claim_agentic"
         #  Honest upper bound: seed pass(es) + the query set + per-element seed passes + rounds.
         search_max = ((2 if split_claim_seed else 1)
+                      + query_set.max_clusters()             # the novelty combinations, first
                       + 6 + query_set.MAX_CLAIMS + min(8, len(elements))
-                      + query_set.max_limitations() * 2      # each may carry a construction
+                      + query_set.max_limitations() * 3      # construction and alternative each
                       + cfg.max_rounds * cfg.elements_per_round * 3)
 
         def searched(progress_stage, query, *args, progress_round=None, **kwargs):
@@ -522,17 +565,38 @@ class CoverageAgent:
         #  #528, a 30-word essence sentence put it at #2, and fusing 14 short queries put it at
         #  #37 while finding it in 9 of the 14. These are SEED-bucket passes: they describe the
         #  whole invention, so they belong in the ranking backbone, not in element attribution.
+        #  THE STRUCTURED READING OF THE CLAIMS, once, and shared. Every requirement with its
+        #  components, the relationship between them, the result that relationship must produce,
+        #  its embodiment branches, how generic it is and how much of the novelty it carries; then
+        #  the 2-to-4 combinations built from those. The query builder spends the retrieval budget
+        #  from it, the external planner asks the outside world about it before it asks about
+        #  analogies, and the report carries it so a reader can see what was searched and why.
+        analysis = {"units": [], "clusters": []}
+        if cfg.input_claims:
+            try:
+                analysis = query_set.novelty_analysis(
+                    list(cfg.input_claims), spec_text=(cfg.input_spec or ""))
+            except Exception:
+                traceback.print_exc()
+        ledger.novelty = analysis
+        if analysis.get("units"):
+            emit("novelty_units", {"n": len(analysis["units"]),
+                                   "n_clusters": len(analysis.get("clusters") or []),
+                                   "source": analysis.get("source")})
         try:
             specs = query_set.build(query_text, elements=elements,
                                     claims=(cfg.input_claims or []),
-                                    spec_text=(cfg.input_spec or ""))
+                                    spec_text=(cfg.input_spec or ""), analysis=analysis)
         except Exception:
+            traceback.print_exc()
             specs = []
         extra = [s for s in query_set.seed_specs(specs)
                  if s.kind != "brief" and s.text.strip() != rank_text.strip()]
         if cfg.find_mode:
             #  Five whole-invention queries carry the seed bucket for a find; the full set , and
-            #  the wide scan profile , belong to the phases that read what they retrieve.
+            #  the wide scan profile , belong to the phases that read what they retrieve. `specs`
+            #  is priority-ordered, so the five are the novelty clusters and the essence, not
+            #  whichever five happened to be built first.
             extra = extra[:5]
         if extra:
             emit("query_set", {"n": len(extra),
@@ -540,15 +604,35 @@ class CoverageAgent:
             ledger.query_set = [s.as_dict() for s in extra]
             _find_cfg = ["dense", "claim_dense"] if cfg.find_mode else None
             searched_batch("seed_progress", [
-                dict({"query": s.text, "is_seed": True, "wide": not cfg.find_mode},
+                dict({"query": s.text, "is_seed": True, "wide": not cfg.find_mode,
+                      #  THE LARGEST SHARE GOES TO THE COMBINATIONS. A cluster asks for 2 to 4
+                      #  requirements at once, which is what a document has to disclose to be
+                      #  prior art against the claim rather than evidence about one part of it,
+                      #  so it contributes more depth to the ledger than a single-vector
+                      #  whole-invention query does.
+                      "topk": (CLUSTER_TOPK if (s.kind == "cluster" and not cfg.find_mode)
+                               else None)},
                      **({"cfg": _find_cfg} if _find_cfg else {})) for s in extra
             ])
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
         _find_cfg = (["dense", "claim_dense"]
                      if (cfg.find_mode or cfg.trim_element_channels) else None)
+        #  WHEN THE CLAIMS ARE PRESENT THE ELEMENTS ARE THE WEAKER LIST. The limitation and
+        #  cluster passes above are verbatim cuts of the legal requirement and the combinations
+        #  they form; the element list is a model's paraphrase of the same device. Paying for
+        #  eight of each is paying twice, and the second payment is the one that buys "a battery
+        #  housed in a handle" its own retrieval pass. `qs_elements_with_claims` is the knob.
+        n_element_passes = 6 if cfg.find_mode else 8
+        if cfg.input_claims:
+            try:
+                import search_settings as _ss
+                n_element_passes = min(n_element_passes, int(_ss.get("qs_elements_with_claims")))
+            except Exception:
+                pass
         searched_batch("seed_progress", [
             dict({"query": el, "element": el},
-                 **({"cfg": _find_cfg} if _find_cfg else {})) for el in elements[:6 if cfg.find_mode else 8]
+                 **({"cfg": _find_cfg} if _find_cfg else {}))
+            for el in elements[:n_element_passes]
         ])
 
         #  ONE PASS PER CLAIM LIMITATION. A claim is a conjunction, and the art that discloses its
@@ -565,7 +649,12 @@ class CoverageAgent:
         #  Constructions ride with the limitations: they are the same question asked in the
         #  words the art actually uses, and on the case this was built for they are the ONLY
         #  form that reaches the art at all.
-        lim_specs = [s for s in specs if s.kind in ("limitation", "construction")]
+        #  `specs` is priority-ordered, so this list is already core-first: relative properties and
+        #  mechanisms before conventional supporting parts, and the generic ones capped by
+        #  `qs_max_generic_limitations` before they ever get here. An ALTERNATIVE is one embodiment
+        #  branch of a requirement that states several, searched apart from its siblings because a
+        #  layered composite and a fluid-filled bladder sit in different prior art.
+        lim_specs = [s for s in specs if s.kind in ("limitation", "alternative", "construction")]
         if cfg.find_mode:
             #  The find tier buys reach, not depth: six requirements on the cheap dense channels is
             #  seconds, and it is where the measured recall gain sits.
@@ -698,6 +787,12 @@ class CoverageAgent:
             "combination_view": combination,
             "channels_used": sorted(ledger.channel_families.keys()),
             "query_set": list(getattr(ledger, "query_set", []) or []),
+            #  ON THE REPORT, because "what was searched" was previously answerable only for the
+            #  eleven seed queries: the element passes, the round queries and every limitation
+            #  query were reconstructible from nothing. This is the structure the budget was spent
+            #  from, so a reader can see which requirement carried the novelty and which one was
+            #  treated as a conventional part.
+            "novelty": dict(getattr(ledger, "novelty", None) or {"units": [], "clusters": []}),
             "languages": sorted(ledger.languages),
             "cpc_branches": sorted(ledger.cpc_branches),
             "llm_usage": llm.usage(),

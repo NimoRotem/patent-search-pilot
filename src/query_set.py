@@ -88,10 +88,23 @@ _CACHE_LOCK = threading.Lock()
 class QuerySpec:
     name: str
     text: str
-    kind: str            # essence | alt | brief | element | claim
+    kind: str            # cluster | essence | alt | brief | limitation | alternative | element | claim
+    #  THE BUDGET, not a label. Lower runs first and a caller that can only afford n passes takes
+    #  the first n. 0 is a novelty cluster; the atomic limitation classes follow in
+    #  novelty_units.PRIORITY order; the generic supporting components come last on purpose.
+    priority: int = 50
+    #  Only set on a cluster: which limitation ids it asks for together, and why.
+    members: tuple = ()
+    why: str = ""
 
     def as_dict(self):
-        return {"name": self.name, "kind": self.kind, "text": self.text}
+        d = {"name": self.name, "kind": self.kind, "text": self.text,
+             "priority": self.priority}
+        if self.members:
+            d["members"] = list(self.members)
+        if self.why:
+            d["why"] = self.why
+        return d
 
 
 #  "The magnetic gripper of claim 1", "A method according to claim 3", "The device as claimed in
@@ -111,6 +124,68 @@ def max_limitations() -> int:
         return 0
 
 
+def max_clusters() -> int:
+    """How many NOVELTY-CLUSTER queries this search may issue. 0 disables them."""
+    try:
+        import search_settings as _ss
+        return 0 if not _ss.get("qs_clusters") else max(0, int(_ss.get("qs_max_clusters")))
+    except Exception:
+        return 0
+
+
+def max_generic_limitations() -> int:
+    """How many of the conventional supporting components may still get a pass of their own."""
+    try:
+        import search_settings as _ss
+        return max(0, int(_ss.get("qs_max_generic_limitations")))
+    except Exception:
+        return 2
+
+
+def _split_limitations(claims):
+    """The structural split of the claims, or [] with the failure RECORDED rather than swallowed.
+
+    The bare `except Exception: return []` this replaces is how a broken claim split stayed
+    invisible for as long as it did: the search reported a full claim ledger and had searched none
+    of it. A degraded run must be recognisable as degraded from the report.
+    """
+    if not claims:
+        return []
+    try:
+        import limitations as _lim
+        return _lim.split_claims(claims, use_llm=False, log=lambda *a, **k: None)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            import failclosed
+            failclosed.fallback("query_set.split_limitations",
+                                f"{type(e).__name__}: {e}", [], kind="limitation_split_failed")
+        except Exception:
+            pass
+        return []
+
+
+def novelty_analysis(claims, spec_text="", want_llm=True) -> dict:
+    """The structured limitation records and the clusters, for retrieval AND for the report.
+
+    Cached inside `novelty_units` on the limitation texts, so calling it from the query builder,
+    from the external planner and from the report costs one model call between them.
+    """
+    rows = _split_limitations(claims)
+    if not rows:
+        return {"units": [], "clusters": [], "source": "no_limitations"}
+    try:
+        import novelty_units
+        return novelty_units.analyse(rows, spec_text=spec_text, want_llm=want_llm)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return {"units": [], "clusters": [], "source": "error"}
+
+
+#  Kept for the callers and tests that only ever wanted "the limitation texts, in order". It is
+#  now a projection of the analysis rather than a second implementation of the split.
 def _limitation_texts(claims) -> list:
     """[(id, verbatim limitation text)], independent claims first. Empty when switched off.
 
@@ -125,11 +200,7 @@ def _limitation_texts(claims) -> list:
     cap = max_limitations()
     if cap <= 0 or not claims:
         return []
-    try:
-        import limitations as _lim
-        rows = _lim.split_claims(claims, use_llm=False, log=lambda *a, **k: None)
-    except Exception:
-        return []
+    rows = _split_limitations(claims)
     rows = sorted(rows, key=lambda r: (not r.get("independent"),
                                        r.get("claim_no") or 0, r.get("index") or 0))
     out = []
@@ -263,18 +334,48 @@ def _construed_queries(rows, spec_text=""):
     return out
 
 
+def clean_claim_text(text: str) -> str:
+    """The claim, once. See `limitations.dedupe_claim_text`, which owns the rule.
+
+    A whole-claim query is worth keeping as one lane, but the lane must not be a claim whose most
+    duplicated clause quietly outvotes the rest of it. Pass 8 of the audited run was 4,352
+    characters and 61% of it was repetition.
+    """
+    try:
+        import limitations as _lim
+        return _lim.dedupe_claim_text(text)
+    except Exception:
+        return " ".join(str(text or "").split())
+
+
 def build(query: str, elements=None, claims=None, want_llm: bool = True,
-          spec_text: str = "") -> list:
+          spec_text: str = "", analysis=None) -> list:
     """The query set for one search. `query` may still carry the figure block; it is stripped here.
 
+    THE ORDER OF THE RETURN VALUE IS THE RETRIEVAL BUDGET. A caller that can afford n passes takes
+    the first n, so the novelty combinations are searched before any single requirement and the
+    conventional supporting components are searched last or not at all.
+
+        cluster       2 to 4 requirements together, which is what a document has to disclose to be
+                      prior art. Largest share by design.
+        essence/alt   the whole invention in short, alternative vocabulary.
+        limitation    one requirement, verbatim, core classes first, generic ones capped.
+        alternative   one embodiment branch of a requirement that states several, searched apart
+                      because a laminate and a fluid-filled bladder are different neighbourhoods.
+        construction  what a requirement MEANS where the claim states a range and the art states a
+                      geometry.
+        element       the model's description of the invention's parts, for a search with no claims.
+        brief/claim   the broadest single queries and the safety net.
+
     Deterministic parts (brief, elements, claims) are always present, so an LLM outage costs the
-    essence and the alternatives and nothing else.
+    essence, the alternatives and the model's reading of the relationships, and nothing else: the
+    clusters still get built from the deterministic classifier.
     """
     brief = retrieval_text(query)
     specs: list[QuerySpec] = []
     seen: set[str] = set()
 
-    def add(name, text, kind):
+    def add(name, text, kind, priority=50, members=(), why=""):
         text = " ".join(str(text or "").split())
         if len(text) < 8:
             return
@@ -282,53 +383,81 @@ def build(query: str, elements=None, claims=None, want_llm: bool = True,
         if k in seen:
             return
         seen.add(k)
-        specs.append(QuerySpec(name=name, text=text, kind=kind))
+        specs.append(QuerySpec(name=name, text=text, kind=kind, priority=priority,
+                               members=tuple(members or ()), why=why))
 
+    #  ---- 1. the novelty combinations, first, because they are the discriminative query --------
+    if analysis is None:
+        analysis = novelty_analysis(claims, spec_text=spec_text, want_llm=want_llm) \
+            if claims else {"units": [], "clusters": []}
+    plan = []
+    if analysis.get("units"):
+        try:
+            import novelty_units
+            plan = novelty_units.query_plan(
+                analysis, max_clusters=max_clusters(), max_limitations=max_limitations(),
+                max_generic=max_generic_limitations())
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            plan = []
+    for q in plan:
+        if q["kind"] == "cluster":
+            add(q["name"], q["text"], "cluster", priority=0,
+                members=q.get("members") or (), why=q.get("why") or "")
+
+    #  ---- 2. the whole invention, short ---------------------------------------------------------
     if want_llm and brief:
         try:
             ea = _essence_and_alts(brief)
-            add("essence", ea.get("essence"), "essence")
+            add("essence", ea.get("essence"), "essence", priority=10)
             for i, a in enumerate(ea.get("alts") or []):
-                add(f"alt{i + 1}", a, "alt")
+                add(f"alt{i + 1}", a, "alt", priority=11)
         except Exception:
             pass
-    add("brief", brief, "brief")
 
+    #  ---- 3. one requirement at a time, in priority order ---------------------------------------
+    lim_ids = set()
+    for q in plan:
+        if q["kind"] == "limitation":
+            lim_ids.add(q["name"].split("[")[0])
+            add(q["name"], q["text"], "limitation", priority=20 + int(q.get("priority", 0)))
+        elif q["kind"] == "alternative":
+            add(q["name"], q["text"], "alternative", priority=30 + int(q.get("priority", 0)))
+
+    #  AND WHAT EACH REQUIREMENT MEANS, not only what it says. See `_construed_queries`: this is
+    #  the pass that turns "170 to 190 degrees" into "parallel", and it is free.
+    if lim_ids:
+        rows = [r for r in _split_limitations(claims) if str(r.get("id") or "") in lim_ids]
+        for name, text in _construed_queries(rows, spec_text):
+            add(name, text, "construction", priority=40)
+
+    #  ---- 4. the model's element list ------------------------------------------------------------
     #  When a document brought its own claims, its LIMITATIONS are its elements, and they are
     #  verbatim spans of the legal requirement rather than a model's paraphrase of the device. So
     #  the element list is trimmed rather than paid for twice; `qs_elements_with_claims` is what
     #  trims it, and setting it back to MAX_ELEMENTS restores the old pass count exactly.
-    lims = _limitation_texts(claims)
     n_elements = MAX_ELEMENTS
-    if lims:
+    if lim_ids:
         try:
             import search_settings as _ss
             n_elements = min(MAX_ELEMENTS, int(_ss.get("qs_elements_with_claims")))
         except Exception:
             n_elements = MAX_ELEMENTS
     for i, e in enumerate((elements or [])[:n_elements]):
-        add(f"element{i + 1}", e, "element")
-    for lid, text in lims:
-        add(lid, text, "limitation")
-    #  AND WHAT EACH LIMITATION MEANS, not only what it says. See `_construed_queries`: this is
-    #  the pass that turns "170 to 190 degrees" into "parallel", and it is free.
-    if lims:
-        try:
-            import limitations as _lim
-            rows = _lim.split_claims(claims, use_llm=False, log=lambda *a, **k: None)
-            keep = {l for l, _ in lims}
-            rows = [r for r in rows if str(r.get("id") or "") in keep]
-            for name, text in _construed_queries(rows, spec_text):
-                add(name, text, "construction")
-        except Exception:
-            pass
+        add(f"element{i + 1}", e, "element", priority=45)
 
+    #  ---- 5. the safety net ----------------------------------------------------------------------
+    add("brief", brief, "brief", priority=60)
     #  Independent claims first: a dependent claim is mostly its parent's words plus one detail,
-    #  so it adds a near-duplicate vector rather than a new direction.
+    #  so it adds a near-duplicate vector rather than a new direction. The text is de-duplicated
+    #  first: see `clean_claim_text`.
     ordered = sorted((claims or []), key=lambda c: (not c.get("independent"),
                                                     c.get("claim_no") or 0))
     for c in ordered[:MAX_CLAIMS]:
-        add(f"claim{c.get('claim_no')}", c.get("text"), "claim")
+        add(f"claim{c.get('claim_no')}", clean_claim_text(c.get("text")), "claim", priority=61)
+
+    specs.sort(key=lambda s: s.priority)
     return specs
 
 
@@ -343,4 +472,9 @@ def seed_specs(specs) -> list:
     """
     #  A CONSTRUCTION IS NOT A SEED EITHER. It says what one requirement means; ranking a whole
     #  reference by it would promote every document that happens to be about parallel surfaces.
-    return [s for s in specs if s.kind in ("essence", "alt", "brief", "claim")]
+    #
+    #  A CLUSTER IS. It is 2 to 4 requirements that only make sense together, and a document that
+    #  discloses the combination is prior art against the claim rather than evidence about one
+    #  part of it. That is the same test the brief and the essence are seeds for, asked about the
+    #  part of the claim that is actually distinctive, so it belongs in the ranking backbone.
+    return [s for s in specs if s.kind in ("cluster", "essence", "alt", "brief", "claim")]

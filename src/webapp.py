@@ -1805,11 +1805,18 @@ def _external_block(query, doc, quick_deadline=False):
     try:
         brief = query_set.retrieval_text(query or "")
         claims = list((doc or {}).get("claims") or [])
-        specs = query_set.build(query, claims=claims)
+        #  THE SAME STRUCTURED READING THE LOCAL SEARCH USES. Cached in `novelty_units` on the
+        #  limitation texts, so the local lane and this one share one model call even though they
+        #  run on different threads. It is what puts the claim's own combinations at the FRONT of
+        #  the fan-out, ahead of the cross-industry analogies and therefore inside MAX_QUERIES.
+        analysis = query_set.novelty_analysis(
+            claims, spec_text=str((doc or {}).get('full_text') or '')[:400000]) if claims else None
+        specs = query_set.build(query, claims=claims, analysis=analysis)
         #  On the interactive tier this is the whole wall clock. See external.TIMEOUT_QUICK.
-        ext = external.run(specs, brief=brief, claims=claims,
+        ext = external.run(specs, brief=brief, claims=claims, analysis=analysis,
                            timeout=external.TIMEOUT_QUICK if quick_deadline else None)
-        print(f"[external] {len(ext.get('aspects') or [])} aspects, "
+        print(f"[external] {len(ext.get('aspects') or [])} aspects "
+              f"({ext.get('n_claim_aspects', 0)} from the claim), "
               f"{len(ext.get('queries') or [])} queries -> {ext.get('n_candidates', 0)} candidates, "
               f"{ext.get('n_families', 0)} families in {ext.get('elapsed', 0)}s "
               f"{ext.get('stats')}", flush=True)
