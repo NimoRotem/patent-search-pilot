@@ -57,6 +57,12 @@ import time
 import urllib.error
 import urllib.request
 
+#  No fallback import: a pool that runs 24-wide must not run unmetered.
+from llm_spend_guard import SpendGuard
+
+_SPEND = SpendGuard(os.environ.get("LLM_SPEND_APP", "patent-search-pilot").strip()
+                    or "patent-search-pilot")
+
 try:                                     # side effect: config loads .env, where the keys live
     import config                        # noqa: F401
 except Exception:
@@ -212,6 +218,11 @@ def _post(url, payload, headers):
 
 def _anthropic(model, temperature=0.2, thinking_off=False):
     def go(system, user, max_tokens):
+        #  THE DAILY CEILING. This closure is the only path Anthropic traffic takes out of the
+        #  pool, and the pool runs 24 workers at ~8 calls/s, so an unattended sweep is exactly the
+        #  shape that spends hundreds of dollars before anyone looks. Refusing here lets the
+        #  caller's own provider rotation pick Vertex or Meta instead of failing the pass.
+        _SPEND.check()
         #  CACHE_CONTROL ON THE STABLE PREFIX. The reader sends the same document to the same
         #  model a dozen times per reference; without an explicit breakpoint Anthropic bills the
         #  full document on every call. The system prompt (stable per stage) always gets a
@@ -241,6 +252,7 @@ def _anthropic(model, temperature=0.2, thinking_off=False):
         cache_read = u.get("cache_read_input_tokens", 0) or 0
         cache_write = u.get("cache_creation_input_tokens", 0) or 0
         _note_cached(cache_read)
+        _SPEND.record(model=model, usage=u, route="api", detail="model_pool")
         #  `input_tokens` EXCLUDES cache reads/writes on Anthropic; report the total submitted so
         #  the spend line stays comparable with Vertex's inclusive `prompt_token_count`.
         return ("".join(b.get("text", "") for b in (d.get("content") or [])),

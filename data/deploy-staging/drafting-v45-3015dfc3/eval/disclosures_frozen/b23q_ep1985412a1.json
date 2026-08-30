@@ -1,0 +1,479 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b23q_ep1985412a1",
+ "subject_pub": "EP-1985412-A1",
+ "n_claims_source": 36,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 75,
+  "by_kind": {
+   "independent_limitation": 12,
+   "combination": 2,
+   "dependent_limitation": 61
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Protection apparatus for machine tools machining wood or similar materials",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Protects against blunt instruments ejected from an operating unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Barrier means define a machining area of the operating unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Barrier means separate the operating unit from an operator",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A supporting structure supports the barrier means",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Supporting structure is positionable near the machine tool",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Supporting structure comprises guide means",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Guide means slidably support the barrier means",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Baffle means overhang a machining plane and are movable relative to the operating unit",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "Slidable panel means cooperate with baffle means to define a machining area",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "Connecting means connect baffle means to panel means",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "Panel means are moved by the baffle means",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "Protection apparatus with barrier means defining a machining area, a supporting structure for the barrier means, and guide means for slidably supporting the barrier means",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Protection apparatus with baffle means overhanging a machining plane and movable relative to an operating unit, slidable panel means cooperating with the baffle means, and connecting means for moving the panel means via the baffle means",
+   "kind": "combination",
+   "source": "claim 23",
+   "weight": 0.9
+  },
+  {
+   "text": "Supporting structure extends substantially parallel to an advance direction of the operating unit",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Supporting structure has a portal shape",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Guide means comprise first guide means for slidably supporting door means",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Door means enable operator access to the machining area",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "First guide means positioned on a first side of the supporting structure",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "First guide means extends substantially parallel to the advance direction",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "First guide means extends along a further direction perpendicular to the advance direction",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "First guide means extends along an arc path external to the advance direction",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "First guide means comprises a first guide and a second guide",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second guides slidably support a first door element and a second door element",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second guides are fixed to opposite end zones of the supporting structure",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "First guide means comprises a further first guide and a further second guide",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Further first and second guides cooperate with the first and second guides",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Further first and second guides slidably support the first and second door elements",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Further first and second guides are fixed to an intermediate zone of the supporting structure",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second door elements extend along a curved surface",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Guide means comprise second guide means for slidably supporting first and second barrier elements",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second barrier elements are positioned on opposite sides of the operating unit",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second barrier elements cooperate with first and second door elements",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second barrier elements define a first and second machining space",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Second guide means extends substantially parallel to the advance direction",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Second guide means is fixed to a second side of the supporting structure",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second barrier elements each comprise a crosspiece element",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Crosspiece element overhangs a machining plane of the operating unit",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second barrier elements each comprise an upright element",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Upright element is fixed to the crosspiece element",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Upright element is positioned to the side of the machining plane",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Screen means mounted in crosspiece element",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Screen means movable substantially parallel to the further direction relative to the crosspiece element",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "First connecting means connect first and second barrier elements to a carriage",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "Carriage is movable along the advance direction and supports the operating unit",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second barrier elements are moved by the carriage",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "First motor and second motor for moving first and second barrier elements",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Second connecting means connect first and second barrier elements to first and second door elements",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second door elements are moved by first and second barrier elements",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Third motor means and fourth motor means for moving first and second door elements",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "Door elements move between a first position enabling operator access",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "Door elements move to a second position preventing operator access",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "Connecting means comprise first and second connecting means",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "First connecting means connects a first baffle to a first panel",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "Second connecting means connects a second baffle to a second panel",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second panels are moved by first and second baffles",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "Panels move between a first configuration where they are substantially overlapped",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "Panels move to a second configuration where they are substantially side by side",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "Panel means comprises a plurality of panels",
+   "kind": "dependent_limitation",
+   "source": "claim 25",
+   "weight": 0.7
+  },
+  {
+   "text": "Panels are interposed between and connected to first and second panels",
+   "kind": "dependent_limitation",
+   "source": "claim 25",
+   "weight": 0.7
+  },
+  {
+   "text": "Panel means is slidably supported by guide means",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  },
+  {
+   "text": "Guide means extend along an advance direction of the operating unit",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  },
+  {
+   "text": "Guide means supported by a supporting structure",
+   "kind": "dependent_limitation",
+   "source": "claim 27",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second baffles are positioned on opposite sides of the operating unit",
+   "kind": "dependent_limitation",
+   "source": "claim 29",
+   "weight": 0.7
+  },
+  {
+   "text": "Connecting elements connect first and second baffles to a carriage",
+   "kind": "dependent_limitation",
+   "source": "claim 30",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second baffles are moved by the carriage along the advance direction",
+   "kind": "dependent_limitation",
+   "source": "claim 30",
+   "weight": 0.7
+  },
+  {
+   "text": "First motor means and second motor means for moving first and second baffles",
+   "kind": "dependent_limitation",
+   "source": "claim 31",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second baffles substantially have the shape of an upturned 'L'",
+   "kind": "dependent_limitation",
+   "source": "claim 32",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second baffles substantially have a portal shape",
+   "kind": "dependent_limitation",
+   "source": "claim 33",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second baffles comprise a crosspiece element overhanging the machining plane",
+   "kind": "dependent_limitation",
+   "source": "claim 34",
+   "weight": 0.7
+  },
+  {
+   "text": "Movable screen means mounted on the crosspiece element",
+   "kind": "dependent_limitation",
+   "source": "claim 34",
+   "weight": 0.7
+  },
+  {
+   "text": "Screen means movable substantially perpendicularly to the advance direction",
+   "kind": "dependent_limitation",
+   "source": "claim 34",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second baffles are slidably supported by further guide means",
+   "kind": "dependent_limitation",
+   "source": "claim 35",
+   "weight": 0.7
+  },
+  {
+   "text": "Further guide means extend substantially parallel to the advance direction",
+   "kind": "dependent_limitation",
+   "source": "claim 35",
+   "weight": 0.7
+  },
+  {
+   "text": "Further guide means is obtained on the supporting structure",
+   "kind": "dependent_limitation",
+   "source": "claim 36",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "57627f718ed45e65"
+}

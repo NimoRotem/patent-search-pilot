@@ -1,0 +1,275 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25b_ep1691698a4",
+ "subject_pub": "EP-1691698-A4",
+ "n_claims_source": 40,
+ "claims_source": "family_claims:US-7846190-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 41,
+  "by_kind": {
+   "independent_limitation": 18,
+   "combination": 1,
+   "dependent_limitation": 22
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "fixation apparatus for fixating bone",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "head portion with multiple outer wall sections",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "outer wall sections at least partially surround a central hollow area",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "outer wall sections have inner sides facing the central hollow area",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "head portion has an inner bottom surface",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "head portion has a top end",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "inner bottom surface disposed between the inner sides",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "top end defines an opening between the outer wall sections",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "inner sides of outer wall sections taper inwardly toward central hollow area",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "taper is from the inner bottom surface to the top end",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "expander hub adapted for positioning at least partially within central hollow area",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "expander hub seated at least partially on the inner bottom surface",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "expander hub rotatable upwardly from inner bottom surface",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "expander hub rotates toward the opening at the top end",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "expander hub forces at least one outer wall section outwardly",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "forcing wall section outwardly locks the fixation apparatus",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "expander hub positioned at least partially within the head portion",
+   "kind": "independent_limitation",
+   "source": "claim 21",
+   "weight": 1.0
+  },
+  {
+   "text": "outer wall sections of the head portion at least partially surround the expander hub",
+   "kind": "independent_limitation",
+   "source": "claim 21",
+   "weight": 1.0
+  },
+  {
+   "text": "A fixation apparatus comprising a head portion with multiple inwardly tapered outer wall sections surrounding a central hollow area and an inner bottom surface, and an expander hub positioned on the inner bottom surface, where the expander ",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "shank portion extending from the head portion",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "shank portion is integral with the head portion",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "shank portion is separate from the head portion",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "shank portion is threaded",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "shank portion is non-threaded",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "head portion is self-counterboring",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "wall sections define slots between each wall section",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "slots provide space between adjacent wall sections",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "slots are substantially parallel to one another",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "slots extend parallel to an axis of the shank portion",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "head portion is substantially spherical",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "inner bottom surface defines a recessed opening",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "inner bottom surface comprises a partially inclined bottom surface",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "expander hub has a partially inclined bottom surface",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "expander hub is generally cylindrical",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "expander hub comprises an inclined bottom surface",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "expander hub comprises multiple lobes on an outer surface",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "lobes on the expander hub extend outwardly",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "expander hub comprises multiple annular recesses for a driver",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "expander hub has a reverse tapered outer diameter",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "expander hub outer diameter is greater at its bottom surface",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "expander hub outer diameter is smaller at its uppermost surface",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "e6d779d95368e04a"
+}

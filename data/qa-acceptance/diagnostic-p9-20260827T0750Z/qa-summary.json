@@ -1,0 +1,149 @@
+{
+  "project_id": 9,
+  "title": "Self-Centering Split Pipe Clamp With Synchronized Radial Jaws",
+  "version_no": 1,
+  "ready": false,
+  "blockers": [
+    {
+      "title": "The independent review did not pass",
+      "detail": "Test",
+      "items": ""
+    },
+    {
+      "title": "Every specification numeral appears in a drawing",
+      "detail": "12 reference numeral(s) are used in the specification but absent from every drawing. Add each missing numeral to an appropriate focused sheet or redistribute the existing drawing plan. Do not remove a disclosed part, numeral definition, or supporting text to silence this check.",
+      "items": "18; 32; 36; 38; 44; 50"
+    },
+    {
+      "title": "Each described figure has a drawing sheet",
+      "detail": "A figure is described in the specification but no drawing has been prepared for it. Every described figure is required before the package can be published.",
+      "items": "FIG. 3; FIG. 4; FIG. 5; FIG. 6"
+    },
+    {
+      "title": "The drawing set does not match the application text",
+      "detail": "Every described figure must have exactly one checked sheet, with no obsolete or extra sheet.",
+      "items": "missing FIG. 3; missing FIG. 4; missing FIG. 5; missing FIG. 6"
+    },
+    {
+      "title": "One or more active drawings have not passed live inspection",
+      "detail": "Every filing sheet must still match its specification and reference numerals at download time.",
+      "items": "FIG. 1: OCR numeral, view-label, or sheet-number inspection did not pass for sheet 1/2; FIG. 1: current semantic drawing consensus did not pass; FIG. 2: OCR numeral, view-label, or sheet-number inspection did not pass for sheet 2/2; FIG. 2: current semantic drawing consensus did not pass"
+    }
+  ],
+  "formalities": [],
+  "qa_verdict": "fail",
+  "section_count": 10,
+  "figure_count": 2,
+  "citation_count": 0,
+  "reference_count": 0,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "6041d1a7e54b102691616561c4563e0e4d824ffdc58622160677f0890af2f25f",
+  "figures": [
+    {
+      "id": 35,
+      "label": "FIG. 1",
+      "active_version": 1,
+      "active_version_matches": 1,
+      "mime": "image/png",
+      "bytes": 42991,
+      "sha256": "89912feaf4d68ba1ed4c229485bce2bf80c7b15a4298ca8bf6739741ca2db14a",
+      "expected_sheet_number": "1/2",
+      "detected_sheet_numbers": [
+        "1/6"
+      ],
+      "detected_figure_label": "FIG. 1",
+      "expected_numerals": [
+        "100",
+        "10",
+        "12",
+        "14",
+        "16",
+        "30",
+        "40",
+        "90"
+      ],
+      "detected_numerals": [
+        "30",
+        "100",
+        "10",
+        "40",
+        "14",
+        "90",
+        "12",
+        "16"
+      ],
+      "missing_numerals": [],
+      "unexpected_numerals": [],
+      "duplicate_numerals": [],
+      "expected_section_designations": [
+        "3"
+      ],
+      "detected_section_designations": [
+        "3",
+        "3"
+      ],
+      "ocr_current": false,
+      "semantic_current": false,
+      "leader_current": true,
+      "specification_hash": "a725a654a973d035acc3fc2bcd94fd0ea71a724f9d9711e7a0fcc8e7bcd477fa",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 36,
+      "label": "FIG. 2",
+      "active_version": 1,
+      "active_version_matches": 1,
+      "mime": "image/png",
+      "bytes": 36689,
+      "sha256": "11743eedb98ea96f6472bfd77e70601ef8f6bb56fd91fef691aa812b4d0d1da2",
+      "expected_sheet_number": "2/2",
+      "detected_sheet_numbers": [
+        "2/6"
+      ],
+      "detected_figure_label": "FIG. 2",
+      "expected_numerals": [
+        "20",
+        "22",
+        "24",
+        "26",
+        "28",
+        "34"
+      ],
+      "detected_numerals": [
+        "34",
+        "20",
+        "22",
+        "26",
+        "28",
+        "24"
+      ],
+      "missing_numerals": [],
+      "unexpected_numerals": [],
+      "duplicate_numerals": [],
+      "expected_section_designations": [],
+      "detected_section_designations": [],
+      "ocr_current": false,
+      "semantic_current": false,
+      "leader_current": true,
+      "specification_hash": "29c7de21193c8626ddfebe3de56f7fd62a71eef795fee5916674bc3b77f5a7a9",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    }
+  ],
+  "docx": {},
+  "all_drawings_current": false,
+  "docx_media_matches_figures": false,
+  "acceptance_pass": false
+}

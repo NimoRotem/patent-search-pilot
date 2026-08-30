@@ -1,0 +1,1 @@
+Resume the exact saved filing candidate automatically. Regenerate every stale sheet with the current exact geometry renderer, then rerun semantic, OCR, sheet-number, leader, endpoint, independent-review, and filing-readiness gates.

@@ -30,8 +30,10 @@ overlap - is ``advisory``: it is shown, it is explained, and it can never by its
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import threading
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -54,6 +56,13 @@ TITLE_CHAR_LIMIT = 500               # 37 CFR 1.72(a)
 _FIG_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)", re.IGNORECASE)
 _FIG_RANGE_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)\s*(?:-|–|\u2014|to|through|and)\s*"
                            r"([0-9]+[A-Za-z]?)", re.IGNORECASE)
+_SECTION_VIEW_LINE_RE = re.compile(
+    r"(?:^|[.!?]\s+)\s*FIGS?\.?\s*(?P<view>[0-9]+[A-Za-z]?)\b"
+    r"[^.\n]{0,500}\btaken\s+(?:on|along)\s+"
+    r"(?:(?:cutting|section)(?:[- ]plane)?\s+)?line\s+"
+    r"(?P<designation>[0-9]+[A-Za-z]?|[A-Z]{1,3})\s*[-\u2012-\u2015]\s*"
+    r"(?P=designation)\s+of\s+FIGS?\.?\s*(?P<source>[0-9]+[A-Za-z]?)\b",
+    re.IGNORECASE | re.MULTILINE)
 _FIGURE_NUMERAL_DECLARATION_RE = re.compile(
     r"(?im)^[ \t>*_#-]*(?:reference\s+)?numerals?\s+"
     r"(?:appearing|shown|included)(?:\s+on\s+(?:this|the)\s+(?:figure|sheet))?"
@@ -62,6 +71,10 @@ _NUMERAL_IN_TEXT_RE = re.compile(
     r"(?<![\w.\-/])([a-z]?\d{1,4}[a-z]?)(?![\w%°]|\s*(?:%|percent))",
     re.IGNORECASE)
 _CLAIM_START_RE = re.compile(r"^\s*(\d{1,3})\s*[.)]\s+", re.MULTILINE)
+_CLAIM_CITATION_RE = re.compile(
+    r"\bclaims?\s+\d{1,3}(?:\s*(?:,|and|or|to|through|-|\u2013|\u2014)\s*"
+    r"(?:claims?\s+)?\d{1,3})*",
+    re.IGNORECASE)
 #  The reference-back phrase, then everything that is still a claim number.  The tail has to span
 #  "1 to 3", "1 or 4" and "1, 2 and 3" without running on into "wherein …", which is why the
 #  connectors are named rather than folded into a character class: a bare `[0-9,\s-]+` stops dead
@@ -74,7 +87,8 @@ _DEPENDENCY_RE = re.compile(
 _RANGE_RE = re.compile(r"(\d{1,3})\s*(?:-|\u2013|\u2014|to|through)\s*(\d{1,3})", re.IGNORECASE)
 _DRAFT_PLACEHOLDER_RE = re.compile(
     r"(?:"
-    r"\[(?:DRAFTING\s+NOTE|TODO|TBD|TBC|PLACEHOLDER|INSERT)(?::[^\]]*)?\]"
+    r"\[(?:DRAFTING\s+NOTE|TODO|TBD|TBC|PLACEHOLDER|INSERT|VERIFY|CONFIRM|CHECK|MISSING)"
+    r"(?::[^\]]*)?\]"
     r"|(?-i:\bTODO\b)"
     r"|\b(?:TBD|TBC)\b"
     r"|\bTO\s+BE\s+(?:DETERMINED|PROVIDED|CONFIRMED|INSERTED)\b"
@@ -83,9 +97,104 @@ _DRAFT_PLACEHOLDER_RE = re.compile(
     r"|_{5,}"
     r"|\bfor\s+(?:the\s+)?(?:draftsperson|drafter|illustrator)\s+only\b"
     r"|\b(?:draftsperson|drafter|illustrator)\s+(?:must|should|shall|will|to)\b"
+    r"|\bconfirm\s+with\s+(?:the\s+)?(?:inventor|applicant|client|drafter)\b"
+    r"|\b(?:inventor|applicant|client)\s+(?:must|should|needs?\s+to|is\s+to)\s+"
+    r"(?:confirm|provide|supply|insert|verify|specify|identify|select|review|complete)\b"
+    r"|\bmanually\s+(?:add|insert|replace|complete|update|draw|label)\b"
+    r"|\bhuman\s+intervention\s+(?:is\s+)?(?:required|needed|necessary)\b"
     r")", re.IGNORECASE)
 MAX_NUMERALS_PER_SHEET = 8
 MAX_FIGURE_BRIEF_CHARS = 2800
+_CONTRADICTORY_ENDPOINT_TARGET_RE = re.compile(
+    r"\bon\b[^.\n]{0,180}\b(?P<surface>face|surface|edge|boundary)\b"
+    r"[^.\n]{0,120}\b(?:above|below|outside)\s+"
+    r"(?:that|the\s+same)\s+(?P=surface)\b",
+    re.IGNORECASE)
+_DISCONNECTED_ENDPOINT_TARGET_RE = re.compile(
+    r"\bidentified\b[^.\n]{0,160}\b(?:open|empty|clear)\s+"
+    r"(?:white\s+)?(?:paper|space|area|region)\b[^.\n]{0,120}"
+    r"\b(?:above|below|outside|beside|next\s+to|adjacent\s+to)\b[^.\n]{0,100}"
+    r"\b(?:line|edge|boundary|face|surface|body|part|member)\b",
+    re.IGNORECASE)
+_DRAWN_TILE_OR_FLOOR_RE = re.compile(
+    r"\b(?:tile|floor)\b[^.\n]{0,120}\b(?:fills?|appears?|is\s+drawn|is\s+shown|"
+    r"carries|supports)\b",
+    re.IGNORECASE)
+_NO_OTHER_PANEL_RE = re.compile(
+    r"\b(?:the\s+)?(?:one|only)\s+(?:slab|plate|panel)\b[^.\n]{0,140}"
+    r"\bno\s+other\b[^.\n]{0,80}\b(?:slab|plate|panel)\b",
+    re.IGNORECASE)
+_ARBITRARY_GLOBAL_SHAPE_EXCLUSION_RE = re.compile(
+    r"\bno\b(?=[^.\n]{0,160}\b(?:circle|ring|disc|disk|hole|ellipse)s?\b)"
+    r"[^.\n]{0,160}\b(?:appears?|shown|drawn)\b[^.\n]{0,80}"
+    r"\b(?:anywhere|on\s+the\s+(?:sheet|figure|drawing))\b",
+    re.IGNORECASE)
+_ARBITRARY_BACKGROUND_EXCLUSION_RE = re.compile(
+    r"\bno\s+(?:visible\s+)?(?:joint|grid|seam)\s+lines?\b"
+    r"|\bno\s+other\s+(?:tile|floor(?:ing)?|background(?:\s+panel)?)\b"
+    r"|\b(?:drawing|sheet|image)\s+area\b[^.\n]{0,140}"
+    r"\b(?:is|remains?|must\s+(?:be|remain)|shall\s+(?:be|remain))\s+"
+    r"(?:entirely\s+)?(?:blank|empty|clear)\b",
+    re.IGNORECASE)
+_ARBITRARY_STROKE_COUNT_RE = re.compile(
+    r"\b(?:bounded|outlined|drawn|formed|separated)\s+by\s+(?:exactly\s+)?"
+    r"(?:one|two|three|four|five|six|\d+)\s+"
+    r"(?:(?:long|parallel|straight|curved|horizontal|vertical|diagonal)\s+){0,3}lines?\b",
+    re.IGNORECASE)
+_GENERIC_NEGATIVE_LINEWORK_RE = re.compile(
+    r"\bno\b[^.\n]{0,180}\b(?:rim|ledge|chamfer|"
+    r"(?:second|extra|additional|inner|internal|inset|parallel|double(?:d)?)\s+"
+    r"(?:boundary|edge|line|outline|stroke))\b",
+    re.IGNORECASE)
+_GENERIC_FACE_LINEWORK_RE = re.compile(
+    r"\bevery\s+(?:visible\s+)?(?:outline|edge|boundary)\b"
+    r"[^.\n]{0,80}\b(?:one|single)\b[^.\n]{0,60}\b(?:line|stroke)\b"
+    r"|\bwhere\s+two\s+faces\s+meet\b[^.\n]{0,120}\bshared\s+edge\b"
+    r"[^.\n]{0,60}\bdrawn\s+once\b",
+    re.IGNORECASE)
+_AMBIGUOUS_MULTI_STROKE_CORD_RE = re.compile(
+    r"\b(?:cord|cable|electrical\s+supply|pulling\s+element)\b"
+    r"(?:[^.\n]{0,200}\b(?:strip|band)\b|"
+    r"[^.\n]{0,240}\.\s+It\s+is\s+drawn\s+as\s+"
+    r"[^.\n]{0,80}\b(?:strip|band)\b)[^.\n]{0,160}"
+    r"\b(?:plain\s+white|white|open|plain)\s+(?:paper|space)\b"
+    r"[^.\n]{0,80}\b(?:interior|inside|between)\b",
+    re.IGNORECASE)
+_ARBITRARY_OPEN_PAPER_SPACING_RE = re.compile(
+    r"\bwith\s+open\s+(?:white\s+)?paper\s+between\b",
+    re.IGNORECASE)
+_PHYSICAL_SHEET_EDGE_LINEWORK_RE = re.compile(
+    r"(?:"
+    r"\b(?:leaves?|exits?)\s+(?:the\s+)?sheet\s+at\s+(?:its|the)\s+"
+    r"(?:left|right|top|bottom)(?:-hand)?\s+edge\b"
+    r"|\b(?:runs?|extends?)\s+from\s+(?:the\s+)?"
+    r"(?:top|bottom|left|right)(?:-hand)?\s+edge\s+of\s+(?:the\s+)?sheet\b"
+    r"|\b(?:runs?|extends?|spans?)\b[^.\n]{0,100}\bacross\s+(?:the\s+)?sheet\b"
+    r"|\b(?:fills?|occupies?|covers?)\b[^.\n]{0,80}\b"
+    r"(?:part|portion|width|height|area)\s+of\s+(?:the\s+)?sheet\b"
+    r")",
+    re.IGNORECASE)
+_ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
+    r"\bidentified\b(?=[^.\n]{0,260}\b(?:"
+    r"cent(?:er|re)|midpoint|mid-point|mid[- ]?(?:height|width|depth)|halfway|quarter|"
+    r"one[- ](?:third|quarter)|topmost|bottommost|"
+    r"near\s+(?:the\s+)?(?:left|right|upper|lower)\s+end|"
+    r"towards?\b[^.\n]{0,50}\bend|"
+    r"along\s+(?:the\s+)?(?:left|right|top|bottom|upper|lower)\s+"
+    r"(?:side|edge|boundary|run|of)\b|"
+    r"(?:left|right)-hand\s+(?:part|portion|half|region)|"
+    r"(?:left|right|upper|lower)\s+(?:half|portion)|"
+    r"(?:first|second|third|fourth)\s+"
+    r"(?:rectangle|ring|band|line|edge|face|surface|member|shape|body)\b"
+    r"))[^.\n]*",
+    re.IGNORECASE)
+_REFERENCE_LEADER_ARROWHEAD_RE = re.compile(
+    r"\bleader(?:\s+line)?\b[^.\n]{0,260}"
+    r"\b(?:end(?:s|ed|ing)?|terminat(?:e|es|ed|ing))\b[^.\n]{0,80}"
+    r"(?:\b(?:in|with|at)\b\s*)?(?:an?\s+)?arrowhead\b",
+    re.IGNORECASE)
+_GROUPING_SHAPE_RE = re.compile(r"\b(?:square\s+bracket|rectangle)\b", re.IGNORECASE)
+_LEGACY_FIGURE_LABEL_LIMIT = 60
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
 #  swallowed "tool comprising a body", so "a body" was never seen as an introduction and every
@@ -96,6 +205,12 @@ _ARTICLE_INTRO_RE = re.compile(
     r"(?=([a-z][a-z\-]*(?:\s+[a-z][a-z\-]*){0,4}))")
 _ARTICLE_REF_RE = re.compile(
     r"\b(?:the|said)\s+(?=([a-z][a-z\-]*(?:\s+[a-z][a-z\-]*){0,4}))")
+_METHOD_STEP_INTRO_RE = re.compile(
+    r"(?:\bcomprising\s*:?[\s\n]*|;[\s\n]*(?:and\s+)?)"
+    r"(?:thereafter\s+)?([a-z][a-z\-]*ing)\b")
+_IRREGULAR_PLURAL_NOUNS = frozenset({
+    "children", "feet", "geese", "men", "mice", "people", "teeth", "women",
+})
 
 # Words that end a noun phrase.  Without this, "the housing is coupled to" reads as a five-word
 # term and never matches the "a housing" that introduced it.
@@ -116,6 +231,7 @@ _NO_BASIS_NEEDED = frozenset({
     "accompanying drawings", "detailed description", "scope", "spirit", "extent", "art of",
     "user", "operator", "environment", "atmosphere", "ambient", "ground", "earth", "air",
     "horizontal", "vertical", "longitudinal", "lateral", "axial", "radial", "art disclosed",
+    "other", "others", "greatest", "smallest", "largest",
 })
 
 _STOPWORDS = frozenset("""
@@ -124,6 +240,9 @@ that this these those it its as such which when where while than then so if not 
 comprising comprises comprise including includes include having has have had wherein whereby
 said one two three first second third plurality least more most other another each any all
 about substantially generally approximately configured adapted arranged thereof therein thereto
+operable further continuing thereby indicating observing thereafter under lying sized declining
+respective
+claim claims
 """.split())
 
 
@@ -153,6 +272,7 @@ def run_checks(*, sections: Mapping[str, str], numerals: Sequence[Mapping[str, s
     checks.append(_abstract_form(text_sections["abstract"]))
     checks.extend(_numeral_checks(spec_text, claims_text, numerals, figures))
     checks.extend(_figure_checks(text_sections, figures))
+    checks.append(_prose_parallel_verb_forms(spec_text))
     checks.extend(_claim_checks(claims_text, spec_text))
     checks.extend(_citation_checks(text_sections, allowed_references, allow_remote=allow_remote))
     checks.append(_open_notes(text_sections))
@@ -165,7 +285,9 @@ def _sections_present(sections: Mapping[str, str]) -> dict[str, Any]:
     if missing:
         return _check("Every section is written", "fail",
                       f"{len(missing)} section(s) are still empty.", items=missing)
-    return _check("Every section is written", "pass", "All nine sections carry text.")
+    return _check(
+        "Every section is written", "pass",
+        f"All {len(draft_workspace.SECTION_FILES)} sections carry text.")
 
 
 def _title_form(title: str) -> dict[str, Any]:
@@ -184,7 +306,14 @@ def _title_form(title: str) -> dict[str, Any]:
 
 def _abstract_form(abstract: str) -> dict[str, Any]:
     abstract = abstract.strip()
-    words = len(re.findall(r"\S+", abstract))
+    # Use the safer count for a filing gate: an office-side counter may split a hyphenated
+    # compound even when a word processor reports it as one token. Rejecting the edge case here
+    # lets the automatic repair trim a few words instead of risking a formalities notice.
+    words = sum(
+        bool(part)
+        for token in re.findall(r"\S+", abstract)
+        for part in re.split(r"[-\u2010\u2011]", token)
+    )
     problems = []
     if words > ABSTRACT_WORD_LIMIT:
         problems.append(f"{words} words; 37 CFR 1.72(b) allows {ABSTRACT_WORD_LIMIT}.")
@@ -213,8 +342,16 @@ def numerals_used(text: str) -> Counter:
     Getting this wrong in the generous direction is the expensive mistake - it would report every
     measurement as an undefined part - so the exclusions are aggressive.
     """
-    cleaned = re.sub(r"\bFIGS?\.?\s*[0-9]+[A-Za-z]?(\s*(?:-|–|\u2014|to|through|and)\s*[0-9]+[A-Za-z]?)?",
-                     " ", text or "", flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\bFIGS?\.?\s*[0-9]+[A-Za-z]?"
+        r"(?:\s*(?:(?:-|–|\u2014|to|through|and|or)\s*|"
+        r",\s*(?:(?:and|or)\s*)?)[0-9]+[A-Za-z]?)*",
+        " ", text or "", flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\b(?:(?:section|cutting[- ]plane)\s+)?line\s+"
+        r"(?P<section_mark>[0-9]+[A-Za-z]?)\s*[-\u2012-\u2015]\s*"
+        r"(?P=section_mark)\b",
+        " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bclaims?\s+[0-9,\s\-–and or]+", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\[REF:[^\]]*\]", " ", cleaned)
     #  A publication number written into the prose beside its citation token - "US 9,108,319 B2" -
@@ -245,6 +382,32 @@ def _drawing_numeral(value: Any) -> str:
     """Canonical numeral at the start of a figure entry, preserving letter qualifiers."""
     match = re.match(r"\s*([A-Za-z]?\d{1,4}[A-Za-z]?)\b", str(value or ""))
     return match.group(1).upper() if match else ""
+
+
+def _offsheet_connection_target(value: Any, caption: str) -> tuple[str, str] | None:
+    """Return a numeral and part when its leader targets only a connection to that part."""
+    raw = str(value or "")
+    if ":" not in raw:
+        return None
+    head, target = raw.split(":", 1)
+    numeral = _drawing_numeral(head)
+    part = re.sub(
+        rf"^\s*{re.escape(numeral)}\b\s*", "", head,
+        count=1, flags=re.IGNORECASE).strip(" -")
+    if not numeral or not part or not re.search(r"\b(?:line|segment|stub|lead)\b", target,
+                                                re.IGNORECASE):
+        return None
+    tokens = re.findall(r"[A-Za-z0-9]+", part)
+    if not tokens:
+        return None
+    if re.search(rf"\b{re.escape(tokens[-1])}\b", target, re.IGNORECASE):
+        return None
+    part_pattern = r"[\s-]+".join(re.escape(token) for token in tokens)
+    remote = re.compile(
+        r"\b(?:connection|line|segment|stub|lead)\b[^.\n]{0,100}"
+        r"\b(?:to|for)\s+(?:(?:a|an|the)\s+)?" + part_pattern + r"\b",
+        re.IGNORECASE)
+    return (numeral, part) if remote.search(caption) else None
 
 
 def _numeral_checks(spec_text: str, claims_text: str,
@@ -338,22 +501,31 @@ def _numeral_checks(spec_text: str, claims_text: str,
     figure_numerals = set(figure_values)
     figure_numerals.discard("")
     duplicate_drawing_numerals = []
-    unreadable_drawings = [
-        str(figure.get("label") or "drawing")
-        for figure in figures
-        if "numeral_audit" in figure and
-        not bool((figure.get("numeral_audit") or {}).get("inspected"))
-    ]
+    unreadable_drawings = []
+    for sheet_index, figure in enumerate(figures, 1):
+        if "numeral_audit" not in figure:
+            continue
+        expected_sheet_number = f"{sheet_index}/{len(figures)}"
+        if not draft_figures.current_ocr_audit(
+                figure.get("numeral_audit") or {},
+                expected_sheet_number=expected_sheet_number,
+                expected_section_designations=draft_figures.section_designations(
+                    figure.get("caption") or "")):
+            unreadable_drawings.append(
+                f"{figure.get('label') or 'drawing'}: expected sheet "
+                f"{expected_sheet_number}")
     if unreadable_drawings:
         out.append(_check(
             "Drawing pixels were inspected", "fail",
-            "The reference-numeral audit could not read one or more drawing sheets. The draft "
-            "cannot be marked consistent until those pixels are checked.",
+            "The current OCR audit could not confirm the exact reference numerals, view label, "
+            "section designations, and consecutive sheet number on one or more drawing sheets.",
             items=unreadable_drawings))
     elif any("numeral_audit" in figure for figure in figures):
         out.append(_check(
             "Drawing pixels were inspected", "pass",
-            "The reference numerals were read from every generated drawing."))
+            "The reference numerals, view labels, section designations, and sheet numbers were "
+            "read from every "
+            "generated drawing."))
     for figure in figures:
         values = [_drawing_numeral(n) for n in (figure.get("numerals") or [])]
         counts = Counter(value for value in values if value)
@@ -380,8 +552,8 @@ def _numeral_checks(spec_text: str, claims_text: str,
     if overcrowded:
         out.append(_check(
             "Drawing sheets are not overcrowded", "fail",
-            "A generated sheet cannot be inspected reliably when it carries too many labeled "
-            "parts. Split the geometry across focused views and synchronize the drawing "
+            "A sheet carrying this many labelled parts is hard to read at filing size and hard "
+            "to draw at all. Split the geometry across focused views and synchronize the drawing "
             "descriptions.", items=overcrowded))
     elif figures:
         out.append(_check(
@@ -439,11 +611,14 @@ def _first_use_introduces(spec_text: str, table: Mapping[str, str]) -> dict[str,
     cup 10" is a real defect, but so is a false positive here, so this can only ever advise.
     """
     problems = []
+    scan_text = _FIG_RE.sub("FIGURE", spec_text)
+    scan_text = _CLAIM_START_RE.sub("CLAIM ", scan_text)
+    scan_text = _CLAIM_CITATION_RE.sub("CLAIM_REFERENCE", scan_text)
     for numeral, part in table.items():
         head = _head_noun(part)
         if not head:
             continue
-        match = re.search(rf"((?:\S+\s+){{0,6}})\b{re.escape(numeral)}\b", spec_text)
+        match = re.search(rf"((?:\S+\s+){{0,6}})\b{re.escape(numeral)}\b", scan_text)
         if not match:
             continue
         window = _normal(match.group(1))
@@ -494,6 +669,85 @@ def figures_mentioned(text: str) -> set[str]:
     return found
 
 
+_FLOW_DIAGRAM_RE = re.compile(
+    r"\b(?:process\s+flow(?:\s+diagram)?|flow\s+diagram|flowchart)\b",
+    re.IGNORECASE,
+)
+_DRAWING_VERBAL_LABEL_RE = re.compile(
+    r"(?:"
+    r"\b(?:block|box|diamond|circle|shape|step|node|terminal)\b[^.\n]{0,80}"
+    r"\b(?:label(?:ed|led)?|reads?|says?|asks?|titled|captioned)\b|"
+    r"\b(?:process|flow|it)\b[^.\n]{0,45}"
+    r"\b(?:starts?|begins?|proceeds?|continues?|advances?|moves?)\s+(?:at|with|to)\b|"
+    r"\bnext\s+is\b"
+    r")[^\"\u201c\u201d\n]{0,45}[\"\u201c]([^\"\u201c\u201d\n]{1,180})[\"\u201d]",
+    re.IGNORECASE,
+)
+_PERMITTED_DRAWING_MARK_RE = re.compile(
+    r"(?:FIG\.?\s*\d{1,3}|[A-Z](?:-[A-Z])?|[A-Z]?\d{1,4}[A-Z]?)",
+    re.IGNORECASE,
+)
+
+
+def _verbal_drawing_labels(caption: str) -> list[str]:
+    """Return verbal strings that a brief asks the geometry renderer to print."""
+    labels = []
+    for match in _DRAWING_VERBAL_LABEL_RE.finditer(str(caption or "")):
+        value = re.sub(r"\s+", " ", match.group(1)).strip(" .;:")
+        if not value or _PERMITTED_DRAWING_MARK_RE.fullmatch(value):
+            continue
+        labels.append(value)
+    return list(dict.fromkeys(labels))
+
+
+def _axial_hollow_cylinder_annulus_contradiction(caption: str) -> bool:
+    """Detect a transverse annulus requested inside an expressly axial section."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip()
+    return bool(
+        re.search(r"\bcross-sectional view taken on line\b", text, re.IGNORECASE) and
+        re.search(
+            r"\b(?:cylindrical drill bushing|drill bushing(?:\s+\d+)?\b"
+            r"[^.]{0,100}\bis cylindrical)\b",
+            text,
+            re.IGNORECASE,
+        ) and
+        re.search(
+            r"\b(?:central,?\s+)?vertical(?:,?\s+cylindrical)?\s+bore\b"
+            r"[^.]{0,120}\bpassing completely through\b",
+            text,
+            re.IGNORECASE,
+        ) and
+        re.search(
+            r"\b(?:cross-section|cross-sectional view)\b[^.]{0,220}\bannulus\b",
+            text,
+            re.IGNORECASE,
+        ) and
+        re.search(
+            r"\bthreaded shank\b[^.]{0,120}"
+            r"\b(?:descends|extends(?: vertically)? downward)\b",
+            text,
+            re.IGNORECASE,
+        ))
+
+
+def _perpendicular_bore_slot_axes_contradiction(caption: str) -> bool:
+    """Reject wording that makes a vertical bore axis collinear with a slot's long axis."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip()
+    return bool(
+        re.search(
+            r"\b(?:central,?\s+)?vertical(?:,?\s+cylindrical)?\s+bore\b",
+            text,
+            re.IGNORECASE,
+        ) and
+        re.search(
+            r"\bcentral axis of the bore\b[^.]{0,220}"
+            r"\bvertically aligned with\b[^.]{0,160}"
+            r"\bcentral axis of the longitudinal slot\b",
+            text,
+            re.IGNORECASE,
+        ))
+
+
 def _figure_checks(sections: Mapping[str, str],
                    figures: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     described = figures_mentioned(sections.get("drawing_descriptions", ""))
@@ -510,22 +764,174 @@ def _figure_checks(sections: Mapping[str, str],
             "A complete utility application must include at least one text-grounded figure brief "
             "that the drawing pipeline can render and inspect.", severity="error"))
 
-    overlong = []
+    brief_issues = []
     for index, figure in enumerate(figures, 1):
         caption = str(figure.get("caption") or "")
+        label = str(figure.get("label") or f"FIG. {index}")
+        if not caption.strip():
+            brief_issues.append(
+                f"{label}: empty drawing brief. Describe the complete visible geometry, each "
+                "process or decision shape, every required relationship and route, and the "
+                "target feature for every listed reference numeral before rendering.")
+        verbal_labels = _verbal_drawing_labels(caption)
+        if verbal_labels:
+            brief_issues.append(
+                f"{label}: verbal drawing text is requested inside a shape: "
+                f"{', '.join(repr(value[:100]) for value in verbal_labels[:4])}. Replace each "
+                "process or decision label with a reference numeral, list those reference "
+                "numerals on the sheet, and use the same numbered steps in the Detailed "
+                "Description.")
+        reference_numerals = {
+            _drawing_numeral(value) for value in (figure.get("numerals") or ())
+        }
+        reference_numerals = {
+            value for value in reference_numerals
+            if re.fullmatch(r"[A-Z]?\d{2,4}[A-Z]?", value or "", re.IGNORECASE)
+        }
+        if _FLOW_DIAGRAM_RE.search(caption) and len(reference_numerals) < 2:
+            brief_issues.append(
+                f"{label}: process-flow drawing has no numbered steps. Assign a distinct "
+                "reference numeral to every process and decision shape, list the numerals on "
+                "this sheet, and identify the same numbered steps in the Detailed Description.")
+        flowchart_topology = draft_figures.flowchart_topology_spec(
+            caption, figure.get("numerals") or ())
+        if flowchart_topology["required"] and not flowchart_topology["ok"]:
+            brief_issues.append(
+                f"{label}: process-flow brief needs an exact machine-readable topology. "
+                "Add 'Flowchart nodes:' with every ID=shape and 'Flowchart directed edges:' "
+                "with every SOURCE->TARGET arrow. " +
+                " ".join(flowchart_topology["errors"]))
         if len(caption) > MAX_FIGURE_BRIEF_CHARS:
-            label = str(figure.get("label") or f"FIG. {index}")
-            overlong.append(
+            brief_issues.append(
                 f"{label}: {len(caption)} characters (maximum {MAX_FIGURE_BRIEF_CHARS})")
-    if overlong:
+        if len(label) == _LEGACY_FIGURE_LABEL_LIMIT:
+            ending = re.search(r"([A-Za-z]{3,})$", label)
+            fragment = ending.group(1).lower() if ending else ""
+            caption_words = {
+                word.lower() for word in re.findall(r"[A-Za-z]{3,}", caption)
+            }
+            completions = sorted(
+                word for word in caption_words
+                if len(word) > len(fragment) and word.startswith(fragment)
+            )
+            if fragment and fragment not in caption_words and completions:
+                brief_issues.append(
+                    f"{label}: label appears cut off mid-word at the legacy "
+                    f"{_LEGACY_FIGURE_LABEL_LIMIT}-character limit; complete "
+                    f"{fragment!r}, for example as {completions[0]!r}")
+        if _CONTRADICTORY_ENDPOINT_TARGET_RE.search(caption):
+            brief_issues.append(
+                f"{label}: contradictory endpoint target places a point on a surface and "
+                "also above, below, or outside that same surface")
+        if _DISCONNECTED_ENDPOINT_TARGET_RE.search(caption):
+            brief_issues.append(
+                f"{label}: disconnected endpoint target places a numeral in empty paper "
+                "beside the named part; identify the part itself or its full boundary")
+        if (_DRAWN_TILE_OR_FLOOR_RE.search(caption) and
+                _NO_OTHER_PANEL_RE.search(caption)):
+            brief_issues.append(
+                f"{label}: contradictory sheet exclusivity requires a drawn tile or floor "
+                "while also saying no other slab, plate, or panel is drawn")
+        if _axial_hollow_cylinder_annulus_contradiction(caption):
+            brief_issues.append(
+                f"{label}: an axial section through a hollow cylindrical part cannot be "
+                "specified as an annulus; show two opposed sectioned walls separated by the "
+                "open through-bore, and reserve an annulus for a transverse section")
+        if _perpendicular_bore_slot_axes_contradiction(caption):
+            brief_issues.append(
+                f"{label}: a vertical bore axis cannot be aligned with a longitudinal slot "
+                "axis; state that the bore intersects the open slot or lies in its center "
+                "plane, according to the disclosure")
+        if match := _ARBITRARY_GLOBAL_SHAPE_EXCLUSION_RE.search(caption):
+            brief_issues.append(
+                f"{label}: blanket shape exclusion {match.group(0)[:180]!r}; describe only "
+                "the positive, disclosure-grounded geometry that must appear")
+        if match := _ARBITRARY_BACKGROUND_EXCLUSION_RE.search(caption):
+            brief_issues.append(
+                f"{label}: arbitrary background exclusion {match.group(0)[:180]!r}; omit "
+                "background-control instructions that do not identify a listed part")
+        if match := _ARBITRARY_STROKE_COUNT_RE.search(caption):
+            brief_issues.append(
+                f"{label}: arbitrary exact stroke count {match.group(0)[:180]!r}; name the "
+                "part and its positive geometry without controlling the renderer's line count")
+        if match := _GENERIC_NEGATIVE_LINEWORK_RE.search(caption):
+            brief_issues.append(
+                f"{label}: generic negative linework control {match.group(0)[:180]!r}; "
+                "describe the required bodies and their relationships positively so necessary "
+                "edges of separate solids are not mistaken for forbidden geometry")
+        if match := _GENERIC_FACE_LINEWORK_RE.search(caption):
+            brief_issues.append(
+                f"{label}: generic face-linework control {match.group(0)[:180]!r}; describe "
+                "the required solids, faces, contacts, and occlusions without prescribing how "
+                "the renderer strokes every face edge")
+        if match := _AMBIGUOUS_MULTI_STROKE_CORD_RE.search(caption):
+            brief_issues.append(
+                f"{label}: ambiguous multi-stroke cord {match.group(0)[:180]!r}; depict the "
+                "cord, cable, or pulling element as one curved path and identify that path")
+        for match in _ARBITRARY_OPEN_PAPER_SPACING_RE.finditer(caption):
+            brief_issues.append(
+                f"{label}: arbitrary open-paper spacing {match.group(0)[:180]!r}; state a "
+                "disclosure-grounded physical spacing between bodies or omit the whitespace "
+                "instruction")
+        for match in _PHYSICAL_SHEET_EDGE_LINEWORK_RE.finditer(caption):
+            brief_issues.append(
+                f"{label}: line work reaches a physical sheet edge in "
+                f"{match.group(0)[:180]!r}; keep every depicted part inside the drawing area "
+                "so the filing margins remain clear")
+        for exact_target in _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.finditer(caption):
+            brief_issues.append(
+                f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "
+                "identify a broad interior region, stable named part, or full boundary instead")
+        for arrowhead_target in _REFERENCE_LEADER_ARROWHEAD_RE.finditer(caption):
+            brief_issues.append(
+                f"{label}: reference-numeral leader ends in an arrowhead in "
+                f"{arrowhead_target.group(0)[:180]!r}; every numeral leader must end in a "
+                "terminal dot on the named feature, while arrowheads are reserved for view, "
+                "section, motion, or flow direction")
+        for entry in figure.get("numerals") or ():
+            numeral = _drawing_numeral(entry)
+            if not numeral or ":" not in str(entry):
+                continue
+            if remote_target := _offsheet_connection_target(entry, caption):
+                remote_numeral, remote_part = remote_target
+                brief_issues.append(
+                    f"{label}: numeral {remote_numeral} names {remote_part} but its leader "
+                    "targets only an off-sheet connection line. Depict and target the supported "
+                    "part itself, or remove that numeral from this sheet; a connection is not "
+                    "the remote part.")
+            anchor_text = str(entry).split(":", 1)[1]
+            anchor_shapes = {
+                re.sub(r"\s+", " ", match.group(0).lower())
+                for match in _GROUPING_SHAPE_RE.finditer(anchor_text)
+            }
+            caption_shapes = set()
+            numeral_pattern = re.compile(rf"\b{re.escape(numeral)}\b", re.IGNORECASE)
+            for sentence in re.split(r"(?<=[.!?])\s+|\n+", caption):
+                for numeral_match in numeral_pattern.finditer(sentence):
+                    prefix = sentence[max(0, numeral_match.start() - 180):numeral_match.start()]
+                    shapes = list(_GROUPING_SHAPE_RE.finditer(prefix))
+                    if shapes:
+                        caption_shapes.add(re.sub(
+                            r"\s+", " ", shapes[-1].group(0).lower()))
+            if (len(anchor_shapes) == 1 and len(caption_shapes) == 1 and
+                    anchor_shapes != caption_shapes):
+                caption_shape = next(iter(caption_shapes))
+                anchor_shape = next(iter(anchor_shapes))
+                brief_issues.append(
+                    f"{label}: numeral {numeral} declares a {caption_shape} in the caption "
+                    f"but its leader target declares a {anchor_shape}; use one depicted "
+                    "grouping shape consistently")
+    if brief_issues:
         out.append(_check(
-            "Drawing briefs are concise and renderable", "fail",
-            "An over-specified drawing brief makes the image generator invent or miss visual "
-            "constraints. Keep only disclosure-grounded geometry, relationships, and numeral "
-            "anchors needed to identify the listed parts.", severity="error", items=overlong))
+            "Drawing briefs are concise and drawable", "fail",
+            "An over-specified or self-contradictory brief cannot be drawn as written: whoever "
+            "draws the sheet has to guess which of two conflicting statements to follow. Keep "
+            "only consistent, disclosure-grounded geometry, relationships, and numeral anchors "
+            "needed to identify the listed parts.",
+            severity="error", items=brief_issues))
     else:
         out.append(_check(
-            "Drawing briefs are concise and renderable", "pass",
+            "Drawing briefs are concise and drawable", "pass",
             f"Every drawing brief is at most {MAX_FIGURE_BRIEF_CHARS} characters."))
 
     declaration_issues = []
@@ -551,8 +957,9 @@ def _figure_checks(sections: Mapping[str, str],
     if declaration_issues:
         out.append(_check(
             "Figure brief numeral declarations match sheet lists", "fail",
-            "A drawing brief explicitly declares a different numeral set from the sheet's "
-            "machine-readable list. Reconcile the brief and list before generating an image.",
+            "A drawing brief explicitly declares a different numeral set from the one listed "
+            "for that sheet. Reconcile the two before the sheet is drawn: they are the "
+            "instructions somebody draws from.",
             severity="error", items=declaration_issues))
     elif figures:
         out.append(_check(
@@ -570,15 +977,72 @@ def _figure_checks(sections: Mapping[str, str],
         expected = list(range(1, len(figures) + 1))
         if sorted(valid) != expected:
             issues.append(f"expected sheet numbers {expected}; found {valid}")
+        elif valid != expected:
+            issues.append(f"expected numeric filing order {expected}; found {valid}")
         if issues:
             out.append(_check(
                 "Figure-sheet numbering is unique and contiguous", "fail",
-                "Each filing sheet must have one number in an unbroken sequence beginning at 1.",
+                "Each filing sheet must have one number in an unbroken sequence beginning at 1 "
+                "and must appear in numeric filing order.",
                 severity="error", items=issues))
         else:
             out.append(_check(
                 "Figure-sheet numbering is unique and contiguous", "pass",
                 f"{len(figures)} sheet(s), numbered 1 through {len(figures)}."))
+
+    figures_by_number = {
+        figure_number(figure.get("label")): figure for figure in figures
+        if figure_number(figure.get("label"))
+    }
+    section_references = {
+        (match.group("view").upper(), match.group("designation").upper(),
+         match.group("source").upper())
+        for text in (sections.get("drawing_descriptions", ""),
+                     sections.get("detailed_description", ""))
+        for match in _SECTION_VIEW_LINE_RE.finditer(str(text or ""))
+    }
+    section_issues = []
+    expected_by_source: dict[str, set[str]] = defaultdict(set)
+    for view, designation, source in sorted(section_references):
+        expected_by_source[source].add(designation)
+        if designation[:1].isdigit() and view != designation:
+            section_issues.append(
+                f"FIG. {view}: line {designation}-{designation} must carry the same "
+                "designation as the resulting section view")
+        source_spec = figures_by_number.get(source)
+        if not source_spec:
+            section_issues.append(
+                f"FIG. {view}: source FIG. {source} has no drawing brief for line "
+                f"{designation}-{designation}")
+            continue
+        actual = set(draft_figures.section_designations(source_spec.get("caption") or ""))
+        if designation not in actual:
+            section_issues.append(
+                f"FIG. {source}: source-view brief does not specify both arrows and repeated "
+                f"designation {designation} for line {designation}-{designation} leading to "
+                f"FIG. {view}")
+        listed = {_drawing_numeral(item) for item in source_spec.get("numerals") or ()}
+        if designation in listed:
+            section_issues.append(
+                f"FIG. {source}: section designation {designation} is incorrectly listed as a "
+                "reference numeral")
+    for source, source_spec in figures_by_number.items():
+        actual = set(draft_figures.section_designations(source_spec.get("caption") or ""))
+        extras = sorted(actual - expected_by_source.get(source, set()), key=_numeral_sort)
+        section_issues.extend(
+            f"FIG. {source}: cutting line {designation}-{designation} has no matching section "
+            "view in the application text" for designation in extras)
+    if section_issues:
+        out.append(_check(
+            "Section views have matching source-view cutting lines", "fail",
+            "Every section view taken on a named line must have the same repeated designation, "
+            "both view arrows, and a renderable cutting line in its source-view brief.",
+            severity="error", items=section_issues))
+    else:
+        out.append(_check(
+            "Section views have matching source-view cutting lines", "pass",
+            (f"All {len(section_references)} named section line(s) match their source views."
+             if section_references else "No named section line requires a source-view mark.")))
 
     undescribed = sorted(in_detail - described, key=_numeral_sort)
     if undescribed:
@@ -608,6 +1072,11 @@ def _figure_checks(sections: Mapping[str, str],
                               items=[f"FIG. {n} missing" for n in gaps]))
 
     if figures:
+        #  A figure that carries a `drawn` flag came from a caller that had inspected the sheet's
+        #  pixels. Nothing does that any more - this product does not generate drawings, so there
+        #  is no vision audit to read - and the two blocks below are kept only so a stored report
+        #  written before that change still renders. Everything after them is about the TEXT and
+        #  runs either way.
         tracks_pixels = any("drawn" in figure for figure in figures)
         if tracks_pixels:
             semantic_failures = []
@@ -657,10 +1126,15 @@ def _figure_checks(sections: Mapping[str, str],
                 "A stored drawing sheet is not listed in the Brief Description of the Drawings. "
                 "Restore its description or delete the obsolete sheet.",
                 items=[f"FIG. {n}" for n in extra]))
-        elif tracks_pixels:
+        elif figures:
+            #  Unconditional, and it used to be gated on `tracks_pixels`. With no pixel audit the
+            #  gate was never true, so the check simply VANISHED from a passing report - a reader
+            #  cannot tell "this was checked and is fine" from "this was never run", and a check
+            #  nobody sees pass is a check nobody trusts when it fails.
             out.append(_check(
                 "Every drawing sheet is described", "pass",
-                "Every stored drawing sheet is listed in the specification."))
+                "Every figure the application describes is listed in the Brief Description of "
+                "the Drawings."))
         missing = sorted({n for n in described
                           if n not in labels and re.sub(r"\D", "", n) not in labels},
                          key=_numeral_sort)
@@ -676,6 +1150,10 @@ def _figure_checks(sections: Mapping[str, str],
 # ---------------------------------------------------------------------------------------------
 # Claims
 # ---------------------------------------------------------------------------------------------
+STANDARD_TOTAL_CLAIMS = 20
+STANDARD_INDEPENDENT_CLAIMS = 3
+
+
 def split_claims(claims_text: str) -> list[dict[str, Any]]:
     """Split a numbered claim set into individual claims, preserving the numbers as written."""
     text = (claims_text or "").strip()
@@ -708,6 +1186,132 @@ def claim_dependencies(claim_text: str) -> list[int]:
         for value in re.findall(r"\d{1,3}", _RANGE_RE.sub(" ", body)):
             numbers.add(int(value))
     return sorted(numbers)
+
+
+_CLAIM_ACTION_FORMS = {
+    "advance": "advancing",
+    "activate": "activating",
+    "apply": "applying",
+    "assign": "assigning",
+    "calculate": "calculating",
+    "close": "closing",
+    "compare": "comparing",
+    "compress": "compressing",
+    "continue": "continuing",
+    "control": "controlling",
+    "determine": "determining",
+    "distribute": "distributing",
+    "drive": "driving",
+    "engage": "engaging",
+    "inhibit": "inhibiting",
+    "measure": "measuring",
+    "move": "moving",
+    "obtain": "obtaining",
+    "open": "opening",
+    "operate": "operating",
+    "place": "placing",
+    "receive": "receiving",
+    "record": "recording",
+    "refuse": "refusing",
+    "release": "releasing",
+    "retract": "retracting",
+    "rotate": "rotating",
+    "send": "sending",
+    "store": "storing",
+    "subtract": "subtracting",
+    "support": "supporting",
+    "verify": "verifying",
+    "withhold": "withholding",
+}
+
+
+def _claim_parallel_verb_forms(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Reject a narrow but objective mixed-form defect in coordinated method steps."""
+    base_pattern = "|".join(
+        re.escape(value) for value in sorted(_CLAIM_ACTION_FORMS, key=len, reverse=True))
+    gerund_pattern = "|".join(
+        re.escape(value)
+        for value in sorted(_CLAIM_ACTION_FORMS.values(), key=len, reverse=True))
+    base_then_gerund = re.compile(
+        rf"(?:^|,\s+)(?P<first>{base_pattern})\b[^;]{{0,700}}?,?\s+and\s+"
+        rf"(?P<second>{gerund_pattern})\b",
+        re.IGNORECASE,
+    )
+    gerund_then_base = re.compile(
+        rf"(?:^|,\s+)(?P<first>{gerund_pattern})\b[^;]{{0,700}}?,?\s+and\s+"
+        rf"(?P<second>{base_pattern})\b",
+        re.IGNORECASE,
+    )
+    problems = []
+    for claim in claims:
+        claim_text = re.sub(r"\s+", " ", str(claim.get("text") or "")).strip()
+        if not re.match(r"(?i)^(?:a|the)\s+method\b", claim_text):
+            continue
+        comprising = re.search(r"(?i)\bcomprising\s*:?", claim_text)
+        if not comprising:
+            continue
+        for limitation in claim_text[comprising.end():].split(";"):
+            match = base_then_gerund.search(limitation) or gerund_then_base.search(limitation)
+            if not match:
+                continue
+            problems.append(
+                f"claim {claim['number']}: coordinated verbs mix “{match.group('first')}” "
+                f"with “{match.group('second')}”")
+    if problems:
+        return _check(
+            "Method claim steps use parallel verb forms", "fail",
+            "A coordinated method step mixes base-form and gerund-form verbs. Rewrite the "
+            "coordination so every action uses the same grammatical form.",
+            severity="error", items=problems,
+        )
+    return _check(
+        "Method claim steps use parallel verb forms", "pass",
+        "No coordinated method step mixes base-form and gerund-form action verbs.")
+
+
+def _third_person_action(base: str) -> str:
+    if base.endswith("y") and len(base) > 1 and base[-2].lower() not in "aeiou":
+        return base[:-1] + "ies"
+    if base.endswith(("s", "sh", "ch", "x", "z", "o")):
+        return base + "es"
+    return base + "s"
+
+
+def _prose_parallel_verb_forms(spec_text: str) -> dict[str, Any]:
+    """Reject a finite third-person action coordinated directly with a base-form action."""
+    third_forms = {
+        _third_person_action(base): base for base in _CLAIM_ACTION_FORMS
+    }
+    third_pattern = "|".join(
+        re.escape(value) for value in sorted(third_forms, key=len, reverse=True))
+    base_pattern = "|".join(
+        re.escape(value) for value in sorted(_CLAIM_ACTION_FORMS, key=len, reverse=True))
+    mismatch = re.compile(
+        rf"\b(?P<first>{third_pattern})\b(?P<middle>[^.;]{{0,500}}?)"
+        rf"\s+and\s+(?P<second>{base_pattern})\b",
+        re.IGNORECASE,
+    )
+    text = re.sub(r"\s+", " ", str(spec_text or "")).strip()
+    problems = []
+    for match in mismatch.finditer(text):
+        context_start = max(0, text.rfind(". ", 0, match.start()) + 2)
+        context_end = text.find(".", match.end())
+        if context_end < 0:
+            context_end = min(len(text), match.end() + 180)
+        context = text[context_start:context_end + 1].strip()
+        problems.append(
+            f"coordinated verbs mix “{match.group('first')}” with "
+            f"“{match.group('second')}”: {context[:240]}")
+    if problems:
+        return _check(
+            "Filing prose uses parallel coordinated verbs", "fail",
+            "A prose clause coordinates a third-person action with an uninflected action. "
+            "Rewrite both actions to agree with their shared subject.",
+            severity="error", items=problems,
+        )
+    return _check(
+        "Filing prose uses parallel coordinated verbs", "pass",
+        "No prose clause mixes a third-person action with a coordinated base-form action.")
 
 
 def _claim_checks(claims_text: str, spec_text: str) -> list[dict[str, Any]]:
@@ -774,6 +1378,27 @@ def _claim_checks(claims_text: str, spec_text: str) -> list[dict[str, Any]]:
                           f"{len(independents)} independent claim(s): "
                           f"{[c['number'] for c in independents]}."))
 
+    excess_claim_items = []
+    if len(claims) > STANDARD_TOTAL_CLAIMS:
+        excess_claim_items.append(
+            f"{len(claims)} total claims exceeds the standard {STANDARD_TOTAL_CLAIMS}")
+    if len(independents) > STANDARD_INDEPENDENT_CLAIMS:
+        excess_claim_items.append(
+            f"{len(independents)} independent claims exceeds the standard "
+            f"{STANDARD_INDEPENDENT_CLAIMS}")
+    if excess_claim_items:
+        out.append(_check(
+            "Standard USPTO claim count", "fail",
+            "USPTO excess-claim fees apply above 20 total claims or three independent claims. "
+            "Consolidate overlapping fallbacks while preserving source-supported coverage.",
+            severity="error", items=excess_claim_items))
+    else:
+        out.append(_check(
+            "Standard USPTO claim count", "pass",
+            f"The set has {len(claims)} total claim(s) and {len(independents)} independent "
+            "claim(s), within the standard no-excess-claim-fee counts."))
+
+    out.append(_claim_parallel_verb_forms(claims))
     out.append(_antecedent_basis(claims))
     out.append(_claim_support(claims, spec_text))
     means = [f"claim {c['number']}" for c in claims
@@ -803,7 +1428,11 @@ def _antecedent_basis(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         introduced: set[str] = set()
         for match in _ARTICLE_INTRO_RE.finditer(chain_text):
             introduced |= _terms(_trim_phrase(match.group(1)))
+        # Method claims introduce acts directly, without an article: "comprising: translating
+        # a device". A dependent reference to "the translating" has valid basis in that act.
+        introduced |= {match.group(1) for match in _METHOD_STEP_INTRO_RE.finditer(chain_text)}
         own = by_number[claim["number"]]["text"].lower()
+        ancestor_text = " ".join(reversed(chain[1:])).lower()
         for match in _ARTICLE_REF_RE.finditer(own):
             phrase = _trim_phrase(match.group(1))
             if not phrase or phrase in _NO_BASIS_NEEDED:
@@ -811,6 +1440,10 @@ def _antecedent_basis(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             candidates = _terms(phrase)
             if (candidates & introduced) or (candidates & _NO_BASIS_NEEDED) or \
                     re.match(r"^claim\b", phrase):
+                continue
+            prior_text = ancestor_text + " " + own[:match.start()]
+            if _term_appears_before(phrase, prior_text) or \
+                    _plural_noun_appears_before(phrase, prior_text):
                 continue
             problems.append(f"claim {claim['number']}: “the {phrase}”")
     if not problems:
@@ -822,6 +1455,25 @@ def _antecedent_basis(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         f"{len(problems)} definite article(s) may lack antecedent basis. This is a language "
         "heuristic, not a parse of the claim: read each one before changing it.",
         severity="advisory", items=sorted(set(problems))[:40])
+
+
+def _plural_noun_appears_before(phrase: str, prior_text: str) -> bool:
+    """Recognize parts introduced as bare or quantified plurals before a definite reference."""
+    prior_words = set(_normal(prior_text).split())
+    for word in _trim_phrase(phrase).split():
+        plural = (
+            word in _IRREGULAR_PLURAL_NOUNS or
+            (len(word) > 3 and word.endswith("s") and word not in _PHRASE_STOP)
+        )
+        if plural and word in prior_words:
+            return True
+    return False
+
+
+def _term_appears_before(phrase: str, prior_text: str) -> bool:
+    """Recognize a bare mass noun or action noun introduced before its definite reference."""
+    prior = f" {_normal(prior_text)} "
+    return any(f" {_normal(term)} " in prior for term in _terms(phrase) if len(term) > 2)
 
 
 def _claim_support(claims: Sequence[Mapping[str, Any]], spec_text: str) -> dict[str, Any]:
@@ -894,11 +1546,11 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
 
     if not unique:
         out.append(_check(
-            "Prior art is cited", "warn" if allowed_set else "pass",
+            "Prior art is cited", "fail" if allowed_set else "pass",
             "The draft cites no prior art. Where art was supplied, the Background should say what "
             "it teaches and where this invention departs from it."
             if allowed_set else "No prior art was supplied for this draft.",
-            severity="warn" if allowed_set else "advisory"))
+            severity="error" if allowed_set else "advisory"))
         return out
 
     unselected = [c for c in unique if c not in allowed_set]
@@ -926,11 +1578,10 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
     uncited = sorted(allowed_set - set(unique))
     if uncited:
         out.append(_check(
-            "Supplied art is addressed", "warn",
-            f"{len(uncited)} supplied reference(s) are never cited. That can be correct - not "
-            "every search hit belongs in the Background - but each one is art the examiner may "
-            "raise, so the draft should have a reason for passing over it.",
-            severity="warn", items=uncited))
+            "Supplied art is addressed", "fail",
+            f"{len(uncited)} supplied reference(s) are never cited. Every selected reference must "
+            "be addressed accurately in the Background before drawing generation begins.",
+            severity="error", items=uncited))
 
     bare = []
     for key, _name, heading in draft_workspace.SECTION_FILES:
@@ -1026,6 +1677,14 @@ def _stem(word: str) -> str:
     costs a missed advisory rather than a false one.
     """
     word = word.replace("z", "s")
+    if word == "withheld":
+        return "withhold"
+    if word.endswith(("ies", "ied")) and len(word) > 5:
+        word = word[:-3] + "y"
+    if word.endswith("ification") and len(word) > 10:
+        word = word[:-7] + "y"
+    if word.endswith("closure") and len(word) > 7:
+        return word[:-3]
     for suffix in _SUFFIXES:
         if len(word) > len(suffix) + 2 and word.endswith(suffix):
             word = word[:-len(suffix)]
@@ -1156,6 +1815,48 @@ WHAT TO CHECK, in this order of importance:
    that appears to have been added or widened merely to legitimize geometry or an object visible
    only in a generated sheet. Compare the source wording with the candidate and quote both.
 
+   Build a source ledger before returning: trace every independent and dependent claim limitation,
+   every numbered part, and every specific structure, relationship, result, material, shape,
+   position, connection, or variant presented as part of the invention, an embodiment, or a drawing
+   to an exact passage in the inventor's disclosure or conversation. The candidate's own detailed
+   description cannot support a claim if the candidate introduced the detail. Common engineering
+   knowledge is not source support. Nor are plausibility, a renderer's need for concrete geometry,
+   or the usefulness of a detail. Report every untraced item as critical even when it is optional,
+   conventional, or included only in a dependent claim. Do not limit this audit to what seems like
+   the core invention. A corrective instruction that names a candidate detail only to reject,
+   remove, narrow, or question it is not affirmative inventor disclosure of that detail. Prior-art
+   characterisations trace to prior_art/ under step 4 instead; do not require the inventor's
+   disclosure to describe the prior art.
+
+   Build the disclosure ledger in both directions. After tracing candidate matter back to the
+   sources, trace every affirmative source passage forward into the candidate. Verify that every
+   disclosed technical structure, relationship, operation, safety or recovery behavior,
+   installation or calibration procedure, data-recording behavior, and alternative embodiment is
+   preserved in the Detailed Description. Report silently omitted substantive technical matter as
+   a major disclosure_coverage finding, or as critical when the omission removes a core or safety
+   relationship or leaves a problem asserted by the application without its disclosed solution.
+   Treat each conditional, temporal, negative, exception, threshold, actor, and verification
+   relationship as an indivisible source constraint. Preserve qualifiers such as only, until,
+   unless, after, before, remains, corresponding, independent, and expired in substance. Never
+   replace sensor-confirmed agreement with human confirmation, a named sensed channel with a
+   generic response, or an unexpired-token condition with generic authorization.
+   Inspect the claim set for useful supported dependent coverage of each commercially distinct
+   embodiment and safety or recovery mode, and report a material omission as claim_scope only when
+   a filing-clean claim can be made from the existing source. Do not require every optional feature
+   in an independent claim. Description-only preservation is not claim coverage. When the claim
+   set remains below 20 total claims, treat a disclosed capability as a material claim_scope
+   omission when it supplies a commercially distinct technical operation or a technical safeguard
+   against misconfiguration or failure and is not already necessarily recited. Installation or
+   calibration controls, tamper-evident technical records, recovery or fallback behavior, and
+   serviceable technical modules are examples when technically supported. A passing summary may
+   leave such a feature description-only only by naming it and giving a concrete reason that it is
+   redundant, nontechnical, inseparable from an existing limitation, or would exceed the standard
+   claim count. Do not demand coverage of filing formalities, motivations, background observations,
+   rejected or corrective passages, or wording that is merely redundant.
+   No automatic fix may leave more than 20 total claims or more than three independent claims.
+   At either limit, recommend consolidating redundant coverage or amending an existing claim, not
+   adding a claim that would exceed the limit.
+
 2. FIGURES, NUMERALS AND DESCRIPTIONS AGREE.
    Every reference numeral labels one part and only that part, everywhere it appears. The part a
    numeral labels in the detailed description is the part it labels in draft/numerals.md and on
@@ -1163,6 +1864,44 @@ WHAT TO CHECK, in this order of importance:
    what the detailed description says it shows. Nothing is described as being shown in a figure
    that the figure's own file does not contain. Open every figures/rendered-*.png image and verify
    the actual visible geometry and printed reference numerals, not only the Markdown drawing brief.
+   For every sectional view taken on line N-N of a source view, open that source-view image and
+   verify the broken cutting-plane line, one matching section designation at each end, and both
+   arrows pointing in the viewing direction stated by the brief. A section designation is not a
+   reference numeral and must not have a numeral leader.
+   Never propose an automatic fix that leaves more than eight reference numerals on one drawing
+   sheet. If a missing part must be depicted on a full sheet, require a focused additional view
+   or redistribute labels among focused views and synchronize every drawing description.
+
+   A patent drawing need not depict every claim limitation or an implementation detail that the
+   inventor did not disclose. Report an omission only when the application says that the figure
+   shows the omitted relationship, or when the visible geometry contradicts the text. A disclosed
+   part whose appearance was not disclosed still needs a simple visible outline. Treat a plain
+   outline, housing, slab, block, closed loop, or page position as a generic depiction convention
+   when the brief expressly calls it schematic, the claims and description stay neutral about its
+   form and placement, and the pixels add no technical function or relationship.
+
+   An off-sheet connection line is not the remote component to which it leads. Do not demand that
+   such a line carry the remote component's numeral unless the figure expressly depicts that
+   component. A leader ending on the connection line would label the line as the remote part.
+
+   Read review/figure-audit-evidence.json before reporting a visual defect. It binds the exact
+   rendered image hash to prior OCR, independent geometry, deterministic pixel-map, leader, and
+   native-pixel endpoint checks. It is audit evidence only, never inventor support. If your visual
+   interpretation conflicts with passed evidence, re-open the image and reconcile that
+   disagreement explicitly. Follow a leader continuously from numeral text to its terminal dot,
+   rather than inferring its target from a crossing. Report the defect only if you can identify the
+   concrete pixel relationship and explain why the recorded evidence is wrong.
+
+   Describe hatch direction in raw image coordinates, whose origin is at the upper left and whose
+   y coordinate increases downward. A line falls to the right when y increases as x increases; it
+   rises to the right when y decreases as x increases. A diagonal line has no arrow, so apply this
+   coordinate rule before reporting a hatch-direction mismatch.
+
+   A byte-exact section-hatch certificate in the evidence file records the signed angles used to
+   draw a deterministic section image, in that raw coordinate system. When its renderer match is
+   true and the recorded rendered-sheet hash matches the file you opened, those values are pixel
+   construction evidence, not a restatement of the brief. Do not report that certified components
+   share an angle or direction unless you identify a concrete hash or certificate mismatch.
 
 3. THE LANGUAGE AND THE LOGIC HOLD TOGETHER.
    One name per thing, used consistently - not "gripper" here and "grasping unit" there for the
@@ -1178,13 +1917,22 @@ WHAT TO CHECK, in this order of importance:
    is checked mechanically elsewhere - do not spend turns on it.)
 
 5. THE CLAIMS MATCH WHAT WAS DISCLOSED.
-   Every limitation in every claim must have support in the detailed description and, where the
-   limitation is structural, be visible in the drawings the draft describes. A claim broader than
-   the description supports is a critical finding. So is a claim reciting an element the
-   description never mentions. Check terminology drift between claim and description for the SAME
-   element.
+   Every limitation in every claim must have support in the detailed description. A structural
+   limitation need not be visible in a drawing unless the application identifies that drawing as
+   depicting the limitation. A claim broader than the description supports is a critical finding.
+   So is a claim reciting an element the description never mentions. Check terminology drift
+   between claim and description for the SAME element.
 
 HOW TO REPORT
+   Review defects in the candidate, not whether the inventor could have supplied a more detailed
+   disclosure. Do not report a gap in the inventor's disclosure when the candidate faithfully
+   states only the disclosed relationship and adds no unsupported implementation assertion. For
+   example, do not demand an undisclosed route, passage, shape, or mounting detail merely because
+   it would make the disclosure more specific. Do not recommend asking the inventor, an attorney,
+   or another person to settle a finding. Every finding must have a filing-clean, source-supported
+   automatic fix that can be made in the existing text or figure briefs. If no such fix exists and
+   the candidate neither adds unsupported matter nor contradicts itself, return no finding.
+
    Use the tools to read the workspace. Every finding must name where it is (`where`) and quote
    the text it is about (`evidence`) - a finding without a quote from the document is a guess and
    must not be reported. If you are unsure, say so in the detail and mark it minor.
@@ -1197,13 +1945,16 @@ REVIEW_PROMPT = """Review the draft in this workspace.
 
   draft/            the application, one file per section, plus numerals.md
   figures/          one Markdown brief and one rendered-*.png image per drawing
+  review/figure-audit-evidence.json
+                    exact-image OCR, geometry, leader and endpoint evidence
   prior_art/        the references the draft is allowed to cite, with their actual text
   input/            the inventor's disclosure and the conversation with the drafter
 
 Read input/disclosure.md and input/conversation.md first. Then read draft/ in full - every section,
 not a sample. Read numerals.md, every figure brief, and every rendered-*.png image in figures/.
-Compare the pixels with the brief, the patent text, and the inventor's source. Then read the
-prior_art/ files for every reference the draft cites.
+Read review/figure-audit-evidence.json and compare the exact pixels and prior audit evidence with
+the brief, the patent text, and the inventor's source. Then read the prior_art/ files for every
+reference the draft cites.
 
 The mechanical checks below have ALREADY been run in code. Do not repeat them; use them as
 context for where to look.
@@ -1212,10 +1963,713 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v20-deterministic-precision-qualifiers"
+SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
+application. You are independent of the drafting agent. Review only whether the proposed patent
+text and drawing specifications are supported by the inventor sources and internally consistent.
+Do not assess patentability, novelty, non-obviousness, validity, infringement, or freedom to
+operate.
+
+Read input/disclosure.md, input/conversation.md, and input/brief.md first. The disclosure and only
+the passages under headings labeled USER are the authority for what the invention includes.
+input/brief.md is authority only for filing formalities such as the title, applicant and inventor
+names, priority status, and government-support statement. It is never authority for technical
+invention matter. Passages labeled YOU, REVIEWER, or SYSTEM are context, never inventor support.
+A corrective USER message that names a candidate detail only to reject, remove, narrow, question,
+or audit it is not affirmative inventor support for that detail. Prior art, the candidate's own
+prose, common engineering knowledge, and generated pixels are not inventor support.
+
+Instructions merely to resume, preserve, repair, inspect, or audit a candidate do not affirm that
+candidate's technical content. Statements that a candidate is source-faithful, plus numeral or
+figure counts, labels, and filing gates do not affirm any structure assigned to those counts or
+labels. Require an independent affirmative USER passage that describes the technical substance.
+
+Prior-art characterizations in the Background do not require inventor support. Do not report one
+merely because the inventor did not mention that reference. A later independent review traces
+each characterization to the files in prior_art/. Prior art still cannot support invention text.
+
+A drawing must choose a visible outline when the inventor disclosed a part but not its appearance.
+Treat a simple generic outline, schematic housing, slab, closed loop, or non-substantive page
+placement as a depiction convention rather than an invention assertion only when the brief calls
+it "shown schematically", the claims and description remain shape-neutral, and the choice adds no
+technical function or relationship. Still report exact proportions, counts, materials,
+connections, topology, contact, flow paths, or relative locations that convey technical substance.
+For a functional face, slot, joint, cam, ramp, seal, port, or flow boundary, statements about
+which end is deeper, radial or circumferential end positions, runout direction, taper, angle, or
+contact topology are substantive even when the brief calls the geometry schematic. Report and
+remove every such untraced statement. A minimally specific generic face or opening may remain as
+a depiction convention only when the source affirmatively discloses that functional part and the
+brief does not verbalize any of those undisclosed relationships.
+The chosen convention must stay confined to the figure brief. If the application text or Brief
+Description says that an unsupported outline is shown "by way of example", that a member may have
+"any closed outline", or otherwise adds or broadens an embodiment merely to justify a renderer's
+choice, report it as unsupported even if the resulting claim language is shape-neutral. Remove the
+application statement; never recommend adding a speculative shape or optional embodiment to the
+application text merely to justify a renderer's generic visual choice.
+
+A supported claim limitation or relationship need not appear in a drawing unless the application
+expressly identifies a particular figure as depicting it. The absence of a connection line from a
+schematic figure is not an affirmative statement that two parts are disconnected. Do not report a
+claim-only drawing omission, do not invoke a drawing formality to require it, and never add an
+undisclosed route or topology merely to make every claim limitation visible.
+Never propose adding a line, arrow, connection, transition, route, path, coupling, or topology to
+a figure unless an exact affirmative USER passage expressly describes that same relationship and
+the application expressly says that the particular figure depicts it. Source language that states
+only a condition, prerequisite, purpose, or later state does not disclose a process-flow trigger.
+When a figure shows a state as a separate path or panel, do not invent an entry arrow to make the
+layout look complete.
+Conversely, the inventor need not prescribe patent-drawing notation. A conventional arrow, line,
+connector, outline, or hatch may illustrate the exact direction, path, connection, structure, or
+material boundary that an affirmative USER passage already describes. Do not report such notation
+merely because the inventor did not explicitly ask that it be drawn. Report it only when the
+notation adds or contradicts technical substance beyond the affirmative source.
+
+Build a complete source ledger before returning. Trace every limitation in every claim, every
+numbered part, and every specific structure, relationship, result, material, shape, position,
+connection, operating condition, and variant in the description or figure briefs to an exact
+affirmative passage in the disclosure or conversation. Report every untraced item as a critical
+disclosure_fidelity finding, including optional embodiments and dependent-claim limitations.
+Quote the candidate wording and the inventor passage that supports it. When no affirmative
+passage exists, say that explicitly and quote the nearest source passage that shows the gap.
+
+Build the disclosure ledger in both directions. After tracing candidate matter back to the
+sources, trace every affirmative source passage forward into the candidate. Verify that every
+disclosed technical structure, relationship, operation, safety or recovery behavior,
+installation or calibration procedure, data-recording behavior, and alternative embodiment is
+preserved in the Detailed Description. Report silently omitted substantive technical matter as a
+major disclosure_coverage finding, or as critical when the omission removes a core or safety
+relationship or leaves a stated problem without its disclosed solution. Inspect the claim set for
+useful supported dependent coverage of each commercially distinct embodiment and safety or
+recovery mode. Report a material claim omission as claim_scope only when a filing-clean claim can
+be made from the existing source. Do not require every optional feature in an independent claim.
+Description-only preservation is not claim coverage. When the claim set remains below 20 total
+claims, treat a disclosed capability as a material claim_scope omission when it supplies a
+commercially distinct technical operation or a technical safeguard against misconfiguration or
+failure and is not already necessarily recited. Installation or calibration controls,
+tamper-evident technical records, recovery or fallback behavior, and serviceable technical modules
+are examples when technically supported. A passing summary may leave such a feature
+description-only only by naming it and giving a concrete reason that it is redundant, nontechnical,
+inseparable from an existing limitation, or would exceed the standard claim count. Do not demand
+coverage of filing formalities, motivations, background observations, rejected or corrective
+passages, or wording that is merely redundant.
+Treat each conditional, temporal, negative, exception, threshold, actor, and verification
+relationship as an indivisible source constraint. Preserve qualifiers such as only, until, unless,
+after, before, remains, corresponding, independent, and expired in substance. Never replace
+sensor-confirmed agreement with human confirmation, a named sensed channel with a generic
+response, or an unexpired-token condition with generic authorization.
+No automatic fix may leave more than 20 total claims or more than three independent claims.
+At either limit, recommend consolidating redundant coverage or amending an existing claim, not
+adding a claim that would exceed the limit.
+
+Then check the text itself: claims and description must use the same relationships and terms;
+every numbered part must mean one thing; figure descriptions and briefs must depict only
+source-supported structures; every named section line must use the same repeated designation in
+the resulting view, source-view brief, and drawing description; and no drafting note, placeholder,
+open question, instruction,
+unresolved alternative, or internal comment may remain. Report every verified inconsistency.
+
+Never propose an automatic fix that leaves more than eight reference numerals on one drawing
+sheet. If a missing part must be depicted on a full sheet, require a focused additional view or
+redistribute labels among focused views and synchronize every drawing description.
+
+Do not inspect or rely on rendered images in this preflight. A later independent review checks
+the final pixels and citations. Return an empty findings array when, and only when, the full ledger
+is supported and the proposed text is internally consistent. Every finding must include concrete
+evidence and a filing-clean automatic fix."""
+
+SOURCE_REVIEW_PROMPT = """Run the source-fidelity preflight identified as
+%(version)s.
+
+Read these files in full:
+  input/disclosure.md
+  input/conversation.md
+  input/brief.md
+  draft/01-title.md
+  draft/02-cross-reference.md
+  draft/03-government-support.md
+  draft/04-field.md
+  draft/05-background.md
+  draft/06-summary.md
+  draft/07-drawings.md
+  draft/08-detailed-description.md
+  draft/09-claims.md
+  draft/10-abstract.md
+  draft/numerals.md
+  every Markdown brief in figures/
+
+Ignore rendered image files. Return the complete structured review. When finished, call
+StructuredOutput with both required root properties, "summary" and "findings". If the review is
+clean, return exactly an empty findings array. The summary is audit evidence, not a status label:
+use at least 120 characters and explicitly state that the complete claims, numerals or numbered
+parts, figure briefs or drawings, and affirmative inventor sources were all checked and traced.
+For example, return {"summary": "Every claim limitation, numeral, numbered part, figure brief, "
+"drawing description, and affirmative inventor source was checked and traced without an "
+"unsupported technical assertion.", "findings": []}. Never omit the findings property, even when
+there is nothing to report. Keep the summary below 8,000 characters."""
+
+
+def _source_review_required_paths(workspace: Path) -> list[str]:
+    """Existing files the Vertex fallback must prove it opened, with exact path casing."""
+    fixed = [
+        "input/disclosure.md", "input/conversation.md", "input/brief.md",
+        *[f"draft/{name}" for _key, name, _heading in draft_workspace.SECTION_FILES],
+        f"draft/{draft_workspace.NUMERALS_FILE}",
+    ]
+    root = Path(workspace)
+    required = [path for path in fixed if (root / path).is_file()]
+    figure_dir = root / "figures"
+    if figure_dir.is_dir():
+        required.extend(
+            path.relative_to(root).as_posix()
+            for path in sorted(figure_dir.glob("*.md")) if path.is_file()
+        )
+    return list(dict.fromkeys(required))
+
+
+def _source_review_quality_error(summary: str,
+                                 findings: Sequence[Mapping[str, Any]]) -> str:
+    """Reject schema-valid filler that does not evidence the required full-ledger review."""
+    words = re.findall(r"[a-z][a-z0-9_-]*", summary.casefold())
+    coverage = (
+        re.search(r"\bclaim", summary, re.IGNORECASE),
+        re.search(r"\b(?:numeral|reference number|numbered part)", summary, re.IGNORECASE),
+        re.search(r"\b(?:figure|drawing)", summary, re.IGNORECASE),
+        re.search(r"\b(?:source|disclos|support|affirmative|trac)", summary, re.IGNORECASE),
+    )
+    if len(summary) < 120 or len(words) < 20 or not all(coverage):
+        return (
+            "The source reviewer returned a non-substantive summary instead of evidence that "
+            "claims, numerals, figures, and inventor sources were all checked."
+        )
+    minimums = {"title": 8, "where": 5, "detail": 40, "evidence": 20, "fix": 20}
+    for finding in findings:
+        for field, minimum in minimums.items():
+            value = str(finding.get(field) or "").strip()
+            precise_path = bool(
+                field == "where" and
+                re.search(r"(?:^|/)[^/\s]+\.[a-z0-9]{1,12}(?::\d+(?:-\d+)?)?$",
+                          value, re.IGNORECASE)
+            )
+            if len(value) < minimum or (len(value.split()) < 2 and not precise_path):
+                return (
+                    "The source reviewer returned a non-substantive finding whose "
+                    f"{field} field did not contain reviewable evidence."
+                )
+    return ""
+
+
+_SOURCE_DRAWING_OMISSION_RE = re.compile(
+    r"\b(?:shown in no (?:figure|drawing)|no (?:figure|drawing) (?:shows|depicts|"
+    r"illustrates)|undepicted|depiction gap|drawing omission)\b",
+    re.IGNORECASE,
+)
+_SOURCE_DRAWING_RELATIONSHIP_OMISSION_RE = re.compile(
+    r"\b(?:incomplete|disconnected|unconnected|isolated|separate)\s+"
+    r"(?:process\s+)?(?:flows?|paths?|branches?|subprocess(?:es)?)\b|"
+    r"\b(?:no|without)\s+(?:defined\s+)?(?:entry\s+point|connecting\s+line|connection|"
+    r"transition|route|arrow)\b|"
+    r"\b(?:omits?|missing|lacks?)\b[^.\n]{0,100}\b"
+    r"(?:connection|connecting\s+line|transition|route|path|arrow)\b",
+    re.IGNORECASE,
+)
+_SOURCE_FIX_ADDS_TECHNICAL_RELATION_RE = re.compile(
+    r"\b(?:add|draw|depict|insert|show|connect)\b[^.\n]{0,180}"
+    r"(?:[ \t]*\r?\n){0,3}[ \t]*(?:[-*][ \t]*)?"
+    r"(?:an?[ \t]+)?"
+    r"(?:line|arrow|connection|transition|route|path|coupling|flow)\b",
+    re.IGNORECASE,
+)
+_SOURCE_DISCLOSED_RELATION_NOTATION_ONLY_RE = re.compile(
+    r"\b(?:inventor(?:'s)?(?:\s+source)?|source(?:\s+passage)?|disclosure)\b"
+    r"[^.\n]{0,220}\b(?:describ(?:e|es|ed)|disclos(?:e|es|ed)|states?)\b"
+    r"[^.\n]{0,220}\b(?:path|flow|direction|route|relationship|connection)\b"
+    r"[^.\n]{0,260}\b(?:does\s+not|did\s+not|never)\b"
+    r"[^.\n]{0,120}\b(?:ask|request|mention|specify|require)\w*\b"
+    r"[^.\n]{0,140}\b(?:arrow|draw|depict|illustrat|line)\w*\b",
+    re.IGNORECASE,
+)
+_SOURCE_FIX_REMOVES_NOTATION_RE = re.compile(
+    r"\b(?:delete|remove|omit)\b[^.\n]{0,180}\b"
+    r"(?:arrow|line|connector|outline|hatch|depict|illustrat|flow-arrow)\w*\b",
+    re.IGNORECASE,
+)
+_SOURCE_NOTATION_TECHNICAL_MISMATCH_RE = re.compile(
+    r"\b(?:does\s+not\s+match|contradicts?|wrong\s+direction|different\s+"
+    r"(?:path|direction|route)|adds?\s+(?:an?\s+)?(?:new|undisclosed)\s+"
+    r"(?:path|direction|route|relationship|connection))\b",
+    re.IGNORECASE,
+)
+_SOURCE_SUPPORT_ADMISSION_RE = re.compile(
+    r"\b(?:fully|squarely|affirmatively) supported\b|"
+    r"\bsupported by (?:the )?(?:inventor|disclosure|source)",
+    re.IGNORECASE,
+)
+_SOURCE_EXPLICIT_FIGURE_LINK_RE = re.compile(
+    r"\b(?:application|detailed description|brief description|specification)\s+"
+    r"(?:states?|says?|recites?)\s+(?:that\s+)?FIG(?:URE)?\.?\s*\d+\s+"
+    r"(?:shows|depicts|illustrates)",
+    re.IGNORECASE,
+)
+_SOURCE_EXPLICIT_DISCONNECTION_RE = re.compile(
+    r"\b(?:not connected|uncoupled|disconnected|does not (?:touch|connect)|"
+    r"clear of and not touching)\b",
+    re.IGNORECASE,
+)
+
+
+def reconcile_source_drawing_omission_findings(
+        findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Dismiss drawing omissions whose proposed repair would invent an unpromised relationship.
+
+    Source review protects the inventor's disclosure before rendering. It must not oscillate by
+    first removing an undisclosed connection route and then adding that route back merely because
+    a supported relationship is not drawn or a separate state lacks an entry arrow. A real
+    text-to-figure promise or an explicit contradictory connection remains blocking.
+    """
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for original in findings:
+        finding = dict(original)
+        title = str(finding.get("title") or "")
+        detail = str(finding.get("detail") or "")
+        evidence = str(finding.get("evidence") or "")
+        fix = str(finding.get("fix") or "")
+        review_text = " ".join((title, detail, evidence))
+        claim_relationship = bool(re.search(
+            r"\b(?:claim|limitation|claim element|coupl(?:e|ed|ing)|relationship)\b",
+            review_text, re.IGNORECASE))
+        claim_only_omission = bool(_SOURCE_DRAWING_OMISSION_RE.search(
+            " ".join((title, detail))))
+        reviewer_admits_support = bool(_SOURCE_SUPPORT_ADMISSION_RE.search(review_text))
+        proposed_depiction = bool(re.search(
+            r"\b(?:depict|draw|show|add)\b", fix, re.IGNORECASE))
+        promised_by_application = bool(_SOURCE_EXPLICIT_FIGURE_LINK_RE.search(review_text))
+        explicit_disconnection = bool(_SOURCE_EXPLICIT_DISCONNECTION_RE.search(evidence))
+        claim_only_case = (
+            claim_relationship and claim_only_omission and reviewer_admits_support
+            and proposed_depiction and not promised_by_application
+            and not explicit_disconnection
+        )
+        unpromised_relationship_case = (
+            bool(_SOURCE_DRAWING_RELATIONSHIP_OMISSION_RE.search(review_text))
+            and bool(_SOURCE_FIX_ADDS_TECHNICAL_RELATION_RE.search(fix))
+            and not promised_by_application
+            and not explicit_disconnection
+        )
+        if not (claim_only_case or unpromised_relationship_case):
+            kept.append(finding)
+            continue
+        if unpromised_relationship_case:
+            finding["reconciliation"] = (
+                "A source review must not invent a connection, arrow, route, or process trigger "
+                "to repair an omission unless the application expressly promises that exact "
+                "relationship in this figure. No such promise or explicit contradictory "
+                "connection was quoted."
+            )
+        else:
+            finding["reconciliation"] = (
+                "A drawing need not depict every claim limitation unless the "
+                "application expressly says that a figure shows it. No such text-to-figure "
+                "promise or explicit contradictory connection was quoted."
+            )
+        reconciled.append(finding)
+    return kept, reconciled
+
+
+def reconcile_source_depiction_convention_findings(
+        findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Keep source-supported technical substance even when the inventor did not name its glyph."""
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for original in findings:
+        finding = dict(original)
+        review_text = " ".join(str(finding.get(field) or "")
+                               for field in ("title", "detail", "evidence"))
+        where = str(finding.get("where") or "")
+        category = str(finding.get("category") or "")
+        fix = str(finding.get("fix") or "")
+        is_figure_finding = category == "figures_and_numerals" or "figures/" in where
+        notation_only = bool(_SOURCE_DISCLOSED_RELATION_NOTATION_ONLY_RE.search(review_text))
+        removes_notation = bool(_SOURCE_FIX_REMOVES_NOTATION_RE.search(fix))
+        technical_mismatch = bool(_SOURCE_NOTATION_TECHNICAL_MISMATCH_RE.search(review_text))
+        if not (is_figure_finding and notation_only and removes_notation
+                and not technical_mismatch):
+            kept.append(finding)
+            continue
+        finding["reconciliation"] = (
+            "The inventor need not prescribe patent-drawing notation. Conventional arrows or "
+            "lines may depict the exact path or direction that the reviewer itself identified "
+            "as affirmatively disclosed, without adding technical substance."
+        )
+        reconciled.append(finding)
+    return kept, reconciled
+
+
+_UNSUPPORTED_CLOSE_FIT_RE = re.compile(
+    r"\b(?:closely\s+fit(?:s|ting)?|fit(?:s|ting)?\s+closely|"
+    r"close(?:ly)?[- ]fit(?:s|ting)?|tight(?:ly)?[- ]fit(?:s|ting)?|"
+    r"snug(?:ly)?[- ]fit(?:s|ting)?|(?:interference|press|friction|clearance)\s+fit)\b",
+    re.IGNORECASE,
+)
+_FIT_CONTEXT_STOPWORDS = frozenset({
+    "a", "an", "and", "are", "be", "body", "close", "closely", "component",
+    "clearance", "drawn", "fit", "fits", "fitted", "fitting", "friction", "from",
+    "has", "have", "having", "in", "interference", "into", "is", "member", "of",
+    "or", "part", "press", "shown", "snug", "snugly", "that", "the", "these", "this",
+    "tight", "tightly", "to", "was", "were", "width", "with", "within",
+})
+
+
+def _fit_qualifier_kind(value: str) -> str:
+    text = str(value or "").casefold()
+    for kind in ("interference", "press", "friction", "clearance", "tight", "snug"):
+        if kind in text:
+            return kind
+    return "close"
+
+
+def _fit_context(value: str, match: re.Match[str]) -> str:
+    start = max(value.rfind(".", 0, match.start()), value.rfind("\n", 0, match.start())) + 1
+    stops = [position for position in (
+        value.find(".", match.end()), value.find("\n", match.end())) if position >= 0]
+    end = min(stops) if stops else len(value)
+    return re.sub(r"\s+", " ", value[start:end]).strip()
+
+
+def _fit_context_tokens(value: str) -> set[str]:
+    tokens = set()
+    for token in re.findall(r"[a-z][a-z-]{2,}", value.casefold()):
+        token = token.replace("-", "")
+        if token in _FIT_CONTEXT_STOPWORDS:
+            continue
+        if token.endswith("s") and len(token) > 4:
+            token = token[:-1]
+        tokens.add(token)
+    return tokens
+
+
+def _affirmative_inventor_text(workspace: Path) -> str:
+    """Return disclosure text and only USER-labeled conversation passages."""
+    root = Path(workspace)
+    disclosure_path = root / "input" / "disclosure.md"
+    disclosure = (disclosure_path.read_text(encoding="utf-8")
+                  if disclosure_path.is_file() else "")
+    conversation_path = root / "input" / "conversation.md"
+    conversation = (conversation_path.read_text(encoding="utf-8")
+                    if conversation_path.is_file() else "")
+    headings = list(re.finditer(
+        r"(?im)^\s{0,3}#{1,6}\s+(USER|YOU|REVIEWER|SYSTEM)\s*$",
+        conversation,
+    ))
+    user_passages = []
+    if headings:
+        for index, heading in enumerate(headings):
+            if heading.group(1).upper() != "USER":
+                continue
+            end = headings[index + 1].start() if index + 1 < len(headings) else len(
+                conversation)
+            user_passages.append(conversation[heading.end():end])
+    elif conversation:
+        user_passages.append(conversation)
+    return "\n".join([disclosure, *user_passages])
+
+
+_UNSUPPORTED_SOURCE_FINDING_RE = re.compile(
+    r"\b(?:unsupported|not\s+(?:affirmatively\s+)?(?:disclosed|stated|supported)|"
+    r"absent\s+from\s+(?:the\s+)?(?:inventor|source|disclosure))\b",
+    re.IGNORECASE,
+)
+_SOURCE_FIX_SEARCH_RE = re.compile(r"<search>(.*?)</search>", re.IGNORECASE | re.DOTALL)
+
+
+def _normalized_source_phrase(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+
+def reconcile_explicit_source_support_findings(
+        workspace: Path, findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Reject a reviewer finding that is contradicted by exact inventor wording.
+
+    Source reviewers sometimes quote the disclosure incorrectly and then ask the repair agent to
+    remove a qualifier as unsupported. The requested search text is the narrowest reliable object
+    to compare: it must occur verbatim in the affirmative source. A broader paraphrase or inferred
+    relationship does not pass this reconciliation and remains a blocking finding.
+    """
+    source = _normalized_source_phrase(_affirmative_inventor_text(Path(workspace)))
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for original in findings:
+        finding = dict(original)
+        review_text = " ".join(str(finding.get(field) or "")
+                               for field in ("title", "detail", "evidence"))
+        searches = [
+            _normalized_source_phrase(value)
+            for value in _SOURCE_FIX_SEARCH_RE.findall(str(finding.get("fix") or ""))
+        ]
+        supported = any(len(value) >= 12 and value in source for value in searches)
+        if not (_UNSUPPORTED_SOURCE_FINDING_RE.search(review_text) and supported):
+            kept.append(finding)
+            continue
+        finding["reconciliation"] = (
+            "The exact wording this finding asked to remove appears verbatim in the affirmative "
+            "inventor source. The finding's contrary source quotation is not authoritative."
+        )
+        reconciled.append(finding)
+    return kept, reconciled
+
+
+def deterministic_source_fidelity_findings(workspace: Path) -> list[dict[str, Any]]:
+    """Catch narrow precision limitations that a probabilistic source review can miss."""
+    root = Path(workspace)
+    source = _affirmative_inventor_text(root)
+    source_support = [
+        (_fit_qualifier_kind(match.group(0)),
+         _fit_context_tokens(_fit_context(source, match)))
+        for match in _UNSUPPORTED_CLOSE_FIT_RE.finditer(source)
+    ]
+    candidate_paths = [
+        root / "draft" / name for key, name, _heading in draft_workspace.SECTION_FILES
+        if key in {
+            "summary", "drawing_descriptions", "detailed_description", "claims", "abstract",
+        }
+    ]
+    figure_dir = root / "figures"
+    if figure_dir.is_dir():
+        candidate_paths.extend(sorted(figure_dir.glob("*.md")))
+    findings = []
+    for path in candidate_paths:
+        if not path.is_file():
+            continue
+        content = path.read_text(encoding="utf-8")
+        match = _UNSUPPORTED_CLOSE_FIT_RE.search(content)
+        if match is None:
+            continue
+        candidate_context = _fit_context(content, match)
+        candidate_kind = _fit_qualifier_kind(match.group(0))
+        candidate_tokens = _fit_context_tokens(candidate_context)
+        supported = any(
+            source_kind == candidate_kind and candidate_tokens & source_tokens
+            for source_kind, source_tokens in source_support)
+        if supported:
+            continue
+        line_number = content.count("\n", 0, match.start()) + 1
+        line_start = content.rfind("\n", 0, match.start()) + 1
+        line_end = content.find("\n", match.end())
+        if line_end < 0:
+            line_end = len(content)
+        evidence_line = re.sub(r"\s+", " ", content[line_start:line_end]).strip()[:600]
+        relative = path.relative_to(root).as_posix()
+        findings.append({
+            "severity": "critical",
+            "category": "disclosure_fidelity",
+            "title": "Unsupported close-fit precision qualifier",
+            "where": f"{relative}:{line_number}",
+            "detail": (
+                "The candidate adds a close, tight, snug, interference, press, friction, or "
+                "clearance-fit limitation that is absent from the affirmative inventor sources."
+            ),
+            "evidence": (
+                f"Candidate text: {evidence_line} The disclosure and USER conversation passages "
+                "contain no matching close-fit limitation."
+            ),
+            "fix": (
+                "Remove the unsupported fit-precision qualifier and retain only the neutral, "
+                "source-supported statement that the component is received in or fits within "
+                "the named opening."
+            ),
+        })
+    return findings
+
+
+def enforce_deterministic_source_fidelity(
+        report: Mapping[str, Any], workspace: Path) -> dict[str, Any]:
+    """Apply deterministic source constraints to both fresh and cached model reviews."""
+    out = dict(report or {})
+    existing, reconciled = reconcile_explicit_source_support_findings(
+        workspace, [dict(item) for item in out.get("findings") or []])
+    extra = deterministic_source_fidelity_findings(workspace)
+    if not extra and not reconciled:
+        return out
+    fingerprints = {
+        (str(item.get("title") or ""), str(item.get("where") or ""),
+         str(item.get("evidence") or ""))
+        for item in existing
+    }
+    for finding in extra:
+        fingerprint = (
+            finding["title"], finding["where"], finding["evidence"])
+        if fingerprint not in fingerprints:
+            existing.append(finding)
+            fingerprints.add(fingerprint)
+    findings = normalize_findings(existing)
+    checks = [dict(item) for item in out.get("checks") or []]
+    source_check = next((item for item in checks
+                         if item.get("name") == "Source fidelity is clean before rendering"), None)
+    if source_check is None:
+        source_check = {"name": "Source fidelity is clean before rendering"}
+        checks.append(source_check)
+    if findings:
+        detail = (
+            "Deterministic source constraints or unresolved independent-review findings still "
+            "require source-supported repair."
+        )
+    else:
+        detail = (
+            "Deterministic source comparison confirmed that the challenged wording appears "
+            "verbatim in the affirmative inventor source."
+        )
+    source_check.update({
+        "status": "fail" if findings else "pass",
+        "severity": "error" if findings else "info",
+        "category": "disclosure_fidelity",
+        "detail": detail,
+        "items": [str(item.get("title") or "Source-fidelity finding")[:600]
+                  for item in findings],
+    })
+    summary = (str(out.get("summary") or "").strip() if findings else detail)
+    if findings and detail not in summary:
+        summary = (summary + " " + detail).strip()
+    prior_reconciled = [dict(item) for item in out.get("reconciled_findings") or []]
+    out.update({
+        "status": "complete", "verdict": "fail" if findings else "pass",
+        "summary": summary[:8000],
+        "checks": checks, "findings": findings, "counts": counts_for(checks, findings),
+        "reconciled_findings": [*prior_reconciled, *reconciled],
+    })
+    return out
+
+
+def review_sources(workspace: Path, *, transcript: Path | None = None, model: str = "",
+                   timeout: int = draft_agent.QA_TIMEOUT,
+                   cancel: threading.Event | None = None) -> dict[str, Any]:
+    """Run a fail-closed text and source-ledger review before spending on drawings."""
+    total_cost = 0.0
+    total_duration = 0
+    total_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+    last_model = model or draft_agent.QA_MODEL
+    quality_guidance = ""
+    required_paths = _source_review_required_paths(workspace)
+    exact_manifest = (
+        "\n\nEXACT CASE-SENSITIVE READ MANIFEST\n"
+        "Open every path below exactly as written before returning a result:\n  " +
+        "\n  ".join(required_paths)
+    ) if required_paths else ""
+    for quality_attempt in range(2):
+        try:
+            run = draft_agent.run(
+                workspace=workspace,
+                prompt=(SOURCE_REVIEW_PROMPT % {"version": SOURCE_REVIEW_VERSION}) +
+                exact_manifest + quality_guidance,
+                system_prompt=SOURCE_REVIEW_SYSTEM,
+                schema=REVIEW_SCHEMA,
+                session_id=draft_agent.new_session_id(),
+                resume=False,
+                model=model or draft_agent.QA_MODEL,
+                tools="Read,Glob,Grep",
+                timeout=timeout,
+                transcript=transcript,
+                cancel=cancel,
+            )
+        except draft_agent.AgentError as exc:
+            return {"ok": False, "error": str(exc), "findings": [], "summary": "",
+                    "cost_usd": total_cost, "duration_ms": total_duration,
+                    "tokens": total_tokens, "model": last_model}
+        total_cost += float(run.cost_usd or 0.0)
+        total_duration += int(run.duration_ms or 0)
+        for key in total_tokens:
+            total_tokens[key] += int((run.tokens or {}).get(key) or 0)
+        last_model = run.model or last_model
+        if not run.ok and quality_attempt == 0 and re.search(
+                r"valid structured output.*attempt", str(run.error or ""), re.IGNORECASE):
+            # Claude Code has already rejected the malformed tool arguments, so no unvalidated
+            # result reaches the caller. A fresh independent session is the only useful repair:
+            # retrying the whole drafting turn wastes its attempt budget and can strand a complete
+            # checkpoint even though the patent content itself was never rejected.
+            continue
+        if not run.ok:
+            return {"ok": False, "error": run.error, "findings": [], "summary": "",
+                    "cost_usd": total_cost, "duration_ms": total_duration,
+                    "tokens": total_tokens, "model": last_model,
+                    "cancelled": bool(run.cancelled)}
+        summary = str(run.result.get("summary") or "").strip()[:8000]
+        raw_findings = run.result.get("findings")
+        findings = normalize_findings(raw_findings)
+        if (not summary or not isinstance(raw_findings, list)
+                or len(findings) != len(raw_findings)):
+            quality_error = "The source reviewer returned an empty summary or malformed finding."
+        else:
+            quality_error = _source_review_quality_error(summary, findings)
+        if (not quality_error and required_paths and
+                str(run.model or "").lower().startswith("vertex/")):
+            read_paths = {
+                str(step.get("detail") or "")
+                for step in (run.steps or [])
+                if str(step.get("tool") or "") == "read_file"
+            }
+            unread = [path for path in required_paths if path not in read_paths]
+            if unread:
+                quality_error = (
+                    "The Vertex source reviewer did not read every required file. "
+                    "Unread exact paths: " + ", ".join(unread)
+                )
+        if not quality_error:
+            findings, source_quote_reconciled = reconcile_explicit_source_support_findings(
+                workspace, findings)
+            findings, omission_reconciled = reconcile_source_drawing_omission_findings(findings)
+            findings, notation_reconciled = reconcile_source_depiction_convention_findings(
+                findings)
+            findings = normalize_findings([
+                *findings, *deterministic_source_fidelity_findings(workspace)])
+            reconciled = [
+                *source_quote_reconciled, *omission_reconciled, *notation_reconciled]
+            if reconciled and not findings:
+                summary = (
+                    "Every claim limitation, numeral, numbered part, figure brief, drawing "
+                    "description, and affirmative inventor source was checked and traced. No "
+                    "unresolved source-fidelity findings remain after deterministic comparison "
+                    "with the exact inventor text and reconciliation of figure findings."
+                )
+            elif reconciled:
+                summary += (
+                    " The filing gate reconciled findings contradicted by exact inventor text or "
+                    "by the application's explicit figure conventions."
+                )
+            return {
+                "ok": True,
+                "error": "",
+                "summary": summary,
+                "findings": findings,
+                "reconciled_findings": reconciled,
+                "cost_usd": total_cost,
+                "duration_ms": total_duration,
+                "tokens": total_tokens,
+                "model": last_model,
+            }
+        if quality_attempt == 1:
+            return {
+                "ok": False,
+                "error": quality_error,
+                "findings": [], "summary": "", "cost_usd": total_cost,
+                "duration_ms": total_duration, "tokens": total_tokens,
+                "model": last_model,
+            }
+        quality_guidance = (
+            "\n\nAUTOMATIC QUALITY RETRY\n"
+            "The previous source-review output was rejected by the filing gate: " +
+            quality_error + " Read every required file again and return a substantive summary "
+            "that explicitly evidences review of claims, numerals, figures, and inventor sources. "
+            "Do not repeat the prior short summary."
+        )
+    raise AssertionError("unreachable")
+
 
 def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
            transcript: Path | None = None, model: str = "",
-           timeout: int = draft_agent.QA_TIMEOUT) -> dict[str, Any]:
+           timeout: int = draft_agent.QA_TIMEOUT,
+           cancel: threading.Event | None = None) -> dict[str, Any]:
     """Run the independent reviewer over a workspace. Never raises."""
     lines = []
     for check in checks:
@@ -1238,18 +2692,177 @@ def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
             tools="Read,Glob,Grep,Bash",
             timeout=timeout,
             transcript=transcript,
+            cancel=cancel,
         )
     except draft_agent.AgentError as exc:
         return {"ok": False, "error": str(exc), "findings": [], "summary": "", "cost_usd": 0.0,
                 "duration_ms": 0, "model": model or draft_agent.QA_MODEL, "steps": []}
     if not run.ok:
         return {"ok": False, "error": run.error, "findings": [], "summary": "",
-                "cost_usd": run.cost_usd, "duration_ms": run.duration_ms, "model": run.model,
-                "steps": run.steps}
-    return {"ok": True, "error": "", "summary": str(run.result.get("summary") or "")[:8000],
-            "findings": normalize_findings(run.result.get("findings")),
-            "cost_usd": run.cost_usd, "duration_ms": run.duration_ms, "model": run.model,
+                "cost_usd": run.cost_usd, "duration_ms": run.duration_ms,
+                "tokens": dict(run.tokens or {}), "model": run.model,
+                "steps": run.steps, "cancelled": bool(run.cancelled)}
+    findings = normalize_findings(run.result.get("findings"))
+    findings, hatch_reconciled = reconcile_exact_section_hatch_findings(workspace, findings)
+    findings, offsheet_reconciled = reconcile_offsheet_connection_label_findings(
+        workspace, findings)
+    findings, omission_reconciled = reconcile_source_drawing_omission_findings(findings)
+    reconciled = [*hatch_reconciled, *offsheet_reconciled, *omission_reconciled]
+    summary = str(run.result.get("summary") or "")[:8000]
+    if reconciled and not findings:
+        summary = (
+            "Independent review completed with no unresolved findings after exact-image "
+            "reconciliation."
+            if hatch_reconciled and len(reconciled) == len(hatch_reconciled) else
+            "Independent review completed with no unresolved findings after deterministic "
+            "source and figure reconciliation."
+        )
+    return {"ok": True, "error": "", "summary": summary,
+            "findings": findings, "reconciled_findings": reconciled,
+            "cost_usd": run.cost_usd, "duration_ms": run.duration_ms,
+            "tokens": dict(run.tokens or {}), "model": run.model,
             "steps": run.steps}
+
+
+_SECTION_HATCH_FINDING_RE = re.compile(
+    r"\b(?:hatch(?:ed|ing)?|section lining)\b", re.IGNORECASE)
+_SECTION_HATCH_CONFLICT_RE = re.compile(
+    r"\b(?:angle|direction|identical|same|parallel|distinct|rises?|falls?)\b",
+    re.IGNORECASE)
+
+
+def reconcile_exact_section_hatch_findings(
+        workspace: Path, findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Dismiss only hatch-direction claims disproved by a byte-exact render certificate."""
+    actionable = [dict(item) for item in findings]
+    evidence_path = Path(workspace) / "review" / "figure-audit-evidence.json"
+    try:
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return actionable, []
+    records = {
+        figure_number(item.get("figure_label")): item
+        for item in payload.get("figures") or []
+        if isinstance(item, Mapping) and figure_number(item.get("figure_label"))
+    }
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for finding in actionable:
+        combined = " ".join(str(finding.get(key) or "") for key in (
+            "title", "where", "detail", "evidence", "fix"))
+        figure = figure_number(combined)
+        record = records.get(figure)
+        certificate = (
+            record.get("deterministic_section_hatching")
+            if isinstance(record, Mapping) else None)
+        components = certificate.get("components") if isinstance(certificate, Mapping) else None
+        angles = [
+            item.get("angle_degrees") for item in components or []
+            if isinstance(item, Mapping) and isinstance(item.get("angle_degrees"), int)
+        ]
+        rendered_file = str(record.get("rendered_file") or "") if record else ""
+        rendered_path = Path(workspace) / "figures" / rendered_file
+        try:
+            rendered_hash = hashlib.sha256(rendered_path.read_bytes()).hexdigest()
+        except OSError:
+            rendered_hash = ""
+        exact = bool(
+            str(finding.get("category") or "") == "figures_and_numerals" and
+            _SECTION_HATCH_FINDING_RE.search(combined) and
+            _SECTION_HATCH_CONFLICT_RE.search(combined) and
+            record and (record.get("geometry") or {}).get("ok") is True and
+            certificate and certificate.get("ok") is True and
+            certificate.get("version") ==
+            draft_figures.DETERMINISTIC_SECTION_HATCH_CERTIFICATE_VERSION and
+            certificate.get("exact_renderer_match") is True and
+            certificate.get("renderer") in ("chamber_section", "fragmentary_section") and
+            certificate.get("coordinate_space") == "raw_pixels_origin_upper_left_y_down" and
+            re.fullmatch(r"[0-9a-f]{64}", str(certificate.get("raw_png_sha256") or "")) and
+            rendered_hash == record.get("rendered_sha256") and
+            len(angles) >= 2 and len(set(angles)) >= 2)
+        if not exact:
+            kept.append(finding)
+            continue
+        resolved = dict(finding)
+        resolved.update({
+            "figure_label": f"FIG. {figure}",
+            "reconciliation": (
+                "The exact rendered-sheet hash matches the review file, and its byte-exact "
+                "deterministic section certificate records distinct raw-pixel hatch angles."),
+            "certified_hatch_components": [dict(item) for item in components],
+        })
+        reconciled.append(resolved)
+    return kept, reconciled
+
+
+_OFFSHEET_CONNECTION_LABEL_OMISSION_RE = re.compile(
+    r"\b(?:omit|missing|lack|unlabel|not\s+label)\w*\b[^.\n]{0,180}"
+    r"\b(?:label|numeral|reference\s+numeral)\w*\b|"
+    r"\b(?:label|numeral|reference\s+numeral)\w*\b[^.\n]{0,180}"
+    r"\b(?:omit|missing|lack|unlabel)\w*\b",
+    re.IGNORECASE,
+)
+_OFFSHEET_CONNECTION_LABEL_FIX_RE = re.compile(
+    r"\b(?:add|place)\b[^.\n]{0,260}\b(?:leader|numeral|label)\w*\b"
+    r"[^.\n]{0,260}\bconnection\s+lines?\b",
+    re.IGNORECASE,
+)
+
+
+def reconcile_offsheet_connection_label_findings(
+        workspace: Path, findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Do not assign a remote component's numeral to its off-sheet connection line."""
+    ledger = {
+        str(item.get("numeral") or ""): str(item.get("part") or "").strip()
+        for item in draft_workspace.read_numerals(workspace)
+    }
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for original in findings:
+        finding = dict(original)
+        combined = " ".join(str(finding.get(key) or "") for key in (
+            "title", "where", "detail", "evidence"))
+        fix = str(finding.get("fix") or "")
+        figure = figure_number(combined)
+        requested = set(re.findall(r"\((\d{2,4})\)", fix))
+        brief_path = Path(workspace) / "figures" / f"FIG-{figure}.md"
+        try:
+            brief = brief_path.read_text(encoding="utf-8")
+        except OSError:
+            brief = ""
+        marker = "## Numerals shown on this figure"
+        shown_text = brief.split(marker, 1)[1] if marker in brief else ""
+        shown = set(re.findall(r"(?m)^\s*-\s*(\d{1,4})\b", shown_text))
+        remote_parts_supported = bool(requested and requested.isdisjoint(shown))
+        for numeral in requested:
+            tokens = re.findall(r"[a-z0-9]+", ledger.get(numeral, "").lower())
+            if not tokens:
+                remote_parts_supported = False
+                break
+            part_pattern = r"[-\s]+".join(re.escape(token) for token in tokens)
+            if not re.search(
+                    r"\bconnection\s+to\s+(?:the\s+)?" + part_pattern + r"\b",
+                    brief, re.IGNORECASE):
+                remote_parts_supported = False
+                break
+        exact_case = bool(
+            str(finding.get("category") or "") == "figures_and_numerals" and
+            figure and "connection" in combined.lower() and
+            _OFFSHEET_CONNECTION_LABEL_OMISSION_RE.search(combined) and
+            _OFFSHEET_CONNECTION_LABEL_FIX_RE.search(fix) and
+            remote_parts_supported)
+        if not exact_case:
+            kept.append(finding)
+            continue
+        finding["reconciliation"] = (
+            "The figure brief shows an offsheet connection to each named component, not the "
+            "remote component itself. Adding the remote part's numeral to that line would "
+            "misidentify the connection line as the numbered part."
+        )
+        reconciled.append(finding)
+    return kept, reconciled
 
 
 def normalize_findings(value: Any, *, limit: int = 60) -> list[dict[str, Any]]:
@@ -1270,6 +2883,22 @@ def normalize_findings(value: Any, *, limit: int = 60) -> list[dict[str, Any]]:
         if not title or not evidence:
             continue
         severity = str(item.get("severity") or "minor").lower()
+        fix = str(item.get("fix") or "").strip()
+        non_actionable_minor = severity == "minor" and (
+            re.search(
+                r"\bno (?:source-supported )?(?:text|claim|figure|draft|filing) "
+                r"change (?:is )?(?:available|required|possible)\b",
+                fix,
+                re.IGNORECASE,
+            ) or re.search(
+                r"\bno (?:filing-clean |source-supported )?(?:automatic )?fix "
+                r"(?:is )?(?:available|exists|possible)\b",
+                fix,
+                re.IGNORECASE,
+            )
+        )
+        if non_actionable_minor:
+            continue
         out.append({
             "severity": severity if severity in ("critical", "major", "minor") else "minor",
             "category": str(item.get("category") or "internal_logic")[:40],
@@ -1277,7 +2906,7 @@ def normalize_findings(value: Any, *, limit: int = 60) -> list[dict[str, Any]]:
             "where": str(item.get("where") or "")[:200],
             "detail": str(item.get("detail") or "")[:4000],
             "evidence": evidence[:2000],
-            "fix": str(item.get("fix") or "")[:2000],
+            "fix": fix[:2000],
         })
     order = {"critical": 0, "major": 1, "minor": 2}
     out.sort(key=lambda f: order.get(f["severity"], 3))

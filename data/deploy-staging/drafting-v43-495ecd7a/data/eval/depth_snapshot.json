@@ -1,0 +1,755 @@
+{
+ "cutoff": "2026-07-18 06:56:00+00",
+ "families": {
+  "19852272": {
+   "fam": "19852272",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "22498676": {
+   "fam": "22498676",
+   "in_corpus": true,
+   "n_claim_chunks": 51,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "22577009": {
+   "fam": "22577009",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "22883737": {
+   "fam": "22883737",
+   "in_corpus": true,
+   "n_claim_chunks": 34,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "22950774": {
+   "fam": "22950774",
+   "in_corpus": true,
+   "n_claim_chunks": 1,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "23158645": {
+   "fam": "23158645",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "23205091": {
+   "fam": "23205091",
+   "in_corpus": true,
+   "n_claim_chunks": 78,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "23289430": {
+   "fam": "23289430",
+   "in_corpus": true,
+   "n_claim_chunks": 1,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "23516263": {
+   "fam": "23516263",
+   "in_corpus": true,
+   "n_claim_chunks": 11,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "24262135": {
+   "fam": "24262135",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "24430975": {
+   "fam": "24430975",
+   "in_corpus": true,
+   "n_claim_chunks": 15,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "24635901": {
+   "fam": "24635901",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "24664421": {
+   "fam": "24664421",
+   "in_corpus": true,
+   "n_claim_chunks": 33,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "24840037": {
+   "fam": "24840037",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "25084279": {
+   "fam": "25084279",
+   "in_corpus": true,
+   "n_claim_chunks": 26,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "25421211": {
+   "fam": "25421211",
+   "in_corpus": true,
+   "n_claim_chunks": 46,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "25479119": {
+   "fam": "25479119",
+   "in_corpus": true,
+   "n_claim_chunks": 9,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "25644276": {
+   "fam": "25644276",
+   "in_corpus": true,
+   "n_claim_chunks": 15,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "26040986": {
+   "fam": "26040986",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "26224347": {
+   "fam": "26224347",
+   "in_corpus": true,
+   "n_claim_chunks": 20,
+   "pre_sources": [],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "27070290": {
+   "fam": "27070290",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "27177351": {
+   "fam": "27177351",
+   "in_corpus": true,
+   "n_claim_chunks": 22,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "29740151": {
+   "fam": "29740151",
+   "in_corpus": true,
+   "n_claim_chunks": 43,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "3104865": {
+   "fam": "3104865",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "3193909": {
+   "fam": "3193909",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "31947993": {
+   "fam": "31947993",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "31984472": {
+   "fam": "31984472",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "32054112": {
+   "fam": "32054112",
+   "in_corpus": true,
+   "n_claim_chunks": 2,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "32297463": {
+   "fam": "32297463",
+   "in_corpus": true,
+   "n_claim_chunks": 153,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "32981160": {
+   "fam": "32981160",
+   "in_corpus": true,
+   "n_claim_chunks": 19,
+   "pre_sources": [],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "34201690": {
+   "fam": "34201690",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "34810482": {
+   "fam": "34810482",
+   "in_corpus": true,
+   "n_claim_chunks": 232,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "35940933": {
+   "fam": "35940933",
+   "in_corpus": true,
+   "n_claim_chunks": 14,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "36011303": {
+   "fam": "36011303",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "36920701": {
+   "fam": "36920701",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "36974391": {
+   "fam": "36974391",
+   "in_corpus": true,
+   "n_claim_chunks": 9,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "39244538": {
+   "fam": "39244538",
+   "in_corpus": true,
+   "n_claim_chunks": 36,
+   "pre_sources": [],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "40115693": {
+   "fam": "40115693",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "41380067": {
+   "fam": "41380067",
+   "in_corpus": true,
+   "n_claim_chunks": 33,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "42115107": {
+   "fam": "42115107",
+   "in_corpus": true,
+   "n_claim_chunks": 101,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "42629144": {
+   "fam": "42629144",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "43736808": {
+   "fam": "43736808",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "4405320": {
+   "fam": "4405320",
+   "in_corpus": true,
+   "n_claim_chunks": 9,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "45508079": {
+   "fam": "45508079",
+   "in_corpus": true,
+   "n_claim_chunks": 8,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "45554511": {
+   "fam": "45554511",
+   "in_corpus": true,
+   "n_claim_chunks": 56,
+   "pre_sources": [],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "50556166": {
+   "fam": "50556166",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "54067591": {
+   "fam": "54067591",
+   "in_corpus": true,
+   "n_claim_chunks": 147,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "55234658": {
+   "fam": "55234658",
+   "in_corpus": true,
+   "n_claim_chunks": 44,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "5566733": {
+   "fam": "5566733",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "56814857": {
+   "fam": "56814857",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "56830674": {
+   "fam": "56830674",
+   "in_corpus": true,
+   "n_claim_chunks": 1,
+   "pre_sources": [],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "5877774": {
+   "fam": "5877774",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "59125095": {
+   "fam": "59125095",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "6026446": {
+   "fam": "6026446",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "61375111": {
+   "fam": "61375111",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "61880391": {
+   "fam": "61880391",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "6259387": {
+   "fam": "6259387",
+   "in_corpus": true,
+   "n_claim_chunks": 32,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [],
+   "stratum": "deepened_pre"
+  },
+  "6332344": {
+   "fam": "6332344",
+   "in_corpus": true,
+   "n_claim_chunks": 11,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [],
+   "stratum": "deepened_pre"
+  },
+  "63449883": {
+   "fam": "63449883",
+   "in_corpus": true,
+   "n_claim_chunks": 13,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [
+    "local:sibling_recovery"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "6391811": {
+   "fam": "6391811",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "6480115": {
+   "fam": "6480115",
+   "in_corpus": true,
+   "n_claim_chunks": 72,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [],
+   "stratum": "deepened_pre"
+  },
+  "6495403": {
+   "fam": "6495403",
+   "in_corpus": true,
+   "n_claim_chunks": 66,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [],
+   "stratum": "deepened_pre"
+  },
+  "66624664": {
+   "fam": "66624664",
+   "in_corpus": true,
+   "n_claim_chunks": 257,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [],
+   "stratum": "deepened_pre"
+  },
+  "6853263": {
+   "fam": "6853263",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "6918853": {
+   "fam": "6918853",
+   "in_corpus": true,
+   "n_claim_chunks": 13,
+   "pre_sources": [],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "70050062": {
+   "fam": "70050062",
+   "in_corpus": true,
+   "n_claim_chunks": 43,
+   "pre_sources": [],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "7217340": {
+   "fam": "7217340",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "7715998": {
+   "fam": "7715998",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "7782789": {
+   "fam": "7782789",
+   "in_corpus": true,
+   "n_claim_chunks": 64,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [],
+   "stratum": "deepened_pre"
+  },
+  "7790219": {
+   "fam": "7790219",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "7865086": {
+   "fam": "7865086",
+   "in_corpus": true,
+   "n_claim_chunks": 96,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [],
+   "stratum": "deepened_pre"
+  },
+  "7889498": {
+   "fam": "7889498",
+   "in_corpus": true,
+   "n_claim_chunks": 70,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [],
+   "stratum": "deepened_pre"
+  },
+  "7917022": {
+   "fam": "7917022",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  },
+  "7961965": {
+   "fam": "7961965",
+   "in_corpus": true,
+   "n_claim_chunks": 141,
+   "pre_sources": [
+    "serpapi:google_patents"
+   ],
+   "new_sources": [
+    "epo:ops"
+   ],
+   "stratum": "deepened_NEW"
+  },
+  "83194486": {
+   "fam": "83194486",
+   "in_corpus": true,
+   "n_claim_chunks": 38,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "bq_deep"
+  },
+  "8790101": {
+   "fam": "8790101",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "8811546": {
+   "fam": "8811546",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "8841954": {
+   "fam": "8841954",
+   "in_corpus": false,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "absent"
+  },
+  "9340346": {
+   "fam": "9340346",
+   "in_corpus": true,
+   "n_claim_chunks": 0,
+   "pre_sources": [],
+   "new_sources": [],
+   "stratum": "thin"
+  }
+ },
+ "totals": {
+  "thin": 24,
+  "bq_deep": 24,
+  "deepened_NEW": 12,
+  "absent": 11,
+  "deepened_pre": 8
+ },
+ "per_query": {
+  "grabo_gripper_novelty": {
+   "bq_deep": 19,
+   "thin": 4,
+   "absent": 7,
+   "deepened_NEW": 8,
+   "deepened_pre": 6
+  },
+  "grabo_gripper_inventive": {
+   "bq_deep": 19,
+   "thin": 4,
+   "absent": 7,
+   "deepened_NEW": 8,
+   "deepened_pre": 6
+  },
+  "grabo_extended_frame": {
+   "thin": 11,
+   "bq_deep": 23,
+   "deepened_NEW": 8,
+   "absent": 4,
+   "deepened_pre": 3
+  },
+  "grabo_de_utility_xling": {
+   "thin": 1,
+   "deepened_NEW": 2,
+   "deepened_pre": 4
+  },
+  "schmalz_sauggreifsystem": {
+   "deepened_NEW": 1,
+   "thin": 1,
+   "deepened_pre": 1,
+   "bq_deep": 1
+  },
+  "schmalz_vacuum_clamp": {
+   "thin": 5,
+   "deepened_NEW": 2
+  },
+  "probst_stone_lifter_xling": {
+   "deepened_NEW": 1,
+   "thin": 2,
+   "deepened_pre": 2,
+   "bq_deep": 1
+  },
+  "probst_kerb_lifter": {
+   "absent": 3,
+   "thin": 4,
+   "deepened_pre": 2
+  },
+  "nl_handheld_vacuum_seal_sensor": {
+   "thin": 1,
+   "deepened_NEW": 2,
+   "deepened_pre": 1,
+   "bq_deep": 1
+  },
+  "nl_porous_surface_gripper": {
+   "deepened_pre": 5,
+   "bq_deep": 1
+  },
+  "nl_robot_eoat_vacuum": {
+   "thin": 1,
+   "deepened_NEW": 2
+  }
+ }
+}

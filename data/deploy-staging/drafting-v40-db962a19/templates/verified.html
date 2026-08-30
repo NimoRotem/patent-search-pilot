@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Email confirmed | Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap authwrap">
+  <div class="panel authcard">
+    <h1>Email confirmed</h1>
+    <p class="muted">Thank you — <b>{{ user.email }}</b> is confirmed. We can now email you when a
+      search finishes.</p>
+    <a class="btn" href="{{ request.script_root }}/">Start a search</a>
+  </div>
+</div>
+{% endblock %}

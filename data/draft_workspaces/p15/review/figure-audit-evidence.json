@@ -1,0 +1,338 @@
+{
+  "schema_version": 1,
+  "purpose": "Exact-image OCR, geometry, section-mark, leader, and native-pixel endpoint evidence for independent review. This is audit evidence, not inventor source material.",
+  "figures": [
+    {
+      "figure_label": "FIG. 1",
+      "rendered_file": "rendered-FIG-1.png",
+      "rendered_sha256": "8cde266d8270957a589cd1820b79ed0da37c2ab71d3ced364e0c9dde971bfee8",
+      "specification_hash": "6a0da0f8be438fe7517c075d3fc095f2d9c9a44c2400b753133ea7ce78dfa95c",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "100",
+          "102",
+          "104",
+          "106",
+          "108",
+          "118",
+          "120",
+          "140"
+        ],
+        "detected_numerals": [
+          "104",
+          "102",
+          "120",
+          "100",
+          "118",
+          "140",
+          "108",
+          "106"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "1/5",
+        "detected_sheet_number": "1/5",
+        "detected_figure_label": "FIG. 1"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "Two semantic reviews and byte-exact deterministic constraints resolved a raw-geometry dissent. Cross-provider review: The drawing has several discrepancies with the specification, including missing connections, an unexpected connection, and an incorrectly drawn isolated local bus.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {},
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All reference numeral terminal dots are correctly placed according to the specification.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400,
+        "coordinate_height": 900,
+        "labels": [
+          {
+            "numeral": "100",
+            "correct": true,
+            "evidence": "The terminal dot is located on the dashed rectangular boundary, which represents the charging installation geometry."
+          },
+          {
+            "numeral": "102",
+            "correct": true,
+            "evidence": "The terminal dot is located on the horizontal line representing the branch conductor geometry."
+          },
+          {
+            "numeral": "104",
+            "correct": true,
+            "evidence": "The terminal dot is located inside the rectangular box representing the branch current sensor geometry."
+          },
+          {
+            "numeral": "106",
+            "correct": true,
+            "evidence": "The terminal dot is located inside the rectangular box representing the edge controller geometry."
+          },
+          {
+            "numeral": "108",
+            "correct": true,
+            "evidence": "The terminal dot is located on the horizontal line segment representing the isolated local bus geometry."
+          },
+          {
+            "numeral": "118",
+            "correct": true,
+            "evidence": "The terminal dot is located inside the rectangular box representing the non-charging load geometry."
+          },
+          {
+            "numeral": "120",
+            "correct": true,
+            "evidence": "The terminal dot is located inside the rectangular box representing the first connector channel geometry."
+          },
+          {
+            "numeral": "140",
+            "correct": true,
+            "evidence": "The terminal dot is located inside the rectangular box representing the second connector channel geometry."
+          }
+        ]
+      }
+    },
+    {
+      "figure_label": "FIG. 2",
+      "rendered_file": "rendered-FIG-2.png",
+      "rendered_sha256": "24e745340ddd1f4fd929666b3422456a04ccd5cbf8cbaf69c0de318ee6c1571d",
+      "specification_hash": "5634cf0c51daf0dac785c50057c6d01f5390ae6815806b2c3b8e8057118e3e5b",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "108",
+          "120",
+          "122",
+          "124",
+          "126",
+          "128",
+          "130"
+        ],
+        "detected_numerals": [
+          "122",
+          "124",
+          "120",
+          "108",
+          "126",
+          "130",
+          "128"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "2/5",
+        "detected_sheet_number": "2/5",
+        "detected_figure_label": "FIG. 2"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "The drawing perfectly matches the specification. All required components and connections are present and correctly depicted, and there are no unexpected elements.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {},
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All reference numeral terminal dots are correctly placed according to the specification.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400,
+        "coordinate_height": 900,
+        "labels": [
+          {
+            "numeral": "108",
+            "correct": true,
+            "evidence": "Dot is on the horizontal line segment representing the isolated local bus."
+          },
+          {
+            "numeral": "120",
+            "correct": true,
+            "evidence": "Dot is on the left dashed line of the first connector channel rectangle."
+          },
+          {
+            "numeral": "122",
+            "correct": true,
+            "evidence": "Dot is inside the square block representing the contactor."
+          },
+          {
+            "numeral": "124",
+            "correct": true,
+            "evidence": "Dot is inside the circle representing the connector current sensor."
+          },
+          {
+            "numeral": "126",
+            "correct": true,
+            "evidence": "Dot is inside the rectangle representing the control-pilot interface."
+          },
+          {
+            "numeral": "128",
+            "correct": true,
+            "evidence": "Dot is inside the square block representing the vehicle connector."
+          },
+          {
+            "numeral": "130",
+            "correct": true,
+            "evidence": "Dot is inside the rounded rectangle representing the electric vehicle."
+          }
+        ]
+      }
+    },
+    {
+      "figure_label": "FIG. 5",
+      "rendered_file": "rendered-FIG-5.png",
+      "rendered_sha256": "7bdeae99be7b890e26fe621fa40d8706455012b1d51571660307a346ff671b2e",
+      "specification_hash": "4224cccb7743abb8dca244c515905e8270472f158f0201fe5c47d62f6c766512",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "210",
+          "211",
+          "212",
+          "214",
+          "216"
+        ],
+        "detected_numerals": [
+          "210",
+          "211",
+          "212",
+          "214",
+          "216"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "5/5",
+        "detected_sheet_number": "5/5",
+        "detected_figure_label": "FIG. 5"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "The drawing accurately depicts all specified geometric elements, including the starting connector, the column of five shapes (rectangles and diamonds in the specified order), the main vertical flow lines, the left return path, the right exit path to a terminator, and the right return path. All connections, arrowheads, and relative positions match the description. The absence of labels and numerals is expected.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {},
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "figure-anchor-v15-native-pixel-actionable-coordinate-certificate-majority",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All 5 reference numeral endpoints are correctly placed according to the specification.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1408,
+        "coordinate_height": 768,
+        "labels": [
+          {
+            "numeral": "210",
+            "correct": true,
+            "evidence": "Terminal dot is inside the rectangular box for the 'reduced pilot command sending step'."
+          },
+          {
+            "numeral": "211",
+            "correct": true,
+            "evidence": "Terminal dot is inside the diamond shape for the 'overcurrent persistence verification step'."
+          },
+          {
+            "numeral": "212",
+            "correct": true,
+            "evidence": "Terminal dot is inside the rectangular box for the 'ordered shedding step'."
+          },
+          {
+            "numeral": "214",
+            "correct": true,
+            "evidence": "Terminal dot is inside the diamond shape for the 'welded-contactor detection step'."
+          },
+          {
+            "numeral": "216",
+            "correct": true,
+            "evidence": "Terminal dot is inside the rectangular box for the 'conditional reclosure step'."
+          }
+        ]
+      }
+    }
+  ]
+}

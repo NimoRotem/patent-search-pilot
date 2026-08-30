@@ -1,0 +1,252 @@
+.agent/source-review-0050-5586d44e01e7.jsonl:20:[Omitted long matching line]
+.agent/source-review-0050-5586d44e01e7.jsonl:21:[Omitted long matching line]
+.agent/source-review-0050-5586d44e01e7.jsonl:22:[Omitted long matching line]
+.agent/source-review-0050-5586d44e01e7.jsonl:23:[Omitted long matching line]
+.agent/source-review-0050-5586d44e01e7.jsonl:24:[Omitted long matching line]
+.agent/source-review-0050-5586d44e01e7.jsonl:25:[Omitted long matching line]
+.agent/source-review-0050-5586d44e01e7.jsonl:43:[Omitted long matching line]
+.agent/source-review-0050-5586d44e01e7.jsonl:44:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"89dbd825-06b5-47a1-851c-bc95f74db01c","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:50:{"type":"system","subtype":"thinking_tokens","estimated_tokens":750,"estimated_tokens_delta":50,"uuid":"608bf3ff-45f3-44e9-a402-42097a2a8ff9","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:70:{"type":"system","subtype":"thinking_tokens","estimated_tokens":3300,"estimated_tokens_delta":50,"uuid":"c1dff919-9826-4671-938c-44fc5b211333","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:109:{"type":"system","subtype":"thinking_tokens","estimated_tokens":8350,"estimated_tokens_delta":50,"uuid":"1c08a923-f24b-49a6-9678-5ca135efcaff","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:128:{"type":"system","subtype":"thinking_tokens","estimated_tokens":10700,"estimated_tokens_delta":50,"uuid":"0ee5fdba-9ea8-4859-a09e-041e194311d2","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:160:{"type":"system","subtype":"thinking_tokens","estimated_tokens":14650,"estimated_tokens_delta":50,"uuid":"2b5f9358-9764-482f-b328-a132321f7ecb","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:172:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"e8f1111b-ae26-4952-98e8-c0e4b0e0aa61","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:173:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"69b4ed3d-bcf7-4e6f-9c68-4c8bd429d65f","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:190:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2050,"estimated_tokens_delta":50,"uuid":"ade841c5-04ce-4028-b23b-48cfb0ab1725","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:205:{"type":"system","subtype":"thinking_tokens","estimated_tokens":3850,"estimated_tokens_delta":50,"uuid":"95a24496-cba2-4a00-a1af-bfd47282ad7d","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:208:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4150,"estimated_tokens_delta":50,"uuid":"b48dab57-30b8-4473-a68e-f957c5cf3bf6","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:238:{"type":"system","subtype":"thinking_tokens","estimated_tokens":8350,"estimated_tokens_delta":50,"uuid":"a084e965-5765-4b9f-a66a-290e67dffabe","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:252:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"404007d9-a12a-497d-b206-f8d9829aedef","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:256:{"type":"system","subtype":"thinking_tokens","estimated_tokens":450,"estimated_tokens_delta":50,"uuid":"0b42ab32-39e2-4eb7-8289-0ce68ae6d2e6","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0050-5586d44e01e7.jsonl:262:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1000,"estimated_tokens_delta":50,"uuid":"fc529649-78cc-4730-a6ac-e06df76893c5","session_id":"21385580-554f-4ef2-9999-baca61e25e07"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:25:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:26:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:27:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:28:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:29:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:30:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:31:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"3afbf038-9640-47a9-90d2-128504758d33","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:32:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"e1b2d8dd-042a-46ac-8e64-f9ddc5badb36","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:37:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:39:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:43:[Omitted long matching line]
+.agent/source-review-0046-8b1c94e12f94.jsonl:46:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"cbaa985d-5892-42af-bf19-d268b8afcbba","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:118:{"type":"system","subtype":"thinking_tokens","estimated_tokens":9150,"estimated_tokens_delta":50,"uuid":"cc9d07c2-e8d2-4338-ac97-857755194d0e","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:128:{"type":"system","subtype":"thinking_tokens","estimated_tokens":10250,"estimated_tokens_delta":50,"uuid":"4afb6309-0174-4872-b98b-9e02cf8db734","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:144:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"a5a41a26-a5c3-4849-b50c-ec6dc353f1be","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:145:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"042f2ea0-f3a8-4cc2-93e7-44c44f7d5d71","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:146:{"type":"system","subtype":"thinking_tokens","estimated_tokens":150,"estimated_tokens_delta":50,"uuid":"0f617466-00a8-4a5d-80d3-2b98840d77d9","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:150:{"type":"system","subtype":"thinking_tokens","estimated_tokens":550,"estimated_tokens_delta":50,"uuid":"4b3fd586-8f35-4cca-80a8-646790ad8aea","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:177:{"type":"system","subtype":"thinking_tokens","estimated_tokens":3600,"estimated_tokens_delta":50,"uuid":"dd27dbef-1196-423c-ae83-19843b52c478","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:204:{"type":"system","subtype":"thinking_tokens","estimated_tokens":6900,"estimated_tokens_delta":50,"uuid":"c1ca693b-b33f-4af0-afe3-067518a2783c","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:207:{"type":"system","subtype":"thinking_tokens","estimated_tokens":7200,"estimated_tokens_delta":50,"uuid":"0d99b587-48c6-4c28-9a4f-129f06a2b66a","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/source-review-0046-8b1c94e12f94.jsonl:224:{"type":"system","subtype":"thinking_tokens","estimated_tokens":9250,"estimated_tokens_delta":50,"uuid":"4bab832c-331b-4ba7-858d-7c7c65ecf9ea","session_id":"3f323ae9-a528-4b80-81fc-663168a26013"}
+.agent/turn-0046.jsonl:13:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"c307e231-9838-481a-9ce6-e570ddd97110","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/turn-0046.jsonl:16:[Omitted long matching line]
+.agent/turn-0046.jsonl:17:[Omitted long matching line]
+.agent/turn-0046.jsonl:18:[Omitted long matching line]
+.agent/turn-0046.jsonl:19:[Omitted long matching line]
+.agent/turn-0046.jsonl:20:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"138a22de-adfb-4a3e-9ed7-675bc8cf3211","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/turn-0046.jsonl:34:[Omitted long matching line]
+.agent/turn-0046.jsonl:37:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"4f19ed07-0a56-4373-95ae-149740fce640","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/turn-0046.jsonl:51:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1500,"estimated_tokens_delta":50,"uuid":"753d6c72-2f47-4bde-963d-d30f3d5b906a","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/turn-0046.jsonl:55:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1900,"estimated_tokens_delta":50,"uuid":"506af3db-3ed3-4a93-bdc1-94d73fefb8dd","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/turn-0046.jsonl:57:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2100,"estimated_tokens_delta":50,"uuid":"201ae912-9eee-452b-aa6d-7f49122aeeb0","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/turn-0046.jsonl:64:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"bb59bebb-60a4-406e-95a6-6c94cf21abaf","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/turn-0046.jsonl:68:{"type":"system","subtype":"thinking_tokens","estimated_tokens":450,"estimated_tokens_delta":50,"uuid":"329652ea-f978-4331-871c-bde95db95f2a","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/turn-0046.jsonl:70:{"type":"system","subtype":"thinking_tokens","estimated_tokens":600,"estimated_tokens_delta":50,"uuid":"6d105b8c-ad13-46e0-a476-806a28378a43","session_id":"ac1095dc-b96d-4e18-bd9d-a3a88278c083"}
+.agent/source-review-0049-c2c993fa2988.jsonl:8:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"241e3a39-89aa-40d4-9157-800de60b4df2","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:11:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:12:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:15:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:16:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:17:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:18:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:19:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:20:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:40:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"8a2f1825-10d3-4755-a8ee-6ef4c1604f47","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:46:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:48:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:52:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:55:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"623d3b28-4a17-4b80-81ec-2042119b2960","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:76:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2650,"estimated_tokens_delta":50,"uuid":"fd335605-b683-4262-b2c9-f3b63e062dbc","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:100:{"type":"system","subtype":"thinking_tokens","estimated_tokens":5250,"estimated_tokens_delta":50,"uuid":"b36c57a2-8fc8-406d-91bf-e1562bf96d81","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:131:{"type":"system","subtype":"thinking_tokens","estimated_tokens":9350,"estimated_tokens_delta":50,"uuid":"876e7eb7-1679-48a4-a44c-d21f5d73acba","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:149:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"ce846cac-258f-4dc2-b9da-0fec64bf8499","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:156:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"76089ba6-2bee-4956-a0a5-1439ee2d919a","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:161:{"type":"system","subtype":"thinking_tokens","estimated_tokens":550,"estimated_tokens_delta":50,"uuid":"15485928-f2e4-4fd3-8399-33962d71672c","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:165:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:166:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:167:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:168:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"e78f9320-9efe-4df1-9919-dd671071f19c","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:176:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"5ba4929a-9b60-4f93-a2d3-82680ed38be9","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:192:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2100,"estimated_tokens_delta":50,"uuid":"9adf8806-6264-4321-8901-f2ee0e3dae6b","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:199:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"307d7c80-5a39-4dfa-9712-df162ce889f3","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:218:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2100,"estimated_tokens_delta":50,"uuid":"97c2cbd6-78e0-4247-9ad4-a0e79fa7e0ff","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:233:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:234:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:235:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"acaa5083-d4cb-4c54-9b0a-2fb3fb52058b","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:239:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:241:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"154fccdd-e1d9-4e84-a335-c83045bae559","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:246:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"a12a1eee-5770-48d0-8d62-3af51f6c64b7","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:247:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"419fbf0b-8316-4d8a-b008-a58c804ea480","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:258:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"ea37d073-2ccc-45bf-be40-64bcd796f799","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:263:{"type":"system","subtype":"thinking_tokens","estimated_tokens":600,"estimated_tokens_delta":50,"uuid":"5535aacc-3ab8-4487-81fb-ca712cd9b0b4","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:265:[Omitted long matching line]
+.agent/source-review-0049-c2c993fa2988.jsonl:268:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"25e36f0a-0693-45f1-b4c4-5f603d163194","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:269:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"d9cf1472-1b02-4e93-a484-e1ad39b00946","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0049-c2c993fa2988.jsonl:270:{"type":"system","subtype":"thinking_tokens","estimated_tokens":150,"estimated_tokens_delta":50,"uuid":"02890fae-87da-40ed-b15d-18b37b49cf0f","session_id":"d3a6712f-a767-4b66-b28f-366030d8b1fa"}
+.agent/source-review-0056-22302b1ad95d.jsonl:43:[Omitted long matching line]
+.agent/source-review-0056-22302b1ad95d.jsonl:44:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"8fdb4506-b9a4-419c-ad8c-9eb5060c8b93","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:58:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1800,"estimated_tokens_delta":50,"uuid":"3ba3868c-7b09-48bd-81a3-2343ede07529","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:81:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4600,"estimated_tokens_delta":50,"uuid":"1558185d-4e60-4d08-bffa-4419d47c760f","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:155:{"type":"system","subtype":"thinking_tokens","estimated_tokens":14000,"estimated_tokens_delta":50,"uuid":"22d61979-7306-4548-8069-5bbd3deec22a","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:162:{"type":"system","subtype":"thinking_tokens","estimated_tokens":150,"estimated_tokens_delta":50,"uuid":"83a650ce-9c33-4934-8fcd-3cd456d9ddf6","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:179:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2300,"estimated_tokens_delta":50,"uuid":"00913d39-565e-4d8c-bf7a-8beb81c417ef","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:182:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2600,"estimated_tokens_delta":50,"uuid":"9052b69d-0be7-4ca6-9811-8d95bb81a515","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:209:{"type":"system","subtype":"thinking_tokens","estimated_tokens":5900,"estimated_tokens_delta":50,"uuid":"d98942f6-6c8c-472d-b391-0ba03c43c779","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:214:[Omitted long matching line]
+.agent/source-review-0056-22302b1ad95d.jsonl:219:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"2a292218-81ff-40e9-903e-6f601135cea9","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:225:{"type":"system","subtype":"thinking_tokens","estimated_tokens":600,"estimated_tokens_delta":50,"uuid":"58544f89-fa77-4aaa-83f8-24709ff24e0e","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:271:{"type":"system","subtype":"thinking_tokens","estimated_tokens":6350,"estimated_tokens_delta":50,"uuid":"1c859936-1956-45a1-9130-08f17ee4294d","session_id":"74e28a72-42d9-4ff6-a408-84cf7ccf08e3"}
+.agent/source-review-0056-22302b1ad95d.jsonl:286:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:43:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:55:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1450,"estimated_tokens_delta":50,"uuid":"2e9383d4-adb8-4d90-b09d-0adfcc1de04b","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:70:{"type":"system","subtype":"thinking_tokens","estimated_tokens":3350,"estimated_tokens_delta":50,"uuid":"4a612366-2b72-4284-9a06-fb863477b83b","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:79:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4450,"estimated_tokens_delta":50,"uuid":"07a44316-40ed-4d07-8950-c39052baef00","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:89:{"type":"system","subtype":"thinking_tokens","estimated_tokens":5850,"estimated_tokens_delta":50,"uuid":"1b252325-a522-404a-878d-034df7fa9336","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:116:{"type":"system","subtype":"thinking_tokens","estimated_tokens":9300,"estimated_tokens_delta":50,"uuid":"6cb0352c-2f3c-44d4-a771-aff2135b2eef","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:122:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"dfc61c8e-43cc-4ce7-8039-9db2ef0afaf7","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:148:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2550,"estimated_tokens_delta":50,"uuid":"0eef2b97-8e6f-4aca-bd27-d215599e9fde","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:160:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4000,"estimated_tokens_delta":50,"uuid":"144d4167-dfca-4497-bc7f-5118e8986c68","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:205:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:207:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:249:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4650,"estimated_tokens_delta":50,"uuid":"b11b04bc-7abe-47b5-9421-95f2fcf62590","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:264:{"type":"system","subtype":"thinking_tokens","estimated_tokens":6450,"estimated_tokens_delta":50,"uuid":"cd9ba476-2c9f-4447-99e0-dc7a0cf094a6","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:282:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"2f663897-c1f7-4baa-91ea-c7f4fdae14db","session_id":"0463a767-cdbf-426f-b41c-02345728b3a4"}
+.agent/source-review-0056-ebf519426253.jsonl:288:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:289:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:302:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:303:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:335:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:372:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4800,"estimated_tokens_delta":50,"uuid":"a77638f8-eda7-4528-be19-58bcf12fede8","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:403:{"type":"system","subtype":"thinking_tokens","estimated_tokens":8700,"estimated_tokens_delta":50,"uuid":"03cb85fb-a7c3-4f2d-9ca1-4d02070372cc","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:417:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"bc0fb912-5fc2-415b-be09-8c5429827807","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:420:{"type":"system","subtype":"thinking_tokens","estimated_tokens":350,"estimated_tokens_delta":50,"uuid":"450e43d3-3634-4b4f-9560-4862dc3d5145","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:429:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1350,"estimated_tokens_delta":50,"uuid":"c66116a9-c388-423d-b045-067a01568b2b","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:443:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2900,"estimated_tokens_delta":50,"uuid":"e742c10d-086c-49fa-93eb-bca4b683b124","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:500:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:504:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"7d192955-c77b-4924-86e5-8a54298003e7","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:505:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"0bb824ff-7ee1-42fe-82ba-754fd7b0f152","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:544:{"type":"system","subtype":"thinking_tokens","estimated_tokens":650,"estimated_tokens_delta":50,"uuid":"c88f5496-2d48-4492-8dd2-99efe4aabf95","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:548:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"9d19677e-377b-42f4-8b3f-24c0a976c030","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:549:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"16a81bb1-b6b1-4563-b36c-462ecc3990fb","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:560:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1400,"estimated_tokens_delta":50,"uuid":"4d0b7553-06e8-4a1e-bc37-a390ceee32a6","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:576:{"type":"system","subtype":"thinking_tokens","estimated_tokens":3350,"estimated_tokens_delta":50,"uuid":"3d8099ee-5f07-4bab-beed-42fcd7d022aa","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:609:{"type":"system","subtype":"thinking_tokens","estimated_tokens":7600,"estimated_tokens_delta":50,"uuid":"458f8091-4945-4848-bbc0-eb7875d41a48","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:613:{"type":"system","subtype":"thinking_tokens","estimated_tokens":8000,"estimated_tokens_delta":50,"uuid":"2e8b5f5c-36d4-4ab1-b8b3-74bb8dbb0270","session_id":"8fc557c2-0faa-4b13-bd63-5ca0f60d0493"}
+.agent/source-review-0056-ebf519426253.jsonl:619:[Omitted long matching line]
+.agent/source-review-0056-ebf519426253.jsonl:621:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:2:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:10:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"c0676141-9e04-4688-b59d-ebe22b6f0408","session_id":"527693ed-21f5-471e-9d9a-1a9b0dbeeea0"}
+.agent/source-review-0062-078de9e45e46.jsonl:29:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"78adb65b-15d2-4ddf-a6e5-8227bb8fa17b","session_id":"527693ed-21f5-471e-9d9a-1a9b0dbeeea0"}
+.agent/source-review-0062-078de9e45e46.jsonl:41:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:42:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:43:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:44:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:50:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:52:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:74:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2550,"estimated_tokens_delta":50,"uuid":"0bff9c88-2614-461f-aa90-d134949502cd","session_id":"527693ed-21f5-471e-9d9a-1a9b0dbeeea0"}
+.agent/source-review-0062-078de9e45e46.jsonl:80:{"type":"system","subtype":"thinking_tokens","estimated_tokens":3200,"estimated_tokens_delta":50,"uuid":"2514e10d-dfc2-4bcc-a2b4-df1370e7eb24","session_id":"527693ed-21f5-471e-9d9a-1a9b0dbeeea0"}
+.agent/source-review-0062-078de9e45e46.jsonl:107:{"type":"system","subtype":"thinking_tokens","estimated_tokens":6750,"estimated_tokens_delta":50,"uuid":"8c458b4a-d88e-42dd-a25b-c010c0da85f7","session_id":"527693ed-21f5-471e-9d9a-1a9b0dbeeea0"}
+.agent/source-review-0062-078de9e45e46.jsonl:115:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:116:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:117:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:118:[Omitted long matching line]
+.agent/source-review-0062-078de9e45e46.jsonl:119:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"a85edb82-bfa5-48ca-bc99-3cb6a19dbb47","session_id":"527693ed-21f5-471e-9d9a-1a9b0dbeeea0"}
+.agent/source-review-0062-078de9e45e46.jsonl:126:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"93b3e91f-392f-41b5-bc3d-9263cbe88520","session_id":"527693ed-21f5-471e-9d9a-1a9b0dbeeea0"}
+.agent/source-review-0062-078de9e45e46.jsonl:196:{"type":"system","subtype":"thinking_tokens","estimated_tokens":9050,"estimated_tokens_delta":50,"uuid":"e90311ea-cd62-4378-ae16-d0eb8629c48a","session_id":"527693ed-21f5-471e-9d9a-1a9b0dbeeea0"}
+.agent/source-review-0062-078de9e45e46.jsonl:241:[Omitted long matching line]
+.agent/source-review-0128-3f18a4e932ce.jsonl:10:[Omitted long matching line]
+.agent/source-review-0128-3f18a4e932ce.jsonl:38:[Omitted long matching line]
+.agent/source-review-0128-3f18a4e932ce.jsonl:39:[Omitted long matching line]
+.agent/source-review-0128-3f18a4e932ce.jsonl:41:[Omitted long matching line]
+.agent/source-review-0128-3f18a4e932ce.jsonl:43:[Omitted long matching line]
+.agent/source-review-0128-3f18a4e932ce.jsonl:47:[Omitted long matching line]
+.agent/source-review-0128-3f18a4e932ce.jsonl:199:{"type":"system","subtype":"thinking_tokens","estimated_tokens":19050,"estimated_tokens_delta":50,"uuid":"399768d1-bf76-471c-bac9-2fb0340bf0e8","session_id":"7732ac64-9661-40d6-a0ea-16aff09f7cc3"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:227:[Omitted long matching line]
+.agent/source-review-0128-3f18a4e932ce.jsonl:263:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4500,"estimated_tokens_delta":50,"uuid":"9c19093c-7276-4c15-ab4b-67dc2f88ab32","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:307:{"type":"system","subtype":"thinking_tokens","estimated_tokens":10000,"estimated_tokens_delta":50,"uuid":"27165d44-da00-4340-b3af-68451a5727ef","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:363:{"type":"system","subtype":"thinking_tokens","estimated_tokens":17050,"estimated_tokens_delta":50,"uuid":"0f97af5b-3363-4443-938d-9c1d8dae4146","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:369:{"type":"system","subtype":"thinking_tokens","estimated_tokens":17800,"estimated_tokens_delta":50,"uuid":"b33e7355-64e7-437b-a390-2076033d2548","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:373:{"type":"system","subtype":"thinking_tokens","estimated_tokens":18200,"estimated_tokens_delta":50,"uuid":"7feedc22-beb2-4bbd-8e72-3c011a017d1b","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:408:{"type":"system","subtype":"thinking_tokens","estimated_tokens":22650,"estimated_tokens_delta":50,"uuid":"37d5b81e-3514-4331-a6e8-7a8ea9ec4411","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:429:{"type":"system","subtype":"thinking_tokens","estimated_tokens":25350,"estimated_tokens_delta":50,"uuid":"1de0a2d3-114f-40e0-bfcc-82215800700a","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:444:{"type":"system","subtype":"thinking_tokens","estimated_tokens":27100,"estimated_tokens_delta":50,"uuid":"3f98a4ea-5e19-4310-8979-946eacc5b2d3","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:446:{"type":"system","subtype":"thinking_tokens","estimated_tokens":27300,"estimated_tokens_delta":50,"uuid":"b9dd41e0-ce59-4f68-be00-0d9aa1cf97bf","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:468:{"type":"system","subtype":"thinking_tokens","estimated_tokens":29750,"estimated_tokens_delta":50,"uuid":"3331d376-6ce6-4067-82fe-ff5df95372a7","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0128-3f18a4e932ce.jsonl:473:{"type":"system","subtype":"thinking_tokens","estimated_tokens":30350,"estimated_tokens_delta":50,"uuid":"bae99830-98e1-416d-9e81-678f5d14ca8b","session_id":"d6567e50-456f-43f6-aa93-6960abb8dd3d"}
+.agent/source-review-0048-d249344f0ef6.jsonl:27:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:28:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:33:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"12a81f0d-5fcd-40ef-8fa2-090b7b6cec6d","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:34:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"c1e4df35-2f60-49c9-b028-ec5782e87622","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:39:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:41:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:45:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:48:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"01c359d6-91c7-42d5-9c73-4eb83da7a1c8","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:82:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4700,"estimated_tokens_delta":50,"uuid":"54fe87ca-5d13-4a1d-acb7-96f19bbb283b","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:127:{"type":"system","subtype":"thinking_tokens","estimated_tokens":10200,"estimated_tokens_delta":50,"uuid":"b9fb0dcc-7f2e-46bc-86fc-c9ba61cde08f","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:130:{"type":"system","subtype":"thinking_tokens","estimated_tokens":10500,"estimated_tokens_delta":50,"uuid":"d90d658a-5f2c-4378-943a-c7bcd7de1bc6","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:140:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"bdc4be16-1230-42df-988d-dbbd090667fc","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:148:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"9eb217c3-af92-4588-ba94-7b3eb560eb2b","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:184:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4950,"estimated_tokens_delta":50,"uuid":"1e8b9a63-e31a-4094-b286-13d98e14c4db","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:209:{"type":"system","subtype":"thinking_tokens","estimated_tokens":7900,"estimated_tokens_delta":50,"uuid":"d26f8cdc-3b2c-4c5b-9239-0252d06e2635","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:228:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"b45608e5-7e62-481d-ba8e-c52ddcf8b1e1","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:248:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2300,"estimated_tokens_delta":50,"uuid":"878757f0-6d8e-430b-85ff-6edfa95e6983","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:267:{"type":"system","subtype":"thinking_tokens","estimated_tokens":4450,"estimated_tokens_delta":50,"uuid":"ee79e197-36ed-44e7-a0c7-8023de127968","session_id":"21c5da5e-5328-48f6-9a18-340b0abc519a"}
+.agent/source-review-0048-d249344f0ef6.jsonl:290:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:291:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:292:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:293:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:294:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:315:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"d4d13aa9-0bcf-454b-ae7d-aa00e581b612","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:319:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:321:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:322:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:323:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:325:[Omitted long matching line]
+.agent/source-review-0048-d249344f0ef6.jsonl:356:{"type":"system","subtype":"thinking_tokens","estimated_tokens":3600,"estimated_tokens_delta":50,"uuid":"9f46fa78-32c6-47a4-b4d6-c6eb261f719a","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:429:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"d19d126f-85ad-4089-9f56-ae475c7f815f","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:436:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"a7eb21d4-8dba-495e-83ac-edc0a22f488b","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:438:{"type":"system","subtype":"thinking_tokens","estimated_tokens":250,"estimated_tokens_delta":50,"uuid":"7ccfe4da-1afe-487c-9c84-aaea87aba6b7","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:442:{"type":"system","subtype":"thinking_tokens","estimated_tokens":650,"estimated_tokens_delta":50,"uuid":"e3907e77-2e96-464c-a3fc-47780a0f4897","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:446:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":50,"uuid":"ed1a490e-c92b-4532-9824-d17dd0d7ce10","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:481:{"type":"system","subtype":"thinking_tokens","estimated_tokens":5400,"estimated_tokens_delta":50,"uuid":"ce639d81-73f6-402c-9c8b-c42ada6ed675","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:486:{"type":"system","subtype":"thinking_tokens","estimated_tokens":6000,"estimated_tokens_delta":50,"uuid":"a1e1cee2-f87d-44b1-8ed3-b47e3d5b7f27","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:505:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"2d6c12a5-d14f-4720-b6d9-043accb0e83e","session_id":"75114e7e-4fc1-41ce-b560-fd1b09de10ab"}
+.agent/source-review-0048-d249344f0ef6.jsonl:546:[Omitted long matching line]
+.agent/turn-0056.jsonl:9:[Omitted long matching line]
+.agent/turn-0056.jsonl:13:[Omitted long matching line]
+.agent/turn-0056.jsonl:14:[Omitted long matching line]
+.agent/turn-0056.jsonl:16:[Omitted long matching line]
+.agent/turn-0056.jsonl:19:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"fe393ae9-16c6-491c-bf3b-1d05eaa962c1","session_id":"528e1f93-aedc-4f63-a657-d85f7f75cd5c"}
+.agent/turn-0056.jsonl:20:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"8ae180a4-77d1-4a63-b964-6c94d6013bec","session_id":"528e1f93-aedc-4f63-a657-d85f7f75cd5c"}
+.agent/turn-0056.jsonl:21:{"type":"system","subtype":"thinking_tokens","estimated_tokens":150,"estimated_tokens_delta":50,"uuid":"2b47df8c-a207-4fbc-83d3-5bd3bf51fc78","session_id":"528e1f93-aedc-4f63-a657-d85f7f75cd5c"}
+.agent/source-review-0046-d1b7f1bd111b.jsonl:2:[Omitted long matching line]
+.agent/source-review-0046-d1b7f1bd111b.jsonl:3:[Omitted long matching line]
+.agent/source-review-0046-d1b7f1bd111b.jsonl:4:[Omitted long matching line]
+.agent/source-review-0046-d1b7f1bd111b.jsonl:5:[Omitted long matching line]
+.agent/source-review-0046-d1b7f1bd111b.jsonl:8:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"93c7bb0f-2e33-4ee5-b2fc-c4eec8524a12","session_id":"5ad20fa1-c6e5-4dcd-a802-662a562ac203"}
+.agent/source-review-0046-d1b7f1bd111b.jsonl:33:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"aa07257a-a977-424c-a56d-e316d3edfbcb","session_id":"5ad20fa1-c6e5-4dcd-a802-662a562ac203"}
+.agent/source-review-0046-d1b7f1bd111b.jsonl:34:{"type":"system","subtype":"thinking_tokens","estimated_tokens":100,"estimated_tokens_delta":50,"uuid":"daf77295-6e5e-47d6-b498-8dff15f97aae","session_id":"5ad20fa1-c6e5-4dcd-a802-662a562ac203"}
+.agent/source-review-0046-d1b7f1bd111b.jsonl:35:{"type":"system","subtype":"thinking_tokens","estimated_tokens":150,"estimated_tokens_delta":50,"uuid":"eebbd3d0-ffa0-4503-a8c7-4ee706167e36","session_id":"5ad20fa1-c6e5-4dcd-a802-662a562ac203"}
+.agent/source-review-0046-d1b7f1bd111b.jsonl:39:[Omitted long matching line]
+.agent/source-review-0046-d1b7f1bd111b.jsonl:41:[Omitted long matching line]
+.agent/source-review-0046-d1b7f1bd111b.jsonl:45:[Omitted long matching line]
+.agent/source-review-0046-d1b7f1bd111b.jsonl:48:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"8e4537bd-fece-4db8-9a83-ad1c2cfc9187","session_id":"5ad20fa1-c6e5-4dcd-a802-662a562ac203"}
+.agent/source-review-0046-d1b7f1bd111b.jsonl:62:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1800,"estimated_tokens_delta":50,"uuid":"2df6635f-3dca-4376-bc49-3c141ea64eee","session_id":"5ad20fa1-c6e5-4dcd-a802-662a562ac203"}
+.agent/source-review-0050-1aac85cba34d.jsonl:35:[Omitted long matching line]
+.agent/source-review-0050-1aac85cba34d.jsonl:44:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"be80b14d-580b-4b2f-9709-e46722acf5ac","session_id":"f4885183-673e-45d3-bf87-892392283e64"}
+
+[Showing results with pagination = limit: 250]

@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}What the art discloses: {{ title }} | Rotem Patents{% endblock %}
+{% block body %}
+{#  THE READING, END TO END.
+
+    Retrieval ranked a couple of thousand families; this is what happened when the top ones were
+    opened and read in full. Two tables per reference: the features of the search input, and —
+    when the search started from a patent — that patent's own claims. Every cell carries the
+    verbatim quote and the passage it came from, because a chart a reader cannot check is a
+    chart they have to take on faith.  #}
+<div class="wrap analysispage">
+  <div class="pagehead">
+    <div>
+      <h1>What the art discloses</h1>
+      <p class="muted">Every reference below was pulled from the corpus in full and charted
+        against the search input. <a href="{{ request.script_root }}/report/{{ slug }}">Back to the
+        ranked results</a>.</p>
+    </div>
+    <button class="btn ghost sm" type="button" onclick="window.print()">Print</button>
+  </div>
+
+  {% if not data %}
+  <p class="panel libempty" id="deepPending">
+    {% if status.status == 'running' %}
+      Reading the references in full — {{ status.done or 0 }} of {{ status.total or 0 }} done.
+      This page refreshes itself.
+    {% elif status.status == 'error' %}
+      The reading failed: {{ status.error }}
+    {% else %}
+      Starting the reading. This page refreshes itself.
+    {% endif %}
+  </p>
+  {% elif not data.available %}
+  <p class="panel libempty">Nothing to chart: {{ data.reason }}.</p>
+  {% else %}
+
+  <section class="panel deepsummary">
+    <div class="deepstats">
+      <div><b>{{ data.n_analysed }}</b><span>references read in full</span></div>
+      <div><b>{{ '{:,}'.format(data.chars_read or 0) }}</b><span>characters read</span></div>
+      <div><b>{{ data.features|length }}</b><span>features charted</span></div>
+      {% if data.has_subject_claims %}<div><b>{{ data.claims|length }}</b><span>subject claims charted</span></div>{% endif %}
+      <div><b class="vt-disclosed">{{ data.counts.disclosed or 0 }}</b><span>disclosed</span></div>
+      <div><b class="vt-partial">{{ data.counts.partial or 0 }}</b><span>partial</span></div>
+      <div><b class="vt-uncertain">{{ data.counts.uncertain or 0 }}</b><span>uncertain</span></div>
+      <div><b>{{ data.counts.absent or 0 }}</b><span>absent</span></div>
+    </div>
+    {% if data.refuted %}
+    <p class="small muted">{{ data.refuted }} cell{{ '' if data.refuted == 1 else 's' }} that the
+      reader called disclosed were downgraded to uncertain by an independent check that argued the
+      opposite side.</p>
+    {% endif %}
+    {% if data.uncovered_features %}
+    <p class="deepuncovered"><b>No reference read here discloses:</b>
+      {{ data.uncovered_features|join('; ') }}.
+      <span class="muted small">That is a statement about what was read, not a conclusion about
+      novelty.</span></p>
+    {% endif %}
+  </section>
+
+  {% for r in data.references %}
+  <section class="panel deepref" id="ref-{{ r.pub }}">
+    <div class="deeprefhead">
+      <b>{{ r.rank }}. {{ r.pub }}</b>
+      <span class="muted">{{ r.title }}</span>
+      <span class="grow"></span>
+      {% if r.method == 'llm' %}
+        <span class="small muted">{{ '{:,}'.format(r.chars or 0) }} chars · {{ r.n_claims_read }} claims ·
+          {{ r.n_paragraphs_read }} paragraphs{% if r.text_truncated %} · truncated{% endif %}</span>
+      {% elif r.method == 'no-text' %}
+        <span class="badge b-warn">no text in the corpus</span>
+      {% else %}
+        <span class="badge b-warn">{{ r.method }}</span>
+      {% endif %}
+    </div>
+
+    {% for label, rows in [('Features of the search input', r.features),
+                           ('Claims of the subject patent', r.claims)] %}
+    {% if rows %}
+    <div class="deeptbl">
+      <b class="deepcap">{{ label }}</b>
+      <table>
+        <thead><tr><th>{{ 'Subject claim' if 'Claims' in label else 'Feature' }}</th>
+          <th>Verdict</th><th>What this reference discloses, and where</th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="vi">{{ row.item }}</td>
+          <td class="vt vt-{{ row.verdict }}"><b>{{ row.verdict }}</b>
+            {% if row.refuted %}<span class="vtwhy" title="{{ row.refuted }}">checked and downgraded</span>{% endif %}</td>
+          <td class="vq">
+            {% if row.quote %}
+              <q>{{ row.quote }}</q>
+              {% if row.location %}<span class="vloc">{{ row.location }}</span>{% endif %}
+              {% if row.note %}<span class="vnote">{{ row.note }}</span>{% endif %}
+            {% else %}
+              <span class="vnone">{{ {
+                'model-absent': 'nothing in this reference teaches it',
+                'dropped-ungrounded-quote': 'the reader offered a quote that is not in this reference — dropped',
+                'dropped-unlocatable-quote': 'the quote could not be traced to a passage — dropped',
+                'no-reference-text': 'the corpus holds no text for this publication',
+                'no-row-returned': 'no answer was returned for this row'
+              }.get(row.grounding, 'not disclosed') }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </section>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if not data %}<script>
+(function(){
+  // The reading takes minutes; reload when it lands rather than leaving a dead page.
+  const B = window.APP_BASE || '', slug = {{ slug|tojson }};
+  const el = document.getElementById('deepPending');
+  let n = 0;
+  (async function poll(){
+    if (n++ > 240) return;
+    try{
+      const d = await (await fetch(B + '/api/deep/' + encodeURIComponent(slug),
+                                   {credentials:'same-origin'})).json();
+      if (d.status === 'done'){ location.reload(); return; }
+      if (d.status === 'running' && el && d.total)
+        el.textContent = 'Reading the references in full — ' + (d.done||0) + ' of ' + d.total +
+          ' done' + (d.pub ? ' (' + d.pub + ')' : '') + '. This page refreshes itself.';
+      if (d.status === 'error' && el) { el.textContent = 'The reading failed: ' + (d.error||''); return; }
+    }catch(e){}
+    setTimeout(poll, 4000);
+  })();
+})();
+</script>{% endif %}
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Viewers — Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap">
+  <p class="small"><a href="{{ request.script_root }}/report/{{ slug }}">&larr; back to the report</a></p>
+  <h1 class="h2">Who has opened this link</h1>
+  <p class="small muted">
+    <code>{{ public_url }}</code>
+    {% if status.has_password %}<span class="pill">password protected</span>{% endif %}
+    {% if not status.published %}<span class="pill warn">revoked</span>{% endif %}
+  </p>
+
+  {#  Automated fetches are separated rather than folded in. A link pasted into a chat app is
+      fetched by that app's unfurler before any human sees it, and counting that as a reading is how
+      a share dashboard reports an audience that was never there.  #}
+  <div class="statgrid" style="display:flex;gap:26px;flex-wrap:wrap;margin:18px 0 24px">
+    <div><b class="h3">{{ summary.human_views }}</b><br><span class="small muted">readings</span></div>
+    <div><b class="h3">{{ summary.distinct_ips }}</b><br><span class="small muted">distinct addresses</span></div>
+    <div><b class="h3">{{ summary.median_seconds }}s</b><br><span class="small muted">median time on page</span></div>
+    <div><b class="h3">{{ summary.total_seconds }}s</b><br><span class="small muted">total reading time</span></div>
+    <div><b class="h3">{{ summary.automated_views }}</b><br><span class="small muted">automated fetches</span></div>
+    <div><b class="h3">{{ summary.with_beacon }}</b><br><span class="small muted">reported their browser</span></div>
+  </div>
+
+  {% if not rows %}
+    <p class="muted">No one has opened it yet. Every view will appear here — address, browser,
+      system, language, screen, and how long the page was open.</p>
+  {% else %}
+  <table class="table small">
+    <thead><tr>
+      <th>When</th><th>Address</th><th>Time on page</th><th>Read</th>
+      <th>Browser / system</th><th>Screen</th><th>Language &amp; timezone</th><th>Came from</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set c = r.client or {} %}
+      <tr{% if r.automated %} class="muted"{% endif %}>
+        <td title="{{ r.at }}">{{ r.at.strftime('%Y-%m-%d %H:%M') if r.at else '' }}</td>
+        <td><code>{{ r.ip or '—' }}</code>{% if r.automated %}<br><span class="pill">likely automated</span>{% endif %}</td>
+        <td>{% if r.seconds_on_page %}{{ r.seconds_on_page }}s{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.max_scroll_pct %}{{ r.max_scroll_pct }}%{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          {{ c.ua_platform or c.platform or '—' }}
+          {% if c.ua_brands %}<br><span class="muted">{{ c.ua_brands|join(', ') }}</span>{% endif %}
+          {% if c.ua_mobile %}<br><span class="pill">mobile</span>{% endif %}
+        </td>
+        <td>
+          {% if c.screen_w %}{{ c.screen_w }}×{{ c.screen_h }}{% else %}<span class="muted">—</span>{% endif %}
+          {% if c.viewport_w %}<br><span class="muted">window {{ c.viewport_w }}×{{ c.viewport_h }}</span>{% endif %}
+          {% if c.pixel_ratio and c.pixel_ratio != 1 %}<br><span class="muted">{{ c.pixel_ratio }}× DPR</span>{% endif %}
+        </td>
+        <td>
+          {{ c.language or (r.accept_language.split(',')[0] if r.accept_language else '—') }}
+          {% if c.timezone %}<br><span class="muted">{{ c.timezone }}</span>{% endif %}
+        </td>
+        <td class="wrapany">{{ (r.referer or c.referrer or '')[:60] or '—' }}</td>
+        <td><details><summary class="small">everything</summary>
+          {#  The full record, verbatim. A summary table has to choose what matters; this is the
+              place where nothing was chosen away.  #}
+          <div class="small mono" style="max-width:46rem">
+            <p><b>Request</b><br>
+              {{ r.method }} {{ r.path }}{% if r.query_string %}?{{ r.query_string }}{% endif %}
+              — {{ r.protocol }}<br>
+              host {{ r.host }}<br>
+              address {{ r.ip }}{% if r.forwarded_for %} — forwarded chain {{ r.forwarded_for }}{% endif %}<br>
+              {% if r.unlocked %}opened after entering the password{% endif %}
+            </p>
+            <p><b>User agent</b><br>{{ r.user_agent or '—' }}</p>
+            <p><b>Accept-Language</b><br>{{ r.accept_language or '—' }}</p>
+            {% if r.headers %}<p><b>Headers</b><br>
+              {% for k, v in r.headers.items() %}{{ k }}: {{ v }}<br>{% endfor %}</p>{% endif %}
+            {% if c %}<p><b>Reported by the page</b><br>
+              {% for k, v in c.items() %}{{ k }}: {{ v }}<br>{% endfor %}</p>
+            {% else %}<p><b>Reported by the page</b><br>
+              nothing — the visitor blocked scripts, left before the first heartbeat, or the beacon
+              did not arrive. The request details above are still complete.</p>{% endif %}
+            {% if r.last_seen_at %}<p><b>Last heartbeat</b><br>{{ r.last_seen_at }}</p>{% endif %}
+          </div>
+        </details></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="small muted" style="margin-top:12px">
+    Newest first, up to {{ rows|length }} shown. “Time on page” is measured by the page itself
+    while it is open and sent as it closes, so a visitor who blocks scripts shows a reading with no
+    duration rather than no reading.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

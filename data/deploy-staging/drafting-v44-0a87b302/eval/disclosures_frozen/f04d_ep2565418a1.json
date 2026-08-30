@@ -1,0 +1,203 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "f04d_ep2565418a1",
+ "subject_pub": "EP-2565418-A1",
+ "n_claims_source": 15,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 29,
+  "by_kind": {
+   "independent_limitation": 10,
+   "combination": 1,
+   "dependent_limitation": 18
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A turbocharger comprising a shaft",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A turbocharger comprising a housing",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A turbine wheel mounted onto the shaft",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A compressor wheel mounted onto the shaft",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one rolling bearing located between the shaft and the housing",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The rolling bearing comprises an inner ring",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The rolling bearing comprises an outer ring",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The rolling bearing comprises at least one row of rolling elements between raceways",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Raceways are provided on the inner and outer rings",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one intermediate sleeve radially located between the shaft and the inner ring of the rolling bearing",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A turbocharger comprising a shaft, a housing, a turbine wheel and a compressor wheel mounted onto the shaft, at least one rolling bearing located between the shaft and the housing and comprising an inner ring, an outer ring and at least one",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "The intermediate sleeve comprises at least one end axially extending further than a radial lateral surface of the inner ring",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The end of the intermediate sleeve comprises at least one positioning means adapted to cooperate with an external tool",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The positioning means comprises at least one annular groove",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The positioning means comprises at least one threaded portion",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The positioning means comprises at least one radial hole or opening",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The positioning means comprises at least one radial through-hole or through-opening made through the thickness of the intermediate sleeve",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The intermediate sleeve comprises at least one axial slot provided axially on all the axial length of the intermediate sleeve",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The intermediate sleeve has a stepped bore adapted to cooperate with a stepped outer cylindrical surface of the shaft",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "One end of the intermediate sleeve comprises a shoulder",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "A second rolling bearing mounted radially between the intermediate sleeve and the housing",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The second rolling bearing comprises an inner ring, an outer ring and at least one row of rolling elements between said rings",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The intermediate sleeve comprises a first cylindrical portion in contact with the inner ring of the first rolling bearing",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The intermediate sleeve comprises a second cylindrical portion having a diameter bigger than the diameter of the first cylindrical portion",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The intermediate sleeve comprises a third cylindrical portion having a toroidal surface",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The third cylindrical portion forms an inner ring of a second rolling bearing",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The second rolling bearing comprises an outer ring and at least one row of rolling elements between said second outer ring and said toroidal surface of the sleeve",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The first outer ring and the second outer ring form one unique outer ring",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "The intermediate sleeve is made of a metallic material",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "93de6170afb2b7fb"
+}

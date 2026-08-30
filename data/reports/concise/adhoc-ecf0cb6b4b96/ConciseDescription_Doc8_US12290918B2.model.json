@@ -1,0 +1,101 @@
+{
+ "n": 8,
+ "pub": "US-12290918-B2",
+ "family_id": "93117503",
+ "biblio": {
+  "pub": "US-12290918-B2",
+  "label": "U.S. Patent No. 12,290,918",
+  "kind": "patent",
+  "title": "Rubber part structure for vacuum suction pad and vacuum suction pad with replaceable rubber part",
+  "country": "US",
+  "inventor": "Min Xu",
+  "assignee": "Zhejiang Shijing Tools Co ltd",
+  "publication_date": "2025-05-06",
+  "priority_date": "2024-03-06",
+  "filing_date": "2024-10-12",
+  "dates_source": "corpus",
+  "abstract": "A rubber part structure for the vacuum suction pad includes a rubber part (1); an air hole (2) for air extraction and discharging is provided in the middle of the rubber part (1); a ringlike lip edge (3) is arranged around the rubber part (1); an air extraction chamber (4) communicated to the air hole (2) is formed on an inner side of the lip edge (3); and the flanging (5) is configured to be in buckled connection with the vacuum suction pad from the outside of the vacuum suction pad. The present disclosure has the characteristics of low replacement cost in a rubber part and high structural strength in a framework.",
+  "issue_date_pretty": "May 6, 2025",
+  "priority_date_pretty": "March 6, 2024"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a rubber part structure for a vacuum suction pad, including a rubber part with an air hole, a ring-like lip edge, an air extraction chamber, and a flanging for connection to a vacuum suction pad.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[c]",
+   "quote_claim": true,
+   "claim_text": "wherein the grip portion is designed as a hollow body",
+   "claim_paraphrase": "the grip portion is designed as a hollow body",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The grip 10 is U-shaped.",
+   "note": "The reference states the grip is U-shaped, which implies it could be a hollow body",
+   "cites": [
+    "Paragraph [0015]"
+   ],
+   "confidence": 0.6,
+   "_id": 0,
+   "disclosure": "The grip (10) is U-shaped."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[d]",
+   "quote_claim": true,
+   "claim_text": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "claim_paraphrase": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "an air extraction and discharging channel ( 16 ) is provided in the grip ( 10 ) on one side of the mounting hole ( 14 ); one end of the air extraction and discharging channel ( 16 ) is",
+   "note": "The reference describes an air extraction and discharging channel within the grip that communicates with the air pump and the air extraction chamber",
+   "cites": [
+    "Claim 4"
+   ],
+   "confidence": 0.7,
+   "_id": 1,
+   "disclosure": "An air extraction and discharging channel (16) is provided in the grip (10) on one side of the mounting hole (14)."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "A vacuum handling apparatus comprising",
+   "claim_paraphrase": "A vacuum handling apparatus comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A vacuum suction pad with the replaceable rubber part, comprising a rubber part ( 1 )",
+   "note": "The reference describes a 'vacuum suction pad' which is a type of vacuum handling apparatus.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.8,
+   "_id": 2,
+   "disclosure": "The reference discloses a vacuum suction pad with a replaceable rubber part."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 3,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

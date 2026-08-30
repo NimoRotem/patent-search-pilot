@@ -8,7 +8,7 @@
     and the owner's page carries no reader-tracking code at all.  #}
 {% from "_srcicon.html" import srcicon %}
 {% from "_refcard.html" import refcard with context %}
-{% block title %}{{ v.title }} | Rotem Patents{% endblock %}
+{% block title %}{{ v.title }} | IPtorch{% endblock %}
 {% block body %}
 {% if public_visit_key %}<div id="publicVisit" hidden
      data-visit-key="{{ public_visit_key }}" data-slug="{{ v.slug }}"></div>{% endif %}
@@ -753,7 +753,12 @@
 
     <details class="tail reportlimits"{% if v.partial %} data-state="pending"{% endif %}>
       <summary><span class="th">Coverage, text recovery and search scope</span>
-        <span class="ts">{% if v.partial %}available when agentic refinement completes{% else %}{% if v.deep_rank and v.deep_rank.not_readable %}{{ v.deep_rank.not_readable|length }} unresolved · {% endif %}{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels · {{ corpus.recall_pct }}% recall@100{% endif %}</span></summary>
+        {#  The round count, the CPC branch count, the channel count and the benchmark recall
+            figure were all in this one line. They are how the search was built, not what it
+            found, and the recall number in particular reads to a customer as a confidence score
+            for THEIR search, which it is not. What survives is the one fact here that changes
+            what a reader does: how many references could not be read in full. #}
+        <span class="ts">{% if v.partial %}available when the full reading completes{% elif v.deep_rank and v.deep_rank.not_readable %}{{ v.deep_rank.not_readable|length }} reference{{ '' if v.deep_rank.not_readable|length == 1 else 's' }} could not be read in full{% else %}every reference was read in full{% endif %}</span></summary>
       <div class="tailin">
         {% if v.deep_rank and v.deep_rank.not_readable %}
         <section class="overviewsection">

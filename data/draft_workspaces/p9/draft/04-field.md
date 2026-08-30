@@ -1,0 +1,1 @@
+The present disclosure relates to clamps that grip the outside of a pipe, and more particularly to a reusable split clamp whose frame opens on a hinge so that the clamp can be placed around a pipe from the side, and whose radially movable jaws are advanced together onto the pipe by a single latch motion.

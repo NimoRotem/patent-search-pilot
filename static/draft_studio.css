@@ -1,0 +1,902 @@
+/* Drafting studio: the editable draft pane.
+ *
+ * A separate stylesheet rather than more of style.css, and deliberately so: style.css is the whole
+ * product's sheet and is edited by everything, and this pane's rules have to be able to win over
+ * the ones it already sets for `.dsec`. Loaded after it, so equal specificity is enough.
+ *
+ * The design rule for this pane is that it must read as a document, not as a form. The controls on
+ * a section are invisible until the pointer is near them, the heading rule is drawn by the header
+ * row rather than by the heading, and an open editor is the only place a border appears.
+ */
+
+/* ── the model picker in the header ─────────────────────────────────────────── */
+.modelpick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+}
+.modelpicklabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--faint);
+  font-weight: 650;
+}
+.modelpick select {
+  padding: 5px 26px 5px 9px;
+  font-size: 12.5px;
+  min-width: 132px;
+}
+
+/* ── the two boilerplate sections, folded away ──────────────────────────────── */
+/* They are four lines of "Not applicable." that cannot be deleted, because an application filed
+   without those headings is defective. They also must not be the first thing anyone reads. */
+.dboiler {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s3);
+  margin-bottom: 22px;
+}
+.dboiler > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 9px 14px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+  font-weight: 650;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dboiler > summary::-webkit-details-marker { display: none; }
+.dboiler > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform .14s ease;
+  flex: none;
+}
+.dboiler[open] > summary::before { transform: rotate(45deg); }
+.dboiler > summary:hover { color: var(--ink); }
+.dboiler .dsec { padding: 0 14px; margin-bottom: 16px; }
+.dboiler .dsec:first-of-type { padding-top: 4px; }
+
+/* ── a section ──────────────────────────────────────────────────────────────── */
+.dsechead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+.dsechead h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--faint);
+  padding-bottom: 0;
+  border-bottom: 0;
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+}
+.dsectools {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.dsec:hover .dsectools,
+.dsec:focus-within .dsectools,
+.dsec.editing .dsectools { opacity: 1; }
+@media (hover: none) { .dsectools { opacity: 1; } }
+
+.dsecbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+.dsecbtn svg { width: 15px; height: 15px; fill: currentColor; }
+.dsecbtn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(76, 141, 255, .32);
+}
+.dsec.editing .dsecedit {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(76, 141, 255, .32);
+}
+
+/* ── hand editing ───────────────────────────────────────────────────────────── */
+.dsecedit-box {
+  border: 1px solid var(--accent);
+  border-radius: var(--r);
+  background: var(--s1);
+  box-shadow: 0 1px 2px rgba(23, 33, 43, .05);
+  overflow: hidden;
+}
+.dsecinput {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 13px 15px;
+  resize: vertical;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  line-height: 1.76;
+  color: var(--ink);
+  background: var(--s1);
+}
+.dsecinput:focus { outline: none; box-shadow: none; }
+#sec-claims .dsecinput {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.dsecbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--s3);
+}
+.dsecmsg { margin-left: 4px; }
+.dsecmsg.good { color: var(--good); }
+.dsecmsg.bad { color: var(--bad); }
+
+/* ── asking the agent about one section ─────────────────────────────────────── */
+.dsecaskbox {
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  background: var(--s3);
+  padding: 9px 10px;
+  margin-bottom: 12px;
+}
+.dsecaskinput {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  padding: 9px 11px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  resize: none;
+  background: var(--s1);
+  color: var(--ink);
+}
+.dsecaskbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.dsecmic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  color: var(--muted);
+  cursor: pointer;
+}
+.dsecmic svg { width: 15px; height: 15px; fill: currentColor; }
+.dsecmic:hover { color: var(--ink); border-color: var(--faint); }
+/* Recording is a state the user must be able to see at a glance, so it is a colour change and a
+   pulse rather than a label that would move the toolbar around. */
+.dsecmic.on {
+  color: var(--accent-fg);
+  background: var(--bad);
+  border-color: var(--bad);
+  animation: dsecpulse 1.3s ease-in-out infinite;
+}
+@keyframes dsecpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(180, 35, 24, .45); }
+  50% { box-shadow: 0 0 0 5px rgba(180, 35, 24, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .dsecmic.on { animation: none; } }
+.dsecaskmsg.bad { color: var(--bad); }
+
+@media (max-width: 760px) {
+  .modelpick { order: 3; }
+  .modelpicklabel { display: none; }
+  .dsecaskbar > .small.muted { display: none; }
+}
+
+/* ── reconciling the drawings on demand ─────────────────────────────────────── */
+/* Drawings stopped riding along with every drafting turn, so there has to be somewhere to ask for
+   them. It sits above the sheets because that is where a person looks when one is wrong. */
+.drawreconcile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s3);
+  padding: 11px 13px;
+  margin-bottom: 12px;
+}
+.drawreconcile > div:first-child { flex: 1; min-width: 260px; }
+
+/* ── re-search rounds ───────────────────────────────────────────────────────── */
+/* The series is the argument, so it is drawn as one: a bar per round, newest first, and the
+   direction of travel called out rather than left to be read off the numbers. */
+.research {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s1);
+  padding: 13px 15px;
+  margin-bottom: 16px;
+}
+.rshead { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.rshead > div:first-child { flex: 1; min-width: 260px; }
+.rsrounds { margin-top: 12px; display: grid; gap: 7px; }
+.rsround {
+  display: grid;
+  grid-template-columns: 74px 120px 108px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.rsno { font-size: 12px; font-weight: 650; color: var(--muted); }
+.rsbar {
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+  border: 1px solid var(--line2);
+  overflow: hidden;
+}
+.rsbar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width .2s ease;
+}
+.rsscore { font-size: 12.5px; font-weight: 650; display: flex; align-items: baseline; gap: 6px; }
+.rsdelta { font-size: 11px; font-weight: 600; }
+.rsdelta.good { color: var(--good); }
+.rsdelta.bad { color: var(--bad); }
+.rsdelta.muted { color: var(--faint); }
+.rsmeta { min-width: 0; overflow-wrap: anywhere; }
+.rsverdict {
+  margin-top: 11px;
+  padding: 9px 11px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  border: 1px solid var(--line2);
+  background: var(--s3);
+}
+.rsverdict.good { background: var(--good-soft); border-color: rgba(24, 121, 78, .28); color: var(--good); }
+.rsverdict.bad { background: var(--bad-soft); border-color: rgba(180, 35, 24, .28); color: var(--bad); }
+
+@media (max-width: 760px) {
+  .rsround { grid-template-columns: 60px 1fr 92px; }
+  .rsmeta { grid-column: 1 / -1; }
+}
+
+/* ── the tab row, folded ─────────────────────────────────────────────────────── */
+/* Draft is the product; Review, Drawings, Sources, History, Filing and Settings are all ABOUT the
+   draft. They fold, so the row above the application can be used for moving around it. */
+.stabmore {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.stabmore::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform .14s ease;
+}
+.stabmore.on::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.stabmore:hover { color: var(--ink); }
+
+/*  `display:flex` beats the `hidden` attribute - the UA's `[hidden]{display:none}` is a type
+    selector and loses to a class - so without this the fold never folded and the six sub-tabs sat
+    above the application on every tab including Draft, which is the one place the whole point was
+    to keep clear. The same trap is documented on `.setmodal[hidden]` further down; it is the
+    second time this stylesheet has been bitten by it. */
+.studiomore[hidden] { display: none; }
+.studiomore {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--s3);
+}
+.studiomore .stab { padding: 6px 10px; font-size: 12.5px; }
+
+/* ── jump to a part of the application ───────────────────────────────────────── */
+.secjump {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--s1);
+  scrollbar-width: thin;
+}
+.jumpto {
+  flex: none;
+  border: 1px solid var(--line2);
+  background: var(--s1);
+  color: var(--muted);
+  border-radius: var(--r-pill);
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.jumpto:hover { color: var(--ink); border-color: var(--faint); }
+.jumpto.on { color: var(--accent); border-color: rgba(76, 141, 255, .45); background: var(--accent-soft); }
+
+/* ── the message box ─────────────────────────────────────────────────────────── */
+.vh {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.chatrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  border: 1px solid var(--line2);
+  border-radius: 22px;
+  background: var(--s1);
+  padding: 5px 6px 5px 8px;
+}
+.chatrow:focus-within { border-color: var(--accent); }
+.chatrow #chatInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  resize: none;
+  padding: 8px 2px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  max-height: 220px;
+}
+.chatrow #chatInput:focus { outline: none; box-shadow: none; }
+.chatattach, .chatmic, .chatsend {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px; height: 34px;
+  flex: none;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  cursor: pointer;
+  background: none;
+  color: var(--muted);
+}
+.chatattach svg, .chatmic svg, .chatsend svg { width: 17px; height: 17px; fill: currentColor; }
+.chatattach svg { fill: none; }
+.chatattach:hover, .chatmic:hover { background: var(--s2); color: var(--ink); }
+.chatsend { background: var(--accent); color: var(--accent-fg); }
+.chatsend:hover { background: var(--accent-d); }
+.chatsend:disabled { background: var(--line2); }
+.chatmic.on {
+  background: var(--bad);
+  color: var(--accent-fg);
+  animation: dsecpulse 1.3s ease-in-out infinite;
+}
+.chatbar { display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+.chatbar .modelpick select { padding: 4px 24px 4px 8px; font-size: 12px; min-width: 118px; }
+
+/* ── settings ────────────────────────────────────────────────────────────────── */
+.setintro { margin-bottom: 16px; }
+.setintro h3 { font-size: 15px; margin-bottom: 4px; }
+.setgrid { display: grid; gap: 16px; }
+.setfield {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s1);
+  padding: 12px 14px;
+}
+.setfield label { display: block; margin-bottom: 2px; font-size: 13px; }
+.setfield p { margin: 0 0 9px; line-height: 1.55; }
+.setfield select, .setfield input, .setfield textarea { width: 100%; max-width: 520px; }
+.setfield-int input { max-width: 120px; }
+.setactions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+#setMsg.good { color: var(--good); }
+#setMsg.bad { color: var(--bad); }
+
+@media (max-width: 760px) {
+  .secjump { padding: 6px 8px; }
+  .setfield select, .setfield input, .setfield textarea { max-width: 100%; }
+}
+
+/* ── what a turn is costing, while it costs it ───────────────────────────────── */
+.chatspend {
+  margin-left: auto;
+  padding-right: 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.turnspend { font-variant-numeric: tabular-nums; }
+
+/* ── the masthead gives the page back ────────────────────────────────────────── */
+/* A patent title is a sentence, and on a narrow window it wrapped to three lines and pushed the
+   application off the fold. One line, ellipsised, with the whole of it on hover. */
+.studiotitle { min-width: 0; flex: 1; }
+.studiotitle h1#stTitle {
+  font-size: 15px;
+  font-weight: 660;
+  line-height: 1.3;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ── folding the drafting agent away ─────────────────────────────────────────── */
+.studioterm { position: relative; }
+.chatfold {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s1);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+.chatfold::before {
+  content: "";
+  display: block;
+  margin: 0 auto;
+  width: 6px;
+  height: 6px;
+  border-left: 1.7px solid currentColor;
+  border-bottom: 1.7px solid currentColor;
+  transform: rotate(45deg);
+}
+.chatfold:hover { color: var(--ink); border-color: var(--faint); }
+
+/* Collapsed: the agent becomes a spine, and the draft takes the page. */
+.studio.chathidden .studiobody { grid-template-columns: 34px minmax(0, 1fr); }
+.studio.chathidden .studioterm > *:not(.chatfold) { display: none; }
+.studio.chathidden .studioterm {
+  min-height: 0;
+  background: var(--s3);
+}
+.studio.chathidden .chatfold { right: 4px; }
+.studio.chathidden .chatfold::before { transform: rotate(-135deg); }
+
+/* ── settings, full screen ───────────────────────────────────────────────────── */
+body.modalopen { overflow: hidden; }
+/*  `display:flex` beats the `hidden` attribute, so without this the closed dialog stayed on top of
+    the page as an invisible sheet and swallowed every click. Caught by a test that could not press
+    a button it could see. */
+.setmodal[hidden] { display: none; }
+.setmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(23, 33, 43, .42);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4vh 16px;
+  overflow-y: auto;
+}
+.setmodalcard {
+  background: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  width: min(880px, 100%);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+.setmodalhead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.setmodalhead h2 { font-size: 16px; flex: 1; }
+.setmodalbody { padding: 18px; overflow-y: auto; }
+
+@media (max-width: 760px) {
+  .studio.chathidden .studiobody { grid-template-columns: 1fr; }
+  .setmodal { padding: 0; }
+  .setmodalcard { max-height: 100vh; border-radius: 0; border: 0; }
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   THE DRAFTING AGENT'S TERMINAL
+   ═════════════════════════════════════════════════════════════════════════════
+   A terminal, drawn as one. The studio is a light page and this panel is dark on purpose: it is
+   not a chat transcript styled to look technical, it is the actual screen of the actual session,
+   and reading it as anything else would be a lie about what it is.
+
+   The type is monospaced and the lines are `pre-wrap` with a hanging indent, because the renderer
+   paints one element per terminal row and the row's own leading spaces are its structure.
+   ═════════════════════════════════════════════════════════════════════════════ */
+.studioterm {
+  display: flex;
+  flex-direction: column;
+  background: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  /*  AS TALL AS ITS TERMINAL, not as tall as the page. The conversation panel that used to sit
+      here filled the column and its feed scrolled inside it. A terminal is a fixed grid: making
+      it full height gives it a stretch of empty screen above a composer pinned to the bottom, and
+      the drag handle then has nothing to do because flex-grow overrules whatever it sets. So the
+      panel sizes to its parts, the pane carries the height, and the handle owns it. */
+  height: auto;
+  min-height: 0;
+  align-self: start;
+}
+
+.termbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 8px 34px 8px 12px;      /* room on the right for the fold button */
+  border-bottom: 1px solid var(--line);
+  background: var(--s3);
+}
+.termname {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/*  The status pill, and the four states an agent is actually in. */
+.termbar .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line2);
+  background: var(--s1);
+  font-size: 11.5px;
+  font-weight: 620;
+  color: var(--muted);
+}
+.termbar .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.termbar .status-pill.busy { color: var(--accent); border-color: rgba(23, 92, 211, .35);
+  background: var(--accent-soft); }
+.termbar .status-pill.busy .status-dot { background: var(--accent);
+  animation: termpulse 1.2s ease-in-out infinite; }
+.termbar .status-pill.idle { color: var(--good); border-color: rgba(24, 121, 78, .3);
+  background: var(--good-soft); }
+.termbar .status-pill.idle .status-dot { background: var(--good); }
+.termbar .status-pill.stopped { color: var(--bad); border-color: rgba(180, 35, 24, .3);
+  background: var(--bad-soft); }
+.termbar .status-pill.stopped .status-dot { background: var(--bad); }
+.statusdetail { font-weight: 400; opacity: .75; }
+@keyframes termpulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .termbar .status-pill.busy .status-dot { animation: none; }
+}
+
+/*  The model and effort chips, beside Reload and Restart. This is the ONE place a model is
+    chosen: the studio used to carry a second picker in the composer, which meant two controls
+    for one decision and a page that could show them disagreeing. */
+.tchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s1);
+  font-size: 11.5px;
+  font-weight: 620;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.tchip:hover { color: var(--ink); border-color: var(--faint); }
+.tchip .caret { opacity: .55; font-size: 9px; }
+.tmenu {
+  position: absolute;
+  z-index: 20;
+  margin-top: 26px;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--s1);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+.tmenuitem {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 4px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.tmenuitem:hover { background: var(--s2); }
+.tmenuitem.on { font-weight: 700; color: var(--accent); }
+
+.termbar .btn.xs { padding: 3px 9px; font-size: 11.5px; }
+.termbar .btn.danger { color: var(--bad); border-color: rgba(180, 35, 24, .3); }
+.termbar .btn.danger:hover { background: var(--bad-soft); }
+/*  Stop is only meaningful while it is working, and a dead button on a toolbar is worse than no
+    button: it invites a click that does nothing. */
+#termStop { display: none; }
+#termStop.visible { display: inline-flex; }
+
+/* ── the pane ──────────────────────────────────────────────────────────────── */
+.raw-output {
+  position: relative;
+  flex: 0 1 auto;                /* the drag handle owns this height; see .studioterm */
+  min-height: 160px;
+  height: 46vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-anchor: none;         /* the renderer does its own scroll anchoring */
+  padding: 12px 14px;
+  margin: 0;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.raw-output .tl {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: 1.5em;
+  padding-left: 2.2em;
+  text-indent: -2.2em;           /* a wrapped row hangs under its own first column */
+}
+.raw-output.frozen { opacity: .96; }
+.raw-output a.raw-link { color: #79c0ff; text-decoration: underline; text-underline-offset: 2px; }
+.raw-output::-webkit-scrollbar { width: 11px; }
+.raw-output::-webkit-scrollbar-track { background: #0d1117; }
+.raw-output::-webkit-scrollbar-thumb { background: #484f58; border-radius: 6px;
+  border: 2px solid #0d1117; }
+.raw-output { scrollbar-width: thin; scrollbar-color: #484f58 #0d1117; }
+
+/*  The CLI's spinner, its seconds counter and its token tally are cut OUT of the transcript
+    upstream and redrawn here, outside the scroll area, off a clock that ticks locally. Leaving
+    them in the buffer is what forced a full repaint every second. */
+.term-live {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: #0d1117;
+  border-top: 1px solid #21262d;
+  color: #8b949e;
+  font-size: 11px;
+  min-height: 14px;
+}
+.term-live.on { display: flex; }
+.tl-dots { display: inline-flex; gap: 3px; }
+.tl-dots i {
+  width: 5px; height: 5px; border-radius: 50%; background: #58a6ff; display: block;
+  animation: tl-pulse 1.25s ease-in-out infinite;
+}
+.tl-dots i:nth-child(2) { animation-delay: .18s; }
+.tl-dots i:nth-child(3) { animation-delay: .36s; }
+.term-live.idle .tl-dots i { animation: none; opacity: .3; background: #484f58; }
+@keyframes tl-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tl-dots i { animation: none; } }
+.tl-verb { color: #c9d1d9; font-weight: 600; white-space: nowrap; }
+.tl-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-tok { color: #6e7681; white-space: nowrap; }
+.tl-spacer { flex: 1; }
+.tl-note { color: #6e7681; white-space: nowrap; }
+
+.raw-resize-handle {
+  height: 8px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--s3);
+  border-top: 1px solid var(--line);
+}
+.raw-resize-handle::after {
+  content: "";
+  width: 38px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line2);
+}
+.raw-resize-handle:hover::after { background: var(--faint); }
+
+/* ── typing into it ────────────────────────────────────────────────────────── */
+.cmd-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  border-top: 1px solid var(--line);
+  background: var(--s1);
+}
+.cmd-prompt {
+  padding: 11px 4px 11px 12px;
+  color: var(--faint);
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.cmd-input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.45;
+  padding: 10px 8px;
+  min-height: 38px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.cmd-input::placeholder { color: var(--faint); }
+.cmd-send, .cmd-mic {
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: var(--s3);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 14px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.cmd-send { color: var(--accent); }
+.cmd-send:hover, .cmd-mic:hover { background: var(--s2); color: var(--ink); }
+.cmd-send svg, .cmd-mic svg { width: 17px; height: 17px; fill: currentColor; }
+.cmd-mic.on { color: var(--bad); }
+.cmd-send:disabled { opacity: .45; cursor: default; }
+
+.termkeys {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 7px 12px 9px;
+  border-top: 1px solid var(--line);
+  background: var(--s3);
+}
+.termkeys .chip { cursor: pointer; }
+.termkeys #termHint { margin-left: auto; }
+
+/* ── drawings: uploaded, never generated ───────────────────────────────────── */
+.figintro {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s3);
+}
+.figintro > div:first-child { flex: 1; min-width: 240px; }
+.figupload { cursor: pointer; }
+.fignone {
+  padding: 22px 14px;
+  border: 1px dashed var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--s3);
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  /*  Stacked, so the terminal does not take a whole screen before the draft begins. */
+  .raw-output { height: 38vh; }
+}
+
+/*  The drawing brief, folded. It is the instruction somebody draws from, so it has to be readable
+    when it is open and out of the way when it is not: six of these unfolded is six essays between
+    the reader and the sheets they came to look at. */
+.figbrief { margin: 6px 0 10px; }
+.figbrief > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.figbrief > summary::-webkit-details-marker { display: none; }
+.figbrief > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform .14s ease;
+}
+.figbrief[open] > summary::before { transform: rotate(45deg); }
+.figbrief > summary:hover { color: var(--ink); }
+.figbriefbody {
+  margin-top: 8px;
+  padding-left: 13px;
+  border-left: 2px solid var(--line);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.figbriefbody p { margin: 0 0 9px; }
+.figbriefbody p:last-child { margin-bottom: 0; }
+.figbriefbody b { color: var(--ink); }

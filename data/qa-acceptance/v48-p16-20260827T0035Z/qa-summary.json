@@ -1,0 +1,59 @@
+{
+  "project_id": 16,
+  "title": "SPLIT PIPE CLAMP HAVING A SEGMENTED CAM RING COUPLED BY FRAME CLOSURE AND A FORCE LIMITED LATCH DRIVE",
+  "version_no": 1,
+  "ready": false,
+  "blockers": [
+    {
+      "title": "The independent review did not pass",
+      "detail": "The draft text is faithful to the inventor's disclosure, but the application is critically deficient because all drawing sheets are missing. The detailed description refers to figures that do not exist, making it impossible to verify the correspondence between the text and the illustrations.",
+      "items": ""
+    },
+    {
+      "title": "Every specification numeral appears in a drawing",
+      "detail": "28 reference numeral(s) are used in the specification but absent from every drawing. Add each missing numeral to an appropriate focused sheet or redistribute the existing drawing plan. Do not remove a disclosed part, numeral definition, or supporting text to silence this check.",
+      "items": "10; 12; 14; 16; 18; 20"
+    },
+    {
+      "title": "Figure brief numeral declarations match sheet lists",
+      "detail": "A drawing brief explicitly declares a different numeral set from the sheet's machine-readable list. Reconcile the brief and list before generating an image.",
+      "items": "FIG-1: not in sheet list 10, 12, 14, 16, 18, 20, 22, 66; FIG-2: not in sheet list 22, 24, 26, 30, 36, 38, 40, 42; FIG-3: not in sheet list 30, 32, 34, 44, 46, 48, 50, 54; FIG-4: not in sheet list 18, 52, 56, 58, 60, 62, 64"
+    },
+    {
+      "title": "Each described figure has a drawing sheet",
+      "detail": "A figure is described in the specification but no drawing has been prepared for it. Every described figure is required before the package can be published.",
+      "items": "FIG. 1; FIG. 2; FIG. 3; FIG. 4"
+    },
+    {
+      "title": "Drawing sheets are missing for all figures",
+      "detail": "The brief description of drawings and the detailed description describe and refer to FIGs. 1, 2, 3, and 4. However, the rendered image files (e.g., `rendered-*.png`) for these figures do not exist in the `figures/` directory. The application is incomplete without its drawings, and it is impossible to verify that the description of the figures is accurate.",
+      "items": "figures/, draft/07-drawings.md, draft/08-detailed-description.md"
+    },
+    {
+      "title": "4 figure(s) are described but no drawing sheet exists",
+      "detail": "35 USC 113 requires a drawing where one is necessary to understand the invention. Drawings may be filed informally and corrected later, but they must be filed.",
+      "items": ""
+    },
+    {
+      "title": "The drawing set does not match the application text",
+      "detail": "Every described figure must have exactly one checked sheet, with no obsolete or extra sheet.",
+      "items": "missing FIG. 1; missing FIG. 2; missing FIG. 3; missing FIG. 4"
+    }
+  ],
+  "formalities": [],
+  "qa_verdict": "fail",
+  "section_count": 10,
+  "figure_count": 0,
+  "citation_count": 0,
+  "reference_count": 0,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "f1ea3f704b8438ab94b53f14fa6c44925f20105dcc1da12e607a8d475afbc368",
+  "figures": [],
+  "docx": {},
+  "all_drawings_current": false,
+  "docx_media_matches_figures": false,
+  "acceptance_pass": false
+}

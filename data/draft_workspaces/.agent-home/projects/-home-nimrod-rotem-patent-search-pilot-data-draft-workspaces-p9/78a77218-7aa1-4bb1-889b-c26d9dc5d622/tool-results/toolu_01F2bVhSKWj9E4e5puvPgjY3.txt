@@ -1,0 +1,252 @@
+figures/FIG-4.md:3:[Omitted long matching line]
+figures/FIG-4.md:13:[Omitted long matching line]
+figures/FIG-3.md:3:[Omitted long matching line]
+figures/FIG-1.md:5:The pipe 90 is seen end on at the centre of the drawing area as a circle with its interior blank. An annular frame body surrounds it, bounded by an inner circle spaced outward from the pipe 90 and by an outer circle. The ring-shaped space between the pipe 90 and that inner circle is open, crossed only by the jaw pads 40 and the inner ends of the jaw carriages 30.
+figures/FIG-1.md:13:[Omitted long matching line]
+figures/FIG-5.md:3:[Omitted long matching line]
+figures/FIG-5.md:11:An upper block rests on the upper end of the mounting boss 70 and is joined to it. It is drawn schematically as a plain rectangle in outline without hatching, and its name is a semantic identifier that does not appear as drawing text. That upper block is the equipment 80.
+figures/FIG-5.md:18:- 80 equipment: target well inside the rectangle resting on the mounting boss 70.
+figures/FIG-6.md:3:[Omitted long matching line]
+figures/FIG-6.md:7:[Omitted long matching line]
+review/previous-qa.md:9:[Omitted long matching line]
+review/previous-qa.md:11:[Omitted long matching line]
+review/previous-qa.md:26:[Omitted long matching line]
+review/previous-qa.md:30:[Omitted long matching line]
+review/previous-qa.md:31:  - Suggested fix: In figures/FIG-4.md line 13, replace "Its mounting is not depicted." with "Its lower end meets the outer surface of the top wall of the latch housing 58, so that the bar is not drawn as a detached element; no pivot, mounting detail, angle or over-center geometry is depicted there."
+.agent/source-review-0086-5590b04b17ff.jsonl:1:[Omitted long matching line]
+.agent/source-review-0086-5590b04b17ff.jsonl:35:[Omitted long matching line]
+.agent/source-review-0086-5590b04b17ff.jsonl:39:[Omitted long matching line]
+.agent/source-review-0086-5590b04b17ff.jsonl:41:[Omitted long matching line]
+.agent/source-review-0086-5590b04b17ff.jsonl:43:[Omitted long matching line]
+.agent/source-review-0086-5590b04b17ff.jsonl:45:[Omitted long matching line]
+.agent/source-review-0086-5590b04b17ff.jsonl:60:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1750,"estimated_tokens_delta":50,"uuid":"91208a10-fbd4-4c03-9577-e18bbf30cf40","session_id":"6015e7c2-f71d-4d14-8a9e-527156477a07"}
+.agent/source-review-0086-5590b04b17ff.jsonl:109:{"type":"system","subtype":"thinking_tokens","estimated_tokens":7700,"estimated_tokens_delta":150,"uuid":"9156c1b1-1205-4b48-a93c-43e26eefcf3d","session_id":"6015e7c2-f71d-4d14-8a9e-527156477a07"}
+.agent/source-review-0086-5590b04b17ff.jsonl:144:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":150,"uuid":"5600ed0c-9f33-44db-9e06-2a2391282e4e","session_id":"6015e7c2-f71d-4d14-8a9e-527156477a07"}
+.agent/source-review-0086-5590b04b17ff.jsonl:158:{"type":"system","subtype":"thinking_tokens","estimated_tokens":13850,"estimated_tokens_delta":150,"uuid":"ef60fc36-09fc-4c07-b351-f54671412017","session_id":"6015e7c2-f71d-4d14-8a9e-527156477a07"}
+.agent/source-review-0086-5590b04b17ff.jsonl:166:{"type":"system","subtype":"thinking_tokens","estimated_tokens":14850,"estimated_tokens_delta":150,"uuid":"5b4120c6-3ec2-4547-8d18-074e6056b240","session_id":"6015e7c2-f71d-4d14-8a9e-527156477a07"}
+.agent/source-review-0086-5590b04b17ff.jsonl:326:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:1:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:20:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:22:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:23:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:26:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:35:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:37:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:40:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:41:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:43:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:53:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":100,"uuid":"046ff421-7fd1-449f-bc2c-907e0c6fe55b","session_id":"4f9709f1-382e-4965-9d21-98fe3bb3efda"}
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:138:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12050,"estimated_tokens_delta":150,"uuid":"31eedf29-51cb-49b2-a4b9-1bd3f17603a8","session_id":"4f9709f1-382e-4965-9d21-98fe3bb3efda"}
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:216:{"type":"system","subtype":"thinking_tokens","estimated_tokens":21200,"estimated_tokens_delta":100,"uuid":"91b0e280-b61f-437d-9cdb-5041da2cf22a","session_id":"4f9709f1-382e-4965-9d21-98fe3bb3efda"}
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:224:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:253:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":100,"uuid":"4651708d-bdf7-4537-af34-59a2a24fb499","session_id":"4f9709f1-382e-4965-9d21-98fe3bb3efda"}
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:406:[Omitted long matching line]
+.agent/source-review-0058-9d7ba8ff56f2.jsonl:408:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:1:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:36:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:38:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:40:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:42:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:44:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:46:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:56:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":150,"uuid":"d4fcd138-54b2-4111-99c3-40ae8810da46","session_id":"db2e4504-1215-45a3-82e8-5a18683552f6"}
+.agent/source-review-0086-e67622ecf68b.jsonl:108:{"type":"system","subtype":"thinking_tokens","estimated_tokens":7500,"estimated_tokens_delta":150,"uuid":"94c91c12-7fc0-4c03-b6b5-120aeda887de","session_id":"db2e4504-1215-45a3-82e8-5a18683552f6"}
+.agent/source-review-0086-e67622ecf68b.jsonl:173:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:207:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:209:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:211:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:213:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:215:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:217:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:227:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":100,"uuid":"97c37713-14f7-4919-95ba-ab0c201d7fbe","session_id":"8bc13980-a3ab-420d-81c8-050bc9bc2687"}
+.agent/source-review-0086-e67622ecf68b.jsonl:410:{"type":"system","subtype":"thinking_tokens","estimated_tokens":23200,"estimated_tokens_delta":150,"uuid":"54225d46-8d54-44ac-9f16-120084dbc4d4","session_id":"8bc13980-a3ab-420d-81c8-050bc9bc2687"}
+.agent/source-review-0086-e67622ecf68b.jsonl:431:{"type":"system","subtype":"thinking_tokens","estimated_tokens":25850,"estimated_tokens_delta":200,"uuid":"6512010a-6dd9-4f6c-b1c6-53a33186054c","session_id":"8bc13980-a3ab-420d-81c8-050bc9bc2687"}
+.agent/source-review-0086-e67622ecf68b.jsonl:442:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:444:[Omitted long matching line]
+.agent/source-review-0086-e67622ecf68b.jsonl:446:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:1:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:36:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:38:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:40:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:42:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:44:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:46:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:148:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":100,"uuid":"c0455b04-460f-4ce5-835e-9a09b1d3e6bc","session_id":"7ce22cef-14f6-4e1b-91b6-f748826b4da8"}
+.agent/source-review-0061-0a9232abc0b0.jsonl:228:{"type":"system","subtype":"thinking_tokens","estimated_tokens":21200,"estimated_tokens_delta":100,"uuid":"565905b6-902d-47c3-b586-a1ab58ffb72d","session_id":"7ce22cef-14f6-4e1b-91b6-f748826b4da8"}
+.agent/source-review-0061-0a9232abc0b0.jsonl:292:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:294:[Omitted long matching line]
+.agent/source-review-0061-0a9232abc0b0.jsonl:296:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:1:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:35:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:38:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:39:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:56:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:58:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:60:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:84:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2850,"estimated_tokens_delta":100,"uuid":"e1201044-52e8-46d7-9de9-98a58543baf7","session_id":"c40be038-52f2-4b26-b43d-0c5940d0a27a"}
+.agent/source-review-0061-394f9159dc6c.jsonl:158:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":200,"uuid":"3ff192d2-bbd1-4fc0-a411-f43a3f43f06c","session_id":"c40be038-52f2-4b26-b43d-0c5940d0a27a"}
+.agent/source-review-0061-394f9159dc6c.jsonl:247:{"type":"system","subtype":"thinking_tokens","estimated_tokens":22500,"estimated_tokens_delta":200,"uuid":"ca351207-923e-440d-87e5-5bde2e7b7991","session_id":"c40be038-52f2-4b26-b43d-0c5940d0a27a"}
+.agent/source-review-0061-394f9159dc6c.jsonl:322:{"type":"system","subtype":"thinking_tokens","estimated_tokens":31200,"estimated_tokens_delta":150,"uuid":"45eb319c-a140-425a-a7f1-a085428d7e87","session_id":"c40be038-52f2-4b26-b43d-0c5940d0a27a"}
+.agent/source-review-0061-394f9159dc6c.jsonl:360:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:393:[Omitted long matching line]
+.agent/source-review-0061-394f9159dc6c.jsonl:395:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:1:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:14:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:25:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:26:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:28:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:36:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:38:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:40:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:42:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:48:{"type":"system","subtype":"thinking_tokens","estimated_tokens":850,"estimated_tokens_delta":100,"uuid":"182ba0c1-d62b-4525-a64d-1205819c1b72","session_id":"6e2c749d-b9e6-46a7-a7af-c011e9856bd8"}
+.agent/source-review-0057-56b00fed00a2.jsonl:51:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":150,"uuid":"32b3d6da-a12d-4122-8ea1-dcb0ea43ebfd","session_id":"6e2c749d-b9e6-46a7-a7af-c011e9856bd8"}
+.agent/source-review-0057-56b00fed00a2.jsonl:140:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":100,"uuid":"5b679916-ae1b-4385-93f2-4c9d79df5aca","session_id":"6e2c749d-b9e6-46a7-a7af-c011e9856bd8"}
+.agent/source-review-0057-56b00fed00a2.jsonl:219:{"type":"system","subtype":"thinking_tokens","estimated_tokens":21200,"estimated_tokens_delta":100,"uuid":"97fb923d-5dfd-452c-a0d8-ff5def9367a4","session_id":"6e2c749d-b9e6-46a7-a7af-c011e9856bd8"}
+.agent/source-review-0057-56b00fed00a2.jsonl:242:[Omitted long matching line]
+.agent/source-review-0057-56b00fed00a2.jsonl:244:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:1:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:36:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:38:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:40:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:42:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:44:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:46:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:55:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":200,"uuid":"9e010c3a-f427-42f3-b4d8-cff1c32bc7a6","session_id":"c1b1c2c4-6545-47bd-a96d-d7b6e168fe91"}
+.agent/source-review-0059-586dab9680d8.jsonl:133:{"type":"system","subtype":"thinking_tokens","estimated_tokens":11200,"estimated_tokens_delta":50,"uuid":"14bca2d1-8406-4592-99de-68b36aac62d7","session_id":"c1b1c2c4-6545-47bd-a96d-d7b6e168fe91"}
+.agent/source-review-0059-586dab9680d8.jsonl:217:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:240:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":100,"uuid":"d4b31c62-433a-4d24-8d8a-e5950da1ca9d","session_id":"c1b1c2c4-6545-47bd-a96d-d7b6e168fe91"}
+.agent/source-review-0059-586dab9680d8.jsonl:312:[Omitted long matching line]
+.agent/source-review-0059-586dab9680d8.jsonl:314:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:1:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:27:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:28:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:30:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:36:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:38:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:40:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:42:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:44:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:54:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":150,"uuid":"1f72166c-191a-4d36-b5bb-20e0c28ac878","session_id":"36a2b940-11fc-4cfb-a2c5-0be2d6a6ee7f"}
+.agent/source-review-0057-a79f7a3a47ea.jsonl:73:{"type":"system","subtype":"thinking_tokens","estimated_tokens":3500,"estimated_tokens_delta":150,"uuid":"f7191208-119e-4c29-b3df-ad7e7e2700cc","session_id":"36a2b940-11fc-4cfb-a2c5-0be2d6a6ee7f"}
+.agent/source-review-0057-a79f7a3a47ea.jsonl:146:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":100,"uuid":"99bad492-4f09-4f99-8969-90f0e091cc5b","session_id":"36a2b940-11fc-4cfb-a2c5-0be2d6a6ee7f"}
+.agent/source-review-0057-a79f7a3a47ea.jsonl:215:{"type":"system","subtype":"thinking_tokens","estimated_tokens":19950,"estimated_tokens_delta":100,"uuid":"81b191e6-e4f3-474a-809b-f59512013b71","session_id":"36a2b940-11fc-4cfb-a2c5-0be2d6a6ee7f"}
+.agent/source-review-0057-a79f7a3a47ea.jsonl:282:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:284:[Omitted long matching line]
+.agent/source-review-0057-a79f7a3a47ea.jsonl:286:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:1:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:35:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:39:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:41:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:43:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:45:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:55:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":150,"uuid":"83b6f313-8a23-49ad-8234-51da94b5c692","session_id":"ad053e33-de7b-4afe-bf08-442ab7f86f8e"}
+.agent/source-review-0086-542413504f10.jsonl:91:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:125:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:129:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:131:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:133:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:135:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:146:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":200,"uuid":"bd34c39e-fa25-4072-882f-b7c0b07a5e25","session_id":"35f2d27b-c9b6-4942-a9e5-eb1726cd9e94"}
+.agent/source-review-0086-542413504f10.jsonl:225:{"type":"system","subtype":"thinking_tokens","estimated_tokens":11200,"estimated_tokens_delta":150,"uuid":"04b0d744-9b92-48d0-84c3-f224850579a2","session_id":"35f2d27b-c9b6-4942-a9e5-eb1726cd9e94"}
+.agent/source-review-0086-542413504f10.jsonl:232:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12050,"estimated_tokens_delta":100,"uuid":"c0c08105-22e2-4f12-8345-3e641f5e9796","session_id":"35f2d27b-c9b6-4942-a9e5-eb1726cd9e94"}
+.agent/source-review-0086-542413504f10.jsonl:306:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:308:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:319:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":100,"uuid":"eb07817d-5aaa-4da5-afd8-37b24084769a","session_id":"35f2d27b-c9b6-4942-a9e5-eb1726cd9e94"}
+.agent/source-review-0086-542413504f10.jsonl:332:[Omitted long matching line]
+.agent/source-review-0086-542413504f10.jsonl:334:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:1:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:36:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:40:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:42:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:44:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:46:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:55:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":150,"uuid":"d1b9b183-fa3b-4b0e-b7be-ddcda082ec6c","session_id":"06467f15-2b27-48a4-96c4-3ceaba94b0db"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:136:{"type":"system","subtype":"thinking_tokens","estimated_tokens":11200,"estimated_tokens_delta":50,"uuid":"546809e6-d8e0-4419-a6ec-1a1d6ac0eb0c","session_id":"06467f15-2b27-48a4-96c4-3ceaba94b0db"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:143:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12050,"estimated_tokens_delta":150,"uuid":"b9bbcd65-cd6e-4a5b-ab24-5e3797dc1472","session_id":"06467f15-2b27-48a4-96c4-3ceaba94b0db"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:332:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:340:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:351:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":100,"uuid":"6f7b6a99-f812-4e32-9148-ff5beb37cf92","session_id":"06467f15-2b27-48a4-96c4-3ceaba94b0db"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:413:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:447:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:451:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:453:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:455:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:457:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:466:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1050,"estimated_tokens_delta":100,"uuid":"5d59a6f8-927b-4103-94ca-0120a4522f4b","session_id":"e5149688-ccbb-4717-ac6a-fd61335c1a1a"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:470:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1500,"estimated_tokens_delta":150,"uuid":"9310fae3-77dc-4bd8-be2b-d120020c104f","session_id":"e5149688-ccbb-4717-ac6a-fd61335c1a1a"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:557:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":150,"uuid":"f0a69176-0a0b-49ba-acf6-30055b6e1c15","session_id":"e5149688-ccbb-4717-ac6a-fd61335c1a1a"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:618:{"type":"system","subtype":"thinking_tokens","estimated_tokens":19350,"estimated_tokens_delta":150,"uuid":"301201b1-3164-4366-8de6-7cddce2963e9","session_id":"e5149688-ccbb-4717-ac6a-fd61335c1a1a"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:698:{"type":"system","subtype":"thinking_tokens","estimated_tokens":28700,"estimated_tokens_delta":100,"uuid":"fd3c5120-83df-4d06-81df-8c0f59dc16ec","session_id":"e5149688-ccbb-4717-ac6a-fd61335c1a1a"}
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:737:[Omitted long matching line]
+.agent/source-review-0086-cd72e4dc2f6a.jsonl:739:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:1:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:35:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:37:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:39:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:41:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:43:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:45:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:125:{"type":"system","subtype":"thinking_tokens","estimated_tokens":9500,"estimated_tokens_delta":150,"uuid":"8db29d5c-f88c-4bac-991e-987f120cdc60","session_id":"3fee09d5-4320-4847-9e52-1ca635a46367"}
+.agent/source-review-0061-ab196519a1c8.jsonl:139:{"type":"system","subtype":"thinking_tokens","estimated_tokens":11200,"estimated_tokens_delta":100,"uuid":"0d98972a-e977-49b4-9ea7-d2307605c66f","session_id":"3fee09d5-4320-4847-9e52-1ca635a46367"}
+.agent/source-review-0061-ab196519a1c8.jsonl:145:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":150,"uuid":"88bb1e85-69bb-4315-a6b0-83415a031962","session_id":"3fee09d5-4320-4847-9e52-1ca635a46367"}
+.agent/source-review-0061-ab196519a1c8.jsonl:154:{"type":"system","subtype":"thinking_tokens","estimated_tokens":13100,"estimated_tokens_delta":100,"uuid":"ba12042c-5f0c-4e21-8f09-520eba7e6276","session_id":"3fee09d5-4320-4847-9e52-1ca635a46367"}
+.agent/source-review-0061-ab196519a1c8.jsonl:220:{"type":"system","subtype":"thinking_tokens","estimated_tokens":21200,"estimated_tokens_delta":150,"uuid":"1641333a-68eb-4fb2-8875-4d928cb758d2","session_id":"3fee09d5-4320-4847-9e52-1ca635a46367"}
+.agent/source-review-0061-ab196519a1c8.jsonl:282:[Omitted long matching line]
+.agent/source-review-0061-ab196519a1c8.jsonl:284:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:1:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:25:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:36:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:38:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:40:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:43:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:44:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:54:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":150,"uuid":"04cae74d-bbed-4b12-a71d-125e1305bf15","session_id":"752d52be-741b-4174-9aa8-8e7fb54945a9"}
+.agent/source-review-0058-74437784b9c7.jsonl:139:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:141:[Omitted long matching line]
+.agent/source-review-0058-74437784b9c7.jsonl:152:{"type":"system","subtype":"thinking_tokens","estimated_tokens":1200,"estimated_tokens_delta":100,"uuid":"25ed3505-bfa3-437f-8ce3-66f9724e5382","session_id":"752d52be-741b-4174-9aa8-8e7fb54945a9"}
+.agent/source-review-0058-74437784b9c7.jsonl:238:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":150,"uuid":"17df53bf-fefe-4d98-8d14-f72429bfded4","session_id":"752d52be-741b-4174-9aa8-8e7fb54945a9"}
+.agent/source-review-0057-44d80d695c63.jsonl:1:[Omitted long matching line]
+.agent/source-review-0057-44d80d695c63.jsonl:24:[Omitted long matching line]
+.agent/source-review-0057-44d80d695c63.jsonl:35:[Omitted long matching line]
+.agent/source-review-0057-44d80d695c63.jsonl:37:[Omitted long matching line]
+.agent/source-review-0057-44d80d695c63.jsonl:39:[Omitted long matching line]
+.agent/source-review-0057-44d80d695c63.jsonl:41:[Omitted long matching line]
+.agent/source-review-0057-44d80d695c63.jsonl:43:[Omitted long matching line]
+.agent/source-review-0057-44d80d695c63.jsonl:94:{"type":"system","subtype":"thinking_tokens","estimated_tokens":6400,"estimated_tokens_delta":100,"uuid":"23536edd-2efc-4969-b15a-118fd3120ce9","session_id":"82e91f7f-949d-41f8-9e4b-e35bb4ca748b"}
+.agent/source-review-0057-44d80d695c63.jsonl:130:{"type":"system","subtype":"thinking_tokens","estimated_tokens":11200,"estimated_tokens_delta":150,"uuid":"b647ce0f-871f-4598-8709-5ba0ba6acc14","session_id":"82e91f7f-949d-41f8-9e4b-e35bb4ca748b"}
+.agent/source-review-0057-44d80d695c63.jsonl:137:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12050,"estimated_tokens_delta":150,"uuid":"f31ae56a-6a0c-47cd-ad7b-3524ba7b76e1","session_id":"82e91f7f-949d-41f8-9e4b-e35bb4ca748b"}
+.agent/source-review-0057-44d80d695c63.jsonl:241:{"type":"system","subtype":"thinking_tokens","estimated_tokens":2650,"estimated_tokens_delta":100,"uuid":"baaa6195-3711-4120-b58a-0feb62b08f4d","session_id":"82e91f7f-949d-41f8-9e4b-e35bb4ca748b"}
+.agent/source-review-0057-44d80d695c63.jsonl:283:[Omitted long matching line]
+.agent/source-review-0057-44d80d695c63.jsonl:285:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:1:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:36:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:39:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:40:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:42:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:44:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:46:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:131:{"type":"system","subtype":"thinking_tokens","estimated_tokens":10700,"estimated_tokens_delta":100,"uuid":"071e370a-e83b-40f9-982f-733ac120161a","session_id":"e532276f-0789-4263-8419-4f69a47ca6c0"}
+.agent/source-review-0061-d530e96dea4a.jsonl:135:{"type":"system","subtype":"thinking_tokens","estimated_tokens":11200,"estimated_tokens_delta":150,"uuid":"eb9309fd-4d21-4576-ad5e-77a22a705ad3","session_id":"e532276f-0789-4263-8419-4f69a47ca6c0"}
+.agent/source-review-0061-d530e96dea4a.jsonl:141:{"type":"system","subtype":"thinking_tokens","estimated_tokens":12000,"estimated_tokens_delta":150,"uuid":"d56fc261-fc26-4a45-8f17-e2c5e8166a28","session_id":"e532276f-0789-4263-8419-4f69a47ca6c0"}
+.agent/source-review-0061-d530e96dea4a.jsonl:230:{"type":"system","subtype":"thinking_tokens","estimated_tokens":50,"estimated_tokens_delta":50,"uuid":"a3120114-37b8-4d67-8c57-8e8d438ff026","session_id":"e532276f-0789-4263-8419-4f69a47ca6c0"}
+.agent/source-review-0061-d530e96dea4a.jsonl:280:[Omitted long matching line]
+.agent/source-review-0061-d530e96dea4a.jsonl:282:[Omitted long matching line]
+.agent/turn-0002.jsonl:1:[Omitted long matching line]
+.agent/turn-0002.jsonl:8:[Omitted long matching line]
+.agent/turn-0002.jsonl:9:[Omitted long matching line]
+.agent/turn-0002.jsonl:10:[Omitted long matching line]
+.agent/turn-0002.jsonl:30:[Omitted long matching line]
+.agent/turn-0002.jsonl:32:[Omitted long matching line]
+.agent/turn-0002.jsonl:43:[Omitted long matching line]
+.agent/turn-0002.jsonl:45:[Omitted long matching line]
+.agent/turn-0002.jsonl:47:[Omitted long matching line]
+.agent/turn-0002.jsonl:66:[Omitted long matching line]
+.agent/turn-0002.jsonl:67:[Omitted long matching line]
+.agent/turn-0002.jsonl:68:[Omitted long matching line]
+.agent/turn-0002.jsonl:69:[Omitted long matching line]
+.agent/turn-0002.jsonl:70:[Omitted long matching line]
+.agent/turn-0002.jsonl:72:[Omitted long matching line]
+.agent/turn-0002.jsonl:74:[Omitted long matching line]
+
+[Showing results with pagination = limit: 250]

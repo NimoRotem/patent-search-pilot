@@ -1,0 +1,305 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b66f_ep2653339a3",
+ "subject_pub": "EP-2653339-A3",
+ "n_claims_source": 21,
+ "claims_source": "family_claims:US-9409754-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 46,
+  "by_kind": {
+   "independent_limitation": 20,
+   "combination": 2,
+   "dependent_limitation": 24
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "a wheeled U-shaped chassis",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "chassis comprising forwardly projecting side bars",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "chassis comprising a transverse rear crossbar bridging the side bars",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a lifting assembly mounted on the chassis",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "lifting assembly intermediate the side bars",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a driver's seating station mounted on the chassis",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "driver's seating station rearward of the lifting assembly",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a motive power unit mounted on the chassis",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the forklift truck is electrically powered",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "motive power unit comprises an electric motor",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "motive power unit comprises a rechargeable battery pack powering the electric motor",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "motive power unit comprises a first battery pack charging unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "first battery pack charging unit in electrical communication with the battery pack",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "motive power unit comprises a first electricity power supply connector",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "first electricity power supply connector in electrical communication with the first charging unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "motive power unit comprises a DC/AC converter",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "DC/AC converter in electrical communication with the first charging unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "motive power unit comprises a second electricity power supply connector",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "second electricity power supply connector in electrical communication with the DC/AC converter",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "second electricity power supply connector arranged for power take off from a carrying vehicle",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A piggyback forklift truck comprising a wheeled U-shaped chassis with forwardly projecting side bars and a transverse rear crossbar, a lifting assembly intermediate the side bars, a driver's seating station rearward of the lifting assembly,",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A method of operating a piggyback forklift truck comprising charging the rechargeable battery pack using an electrical power take off feed from a carrying vehicle when in transit with the forklift mounted thereon.",
+   "kind": "combination",
+   "source": "claim 15",
+   "weight": 0.9
+  },
+  {
+   "text": "a second battery pack charging unit in electrical communication with the rechargeable battery pack",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "DC/AC converter in electrical communication with the second battery pack charging unit",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "a DC/DC converter in electrical communication with the second battery pack charging unit and the second electricity power supply connector",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "first and second battery pack charging units integrated into a single combined unit",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "DC/AC converter omitted",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "second electrical power supply connector connected directly to the second battery pack charging unit",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "a dedicated battery management system to control charging and discharging",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "a pair of electric motors: a primary drive motor and a secondary lifting assembly motor",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "a third electric motor: a tertiary steering motor",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "rechargeable battery pack comprises a lithium ion battery pack",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "first electricity power supply connector is a female connector",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "first electricity power supply connector comprises an extension cable with a male connector",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "a pair of trailer front wheels adjacent the forwardmost end of the side bars",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "a driving, steering rear wheel mounted about the rear crossbar",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "rear wheel assembly with a mounting plate for the driving, steering rear wheel",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "primary drive motor and tertiary steering motor mounted on the mounting plate",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "delivering electrical power take off feed to the DC/AC converter",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "converting electrical power take off feed in the DC/AC converter",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "passing converted AC electrical power take off feed to the charging unit",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "delivering DC electrical power take off feed to a second battery pack charging unit",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "delivering DC electrical power take off feed to the DC/DC converter en route to the second charging unit",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "delivering DC electrical power take off feed to the DC/AC converter en route to the second charging unit",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "trickle charging the rechargeable battery pack using power take off feed",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "charging the rechargeable battery pack from a mains electricity supply",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "0f54d0fce6e99533"
+}

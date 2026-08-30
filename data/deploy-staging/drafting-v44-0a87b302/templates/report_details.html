@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Report details: {{ title }} | Rotem Patents{% endblock %}
+{% block body %}
+{#  THE DOCUMENT AROUND THE EVIDENCE.
+
+    A search produces references. What a firm sends out is a document: on its own letterhead,
+    addressed to a named client under a matter reference, opening with why the search was run
+    and what it found. Everything on this page is optional — leave it empty and the export is
+    exactly the neutral retrieval report it always was — but once filled it heads every PDF and
+    Word export, and it is what the person with the share link sees first.
+
+    The three narrative boxes each have a "Draft from the report" button. That is deliberate:
+    the model writes the first version from the actual findings, the author edits it, and the
+    same legal-conclusion guard the generated application uses strips any sentence that decides
+    patentability or infringement before it ever reaches the box.  #}
+<div class="wrap detailspage">
+  <div class="pagehead">
+    <div>
+      <h1>Report details</h1>
+      <p class="muted">The letterhead, matter details and narrative that head every export of
+        <a href="{{ request.script_root }}/report/{{ slug }}">{{ title }}</a>.</p>
+    </div>
+    <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ slug }}">Back to the report</a>
+  </div>
+
+  {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+  {% if saved %}<div class="formok" role="status">Saved. Exports of this report will use it.</div>{% endif %}
+
+  <form method="post" action="{{ request.script_root }}/report/{{ slug }}/details" id="detailsform">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <section class="panel dsec">
+      <h2>Letterhead</h2>
+      <p class="small muted">Saved to your account and pre-filled on the next report, so it is
+        typed once.</p>
+      <div class="drow">
+        <label>Firm or organisation
+          <input type="text" name="firm_name" value="{{ doc.firm_name or '' }}" maxlength="400"></label>
+        <label>Responsible attorney
+          <input type="text" name="firm_attorney" value="{{ doc.firm_attorney or '' }}" maxlength="400"></label>
+      </div>
+      <div class="drow">
+        <label>Address
+          <input type="text" name="firm_address" value="{{ doc.firm_address or '' }}" maxlength="400"></label>
+        <label>Contact email
+          <input type="email" name="attorney_email" value="{{ doc.attorney_email or '' }}" maxlength="400"></label>
+      </div>
+      <label>Additional line <span class="muted">(registration number, telephone, anything else)</span>
+        <input type="text" name="firm_detail" value="{{ doc.firm_detail or '' }}" maxlength="400"></label>
+    </section>
+
+    <section class="panel dsec">
+      <h2>Matter</h2>
+      <div class="drow">
+        <label>Matter title
+          <input type="text" name="matter_title" value="{{ doc.matter_title or '' }}" maxlength="400"></label>
+        <label>Client
+          <input type="text" name="client_name" value="{{ doc.client_name or '' }}" maxlength="400"></label>
+      </div>
+      <div class="drow">
+        <label>Client / docket reference
+          <input type="text" name="client_reference_number" value="{{ doc.client_reference_number or '' }}" maxlength="400"></label>
+        <label>Subject application number
+          <input type="text" name="subject_patent_number" value="{{ doc.subject_patent_number or '' }}" maxlength="400"></label>
+      </div>
+      <label>Subject application date
+        <input type="text" name="subject_patent_date" value="{{ doc.subject_patent_date or '' }}"
+               maxlength="400" placeholder="e.g. 2026-03-14"></label>
+      <p class="small muted">The matter title, client reference and subject application also fill
+        the header of the IDS citation listing.</p>
+    </section>
+
+    <section class="panel dsec">
+      <h2>Narrative</h2>
+      <p class="small muted">Printed after the scope disclosure and before the generated summary,
+        so nobody reaches a conclusion before reading what the search did and did not cover.</p>
+
+      {% for key, heading, hint in [
+           ('purpose', 'Purpose of this search', 'What was searched for, and why.'),
+           ('key_findings', 'Key findings', 'What the art shows: which features are disclosed, by which references, and what was not found.'),
+           ('analysis', 'Analysis', 'Reference by reference: what each discloses that is relevant, and what it does not.')] %}
+      <div class="dnarr">
+        <div class="dnarrhead">
+          <label for="f-{{ key }}"><b>{{ heading }}</b> <span class="muted small">{{ hint }}</span></label>
+          <button type="button" class="btn ghost xs suggestbtn" data-kind="{{ key }}">Draft from the report</button>
+        </div>
+        <textarea id="f-{{ key }}" name="{{ key }}" rows="5" maxlength="20000">{{ doc[key] or '' }}</textarea>
+        <div class="small suggeststatus" data-for="{{ key }}" role="status" aria-live="polite"></div>
+      </div>
+      {% endfor %}
+    </section>
+
+    <div class="dactions">
+      <button class="btn" type="submit">Save</button>
+      <a class="btn ghost" href="{{ request.script_root }}/report/{{ slug }}">Cancel</a>
+    </div>
+  </form>
+
+  <section class="panel dsec">
+    <h2>Logo</h2>
+    <div class="drow logorow">
+      <div>
+        {% if doc.has_logo %}
+          <img class="dlogo" src="{{ request.script_root }}/report/{{ slug }}/logo.img" alt="The logo currently on this report">
+        {% else %}
+          <p class="small muted">No logo. PNG, JPEG, GIF or WebP, under 512&nbsp;KB.</p>
+        {% endif %}
+      </div>
+      <div class="logoforms">
+        <form method="post" action="{{ request.script_root }}/report/{{ slug }}/logo" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="file" name="logo" accept="image/png,image/jpeg,image/gif,image/webp" required>
+          <button class="btn ghost sm" type="submit">Upload</button>
+        </form>
+        {% if doc.has_logo %}
+        <form method="post" action="{{ request.script_root }}/report/{{ slug }}/logo">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="clear">
+          <button class="btn ghost sm" type="submit">Remove</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel dsec">
+    <h2>Share a read-only link</h2>
+    <p class="small muted">Opens this one report for anyone with the link — no account, nothing
+      editable, no other report reachable. Revoke it at any time; creating a new link
+      immediately stops the old one working.</p>
+    <div class="dactions">
+      <button type="button" class="btn ghost sm" id="shareBtn">
+        {% if doc.is_shared %}Replace the link{% else %}Create a link{% endif %}</button>
+      {% if doc.is_shared %}
+      <button type="button" class="btn ghost sm" id="revokeBtn">Revoke</button>
+      <span class="small muted" id="shareState">A link is active. For security the URL itself is
+        shown only when it is created — make a new one if you no longer have it.</span>
+      {% else %}
+      <span class="small muted" id="shareState">Not shared.</span>
+      {% endif %}
+    </div>
+    <div id="shareOut" class="shareout" hidden>
+      <label for="shareUrl">Copy this now — it is not shown again</label>
+      <div class="sharerow">
+        <input type="text" id="shareUrl" readonly>
+        <button type="button" class="btn ghost sm" id="copyShare">Copy</button>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const B = window.APP_BASE || '';
+  const slug = {{ slug|tojson }};
+
+  document.querySelectorAll('.suggestbtn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const kind = btn.dataset.kind;
+      const box = document.getElementById('f-' + kind);
+      const status = document.querySelector(`.suggeststatus[data-for="${kind}"]`);
+      // Never silently overwrite text the author has already written.
+      if (box.value.trim() && !confirm('Replace what you have written in this section?')) return;
+      btn.disabled = true;
+      const was = btn.textContent;
+      btn.textContent = 'Drafting…';
+      status.textContent = 'Reading the report…';
+      status.className = 'small suggeststatus muted';
+      try{
+        const r = await fetch(B + '/api/report/' + encodeURIComponent(slug) + '/suggest/' + kind, {
+          method:'POST', credentials:'same-origin',
+          headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''}});
+        const d = await r.json();
+        if(!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        box.value = d.text;
+        box.dispatchEvent(new Event('input'));
+        status.textContent = 'Drafted from this report. Read it and edit before you send it.';
+        status.className = 'small suggeststatus good';
+      }catch(err){
+        status.textContent = 'Could not draft that: ' + (err.message || err);
+        status.className = 'small suggeststatus bad';
+      }finally{ btn.disabled = false; btn.textContent = was; }
+    });
+  });
+
+  async function share(revoke){
+    const r = await fetch(B + '/report/' + encodeURIComponent(slug) + '/share', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+      body: JSON.stringify({revoke: !!revoke})});
+    const d = await r.json();
+    if(!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  }
+  const shareBtn = document.getElementById('shareBtn');
+  const revokeBtn = document.getElementById('revokeBtn');
+  const out = document.getElementById('shareOut');
+  const state = document.getElementById('shareState');
+  if(shareBtn) shareBtn.addEventListener('click', async () => {
+    shareBtn.disabled = true;
+    try{
+      const d = await share(false);
+      document.getElementById('shareUrl').value = d.url;
+      out.hidden = false;
+      state.textContent = 'A link is active.';
+      shareBtn.textContent = 'Replace the link';
+    }catch(err){ state.textContent = 'Could not create a link: ' + err.message; }
+    finally{ shareBtn.disabled = false; }
+  });
+  if(revokeBtn) revokeBtn.addEventListener('click', async () => {
+    revokeBtn.disabled = true;
+    try{
+      await share(true);
+      out.hidden = true;
+      state.textContent = 'Not shared.';
+      revokeBtn.remove();
+      shareBtn.textContent = 'Create a link';
+    }catch(err){ state.textContent = 'Could not revoke: ' + err.message; }
+  });
+  const copy = document.getElementById('copyShare');
+  if(copy) copy.addEventListener('click', () => {
+    const el = document.getElementById('shareUrl');
+    el.select();
+    navigator.clipboard ? navigator.clipboard.writeText(el.value) : document.execCommand('copy');
+    copy.textContent = 'Copied';
+    setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+  });
+})();
+</script>
+{% endblock %}

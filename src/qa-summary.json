@@ -1,0 +1,56 @@
+{
+  "project_id": 10,
+  "title": "Passive Cold-Chain Carrier With Recirculating Side And Return Passages",
+  "version_no": 1,
+  "ready": false,
+  "blockers": [
+    {
+      "title": "The independent review did not pass",
+      "detail": "Reviewed the disclosure, conversation, brief, all ten draft sections, numerals.md, all seven figure briefs, and prior_art/INDEX.md. The draft is materially clean on source fidelity, internal consistency, terminology and claim support: every numeral in numerals.md and every limitation of claims 1-20 traces to an affirmative passage of the inventor's disclosure (which the conversation repeats in substance); all 31 numerals label one part each and are used in the detailed description; every 'seen in FIG. N' statement matches the corresponding brief; the FIG. 6 / FIG. 7 section handedness is self-consistent (arrows pointing to the left of the outside elevation put the wall outer surface on the left in FIG. 7, as FIG-7.md specifies); and the three FIG. 1 enlargement curves match FIG. 3, FIG. 4 and FIG. 5 in content and left/left/right placement. prior_art/INDEX.md lists no references and the draft contains no REF citation, so there is no characterisation to test; as the drafting brief states, no prior-art search was run and the art given to this draft may be incomplete. The prior review's critical defect (tray side walls closing against the shell floor, perforations as sole flow route) has been corrected in FIG-1.md line 7 and FIG-5.md line 9. IMPORTANT LIMITATION: figures/ contains only the seven Markdown briefs, there are no rendered-*.png files, and review/figure-audit-evidence.json does not exist, so no pixel, OCR, leader, hatch or cutting-plane-arrow verification was possible; my figure review rests on the briefs alone. That is the same condition as the two mechanical failures already reported (no drawing sheet exists for FIG. 1 through FIG. 7, so all 31 specification numerals are absent from every drawing), which I have not duplicated as findings. One minor brief-level issue is reported below.",
+      "items": ""
+    },
+    {
+      "title": "Every specification numeral appears in a drawing",
+      "detail": "31 reference numeral(s) are used in the specification but absent from every drawing. Add each missing numeral to an appropriate focused sheet or redistribute the existing drawing plan. Do not remove a disclosed part, numeral definition, or supporting text to silence this check.",
+      "items": "10; 12; 14; 18; 20; 22"
+    },
+    {
+      "title": "Each described figure has a drawing sheet",
+      "detail": "A figure is described in the specification but no drawing has been prepared for it. Every described figure is required before the package can be published.",
+      "items": "FIG. 1; FIG. 2; FIG. 3; FIG. 4; FIG. 5; FIG. 6"
+    },
+    {
+      "title": "Every drawing sheet passes geometry, leader, and OCR inspection",
+      "detail": "The text was published on its own merits. These drawing defects do not block drafting and do block filing.",
+      "items": "The drawing pass reached its time budget for this turn. The sheets that were reached are up to date; the rest are not."
+    },
+    {
+      "title": "FIG. 7 brief draws the temperature-responsive latch touching the stem in a view that shows the released, exposed state",
+      "detail": "FIG. 7 is expressly a view of the tripped condition, in which the latch has already released the stem. The brief nonetheless specifies the latch block with its lower end adjacent the upper surface of the shaft, that is, in the same contact relationship it would occupy while retaining the stem, and specifies no clearance showing the release. As specified, FIG. 7 can be read as depicting the latch still holding a stem that the text says the latch has let go. I could not confirm the rendered geometry because figures/ contains no rendered-*.png file and review/figure-audit-evidence.json is absent, so I mark this minor; the ambiguity is nevertheless present in the brief as written. The fix changes no application text, adds no undisclosed structure, and keeps the disclosed part visible as a simple outline.",
+      "items": "figures/FIG-7.md line 13 (compare figures/FIG-7.md line 3, draft/07-drawings.md FIG. 7, draft/08-detailed-description.md paragraphs 41 and 43)"
+    },
+    {
+      "title": "7 figure(s) are described but no drawing sheet exists",
+      "detail": "35 USC 113 requires a drawing where one is necessary to understand the invention. Drawings may be filed informally and corrected later, but they must be filed.",
+      "items": ""
+    },
+    {
+      "title": "The drawing set does not match the application text",
+      "detail": "Every described figure must have exactly one checked sheet, with no obsolete or extra sheet.",
+      "items": "missing FIG. 1; missing FIG. 2; missing FIG. 3; missing FIG. 4; missing FIG. 5; missing FIG. 6; missing FIG. 7"
+    }
+  ],
+  "formalities": [],
+  "qa_verdict": "fail",
+  "section_count": 10,
+  "figure_count": 0,
+  "citation_count": 0,
+  "reference_count": 0,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "ad6fe9b44799420ca7420b81ed8950694e5d0f0854901ad8a6af2217a03a542d",
+  "figures": [],
+  "docx": {}
+}

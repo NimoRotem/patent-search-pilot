@@ -1,0 +1,26 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25b_ep1720180a3",
+ "subject_pub": "EP-1720180-A3",
+ "n_claims_source": 18,
+ "claims_source": "family_claims:US-2006250714-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 0,
+  "by_kind": {}
+ },
+ "problems": [
+  "NO_COMBINATION: no independent claim was stated as a whole"
+ ],
+ "usable": false,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [],
+ "content_hash": "4f53cda18c2baa0c"
+}

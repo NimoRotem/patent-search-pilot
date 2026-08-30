@@ -1,0 +1,231 @@
+{
+ "n": 1,
+ "pub": "US-12570007-B2",
+ "family_id": "88203306",
+ "biblio": {
+  "pub": "US-12570007-B2",
+  "label": "U.S. Patent No. 12,570,007",
+  "kind": "patent",
+  "title": "Magnetic coupling device with movable workpiece interfaces",
+  "country": "US",
+  "inventor": "Cengiz Kizilkan",
+  "assignee": "Magswitch Automation Co",
+  "publication_date": "2026-03-10",
+  "priority_date": "2022-03-29",
+  "filing_date": "2023-03-29",
+  "dates_source": "corpus",
+  "abstract": "Magnetic coupling devices may include movable pole portions. The movable pole portions may be retractable along a first direction and may be locked into place. In an exemplary embodiment of the present disclosure magnetic coupling device for magnetically coupling to a ferromagnetic workpiece is provided. The magnetic coupling device comprising: a housing; a switchable magnetic flux source supported by the housing; and a plurality of pole portions. The switchable magnetic flux source being switchable between at least an OFF state and at least one of a partial ON state and an ON state. Each including at least one workpiece interface having a workpiece engagement surface. The plurality of-pole portions including a first pole portion including a first workpiece interface having a first workpiece engagement surface and a second pole portion including a second workpiece interface having a second workpiece engagement surface.",
+  "issue_date_pretty": "March 10, 2026",
+  "priority_date_pretty": "March 29, 2022"
+ },
+ "subject": {
+  "app_no": "19/318,450",
+  "pub_no": "US 2026/0070232 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a magnetic coupling device with movable pole portions for magnetically coupling to a ferromagnetic workpiece, including a switchable magnetic flux source and a plurality of pole portions with workpiece interfaces.",
+ "rows": [
+  {
+   "claim_no": 2,
+   "label": "claim 2[b]",
+   "quote_claim": false,
+   "claim_text": "the displacement direction is aligned parallel to the longitudinal axis of the housing",
+   "claim_paraphrase": "the displacement direction is aligned parallel to the longitudinal axis of the housing",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "In the illustrated embodiment, first movable pole portion 32 is translatable in direction 40 and direction 42 relative to a lower surface 44 of housing 14 and a lower surface 46 of north pole portion 18 .",
+   "note": "The reference teaches that movable pole portions are translatable in certain directions relative to the housing, which implies a displacement direction.",
+   "cites": [
+    "Paragraph [0040]"
+   ],
+   "confidence": 0.6,
+   "_id": 3,
+   "disclosure": "The reference discloses that a first movable pole portion 32 is translatable in direction 40 and direction 42 relative to a lower surface 44 of housing 14, implying a displacement direction."
+  },
+  {
+   "claim_no": 3,
+   "label": "claim 3[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "First movable pole portion 32 and hence workpiece engagement surface 36 are made of a ferromagnetic material to complete a magnetic circuit from switchable magnetic flux source 16 through ferromagnetic workpiece 12 .",
+   "note": "The reference states that pole portions are made of ferromagnetic material to complete a magnetic circuit, which implies they direct the magnetic field.",
+   "cites": [
+    "Paragraph [0041]"
+   ],
+   "confidence": 0.7,
+   "_id": 4,
+   "disclosure": "The reference discloses that first movable pole portion 32 and workpiece engagement surface 36 are made of a ferromagnetic material to complete a magnetic circuit, thereby directing the magnetic field portion."
+  },
+  {
+   "claim_no": 6,
+   "label": "claim 6[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 5, wherein the plurality of projections include at least a first projection and a second projection",
+   "claim_paraphrase": "The magnetic gripper according to claim 5, wherein the plurality of projections include at least a first projection and a second projection",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "In still another example thereof, the first plurality of projections includes a first projection, a second projection, and a third projection.",
+   "note": "The reference discloses a plurality of projections including at least a first and second projection.",
+   "cites": [
+    "Paragraph [0018]",
+    "Paragraph [0070]"
+   ],
+   "confidence": 1.0,
+   "_id": 5,
+   "disclosure": "The reference discloses that the first plurality of projections includes a first projection, a second projection, and a third projection."
+  },
+  {
+   "claim_no": 8,
+   "label": "claim 8[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The plurality of pole portions including a first pole portion including a first workpiece interface having a first workpiece engagement surface and a second pole portion including a second workpiece engagement surface.",
+   "note": "This passage explicitly states that the plurality of pole portions includes a first pole portion and a second pole portion.",
+   "cites": [
+    "Abstract",
+    "Paragraph [0009]"
+   ],
+   "confidence": 1.0,
+   "_id": 6,
+   "disclosure": "The abstract discloses that the plurality of pole portions includes a first pole portion including a first workpiece interface and a second pole portion including a second workpiece engagement surface."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the magnet is displaceable electrically, pneumatically, or mechanically between the gripping position and the release position",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "As shown in FIG. 4, an actuator 84 is coupled to rare earth permanent magnet 82 to rotate rare earth permanent magnet 82 relative to rare earth permanent magnet 80 about an axis 86 (see FIGS. 5 - 7).",
+   "note": "This passage describes an actuator that rotates a permanent magnet, which is a mechanical means of displacing the magnet to switch its state, thus implying displacement between gripping and release positions.",
+   "cites": [
+    "Paragraph [0045]"
+   ],
+   "confidence": 0.9,
+   "_id": 7,
+   "disclosure": "The reference discloses an actuator 84 coupled to a rare earth permanent magnet 82 to rotate it, which is a mechanical means of displacing the magnet to switch its state."
+  },
+  {
+   "claim_no": 10,
+   "label": "claim 10[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the magnetic gripper has a position sensor for detecting the gripping position and/or the release position",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the magnetic gripper has a position sensor for detecting the gripping position and/or the release position",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "In a variation thereof, the characteristic is a position of one or more of the plurality of movable pole portions.",
+   "note": "The reference discloses a sensor to provide a characteristic which can be a position of movable pole portions, which can be used to detect gripping/release positions.",
+   "cites": [
+    "Paragraph [0010]"
+   ],
+   "confidence": 0.8,
+   "_id": 8,
+   "disclosure": "The reference discloses that a characteristic can be a position of one or more of the plurality of movable pole portions, which can be used to detect the gripping and/or release position."
+  },
+  {
+   "claim_no": 12,
+   "label": "claim 12[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the magnetic gripper has a manipulator interface for attaching the magnetic gripper to a manipulator",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the magnetic gripper has a manipulator interface for attaching the magnetic gripper to a manipulator",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A robotic system, including a robotic arm having a magnetic coupling device according to claim 1 attached to an end of the robotic arm.",
+   "note": "The reference describes a magnetic coupling device attached to a robotic arm, implying a manipulator interface.",
+   "cites": [
+    "Claim 27"
+   ],
+   "confidence": 0.8,
+   "_id": 9,
+   "disclosure": "The reference discloses a robotic system including a robotic arm having a magnetic coupling device attached to an end of the robotic arm, implying a manipulator interface."
+  },
+  {
+   "claim_no": 13,
+   "label": "claim 13[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein a housing portion of the housing is designed to largely suppress the escape of the magnetic field of the magnet from the housing portion, or",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein a housing portion of the housing is designed to largely suppress the escape of the magnetic field of the magnet from the housing …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Switchable magnetic flux source 16 of magnetic coupling tool 10 is switchable between an OFF state wherein a magnetic circuit is formed within housing 14 and an ON state wherein a magnetic circuit is formed from switchable magnetic flux source",
+   "note": "The reference describes an OFF state where the magnetic circuit is formed within the housing, which suppresses the escape of the magnetic field.",
+   "cites": [
+    "Paragraph [0043]"
+   ],
+   "confidence": 0.9,
+   "_id": 10,
+   "disclosure": "The reference discloses an OFF state wherein a magnetic circuit is formed within housing 14, which suppresses the escape of the magnetic field from the housing portion."
+  },
+  {
+   "claim_no": 14,
+   "label": "claim 14[c]",
+   "quote_claim": false,
+   "claim_text": "wherein, in a gripping state, the magnet is in the gripping position, and the ferromagnetic workpiece is pressed against each workpiece contact surface by means of a magnetic force, and",
+   "claim_paraphrase": "wherein, in a gripping state, the magnet is in the gripping position, and the ferromagnetic workpiece is pressed against each workpiece contact surface by means of a magnetic …",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "In the on-state, a workpiece is held by switchable magnetic flux source 400 due to a completion of a magnetic circuit from the aligned north pole portions 450 of upper platter 412 and lower platter 414, through the workpiece, and",
+   "note": "This passage describes the 'ON state' where a workpiece is held by a magnetic force, which aligns with the 'gripping state' where the ferromagnetic workpiece is pressed against the workpiece contact surface by magnetic force.",
+   "cites": [
+    "Paragraph [0052]",
+    "Paragraph [0030]"
+   ],
+   "confidence": 0.9,
+   "_id": 11,
+   "disclosure": "The reference discloses an ON state where a workpiece is held by switchable magnetic flux source 400 due to a completion of a magnetic circuit through the workpiece, which corresponds to a gripping state where the ferromagnetic workpiece is pressed against each workpiece contact surface by magnetic force."
+  },
+  {
+   "claim_no": 16,
+   "label": "claim 16[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the receptacle is in the form of a groove",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the receptacle is in the form of a groove",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The exemplary interfaces 310 shown in FIG. 26 are elongated slots 312 having lower surfaces 314 and upper surfaces 316 .",
+   "note": "The reference discloses elongated slots as interfaces, which could be considered a type of groove.",
+   "cites": [
+    "Paragraph [0072]"
+   ],
+   "confidence": 0.6,
+   "_id": 12,
+   "disclosure": "The reference discloses exemplary interfaces 310 as elongated slots 312, which can be considered a type of groove."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "secret_prior_art",
+   "blocked": false,
+   "forum": "US",
+   "note": "Earlier-filed, later-published. Available under 35 U.S.C. 102(a)(2) / EPC Art. 54(3) for novelty only, not for obviousness or inventive step."
+  },
+  "quotes": {
+   "checked": 13,
+   "dropped": 3,
+   "note": "3 of 13 quotations could not be found in the stored text of this reference and were removed; the finding and its citation remain."
+  },
+  "rows_dropped": 3,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

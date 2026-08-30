@@ -1,0 +1,455 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25j_ep3546144a1",
+ "subject_pub": "EP-3546144-A1",
+ "n_claims_source": 13,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 71,
+  "by_kind": {
+   "independent_limitation": 17,
+   "combination": 1,
+   "dependent_limitation": 53
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A manipulator device for accommodating forces and moments of a load.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The manipulator device is an industrial robot.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The manipulator device has at least one manipulator arm.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The manipulator arm has at least two arm bodies movable relative to one another.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one joint is arranged between each two arm bodies.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The joint allows the two arm bodies to rotate relative to each other about a pivot axis.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The manipulator device has at least one drive unit.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The drive unit comprises at least one electromagnetic drive means.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The electromagnetic drive means is arranged on the manipulator arm in the region of the joint.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The electromagnetic drive means is assignable or assigned to the joint.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The electromagnetic drive means has at least one stator fixed against rotation on one arm body.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The electromagnetic drive means has at least one rotor fixed against rotation on the other arm body.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The stator and rotor are rotatable relative to each other about a drive axis.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The stator and rotor are fixable relative to each other.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The drive axis runs parallel to the pivot axis of the joint.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The drive axis is aligned with the pivot axis of the joint.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The drive axis of the electromagnetic drive means runs substantially transversely to the longitudinal extension of at least one arm body.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A manipulator device with a manipulator arm having at least two arm bodies and a joint between them, driven by an electromagnetic means with a stator and rotor, where the drive axis is transverse to the arm body's longitudinal direction.",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "The electromagnetic drive means comprises a direct drive.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The direct drive is controllable by a control unit, such as an absolute encoder.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The control unit moves and/or fixes the rotor relative to the stator.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one drive means is arranged such that its center of gravity and the center of gravity of the arm body system are on the same plane transverse to the drive axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive unit comprises at least two parallel drive means.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The two parallel drive means are arranged such that their drive axes are substantially congruent.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The two parallel drive means are arranged such that the center of gravity of the drive means system and the center of gravity of the arm body system are on the same plane transverse to the common drive axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The joint comprises at least one bearing means.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The bearing means is arranged such that its center of gravity and the center of gravity of the arm body system are on the same plane transverse to the pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The joint comprises at least two parallel bearing means.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The two parallel bearing means are arranged such that their pivot axes are substantially congruent.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The two parallel bearing means are arranged such that the center of gravity of the bearing means system and the center of gravity of the arm body system are on the same plane transverse to the common pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one arm body comprises at least one framework-like support means.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The framework-like support means accommodates forces acting transversely to the pivot axis of the joint.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one arm body comprises at least two framework-like support means.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one arm body comprises at least one support means.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The support means rests against the framework-like support means.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The support means at least nearly or partially surrounds the framework-like support means.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The support means accommodates forces acting in the direction of the pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one rotor and/or stator is rotatably fixable or fixed to the framework-like support means.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The joint is at least partially arranged on the framework-like support means.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The framework-like support means has a thickness of 1 to 40 mm transverse to the longitudinal direction of the arm body.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The framework-like support means has a thickness of 1.5 to 30 mm transverse to the longitudinal direction of the arm body.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The framework-like support means has a thickness of 2 to 20 mm transverse to the longitudinal direction of the arm body.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The framework-like support means is made of metal.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The framework-like support means is made of aluminum.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The support means is made of plastic.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The support means is a carbon fiber reinforced component.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one arm body comprises an outwardly open or closed cavity.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The cavity extends in or transverse to the longitudinal direction of the arm body.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The cavity opens into or transitions into a cavity of an adjacent arm body connected via the joint.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one hose-like or cable-like supply means is arranged in the cavity.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The supply means allows energy to flow and/or be transported.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The energy is in electrical, pneumatic, or hydraulic form.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one connection means is arrangeable in the cavity of the arm body.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The connection means connects the drive unit or a manipulator element to the supply means.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The manipulator element is a gripper or tool.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The manipulator arm is multi-axial.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "One arm body is an n-th arm body, and the other is an (n+1)-th arm body.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The (n+1)-th arm body is rotatably fixed about an n-th joint with an n-th pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one drive means of an n-th drive unit is arrangeable or arranged at the n-th joint.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive means is electromagnetic.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "A first arm body is rotatably fixed to a base about a first joint with a first pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "A second arm body is rotatably fixed to the first arm body about a second joint with a second pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "A third arm body is rotatably fixed to the second arm body about a third joint with a third pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "A fourth arm body is rotatably fixed to the third arm body about a fourth joint with a fourth pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "A fifth arm body is rotatably fixed to the fourth arm body about a fifth joint with a fifth pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one drive unit with at least one electromagnetic drive means is arrangeable or arranged at the second, third, and/or fifth joint.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one arm body, specifically the second arm body, has an arcuate cross-section when viewed transversely to the pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one arm body has a C-shaped cross-section when viewed transversely to the pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one arm body, the drive unit, and the joint are substantially symmetrical with respect to a plane transverse to the pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one arm body, the drive unit, and the joint are mirror-symmetrical with respect to a plane transverse to the pivot axis.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The plane contains the respective center of gravity.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "04c8aa073d0e220a"
+}

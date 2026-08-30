@@ -1,0 +1,246 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b27b_ep2078686a1",
+ "subject_pub": "EP-2078686-A1",
+ "n_claims_source": 12,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 36,
+  "by_kind": {
+   "independent_limitation": 7,
+   "combination": 1,
+   "dependent_limitation": 22,
+   "potential_claim": 6
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "an endless transport element is mobile along a circuit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the transport element removes items from a first to a second position",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "an expansion body is assigned to the transport element",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the expansion body comprises a membrane-shaped part with a chamber",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the chamber is filled with a medium",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the membrane-shaped part interacts with the transport element for inflation",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the inflation occurs during item removal",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A feed arrangement consisting of an endless transport element that is mobile along a circuit and removes items from a first to a second position, characterized in that an expansion body with a membrane-shaped part and a medium-filled chambe",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "the medium comprises a gas",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the medium is air",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the expansion body is essentially extended",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the expansion body cross-section has an inner solid, thick base",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the expansion body cross-section has an intermediate tapering web-shaped part",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the membrane-shaped part has a bulb form at its farthest extent",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "a valve device accesses the chamber from outside",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "the valve device faces towards the center of the circuit",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "the expansion body and transport element are separate parts",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the expansion body is arranged within the circuit of the transport element",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the expansion body is attached by its thicker base",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "the membrane-shaped part extends parallel along the inner surface of the transport element",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "an extended friction-reducing means is between the expansion body and transport element",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "the friction-reducing means is a tape or plate",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the friction-reducing means is attached at its end by holders",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the holders provide compliance and movement to the friction-reducing means",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the transport element is guided by tracks relative to the expansion body",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "the transport element and expansion body are located in line, opposite each other",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "the transport element is guided by tracks via a groove",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "the groove is arranged between the friction-reducing means and the transport element",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "the expansion body forms a continuous integrated part of the transport element",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the expansion body passes continuously around the complete transport element",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the transport element is a belt of elastic",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  },
+  {
+   "text": "the transport element is a cogged band",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  },
+  {
+   "text": "the transport element is a chain",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  },
+  {
+   "text": "the items are timber",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  },
+  {
+   "text": "the items are planks",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  },
+  {
+   "text": "the items are boards",
+   "kind": "potential_claim",
+   "source": "claim 1",
+   "weight": 0.55
+  }
+ ],
+ "content_hash": "ea677c0160d1199d"
+}

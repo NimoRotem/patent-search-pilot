@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "purpose": "Exact-image OCR, geometry, section-mark, leader, and native-pixel endpoint evidence for independent review. This is audit evidence, not inventor source material.",
+  "figures": [
+    {
+      "figure_label": "FIG. 7",
+      "rendered_file": "rendered-FIG-7.png",
+      "rendered_sha256": "068f42040e450e9a9a1a6c7f1eeda67b28a8326b721c56e8496151fbbe17c6a8",
+      "specification_hash": "77d59e833bd849fbe2808e86493b080393326d765b294f95f3b81070c97ef1ca",
+      "ocr": {
+        "ok": true,
+        "expected_numerals": [
+          "10",
+          "16",
+          "24",
+          "26",
+          "90",
+          "94"
+        ],
+        "detected_numerals": [
+          "90",
+          "10",
+          "24",
+          "94",
+          "16",
+          "26"
+        ],
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "expected_sheet_number": "7/7",
+        "detected_sheet_number": "7/7",
+        "detected_figure_label": "FIG. 7"
+      },
+      "geometry": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-geometry-crosscheck-v5-caption-geometry-authority",
+        "summary": "The drawing accurately depicts all required geometric elements according to the specification, with no missing or unexpected geometry.",
+        "missing": [],
+        "unexpected": [],
+        "errors": []
+      },
+      "deterministic_section_hatching": {},
+      "section_marks": {
+        "ok": true,
+        "required": false,
+        "reviewer": "deterministic-parser",
+        "prompt_version": "figure-section-mark-v1-native-coordinate-independent-consensus",
+        "review_count": 0,
+        "summary": "The source-view brief requires no cutting-plane designation.",
+        "marks": []
+      },
+      "leaders": {
+        "ok": true,
+        "prompt_version": "figure-leader-v9-section-line-endpoint-clearance-independent-consensus",
+        "marked_prompt_version": "figure-anchor-v15-native-pixel-actionable-coordinate-certificate-majority",
+        "section_mark_anchor_clearance": {
+          "ok": true,
+          "version": "section-mark-anchor-clearance-v1-final-composite",
+          "required": false,
+          "clearance": 20,
+          "inspected": false,
+          "collisions": [],
+          "mark_count": 0,
+          "adjusted_numerals": [],
+          "colliding_numerals": []
+        }
+      },
+      "endpoints": {
+        "ok": true,
+        "reviewer": "vertex",
+        "prompt_version": "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage",
+        "summary": "All 6 reference numeral endpoints are correctly placed according to the specification.",
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1408,
+        "coordinate_height": 768,
+        "labels": [
+          {
+            "numeral": "10",
+            "correct": true,
+            "evidence": "The terminal dot is on the top edge of the rail geometry, which is part of the visible rail."
+          },
+          {
+            "numeral": "16",
+            "correct": true,
+            "evidence": "The terminal dot is within the longitudinal slot geometry, on its centerline."
+          },
+          {
+            "numeral": "24",
+            "correct": true,
+            "evidence": "The terminal dot is on the top end of the vertical line segment representing the transverse center index."
+          },
+          {
+            "numeral": "26",
+            "correct": true,
+            "evidence": "The terminal dot is at the apex of the V-shaped sight notch, which is part of its visible geometry."
+          },
+          {
+            "numeral": "90",
+            "correct": true,
+            "evidence": "The terminal dot is on the top edge of the workpiece geometry."
+          },
+          {
+            "numeral": "94",
+            "correct": true,
+            "evidence": "The terminal dot is on the horizontal dashed-dot line representing the centerline."
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b23q_ep1651392a4",
+ "subject_pub": "EP-1651392-A4",
+ "n_claims_source": 0,
+ "claims_source": "none",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 0,
+  "by_kind": {}
+ },
+ "problems": [
+  "no claims and no description supplied",
+  "NO_CLAIMS_AVAILABLE: every source returned zero claims for a published patent; this is a source failure"
+ ],
+ "usable": false,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [],
+ "content_hash": "4f53cda18c2baa0c"
+}

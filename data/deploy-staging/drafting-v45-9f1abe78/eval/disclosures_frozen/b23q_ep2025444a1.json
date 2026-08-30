@@ -1,0 +1,185 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b23q_ep2025444a1",
+ "subject_pub": "EP-2025444-A1",
+ "n_claims_source": 18,
+ "claims_source": "family_claims:US-2009044386-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 26,
+  "by_kind": {
+   "independent_limitation": 4,
+   "combination": 1,
+   "dependent_limitation": 21
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A pull-down fastening device for fastening objects with bores",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The device comprises a fastening unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The fastening unit features a modular interchangeable fastening insert",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The modular interchangeable fastening insert includes a fastening element",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A pull-down fastening device for fastening objects with bores, comprising a fastening unit featuring a modular interchangeable fastening insert, wherein the modular interchangeable fastening insert includes a fastening element",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "The device has several varied fastening inserts",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening element is firmly connected with the fastening insert",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening element is movably connected with the fastening insert",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening element is swivelably connected with the fastening insert",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening element can swivel about an axis perpendicular to the direction of fastening",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening insert is equipped for replacement into the starting position when fastening is released",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening element includes a fastening ring",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening element includes a tie-rod",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening element includes a tapered insertable collar",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The tapered insertable collar has a taper designed to interact with the fastening ring",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The device has a bushing for the tapered insertable collar",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The bushing ensures a secure fit of the tapered insertable collar",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The bushing enables an adjustment to the tapered insertable collar",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The bushing enables a one-dimensional adjustment to the tapered insertable collar",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The bushing enables a two-dimensional adjustment to the tapered insertable collar",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The fastening unit has a drive piston",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive piston is a hydraulic drive piston",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive piston is arranged parallel to the fastening element",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive piston is mechanically coupled with the fastening insert",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive piston is positively coupled with the fastening insert",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive piston is coupled with the fastening insert by means of a pin",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "fa99fec7f6cc2b91"
+}

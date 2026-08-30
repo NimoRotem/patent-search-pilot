@@ -1,0 +1,395 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25b_ep4195472a3",
+ "subject_pub": "EP-4195472-A3",
+ "n_claims_source": 1,
+ "claims_source": "family_claims:US-2023188020-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 61,
+  "by_kind": {
+   "independent_limitation": 19,
+   "combination": 1,
+   "dependent_limitation": 41
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A power tool comprising a tool housing",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A brushless direct-current (BLDC) motor disposed in the tool housing",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The BLDC motor includes a stator with a stator core having an aperture",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The stator core aperture extends therethrough",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The stator includes a plurality of stator windings",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The BLDC motor includes a rotor comprising a cylindrical rotor core",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The rotor supports at least one permanent magnet around an outer surface of the stator core",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The BLDC motor includes a rotor shaft rotatably coupled to the rotor",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A stator mount assembly comprising a stator mount",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The stator mount includes an axial member secured to the stator",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The stator mount assembly includes an integrated mounting member",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The integrated mounting member includes a radial member secured to the stator mount",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The integrated mounting member includes a ring gear mount extending from the radial member away from the motor",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A ring gear supported by the ring gear mount",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A transmission secured to the tool housing",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The transmission includes a transmission housing having a generally cylindrical body",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The transmission includes a planetary gear set including a carrier and at least one planet gear",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The at least one planet gear is rotatably mounted to the carrier",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The ring gear meshes with the at least one planet gear",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A power tool comprising a tool housing, a BLDC motor with a stator and rotor, a stator mount assembly with an integrated mounting member and ring gear mount, a ring gear, and a transmission with a planetary gear set, where the ring gear mes",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "The rotor comprises a rear wall proximate a rear end of the stator",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The rear wall is mounted on the rotor shaft",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The rotor shaft extends through the aperture of the stator to be coupled to the input member of the transmission",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The axial member of the stator mount comprises a cylindrical portion",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The stator core is securely mounted onto the cylindrical portion",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The rotor shaft extends through the cylindrical portion",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one motor bearing having an inner race mounted on the rotor shaft",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The motor bearing has an outer race secured within the cylindrical portion",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The stator mount includes at least one radial arm",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The radial member of the integrated mounting member is molded around the at least one radial arm",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The stator mount includes at least one protrusion",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The protrusion is received into a peripheral opening of the integrated mounting member",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The protrusion secures the integrated mounting member at least rotationally to the stator mount",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "A carrier bearing configured to support the carrier relative to the stator mount assembly",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The stator mount includes a frontal annular body forming a bearing holder for the carrier bearing",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The frontal annular body radially aligns the carrier bearing with the radial member of the integrated mounting member",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The ring gear mount is discretely coupled to the transmission housing",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The transmission housing overlaps at least the ring gear mount of the integrated mounting member",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "An O-ring disposed between the integrated mounting member and the transmission housing",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The O-ring substantially seals the transmission",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "A nosecone mounted on the tool housing to provide an output member",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The output member is configured to be rotatably driven by a cam shaft coupled to the carrier",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The transmission housing is integrally formed with the nosecone",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The transmission housing extends rearwardly from the nosecone inside the tool housing",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "A distance between a front end of the motor and a rear end of the transmission is at most 7.7 mm",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The motor has an outer diameter smaller than or equal to approximately 52 mm",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The motor produces a maximum power output of at least 620 watts from a 20 V max power tool battery pack",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The integrated mounting member includes a transmission housing having a generally cylindrical body",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The transmission housing integrally extends from the radial member away from the motor",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The transmission housing is secured to the tool housing",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The transmission housing houses components of a transmission",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The components of the transmission include a carrier, at least one planet gear, and a ring gear",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The ring gear is supported by the transmission housing",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "A front portion of the transmission housing extends out of the tool housing",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "The front portion of the transmission housing is received within the nosecone",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "An O-ring disposed between the front portion of the transmission housing and the nosecone",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "The O-ring substantially seals the transmission assembly",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "The transmission housing includes at least one inner rim that engages an axial end of the ring gear",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "The inner rim secures the ring gear within the transmission housing",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "The transmission housing has a plurality of outer protrusions on its outer surface",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "The outer protrusions are configured to engage a portion of the tool housing to rotationally fix the transmission",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "6bacc4be8524bb0b"
+}

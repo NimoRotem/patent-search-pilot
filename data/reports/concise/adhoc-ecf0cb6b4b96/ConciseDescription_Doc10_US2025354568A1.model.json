@@ -1,0 +1,173 @@
+{
+ "n": 10,
+ "pub": "US-2025354568-A1",
+ "family_id": "95697529",
+ "biblio": {
+  "pub": "US-2025354568-A1",
+  "label": "U.S. Patent Application Publication No. US 2025/0354568 A1",
+  "kind": "publication",
+  "title": "",
+  "country": "US",
+  "inventor": "",
+  "assignee": "",
+  "publication_date": "2025-11-20",
+  "priority_date": "2024-05-16",
+  "filing_date": "2025-05-15",
+  "dates_source": "corpus",
+  "abstract": "",
+  "issue_date_pretty": "November 20, 2025",
+  "priority_date_pretty": "May 16, 2024"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a compressed-air-driven vacuum generation device with a silencer apparatus and multiple modules, including an interface module, control valve module, control piston module, nozzle module, and silencer module.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[d]",
+   "quote_claim": true,
+   "claim_text": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "claim_paraphrase": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The silencer apparatus has flow openings in its outside through which the compressed air flowing through the vacuum generation device can escape to the outside.",
+   "note": "This reference mentions exhaust air escaping through flow openings in a silencer apparatus, which is part of the vacuum generation device",
+   "cites": [
+    "Paragraph [0020]"
+   ],
+   "confidence": 0.6,
+   "_id": 0,
+   "disclosure": "The silencer apparatus has flow openings in its outside through which the compressed air flowing through the vacuum generation device can escape to the outside."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[e]",
+   "quote_claim": true,
+   "claim_text": "a sound-damping device is arranged in the grip portion",
+   "claim_paraphrase": "a sound-damping device is arranged in the grip portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The vacuum generation device has a plurality of nozzle lines, each with at least one ejector nozzle for generating a vacuum from compressed air. Furthermore, the vacuum generation device has at least one compressed-air connection for connection to an in",
+   "note": "This reference describes a vacuum generation device with a silencer apparatus, which is a sound-damping device",
+   "cites": [
+    "Paragraph [0002]"
+   ],
+   "confidence": 0.8,
+   "_id": 1,
+   "disclosure": "The vacuum generation device has a silencer apparatus."
+  },
+  {
+   "claim_no": 2,
+   "label": "claim 2[a]",
+   "quote_claim": false,
+   "claim_text": "The grip unit according to claim 1, wherein the grip portion is at least partially lined with a sound-damping material",
+   "claim_paraphrase": "The grip unit according to claim 1, wherein the grip portion is at least partially lined with a sound-damping material",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The compressed-air-driven vacuum generation device has a silencer apparatus, wherein the nozzle lines open into the silencer apparatus.",
+   "note": "This reference mentions a silencer apparatus for noise reduction in a vacuum generation device, which could be considered a form of sound damping",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.6,
+   "_id": 2,
+   "disclosure": "The compressed-air-driven vacuum generation device has a silencer apparatus."
+  },
+  {
+   "claim_no": 4,
+   "label": "claim 4[a]",
+   "quote_claim": false,
+   "claim_text": "The grip unit according to claim 3, wherein a sound-reducing device is arranged in the first housing portion or the first housing portion is lined with sound-reducing material",
+   "claim_paraphrase": "The grip unit according to claim 3, wherein a sound-reducing device is arranged in the first housing portion or the first housing portion is lined with sound-reducing material",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The compressed-air-driven vacuum generation device has a silencer apparatus, wherein the nozzle lines open into the silencer apparatus.",
+   "note": "This reference discloses a silencer apparatus for noise reduction in a vacuum generation device, which is a type of sound-reducing device.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.8,
+   "_id": 3,
+   "disclosure": "The compressed-air-driven vacuum generation device has a silencer apparatus."
+  },
+  {
+   "claim_no": 7,
+   "label": "claim 7[a]",
+   "quote_claim": false,
+   "claim_text": "The grip unit according to claim 1, wherein downstream of the grip portion, in on or in the second housing portion, one or more, bent or curved, air baffles are arranged for guiding exhaust air emerging from the grip portion to the air outlet",
+   "claim_paraphrase": "The grip unit according to claim 1, wherein downstream of the grip portion, in on or in the second housing portion, one or more, bent or curved, air baffles are arranged for …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The vacuum generation device can also be designed and configured for suctioning and handling objects. According to a preferred embodiment of the invention, it is provided that the valve device be designed and configured to block and open a first",
+   "note": "This reference describes a vacuum generation device with nozzle lines and a silencer apparatus for noise reduction, which implies exhaust air handling.",
+   "cites": [
+    "Paragraph [0008]"
+   ],
+   "confidence": 0.6,
+   "_id": 4,
+   "disclosure": "The vacuum generation device can be designed and configured for suctioning and handling objects."
+  },
+  {
+   "claim_no": 10,
+   "label": "claim 10[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The vacuum generation device 1 consists overall of a plurality of, in particular five, modules, viz., the interface module, the control valve module 38 , the control piston module 57 , the nozzle module, and the silencer module. These modules",
+   "note": "This reference discloses that modules of a vacuum generation device are reversibly separable using plug-in connectors, which is a partial disclosure of a releasable connection via a coupling device.",
+   "cites": [
+    "Paragraph [0036]"
+   ],
+   "confidence": 0.7,
+   "_id": 5,
+   "disclosure": "The vacuum generation device 1 consists of a plurality of modules, including an interface module, a control valve module 38, a control piston module 57, a nozzle module, and a silencer module, which are reversibly separable using plug-in connectors."
+  },
+  {
+   "claim_no": 11,
+   "label": "claim 11[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate in order to generate a vacuum between the suction plate and an object to be lifted",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit has a suction opening, which is fluidically connected to a suction chamber delimited by the suction plate …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The compressed-air-driven vacuum generation device according to claim 6 , wherein the suction channel and the nozzle lines are arranged in a nozzle apparatus.",
+   "note": "This reference describes a vacuum generation device with suction channels and ejector nozzles to generate a vacuum, and mentions a 'channel suction opening' and a 'suction volume'.",
+   "cites": [
+    "Claim 1"
+   ],
+   "confidence": 0.6,
+   "_id": 6,
+   "disclosure": "The compressed-air-driven vacuum generation device has a suction channel and nozzle lines arranged in a nozzle apparatus."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 7,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

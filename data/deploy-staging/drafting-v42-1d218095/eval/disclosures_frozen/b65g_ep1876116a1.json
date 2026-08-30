@@ -1,0 +1,107 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b65g_ep1876116a1",
+ "subject_pub": "EP-1876116-A1",
+ "n_claims_source": 8,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 13,
+  "by_kind": {
+   "independent_limitation": 5,
+   "combination": 1,
+   "dependent_limitation": 7
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A roller for guiding and/or transport purposes",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The roller is for conveyors and elevators",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The roller comprises a support part",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The roller comprises a bandage made of an elastomeric material",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The bandage has at least one axially compliant side edge",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A roller for guiding and/or transport purposes, comprising a support part and an elastomeric bandage, where the bandage has at least one axially compliant side edge",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Annular grooves are introduced into the axial side edges of the bandage",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The annular grooves' outer groove walls are aligned at an acute angle to the annular surface of the bandage",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The annular grooves are interrupted by transverse walls",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The bandage consists of an elastic polymeric material with a hardness greater than 90\u00b0 Sh",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The support part consists of a metal",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The support part consists of plastic",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The support part is designed as a metal-plastic composite part",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "89a7fc6c9298c1d7"
+}

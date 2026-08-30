@@ -1,0 +1,1 @@
+Continue automatic filing repair from the saved candidate and its previous QA report. Resolve every blocker, regenerate any rejected drawing geometry, rerun all text, source-fidelity, OCR, numeral, leader, and visual checks, and publish only after every gate passes. This is corrective QA, not new invention disclosure.

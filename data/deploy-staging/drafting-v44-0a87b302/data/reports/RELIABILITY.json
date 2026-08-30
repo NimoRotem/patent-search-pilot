@@ -1,0 +1,19 @@
+{
+  "measured_on": "2026-07-19",
+  "method": "measure_honesty.py — same reports, slugs and judge rubrics as the M9/POST_OPS audits; no report regeneration, so the candidate sets are identical and the numbers are comparable",
+  "rationale_baseline_rate": 0.2632,
+  "rationale_baseline_n": 38,
+  "rationale_desync_only_rate": 0.0789,
+  "rationale_error_rate": 0.075,
+  "rationale_n": 40,
+  "chart_fp_pre": 0.5833,
+  "chart_fp_pre_n": 12,
+  "chart_fp_post_bad": 0,
+  "chart_fp_post_n": 5,
+  "caveats": [
+    "The claim-chart post-verification figure is 0 of 5 cells. Five cells cannot support a rate estimate.",
+    "The cell verifier and the auditing judge are both gemini-2.5-flash with similar prompts, so they share failure modes; the true residual false-positive rate is very likely above zero.",
+    "Verification removed 7 of 12 coverage cells rather than correcting them. The chart now asserts far less, which is the intended outcome, not a recall improvement.",
+    "Of the rationale improvement from 26.3% to 7.5%, nearly all is attributable to fixing the generator/judge text desync (26.3% -> 7.9% with the generator unchanged). The span+bigram grounding change is justified by a controlled length-stability test and a regression test, NOT by a measured drop on this 40-item sample."
+  ]
+}

@@ -1,0 +1,69 @@
+.env
+*.pem
+*.key
+credentials.*
+secrets.*
+.venv/
+data/pdfs/
+data/embed_batches/
+data/coverage/*.csv
+__pycache__/
+*.pyc
+pgdata/
+*.log
+
+# Milestone 2 webapp caches (regenerable)
+data/enriched/
+data/figures/
+data/rationale/
+data/reports/*.view.json
+data/reports/*.meta.json
+# the retrieval/fusion checkpoint a durable run resumes from (regenerable, per run)
+data/reports/*.fused.json
+data/patent-results.*.log
+data/webapp.log
+data/M3_INDEX_DONE
+data/reports/*.flags.json
+data/reports/exports/*__*.pdf
+data/reports/exports/*__*.docx
+data/de_enrich_pubs.json
+data/reports/adhoc-*
+data/missing_gold_families.json
+.pytest_cache/
+
+# incremental ingest runtime artifacts (regenerable)
+data/incremental.lock
+data/incremental_state.json
+
+# serving hardening: Flask session signing key + LLM spend meter (never commit)
+.secret_key
+data/run_budget.json
+
+# federated search response cache (regenerable, and can be large)
+data/federation_cache/
+
+# OPS weekly byte budget + translation cache (regenerable runtime state)
+data/ops_budget.json
+data/translations/
+data/finish_embed.*
+*.bak-uiredesign-*
+.env.bak-*
+
+# public scope statement: last successful corpus scan, re-read at start-up (regenerable)
+data/corpus_facts.json
+
+# field text backfill progress (regenerable runtime state)
+data/enrich_field_state.json
+data/logs/
+
+# benchmark runs are regenerable artefacts (eval/benchmark.py --run --tag N)
+eval/benchmark_results/
+
+# Timestamped in-place backups taken before a live patch. Never artefacts.
+*.bak-*
+
+# Niche corpus workstream. The extraction cache is a 2 GB copy of live tables (ops/niche_extract.py
+# rebuilds it in about 4 minutes) and a manifest release is 1 to 2 GB of NDJSON. Both are build
+# artefacts at a stable path, never repository content. docs/niche_manifest_contract.md says where.
+data/niche_cache/
+data/manifests/

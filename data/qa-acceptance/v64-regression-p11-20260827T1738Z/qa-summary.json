@@ -1,0 +1,59 @@
+{
+  "project_id": 11,
+  "title": "EDGE CONTROLLER FOR AGGREGATE-CURRENT-LIMITED ELECTRIC-VEHICLE CHARGING",
+  "version_no": 1,
+  "ready": false,
+  "blockers": [
+    {
+      "title": "The independent review did not pass",
+      "detail": "Source fidelity and internal consistency of the text are sound. Every claim limitation, every numbered part, and every process step in draft/08-detailed-description.md traces to an exact passage in input/disclosure.md (repeated verbatim in input/conversation.md): the branch limit below the sum of connector ratings; per-connector contactor, connector current sensor, control-pilot interface and local connector identifier; the upstream branch current sensor as an independent safety input; the isolated local bus; the four stored per-session values; the subtract-non-charging-load-and-safety-reserve arithmetic; minimum-sustaining-then-deficit distribution; pilot transmission with connector-sensor verification; the reduced-pilot / verification-interval / ordered-shedding ladder; the three-condition reclose permissive; welded-contactor recording with inhibit of the other contactors and the local fault indicator; the offline signed token, last accepted branch limit in nonvolatile memory and tamper-evident meter sequence; and the service-input mapping with store-only-on-agreement. I found no added structure, relationship, result, material or embodiment, no numeral that labels more than one part (100-136 and 200-214 are identical across the description, draft/numerals.md and the four briefs, and all 23 are used exactly as defined), no naming drift for the same element, and no statement in one section that contradicts another. The abstract is 142 words. The draft contains no [REF:] citation, which is correct: prior_art/ holds only INDEX.md, whose reference table is empty. As input/brief.md records that no prior-art search was run, the art backdrop available to this review is empty by design and may be incomplete. The defects are confined entirely to the drawing package: figures/ still contains only FIG-1.md through FIG-4.md and no rendered sheet exists for any figure, and review/figure-audit-evidence.json is absent, so no pixel, OCR, numeral-placement, leader or geometry verification was possible and both failing mechanical gates stand unresolved from the previous QA cycle.",
+      "items": ""
+    },
+    {
+      "title": "Every specification numeral appears in a drawing",
+      "detail": "23 reference numeral(s) are used in the specification but absent from every drawing. Add each missing numeral to an appropriate focused sheet or redistribute the existing drawing plan. Do not remove a disclosed part, numeral definition, or supporting text to silence this check.",
+      "items": "100; 102; 104; 106; 108; 110"
+    },
+    {
+      "title": "Each described figure has a drawing sheet",
+      "detail": "A figure is described in the specification but no drawing has been prepared for it. Every described figure is required before the package can be published.",
+      "items": "FIG. 1; FIG. 2; FIG. 3; FIG. 4"
+    },
+    {
+      "title": "No drawing sheet exists for any of the four described figures, so all 23 specification numerals appear in no drawing",
+      "detail": "figures/ contains only the four Markdown briefs FIG-1.md, FIG-2.md, FIG-3.md and FIG-4.md. A search of the whole workspace for any non-Markdown, non-Python file returns nothing, so there is no rendered-FIG-*.png (or any other image) for any figure. The specification nevertheless describes four figures in draft/07-drawings.md, relies on each of them in the detailed description ('FIG. 1 shows...', 'FIG. 2 shows...', 'FIG. 3 shows...', 'FIG. 4 shows...'), and applies 23 reference numerals to them. Because no sheet exists, every numeral defined in draft/numerals.md (100, 102, 104, 106, 108, 110, 112, 114, 120, 122, 124, 126, 132, 134, 136, 200, 202, 204, 206, 208, 210, 212, 214) is used in the specification but shown in no drawing, and no visible geometry, numeral placement or leader endpoint could be checked against the text. This is the direct cause of both failing mechanical gates ('Every specification numeral appears in a drawing' and 'Each described figure has a drawing sheet'). The briefs themselves are complete, internally consistent with one another and with draft/07-drawings.md, and between them list all 23 numerals, so the defect is the missing render, not the specification; no disclosed part, numeral definition or supporting text should be removed to silence the check.",
+      "items": "figures/ (directory contents) vs. draft/07-drawings.md, draft/08-detailed-description.md and draft/numerals.md"
+    },
+    {
+      "title": "review/figure-audit-evidence.json is absent, so no image-bound OCR, geometry, leader or endpoint evidence exists for any sheet",
+      "detail": "This review is directed to reconcile the rendered pixels of each sheet against review/figure-audit-evidence.json, which is supposed to bind each rendered image's exact hash to its OCR text, numeral inventory, leader-endpoint results and independent geometry results. That file does not exist anywhere in the workspace; review/ holds only previous-qa.md, whose verdict line reads 'fail'. With neither rendered images nor an evidence file, no leader target, no numeral placement and no line-work geometry has been verified for any of the four figures, and the corrective-QA cycle requested in input/request.md cannot be closed. This is a consequence of the missing renders reported above and is resolved by the same regeneration step; I am reporting it separately because the evidence artifact is required in its own right before any visual gate can be recorded as passing.",
+      "items": "review/ (contains only previous-qa.md)"
+    },
+    {
+      "title": "4 figure(s) are described but no drawing sheet exists",
+      "detail": "35 USC 113 requires a drawing where one is necessary to understand the invention. Drawings may be filed informally and corrected later, but they must be filed.",
+      "items": ""
+    },
+    {
+      "title": "The drawing set does not match the application text",
+      "detail": "Every described figure must have exactly one checked sheet, with no obsolete or extra sheet.",
+      "items": "missing FIG. 1; missing FIG. 2; missing FIG. 3; missing FIG. 4"
+    }
+  ],
+  "formalities": [],
+  "qa_verdict": "fail",
+  "section_count": 10,
+  "figure_count": 0,
+  "citation_count": 0,
+  "reference_count": 0,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "c819363b9098512218a52099fa2fabeeace046b967bb3ce2b487b8d1ad89d82f",
+  "figures": [],
+  "docx": {},
+  "all_drawings_current": false,
+  "docx_media_matches_figures": false,
+  "acceptance_pass": false
+}

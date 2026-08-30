@@ -1,0 +1,305 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b08b_ep2047912a1",
+ "subject_pub": "EP-2047912-A1",
+ "n_claims_source": 16,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 46,
+  "by_kind": {
+   "independent_limitation": 20,
+   "combination": 3,
+   "dependent_limitation": 23
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Switching device for high-pressure tools",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "at least two high-pressure tools are switchable between rest and working states",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the device comprises a first part with a high-pressure medium supply channel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the device comprises a second part with at least two high-pressure medium discharge channels",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the first and second parts are relatively movable",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a first position connects a first discharge channel to the supply channel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "in the first position, a second discharge channel is separated from the supply channel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a second position separates the first discharge channel from the supply channel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "in the second position, the second discharge channel connects to the supply channel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "High-pressure system for cleaning or machining workpieces",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "the system comprises at least one switching device",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Method for switching at least two high-pressure tools",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "tools switchable from rest to working state and vice versa",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "supplying high-pressure medium to a first tool via a switching device",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "the switching device has a first part with a supply channel",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "the switching device has a second part with at least two discharge channels",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "in a first position, a first discharge channel connects to the supply channel and the first tool",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "in the first position, a second discharge channel connects to a second tool but is separate from the supply channel",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "transferring the device from the first position to a second position",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "in the second position, the first discharge channel is separated from the supply channel",
+   "kind": "independent_limitation",
+   "source": "claim 16",
+   "weight": 1.0
+  },
+  {
+   "text": "A switching device for high-pressure tools, having a first part with a supply channel and a second part with at least two discharge channels, where the parts are movable to connect one discharge channel at a time to the supply channel.",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A high-pressure system for cleaning or machining workpieces, comprising at least one switching device as described in claim 1.",
+   "kind": "combination",
+   "source": "claim 15",
+   "weight": 0.9
+  },
+  {
+   "text": "A method for switching high-pressure tools, comprising supplying medium to a first tool via a switching device in a first position, and then transferring the device to a second position to supply medium to a second tool.",
+   "kind": "combination",
+   "source": "claim 16",
+   "weight": 0.9
+  },
+  {
+   "text": "the second part includes at least one bypass channel",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the bypass channel is temporarily in fluid communication with the supply channel during switching",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the bypass channel is separated from the supply channel in the first or second position",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "at least one bypass channel opens into a bypass collecting channel",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "the bypass collecting channel is on the first part",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "the first and second parts are rotatable relative to each other",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "the first part is arranged radially inside the second part",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the supply channel comprises an axially extending initial portion",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "the initial portion is in fluid communication with a high-pressure medium supply",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "the supply channel comprises a radially extending end portion",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "the end portion opens into the first discharge channel in the first position",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "the device includes a drive device for relative movement between parts",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the drive device is a rotary drive device",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the first part is stationary",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "the second part is stationary",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "at least one high-pressure tool is arranged on the second part",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "at least one high-pressure tool is rotatably arranged on the second part",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the device includes a rotary drive device for the high-pressure tool",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "multiple high-pressure tools are arranged on the second part",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "tools are alternately brought into a working position",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the working tool is in fluid communication with the supply channel",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the rotary drive device couples to the working tool for rotation",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "the switching device has no valve for shutting off discharge channels",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "c93fb62be21bc9fe"
+}

@@ -143,6 +143,11 @@ _OBJECT_PATTERNS = (
     (re.compile(r"ALTER\s+TABLE\s+([A-Za-z_][\w.]*)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"
                 r"([A-Za-z_]\w*)", re.IGNORECASE), "column"),
     (re.compile(r"CREATE\s+TRIGGER\s+([A-Za-z_][\w.]*)", re.IGNORECASE), "trigger"),
+    #  A migration that only tightens a CHECK creates no table, index or column, so without this
+    #  it yields no probe at all and presence() can only answer "unknown" for ever. The constraint
+    #  it adds must therefore carry a NAME THAT DID NOT EXIST BEFORE: probing a name the migration
+    #  merely redefines would report it present before it had run, which is worse than no probe.
+    (re.compile(r"ADD\s+CONSTRAINT\s+([A-Za-z_]\w*)", re.IGNORECASE), "constraint"),
 )
 
 # Statements with no IF NOT EXISTS form here, so a second run raises instead of no-opping.
@@ -207,6 +212,8 @@ def _object_present(cur, kind, name):
     elif kind == "trigger":
         cur.execute("SELECT count(*) > 0 FROM pg_trigger WHERE tgname=%s AND NOT tgisinternal",
                     (name,))
+    elif kind == "constraint":
+        cur.execute("SELECT count(*) > 0 FROM pg_constraint WHERE conname=%s", (name,))
     else:
         return False
     return bool(cur.fetchone()[0])

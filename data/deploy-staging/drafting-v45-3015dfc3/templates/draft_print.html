@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ project.title }} | application v{{ version.version_no }}</title>
+<style>
+@page{size:Letter;margin:.75in .75in .75in 1in}
+body{font:12pt/1.5 "Times New Roman",serif;color:#111;margin:0}
+h1{text-align:center;font-size:16pt;margin:20px 0 28px}h2{font-size:12pt;text-align:center;text-transform:uppercase;margin:22px 0 12px}
+p{white-space:pre-wrap;margin:0 0 12px}.pagebreak{break-before:page}
+</style></head><body>
+{% for key, heading in section_order %}
+  {% if key == 'title' %}<h1>{{ version.sections[key] }}</h1>
+  {% else %}<section{% if key in ['claims','abstract'] %} class="pagebreak"{% endif %}><h2>{{ heading }}</h2><p>{{ version.sections[key] }}</p></section>{% endif %}
+{% endfor %}
+</body></html>

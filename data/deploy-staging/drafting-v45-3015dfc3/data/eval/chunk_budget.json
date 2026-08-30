@@ -1,0 +1,112 @@
+[
+ {
+  "query": "grabo_gripper_novelty",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 914,
+  "distinct_families": 558,
+  "chunks_per_pub": 4.4,
+  "top20_pub_budget_share": 0.176,
+  "gold_families_in_dense_pool": 11,
+  "gold_deepened_NEW_in_pool": 3
+ },
+ {
+  "query": "grabo_gripper_inventive",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 1019,
+  "distinct_families": 679,
+  "chunks_per_pub": 3.9,
+  "top20_pub_budget_share": 0.186,
+  "gold_families_in_dense_pool": 13,
+  "gold_deepened_NEW_in_pool": 4
+ },
+ {
+  "query": "grabo_extended_frame",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 941,
+  "distinct_families": 661,
+  "chunks_per_pub": 4.3,
+  "top20_pub_budget_share": 0.165,
+  "gold_families_in_dense_pool": 14,
+  "gold_deepened_NEW_in_pool": 2
+ },
+ {
+  "query": "grabo_de_utility_xling",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 661,
+  "distinct_families": 403,
+  "chunks_per_pub": 6.1,
+  "top20_pub_budget_share": 0.15,
+  "gold_families_in_dense_pool": 2,
+  "gold_deepened_NEW_in_pool": 1
+ },
+ {
+  "query": "schmalz_sauggreifsystem",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 937,
+  "distinct_families": 564,
+  "chunks_per_pub": 4.3,
+  "top20_pub_budget_share": 0.154,
+  "gold_families_in_dense_pool": 1,
+  "gold_deepened_NEW_in_pool": 0
+ },
+ {
+  "query": "schmalz_vacuum_clamp",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 1431,
+  "distinct_families": 939,
+  "chunks_per_pub": 2.8,
+  "top20_pub_budget_share": 0.16,
+  "gold_families_in_dense_pool": 5,
+  "gold_deepened_NEW_in_pool": 1
+ },
+ {
+  "query": "probst_stone_lifter_xling",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 1248,
+  "distinct_families": 971,
+  "chunks_per_pub": 3.2,
+  "top20_pub_budget_share": 0.147,
+  "gold_families_in_dense_pool": 2,
+  "gold_deepened_NEW_in_pool": 1
+ },
+ {
+  "query": "probst_kerb_lifter",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 1735,
+  "distinct_families": 1602,
+  "chunks_per_pub": 2.3,
+  "top20_pub_budget_share": 0.145,
+  "gold_families_in_dense_pool": 1,
+  "gold_deepened_NEW_in_pool": 0
+ },
+ {
+  "query": "nl_handheld_vacuum_seal_sensor",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 904,
+  "distinct_families": 495,
+  "chunks_per_pub": 4.4,
+  "top20_pub_budget_share": 0.202,
+  "gold_families_in_dense_pool": 2,
+  "gold_deepened_NEW_in_pool": 0
+ },
+ {
+  "query": "nl_porous_surface_gripper",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 1184,
+  "distinct_families": 636,
+  "chunks_per_pub": 3.4,
+  "top20_pub_budget_share": 0.219,
+  "gold_families_in_dense_pool": 2,
+  "gold_deepened_NEW_in_pool": 0
+ },
+ {
+  "query": "nl_robot_eoat_vacuum",
+  "chunks_fetched": 4000,
+  "distinct_pubs": 1354,
+  "distinct_families": 693,
+  "chunks_per_pub": 3.0,
+  "top20_pub_budget_share": 0.143,
+  "gold_families_in_dense_pool": 0,
+  "gold_deepened_NEW_in_pool": 0
+ }
+]

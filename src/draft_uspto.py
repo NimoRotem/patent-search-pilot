@@ -9,9 +9,8 @@ ready":
                 no named inventor.  These are listed as blockers and the export says so.
   FORMALITIES   things the USPTO will object to but which do not stop a filing date - a title
                 over 500 characters, an abstract over 150 words.
-  NOT OUR JOB   the oath or declaration, the entity-status certification, formal drawings under
-                37 CFR 1.84, the fee payment, and the attorney's own review.  These are listed as
-                what remains, never silently ticked off.
+  ADMINISTRATIVE the oath or declaration, entity-status certification, fee payment, and optional
+                 practitioner review. These are listed as what remains, never silently ticked off.
 
 NO FEE AMOUNTS ARE PRINTED.  The counts that drive them (total claims, independent claims,
 multiple dependent claims, specification sheet count) are computed exactly, and which surcharges
@@ -43,6 +42,8 @@ EFS_URL = "https://patentcenter.uspto.gov/"
 FILING_ORDER = (
     ("title", "TITLE OF THE INVENTION", False),
     ("cross_reference", "CROSS-REFERENCE TO RELATED APPLICATIONS", True),
+    ("government_support",
+     "STATEMENT REGARDING FEDERALLY SPONSORED RESEARCH OR DEVELOPMENT", True),
     ("field", "FIELD OF THE INVENTION", True),
     ("background", "BACKGROUND OF THE INVENTION", True),
     ("summary", "BRIEF SUMMARY OF THE INVENTION", True),
@@ -51,6 +52,23 @@ FILING_ORDER = (
 )
 
 _NOTE_RE = re.compile(r"\[DRAFTING NOTE:([^\]]*)\]", re.IGNORECASE)
+
+
+def _filing_sections(version: Mapping[str, Any]) -> dict[str, str]:
+    import draft_cite
+    try:
+        return {str(key): draft_cite.filing_citations(str(value or ""))
+                for key, value in dict(version.get("sections") or {}).items()}
+    except ValueError as exc:
+        raise drafting.DraftingValidationError(str(exc)) from exc
+
+
+def _filing_label(value: Any) -> str:
+    import draft_cite
+    try:
+        return draft_cite.filing_citations(str(value or ""))
+    except ValueError as exc:
+        raise drafting.DraftingValidationError(str(exc)) from exc
 
 
 # =============================================================================================
@@ -176,6 +194,17 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
             numeral_table = json.loads(numeral_table)
         except json.JSONDecodeError:
             numeral_table = []
+    drawing_markers = []
+    drawing_markers.extend(draft_qa.placeholders_in_text(
+        "Reference numeral table", json.dumps(numeral_table, ensure_ascii=False)))
+    drawing_markers.extend(draft_qa.placeholders_in_text(
+        "Drawing specifications", json.dumps(figure_specs, ensure_ascii=False)))
+    if drawing_markers:
+        blockers.append({
+            "title": f"{len(drawing_markers)} unfinished marker(s) in the drawing sources",
+            "detail": "No note, placeholder, confirmation request, or manual instruction may "
+                      "enter a filing package.",
+            "items": "; ".join(drawing_markers[:8])})
     if not described:
         blockers.append({
             "title": "The application has no drawing plan",
@@ -217,21 +246,28 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
     import draft_figures
     specs_by_key = {draft_figures.figure_key(spec.get("label")): spec
                     for spec in figure_specs if isinstance(spec, Mapping)}
-    for figure in figures:
+    for sheet_index, figure in enumerate(figures, 1):
         label = figure.get("figure_label") or figure.get("label") or "drawing"
+        spec = specs_by_key.get(draft_figures.figure_key(label))
         active = next((row for row in (figure.get("versions") or [])
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
-        if not (active.get("numeral_audit") or {}).get("ok"):
+        expected_sheet_number = f"{sheet_index}/{len(figures)}"
+        if not draft_figures.current_ocr_audit(
+                active.get("numeral_audit") or {},
+                expected_sheet_number=expected_sheet_number,
+                expected_section_designations=(
+                    draft_figures.section_designations(spec.get("caption") or "")
+                    if spec else None)):
             live_drawing_failures.append(
-                f"{label}: OCR numeral inspection did not pass")
+                f"{label}: OCR numeral, view-label, or sheet-number inspection did not pass "
+                f"for sheet {expected_sheet_number}")
         if not draft_figures.current_semantic_audit(active.get("semantic_audit") or {}):
             live_drawing_failures.append(
                 f"{label}: current semantic drawing consensus did not pass")
         if not draft_figures.current_leader_audit(active.get("leader_audit") or {}):
             live_drawing_failures.append(
                 f"{label}: current leader placement consensus did not pass")
-        spec = specs_by_key.get(draft_figures.figure_key(label))
         if not spec:
             live_drawing_failures.append(f"{label}: no specification exists in this version")
         else:
@@ -246,6 +282,11 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
                     "specification_hash") != expected_hash:
                 live_drawing_failures.append(
                     f"{label}: leader inspection belongs to a different drawing specification")
+            if not draft_figures.current_geometry_binding(
+                    figure, project.get("user_id"), active, spec.get("caption") or ""):
+                live_drawing_failures.append(
+                    f"{label}: pixels are not bound to the current deterministic geometry "
+                    "and exact constraint certificate")
     if live_drawing_failures:
         blockers.append({
             "title": "One or more active drawings have not passed live inspection",
@@ -259,8 +300,6 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
         "statement where one is permitted.",
         "An Application Data Sheet (37 CFR 1.76) - the fields are pre-filled in the package.",
         "Entity-status certification if claiming small or micro entity fees (37 CFR 1.27, 1.29).",
-        "Formal drawings meeting 37 CFR 1.84. Nothing in this product checks sheet size, margins, "
-        "line weight, shading or lettering.",
         "An Information Disclosure Statement listing the art you are aware of (37 CFR 1.56, 1.97). "
         "The citation listing in this package is a starting point, not a signed form.",
         "The filing, search and examination fees due on the counts above.",
@@ -304,13 +343,13 @@ def numbered_paragraphs(text: str, start: int) -> tuple[list[str], int]:
 
 def filing_text(project: Mapping[str, Any], version: Mapping[str, Any]) -> str:
     """The specification as plain text, in 37 CFR 1.77(b) order with numbered paragraphs."""
-    sections = dict(version.get("sections") or {})
+    sections = _filing_sections(version)
     lines: list[str] = []
     counter = 1
     for key, heading, numbered in FILING_ORDER:
         body = str(sections.get(key) or "").strip()
         if key == "title":
-            lines += [heading, "", body or str(project.get("title") or ""), ""]
+            lines += [heading, "", body or _filing_label(project.get("title") or ""), ""]
             continue
         if not body:
             continue
@@ -329,7 +368,7 @@ def filing_text(project: Mapping[str, Any], version: Mapping[str, Any]) -> str:
 
 def ads_fields(project: Mapping[str, Any], version: Mapping[str, Any]) -> list[dict[str, str]]:
     """What goes on the Application Data Sheet, as far as we legitimately know it."""
-    sections = dict(version.get("sections") or {})
+    sections = _filing_sections(version)
     inventors = [line.strip() for line in
                  re.split(r"[\n;]+", str(project.get("inventors") or "")) if line.strip()]
     cross_reference = str(sections.get("cross_reference") or "").strip()
@@ -392,11 +431,12 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
         raise drafting.DraftingValidationError(
             "The filing gate has blockers; a filing document was not created.")
     from docx import Document
+    from docx.enum.section import WD_SECTION
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.shared import Inches, Pt
 
-    sections = dict(version.get("sections") or {})
+    sections = _filing_sections(version)
     document = Document()
     layout = document.sections[0]
     layout.page_width, layout.page_height = Inches(8.5), Inches(11)
@@ -429,7 +469,7 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
         body = str(sections.get(key) or "").strip()
         if key == "title":
             heading(title)
-            plain(body or str(project.get("title") or ""))
+            plain(body or _filing_label(project.get("title") or ""))
             continue
         if not body:
             continue
@@ -452,20 +492,34 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
     plain(str(sections.get("abstract") or "").strip())
 
     if figure_images:
-        for figure in figure_images:
+        drawing_layout = document.add_section(WD_SECTION.NEW_PAGE)
+        drawing_layout.page_width, drawing_layout.page_height = Inches(8.5), Inches(11)
+        # 37 CFR 1.84(g): 1 inch top and left, 5/8 inch right, 3/8 inch bottom.
+        drawing_layout.top_margin = drawing_layout.left_margin = Inches(1)
+        drawing_layout.right_margin = Inches(0.625)
+        drawing_layout.bottom_margin = Inches(0.375)
+        for index, figure in enumerate(figure_images):
             png = bytes(figure.get("png") or b"")
             if not png:
                 continue
-            document.add_page_break()
-            heading("DRAWING SHEETS")
             picture = document.add_paragraph()
+            if index:
+                picture.paragraph_format.page_break_before = True
             picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            picture.add_run().add_picture(BytesIO(png), width=Inches(6.5))
-            label = str(figure.get("label") or "").strip()
-            if label:
-                caption = document.add_paragraph()
-                caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                caption.add_run(label).bold = True
+            picture.paragraph_format.space_before = Pt(0)
+            picture.paragraph_format.space_after = Pt(0)
+            picture.paragraph_format.line_spacing = 1.0
+            from PIL import Image
+            with Image.open(BytesIO(png)) as image:
+                pixel_width, pixel_height = image.size
+            max_width, max_height = 6.875, 9.5
+            width = max_width
+            height = width * pixel_height / max(1, pixel_width)
+            if height > max_height:
+                height = max_height
+                width = height * pixel_width / max(1, pixel_height)
+            picture.add_run().add_picture(
+                BytesIO(png), width=Inches(width), height=Inches(height))
 
     output = BytesIO()
     document.save(output)

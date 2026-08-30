@@ -1,0 +1,5264 @@
+{
+ "version": "wide-1",
+ "built_from": "patents-public-data.patents.publications",
+ "method": "CLEF-IP: examiner citations (SEA/ISR/EXA only) resolved to DOCDB simple families. Anchors auto-selected by FARM_FINGERPRINT hash, stratified over the Tier-1 subclasses, blind to the local corpus.",
+ "subclasses": [
+  "B25J",
+  "B65G",
+  "B66C",
+  "B66F",
+  "B25B",
+  "F16B"
+ ],
+ "per_subclass": 6,
+ "examiner_categories": [
+  "SEA",
+  "ISR",
+  "EXA"
+ ],
+ "criteria": {
+  "jurisdictions": [
+   "US",
+   "EP",
+   "WO"
+  ],
+  "publication_date_between": [
+   20050101,
+   20230101
+  ],
+  "examiner_citations_between": [
+   8,
+   60
+  ]
+ },
+ "entries": [
+  {
+   "id": "wide_b25b_US11034528B2",
+   "category": "wide_B25B",
+   "stratum": "B25B",
+   "mode": "novelty",
+   "anchor_publication": "US-11034528-B2",
+   "anchor_family": "66768610",
+   "title": "Workpiece holding jig",
+   "notes": "Auto-selected anchor for B25B; gold = 10 families from 11 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Workpiece holding jig\nA workpiece holding jig including a base member conveyed by a linear guide and at least one pair of holding pieces arranged on the base member in the direction crossing the conveying direction of the linear guide. Each of the at least one pair of holding pieces includes a workpiece holding portion that fits or contacts with the outer peripheral surface of a workpiece located between the at least one pair of holding pieces to prevent the workpiece from slanting or becoming misaligned during the conveyance. At least one of holding pieces in the at least one pair of holding pieces is movable in the direction away from the other.\nClaim 1: The invention claimed is: \n     \n       1. A workpiece holding jig conveyed by a conveyor in a predetermined direction and coupled to a driving mechanism of the conveyor, the workpiece holding jig comprising:\n a base member; and \n at least one pair of holding pieces arranged on the base member in a direction crossing the predetermined direction, \n wherein each pair of holding pieces includes a workpiece holding portion comprising a recess defined between the pair of holding pieces, a first holding piece in the pair of holding pieces having a first concave portion facing a second concave portion of a second holding piece in the pair of holding pieces, wherein said workpiece holding portion fits or contacts with an outer peripheral surface of a workpiece located between the pair of holding pieces to prevent the workpiece from slanting or becoming misaligned during conveyance in the predetermined direction, \n wherein at least one of the pair of holding pieces is movable in a direction away from the other, \n wherein at least one pair of holding pieces includes an upward extension portion extending upward from an upper surface thereof, and \n wherein the upward extension portion aligns, in the predetermined direction, with the workpiece located between the pair of holding pieces and forms a part of the workpiece holding portion.",
+   "subject": {
+    "number": "US-11034528-B2",
+    "efd": "2017-12-22",
+    "filing_date": "2018-12-11",
+    "publication_date": "2021-06-15",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "22429010",
+    "22688570",
+    "22888432",
+    "23638264",
+    "24527584",
+    "25001020",
+    "52860722",
+    "6480951",
+    "67057572",
+    "9354908"
+   ],
+   "n_gold_families": 10,
+   "hidden_edges": [
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-4915367-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-4958813-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-5060920-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-5499802-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-5816568-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-6000688-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-6113088-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-6152435-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-2016107278-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "US-2019193949-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11034528-B2",
+     "dst": "DE-102018200018-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25b_US2019184534A1",
+   "category": "wide_B25B",
+   "stratum": "B25B",
+   "mode": "novelty",
+   "anchor_publication": "US-2019184534-A1",
+   "anchor_family": "64606880",
+   "title": "Tool for installing a bit on and/or deinstalling a bit from a bit holder system of a milling machine",
+   "notes": "Auto-selected anchor for B25B; gold = 8 families from 8 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Tool for installing a bit on and/or deinstalling a bit from a bit holder system of a milling machine\nThe invention relates to a tool for installing a bit on and/or deinstalling a bit from a bit holder system of a milling machine, in particular a road milling machine, having at least one initiator with which installation and/or deinstallation of a bit is initiated. Provision is made that the tool comprises a detection device having at least one counting device; and that the detection device is designed to detect a number of bits deinstalled using the tool and/or a number of bits installed using the tool. The invention also relates to a corresponding bit holder system and to a method for monitoring wear. With the tool and the bit holder system, additional information regarding bit changes that have been carried out is made available to a user.\nClaim 1: 1 .- 23 . (canceled) \n     \n     \n         24 . A tool for installing a bit on and/or deinstalling a bit from a bit holder system of a milling machine, the tool comprising:\n at least one initiator with which installation and/or deinstallation of a bit is initiated; and   a detection device having at least one counting device, and configured to detect a number of bits deinstalled using the tool and/or a number of bits installed using the tool.   \n     \n     \n         25 . The tool of  claim 24 , wherein the detection device is configured, upon actuation of the at least one initiator, to increment by one a count status of the counting device for the number of deinstalled bits or for the number of installed bits. \n     \n     \n         26 . The tool of  claim 24 , wherein the detection device is configured, upon actuation of the at least one initiator, to read out at least one identifier arranged on either or both of: the bit holder system onto which the tool is placed, and the bit held by the bit holder system onto which the tool is placed. \n     \n     \n         27 . The tool of  claim 26 , wherein the detection device is configured to read out a data medium, in particular an electronic data medium, arranged as an identifier on the bit holder system. \n     \n     \n         28 . The tool of  claim 26 , wherein the detection device is configured to read out the identifier in noncontact fashion. \n     \n     \n         29 . The tool of  claim 24 , wherein the detection device is confi",
+   "subject": {
+    "number": "US-2019184534-A1",
+    "efd": "2017-12-20",
+    "filing_date": "2018-12-19",
+    "publication_date": "2019-06-20",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "25543473",
+    "34041873",
+    "36916464",
+    "38542858",
+    "41009992",
+    "51868011",
+    "54321596",
+    "62557261"
+   ],
+   "n_gold_families": 8,
+   "hidden_edges": [
+    {
+     "src": "US-2019184534-A1",
+     "dst": "US-2003105599-A1",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019184534-A1",
+     "dst": "US-2007132304-A1",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019184534-A1",
+     "dst": "US-2009019679-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019184534-A1",
+     "dst": "US-2009293249-A1",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019184534-A1",
+     "dst": "US-2010140345-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019184534-A1",
+     "dst": "US-2015149027-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019184534-A1",
+     "dst": "US-2015300165-A1",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019184534-A1",
+     "dst": "US-2018171568-A1",
+     "category": "SEA",
+     "type": "Y"
+    }
+   ]
+  },
+  {
+   "id": "wide_b25b_US7887112B1",
+   "category": "wide_B25B",
+   "stratum": "B25B",
+   "mode": "novelty",
+   "anchor_publication": "US-7887112-B1",
+   "anchor_family": "43568488",
+   "title": "Food clip utensil",
+   "notes": "Auto-selected anchor for B25B; gold = 10 families from 10 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Food clip utensil\nA clip-like device applicable to foods which are generally eaten by hand while grasping an extension therefrom is presented. The food clip includes first and second arms and a hinge. The first and second arms are generally planar and elongated elements forming a handle region and a grasping region. The hinge is disposed between and attached to the first and second arms. The hinge is comprised of a compressible and/or deformable yet resilient block-shaped element. The sides of the hinge are shaped so that the grasping region is normally closed and open when a force is applied to the handle region so as to deform the hinge. The grasping region presses against, nearly surrounds, and supports the extension from a food item when the first and second arms are closed. Food items could include, but are not limited to, meats, fish, foul, vegetables, prepared items, such as french fries and hotdogs, and other consumables eaten using a hand or a utensil.\nClaim 1: 1. A food clip comprising:\n (a) a first arm; \n (b) a second arm, said first arm and said second arm being elongated so as to provide a handle region and a grasping region, said first arm and said second arm each having a top edge, a front edge, and a bottom edge along said grasping region, said first arm and said second arm each having an upper extension extending substantially perpendicular and inward from said top edge and said second arm having a lower extension extending substantially perpendicular from said bottom edge towards said first arm; and \n (c) a hinge disposed between and attached to said first arm and said second arm along said handle region, said hinge being a block of material which is deformable or compressible when a force is applied thereon yet sufficiently resilient so as to return to its original shape when said force is removed, said block being nearly as wide as said first arm and said second arm and disposed between said handle region and said grasping region, said hinge shaped so that said grasping region is normally closed and open when said force is applied onto said hinge via said handle region, said grasping region presses against and nearly surrounds an extension from a food item when said first arm and said second arm are closed.",
+   "subject": {
+    "number": "US-7887112-B1",
+    "efd": "2009-11-25",
+    "filing_date": "2009-11-25",
+    "publication_date": "2011-02-15",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "22360933",
+    "22375362",
+    "22903490",
+    "23580885",
+    "24158846",
+    "24680254",
+    "24992411",
+    "25294065",
+    "32961148",
+    "34510714"
+   ],
+   "n_gold_families": 10,
+   "hidden_edges": [
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-3137880-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-3264909-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-3280665-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-3456262-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-5402558-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-5802677-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-6098254-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-2003197390-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-6761386-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7887112-B1",
+     "dst": "US-7182378-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25b_US7980538B1",
+   "category": "wide_B25B",
+   "stratum": "B25B",
+   "mode": "novelty",
+   "anchor_publication": "US-7980538-B1",
+   "anchor_family": "44261843",
+   "title": "Clamping jig",
+   "notes": "Auto-selected anchor for B25B; gold = 34 families from 34 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Clamping jig\nAn embodiment of the present invention is directed to a jig for holding a workpiece using forces provided by a clamp having a first clamping member, a second clamping member, and a connecting member operable for moving the first clamping member relative to the second clamping member. The jig includes an elongated base member and an elongated support member extending upward from the base member. The support member has a clamp engagement surface for engaging the first clamping member of the clamp, a generally vertically oriented upper surface disposed opposite of the clamp engagement surface for engaging a lateral side of the workpiece, a generally horizontally oriented support surface extending from the support member disposed below the upper surface for engaging a bottom side of the workpiece, and an aperture sized and arranged to accept the connecting member of the clamp.\nClaim 1: 1. A jig for holding a workpiece using forces provided by a plurality of clamps, each having a first clamping member, a second clamping member, and a connecting member operable for moving the first clamping member relative to the second clamping member, the jig comprising:\n an elongated base member that allows the jig to stand on its own on a generally flat surface; and \n an elongated support member extending upward from the base member, the support member having a clamp engagement surface for engaging the first clamping member of the clamp, a generally vertically oriented upper surface disposed opposite of the clamp engagement surface for engaging a lateral side of the workpiece, a generally horizontally oriented support surface extending from the support member disposed below the upper surface for engaging a bottom side of the workpiece, and plurality of apertures sized and arranged to accept the connecting members of the plurality of clamps.",
+   "subject": {
+    "number": "US-7980538-B1",
+    "efd": "2007-09-10",
+    "filing_date": "2007-09-10",
+    "publication_date": "2011-07-19",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "10637009",
+    "10773054",
+    "14576080",
+    "17757488",
+    "2068218",
+    "2075775",
+    "2154861",
+    "21821962",
+    "21888238",
+    "22022328",
+    "22486564",
+    "22908604",
+    "23196959",
+    "23325268",
+    "23404340",
+    "24336117",
+    "24629649",
+    "24811834",
+    "24921683",
+    "25143055",
+    "25372862",
+    "25445474",
+    "25482199",
+    "26161283",
+    "26921009",
+    "26931106",
+    "2719205",
+    "27413988",
+    "2781711",
+    "2937413",
+    "2970655",
+    "39274405",
+    "46252355",
+    "46257099"
+   ],
+   "n_gold_families": 34,
+   "hidden_edges": [
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-7892-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-15170-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-85372-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-650635-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-713189-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-868966-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-902230-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-1335721-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-2430366-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-4304399-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-4575060-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-4684113-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-4824086-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-4850769-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-4927126-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-4962918-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-5092427-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-5330167-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-5337641-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "GB-2299774-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-5697601-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-5768966-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-5810342-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-5890524-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-6032939-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-6237907-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-6299392-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-6402131-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-6412158-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-6557601-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-6595508-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-6880442-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-2006163804-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7980538-B1",
+     "dst": "US-7753350-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25b_US8347811B2",
+   "category": "wide_B25B",
+   "stratum": "B25B",
+   "mode": "novelty",
+   "anchor_publication": "US-8347811-B2",
+   "anchor_family": "39283513",
+   "title": "System and method for supporting an object during application of surface coating",
+   "notes": "Auto-selected anchor for B25B; gold = 23 families from 23 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "System and method for supporting an object during application of surface coating\nA system is provided that is capable of supporting an object during application of surface coating that would enable access to multiple surfaces of the object while minimizing the impact on any surface that has not dried. The system provides stable support for the object during the application process and allows the coatings of all surfaces to dry with minimal effect on the coated surface. The system comprises a plurality of support units. Each support unit comprises a base portion and a contact portion. Each base portion is adapted to rest stably upon a work platform and contact portion is adapted to contact an underside of the object during application of surface coating. The plurality of support units together supports the object above the work platform.\nClaim 1: 1. A system for supporting an object during application of surface coating, the system comprising:\n a plurality of support units, each support unit comprising a base portion and a contact portion opposite the base portion; \n wherein each support unit comprises a polyhedron, the polyhedron comprising a plurality of faces and at least one vertex; wherein the at least one vertex has a curved exterior surface; and \n a work platform comprising a rotating turntable; \n wherein each base portion is adapted to rest stably upon the work platform; wherein each contact portion is configured to contact an underside of the object during application of surface coating, such that the plurality of support units together support the object above the work platform; and wherein at least one of the support units further comprises a recess formed within the support unit to receive a work platform protrusion configured to fit securely within the support unit recess.",
+   "subject": {
+    "number": "US-8347811-B2",
+    "efd": "2006-10-05",
+    "filing_date": "2007-10-01",
+    "publication_date": "2013-01-08",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "18495535",
+    "22714557",
+    "22964274",
+    "23103724",
+    "23789959",
+    "23863548",
+    "24012709",
+    "24156595",
+    "24224457",
+    "24283541",
+    "24575185",
+    "24925792",
+    "25413079",
+    "25458082",
+    "25676279",
+    "26820177",
+    "27019043",
+    "27024889",
+    "27207351",
+    "34676091",
+    "36124616",
+    "7628988",
+    "9215079"
+   ],
+   "n_gold_families": 23,
+   "hidden_edges": [
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-2483734-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-3416270-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-3944203-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-4039799-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-4184840-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-4269008-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-4354288-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-4548418-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-4783936-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-4903796-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-5072901-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-5085397-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-5115343-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-5152108-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-5259695-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-5615429-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-5788933-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-5895304-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-6206974-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-6378265-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-2005132957-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-6953338-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8347811-B2",
+     "dst": "US-7490808-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25b_US9452511B2",
+   "category": "wide_B25B",
+   "stratum": "B25B",
+   "mode": "novelty",
+   "anchor_publication": "US-9452511-B2",
+   "anchor_family": "46063078",
+   "title": "Combination ER wrench",
+   "notes": "Auto-selected anchor for B25B; gold = 22 families from 22 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Combination ER wrench\nA combination ER wrench is disclosed for use in installing and tightening collet holders in connection with milling machines or machining centers. The disclosed wrench combines the function of multiple wrenches. The disclosed wrench has two open ends and two box ends that fit various collets and collet holders common in the industry, along with a box end to fit a retention knob. The open ends of the wrench have arcurate jaws and five points to contact the collet and/or collet nut. The box ends of the wrench are openings shaped to contact the collect and/or collet nut.\nClaim 1: What is claimed is: \n     \n       1. A double-headed ER wrench for tightening or loosening a machine tool collet nut comprising:\n a wrench handle of a double-headed ER wrench; \n a first open end disposed at a first end of said handle comprising:\n a first open end left arcuate jaw having a first open end first tooth at a distal end of said first open end left arcuate jaw, said first open end first tooth oriented inward towards the handle at about 45 degrees; \n a first open end right arcuate jaw having a first open end fifth tooth at a distal end of said first open end right arcuate jaw, said first open end fifth tooth oriented inward towards the handle at about 45 degrees; \n three first open end teeth equally spaced between said first open end first tooth and said first open end fifth tooth, a first open end middle tooth of said three first open end teeth co-linear with a long axis of said double-headed ER wrench handle, a width of each tooth being shorter than a first open end distance between adjacent teeth, said first open end distance between adjacent teeth sized to fit a first size machine tool slotted collet nut, said first open end first tooth and said first open end fifth tooth equidistant from said first open end middle tooth; \n \n a second open end disposed at a second end of said handle comprising:\n a second open end left arcuate jaw having a second open end first tooth at a distal end of said second open end left arcuate jaw, said second open end first tooth oriente",
+   "subject": {
+    "number": "US-9452511-B2",
+    "efd": "2010-11-24",
+    "filing_date": "2010-11-24",
+    "publication_date": "2016-09-27",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "10887459",
+    "22657372",
+    "22814293",
+    "24060298",
+    "24063239",
+    "24077719",
+    "24223947",
+    "24761143",
+    "25035633",
+    "26818278",
+    "27753911",
+    "31992807",
+    "32092787",
+    "38001296",
+    "38860784",
+    "39027508",
+    "42282691",
+    "43479672",
+    "47360566",
+    "70475178",
+    "71782042",
+    "8073161"
+   ],
+   "n_gold_families": 22,
+   "hidden_edges": [
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-1529075-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-1640383-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-2196701-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-2394808-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-2420458-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-2830480-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-3354757-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-3768345-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-D329788-S",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-D422858-S",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-6131494-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-2001022118-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-2003159546-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-6705182-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-6745648-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-6779424-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-D542105-S",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-7549953-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-2010013171-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-2010192344-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-7874034-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9452511-B2",
+     "dst": "US-9272396-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25j_US2021069904A1",
+   "category": "wide_B25J",
+   "stratum": "B25J",
+   "mode": "novelty",
+   "anchor_publication": "US-2021069904-A1",
+   "anchor_family": "72562020",
+   "title": "Systems and methods for robotic picking",
+   "notes": "Auto-selected anchor for B25J; gold = 8 families from 9 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Systems and methods for robotic picking\nVarious embodiments of the present technology generally relate to robotic devices and artificial intelligence. More specifically, some embodiments relate to a robotic device for picking items from a bin and perturbing items in a bin. In some implementations, the device may include one or more computer-vision systems. A computer-vision system, in accordance with the present technology, may use at least two two-dimensional images to generate three-dimensional (3D) information about the bin and items in the bin. Based on the 3D information, a strategy for picking up items from the bin is determined. When no strategies with high probability of success exist, the robotic device may perturb the contents of the bin to create new available pick-up points and re-attempt to pick up an item.\nClaim 1: What is claimed is: \n     \n         1 . A method of operating an apparatus for picking objects from a bin, the method comprising:\n collecting image data from a computer-vision system, wherein the image data comprises information related to one or more objects in the bin;   identifying one or more distinct objects in the bin based on the image data;   identifying a location on an object of the one or more distinct objects at which the apparatus will attempt to pick up the object, wherein identifying the location is based on a likelihood of successful pickup at the location; and   attempting to pick up, with a picking mechanism, the object from the bin at the identified location on the object.",
+   "subject": {
+    "number": "US-2021069904-A1",
+    "efd": "2019-09-07",
+    "filing_date": "2020-09-08",
+    "publication_date": "2021-03-11",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "57472030",
+    "62063190",
+    "67185722",
+    "70728627",
+    "71123788",
+    "71731263",
+    "72662821",
+    "74260672"
+   ],
+   "n_gold_families": 8,
+   "hidden_edges": [
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-2017136632-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-2020156266-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-2020206913-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-2020241574-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-2020316782-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-10906188-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-2021122586-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-2021237266-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021069904-A1",
+     "dst": "US-12053877-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25j_US2022155179A1",
+   "category": "wide_B25J",
+   "stratum": "B25J",
+   "mode": "novelty",
+   "anchor_publication": "US-2022155179-A1",
+   "anchor_family": "74046609",
+   "title": "Method of inspecting a component",
+   "notes": "Auto-selected anchor for B25J; gold = 11 families from 12 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Method of inspecting a component\nA method of inspecting a surface of a component, e.g. a turbine or compressor blade of a gas turbine engine. The method comprises (a) providing a probe for inspecting the component surface; (b) defining a reference surface that is offset from the component surface; (c) moving the probe so as to contact a plurality of discrete spaced apart inspection points on the component surface, each contact of the probe with an inspection point comprising a first movement of the probe from the reference surface to the inspection point; (d) retracting the probe from the component surface after each contact with an inspection point; and (e) inspecting the component surface each time the probe contacts an inspection point.\nClaim 1: We claim: \n     \n         1 . A method of inspecting a surface of a component, the method comprising the steps of:\n providing a probe for inspecting the component surface;   defining a reference surface that is offset from the component surface;   moving the probe so as to contact a plurality of discrete spaced apart inspection points on the component surface, each contact of the probe with an inspection point comprising a first movement of the probe from the reference surface to the inspection point;   retracting the probe from the component surface after each contact with an inspection point; and   inspecting the component surface each time the probe contacts an inspection point.",
+   "subject": {
+    "number": "US-2022155179-A1",
+    "efd": "2020-11-17",
+    "filing_date": "2021-11-12",
+    "publication_date": "2022-05-19",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "22151435",
+    "26885067",
+    "40474955",
+    "42783353",
+    "44786611",
+    "48696141",
+    "49669444",
+    "60266610",
+    "73745579",
+    "8173217",
+    "8173219"
+   ],
+   "n_gold_families": 11,
+   "hidden_edges": [
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-6076407-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-6339326-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2002093330-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2002097045-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2009185177-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2010244869-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-8045144-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2011267047-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2013321015-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2014327735-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2019162756-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022155179-A1",
+     "dst": "US-2020393524-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25j_US2022281125A1",
+   "category": "wide_B25J",
+   "stratum": "B25J",
+   "mode": "novelty",
+   "anchor_publication": "US-2022281125-A1",
+   "anchor_family": "80625469",
+   "title": "Device with components connected via a connection interface and method for connecting components",
+   "notes": "Auto-selected anchor for B25J; gold = 21 families from 21 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Device with components connected via a connection interface and method for connecting components\nDevice for handling and/or processing parts, having first and second subassemblies separably connectable by a connection interface that results from a first contact section of the first subassembly being plugged and/or pressed in a connecting direction onto a second contact section of the second subassembly in a first orientation specified relative to the second contact section. The connection interface includes an electrical interface for transmitting electrical power and/or communication signals between the subassemblies and a fluid interface for transporting fluid between the subassemblies. The first and second contact sections are configured so the connection interface also results if the first contact section is plugged or pressed in the connecting direction onto the second contact section in a further orientation. The further orientation corresponds to the first orientation aside from a rotation of the first contact section by a specified angle about a rotation axis running in the connecting direction.\nClaim 1: We claim: \n     \n         1 . A device, in particular for the handling and/or processing of parts, having a first and a second subassembly which are separably connected or connectable by means of a connection interface, wherein the connection interface results from a first contact section of the first subassembly being plugged and/or pressed in a connecting direction onto a second contact section of the second subassembly in a first orientation that is specified relative to the second contact section, wherein the connection interface comprises firstly an electrical interface for the transmission of electrical power and/or of communication signals between the first and the second subassembly and secondly a fluid interface for the transport of fluid between the first and the second subassembly, wherein the first and the second contact section are configured such that the connection interface also results if the first contact section is plugged or pressed in the connecting direction onto the second contact section in at least one further orientation, wherein the respective further orientation corresponds to the first orientation aside from a rotation of the first contact section by a respective specified angle about a rotation axis running in the connecting direction.",
+   "subject": {
+    "number": "US-2022281125-A1",
+    "efd": "2021-03-04",
+    "filing_date": "2022-03-03",
+    "publication_date": "2022-09-08",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "11557694",
+    "19848225",
+    "26289898",
+    "41446458",
+    "44320525",
+    "49513895",
+    "54368885",
+    "58447131",
+    "60191206",
+    "60409142",
+    "62386088",
+    "64269459",
+    "67299678",
+    "67686956",
+    "68695001",
+    "68766193",
+    "69586842",
+    "71944212",
+    "71950702",
+    "78718984",
+    "80473906"
+   ],
+   "n_gold_families": 21,
+   "hidden_edges": [
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-4809215-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-4867467-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-4906628-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-8601667-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2015088300-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2015326655-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2015328655-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2017095937-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2018333867-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2018338673-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2019224858-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-10500735-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2020061848-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2020269417-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2020315738-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2021031361-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-11099560-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2021387357-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-2022088798-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-11413761-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022281125-A1",
+     "dst": "US-11433412-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25j_US8463437B2",
+   "category": "wide_B25J",
+   "stratum": "B25J",
+   "mode": "novelty",
+   "anchor_publication": "US-8463437-B2",
+   "anchor_family": "40722452",
+   "title": "Robot",
+   "notes": "Auto-selected anchor for B25J; gold = 11 families from 11 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Robot\nA robot that is capable of traveling while moving an object such that the object and the robot itself will not step out of a predetermined area is provided. If a traveling requirement that the robot and the object remain within a pathway area is not met, then an action scheme of the robot is corrected so as to meet the traveling requirement. Then, the robot travels while moving the object according to the corrected action scheme, thus enabling the robot to travel while moving the object such that both the object and the robot do not step out of the pathway area.\nClaim 1: What is claimed is: \n     \n       1. A robot comprising a body, arms extended from the body, hands provided on distal ends of the arms, and a controller, wherein motions of the robot are controlled by the controller according to an action scheme when the robot travels while moving an object in a state of gripping the object by the hands and the object being in contact with a floor surface, wherein\n the controller comprises: \n a first processing element which recognizes a predicted position and a predicted azimuth in the future of the robot according to the action scheme, and defines a predicted position and a predicted azimuth in the future of the object based on each of the predicted position and the predicted azimuth of the robot, and which also recognizes a pathway area; \n a second processing element which determines, based on a result of recognition by the first processing element, a spatial broadening of the robot, and a spatial broadening of the object, whether a traveling requirement that the whole object and the whole robot will remain within the pathway area in the future is met; and \n a third processing element which corrects the action scheme on condition that the second processing element has determined that the traveling requirement is not met.",
+   "subject": {
+    "number": "US-8463437-B2",
+    "efd": "2007-12-10",
+    "filing_date": "2008-12-05",
+    "publication_date": "2013-06-11",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "20282081",
+    "21773010",
+    "22900748",
+    "24076720",
+    "33441049",
+    "35219267",
+    "37963138",
+    "38895292",
+    "40350896",
+    "7650195",
+    "8565871"
+   ],
+   "n_gold_families": 11,
+   "hidden_edges": [
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-5999865-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-6393362-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-2004093650-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-6926374-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-2006047390-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-2006111820-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-7076346-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-7603235-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-2010191421-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-7801644-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8463437-B2",
+     "dst": "US-7894939-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25j_US9079317B2",
+   "category": "wide_B25J",
+   "stratum": "B25J",
+   "mode": "novelty",
+   "anchor_publication": "US-9079317-B2",
+   "anchor_family": "40707559",
+   "title": "Method of operating a mobile hand-operated device for outputting or enabling potentially dangerous control commands and corresponding hand-operated device",
+   "notes": "Auto-selected anchor for B25J; gold = 13 families from 13 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Method of operating a mobile hand-operated device for outputting or enabling potentially dangerous control commands and corresponding hand-operated device\nThe invention relates to a method of operating a mobile hand-operated device ( 9 ) provided as a means of outputting or enabling potentially dangerous control commands to a controllable technical device ( 1 ) actively connected to it or to another hand-operated device( 9 \u2032). A safety switch device ( 16 ) . . . comprising at least one evaluation circuit and at least one enable button ( 18 ) connected to the evaluation circuit for transmitting signals is provided, which has an idle mode which is assumed automatically without applying operating force and two consecutive operating modes set on the basis of a differing strength of operating force and/or by different displacement distances in the form of an enable operation mode and a panic operating mode. Either an active mode is assigned to the at least one enable button ( 18 ) in which an enabling mode for running potentially dangerous control commands can be signalled or made available when the enable operation mode is assumed, or an inactive mode in which signalling or availability of the enabling mode is suppressed or not possible. When or after the evaluation circuit has detected on the basis of signals that the panic operating mode or the panic operating mode and the idle mode has been assumed, the active mode is assigned to the respective enable button ( 18 ). Also specified is a corresponding mobile hand-operated device ( 9, 9 \u2032) and a corresponding safety switching device ( 16 ).\nClaim 1: The invention claimed is: \n     \n       1. A method of operating a mobile hand-operated device provided for outputting or enabling potentially dangerous control commands on a controllable technical device actively connected to the mobile hand-operated device or to another hand-operated device, in particular a robot or a machine tool, with a safety switch device comprising at least one evaluation circuit and at least one enable button connected to the at least one evaluation circuit for transmitting signals to the at least one evaluation circuit, the at least one enable button having an idle mode automatically assumed without operating force and having two consecutive operating modes set on a basis of at least one of differing strengths of operating force and different displacement distances, namely an enable operation mode and a panic operating mode,\n wherein in terms of control either a controllingly active mode or a controllingly inactive mode is electronically assigned to the at least one enable button, \n wherein in the controllingly active mode the at least one enable button can signal an enabling mode for running potentially dangerous control commands or assuming the enable operation mode allows an enabling mode to be made available, \n wherein in the controllingly inactive mode signalling or availability of the enabling mode is suppressed or not possible, \n wherein a check of the at least one enable button is run beforehand and the controllingly active mode is assigned t",
+   "subject": {
+    "number": "US-9079317-B2",
+    "efd": "2008-07-21",
+    "filing_date": "2009-07-15",
+    "publication_date": "2015-07-14",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "14117095",
+    "17359309",
+    "17504058",
+    "18019040",
+    "18724942",
+    "18757216",
+    "19006386",
+    "25038697",
+    "26442746",
+    "3683781",
+    "39877470",
+    "40131649",
+    "8181211"
+   ],
+   "n_gold_families": 13,
+   "hidden_edges": [
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-5321311-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-5705906-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-5994652-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-6108179-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-6374156-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-2002091493-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-2003027107-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-2003184164-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-2005007032-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-7154197-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-7403837-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-2009058193-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9079317-B2",
+     "dst": "US-7852030-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b25j_US9221176B2",
+   "category": "wide_B25J",
+   "stratum": "B25J",
+   "mode": "novelty",
+   "anchor_publication": "US-9221176-B2",
+   "anchor_family": "50033357",
+   "title": "Robot system and method for controlling the same",
+   "notes": "Auto-selected anchor for B25J; gold = 13 families from 13 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Robot system and method for controlling the same\nA robot system which requires no manual teaching operation in acquiring calibration values for coordinate transformation, and improves the calibration accuracy includes a robot body, a camera, and a control apparatus. The control apparatus measures, via the camera, a calibration plate at each position and orientation of a first position and orientation group including a reference measurement position and orientation and a position and orientation within a first offset range, calculates a first calibration value based on the measurement value, measures, via the camera, the calibration plate at each position and orientation of a second position and orientation group including a reference operation position and orientation different from the reference measurement position and orientation, and a position and orientation within a second offset range, calculates a second calibration value based on the measurement value, and activates the robot body by using the first and second calibration values.\nClaim 1: What is claimed is: \n     \n       1. A robot system comprising:\n a robot body including an articulated arm and an end effector supported by the articulated arm; \n a visual sensor provided on the robot body; and \n a control apparatus configured to control a position and orientation of the robot body, and to calculate a position and orientation of a workpiece by using a measurement value measured via the visual sensor, \n wherein the control apparatus performs processing comprising:\n measuring, via the visual sensor, a reference member at each position and orientation of a first position and orientation group including a first reference position and orientation of the robot body and a position and orientation of the robot body within a first offset range surrounding the first reference position and orientation; \n calculating a first calibration value by using the measurement value of the reference member, the measurement value being measured via the visual sensor at each position and orientation of the first position and orientation group; \n measuring, via the visual sensor, the reference member at each position and orientation of a second position and orientation group including a second reference position and orientation of the robot body, which is different from the first reference position and orientation, and a position and orientation of the robot body within a second offset range surrounding the second reference position and orientation, the second offset range being a ra",
+   "subject": {
+    "number": "US-9221176-B2",
+    "efd": "2013-02-14",
+    "filing_date": "2014-02-11",
+    "publication_date": "2015-12-29",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "10827151",
+    "14312534",
+    "21894394",
+    "22148859",
+    "34616926",
+    "34909512",
+    "34937084",
+    "38611034",
+    "39496038",
+    "42230615",
+    "45787957",
+    "46033283",
+    "46151033"
+   ],
+   "n_gold_families": 13,
+   "hidden_edges": [
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-4831549-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-6070109-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-6349245-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-2005159842-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-2005225278-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-2005273199-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-7200260-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-2008004750-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-2008188983-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-2010141776-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-8135208-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-8180487-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9221176-B2",
+     "dst": "US-2012143370-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b65g_US8312978B2",
+   "category": "wide_B65G",
+   "stratum": "B65G",
+   "mode": "novelty",
+   "anchor_publication": "US-8312978-B2",
+   "anchor_family": "39852195",
+   "title": "People mover, transmission chain and method in the use of a people mover",
+   "notes": "Auto-selected anchor for B65G; gold = 14 families from 14 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "People mover, transmission chain and method in the use of a people mover\nA people mover comprising a plurality of steps or palettes to carry and move people. A transmission chain formed into an endless loop is connected to the steps or palettes via which the steps or palettes are moved. The transmission chain comprises consecutive chain links connected in a hinged manner to each other such that the chain links are bendable in relation to each other in a first direction (I) and in a second direction (II). Two turning elements are provided around which the transmission chain is arranged to pass. The consecutive chain links of the transmission chain bend in relation to each other in the first direction (I) when passing around the respective turning elements. A bending limitation mechanism is arranged to limit bending of the transmission chain occurring in the second direction (II).\nClaim 1: 1. A people mover comprising:\n a plurality of steps or pallets to carry and move people; \n a transmission chain formed into an endless loop, connected to the steps or pallets and via which the steps or pallets are moved, wherein the transmission chain comprises consecutive chain links connected in a hinged manner to each other such that the chain links are bendable in relation to each other in a first direction (I) and in a second direction (II); \n two turning elements around which the transmission chain is arranged to pass, wherein the consecutive chain links of the transmission chain bend in relation to each other in the first direction (I) when passing around the respective turning elements; and \n a bending limitation mechanism arranged to limit bending of the transmission chain occurring in the second direction (II).",
+   "subject": {
+    "number": "US-8312978-B2",
+    "efd": "2008-09-22",
+    "filing_date": "2011-03-22",
+    "publication_date": "2012-11-20",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "14235563",
+    "18816600",
+    "19116175",
+    "21805432",
+    "22461470",
+    "22504991",
+    "24304836",
+    "25490960",
+    "26495694",
+    "27283622",
+    "32104203",
+    "34993579",
+    "42284131",
+    "5897784"
+   ],
+   "n_gold_families": 14,
+   "hidden_edges": [
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-2163693-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-3916709-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-4232783-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-4643704-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-5020654-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-5318485-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-5325955-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-5435428-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-6390270-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-6832678-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-7159705-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-7500549-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-7568571-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8312978-B2",
+     "dst": "US-8106706-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b65g_US8851266B2",
+   "category": "wide_B65G",
+   "stratum": "B65G",
+   "mode": "novelty",
+   "anchor_publication": "US-8851266-B2",
+   "anchor_family": "51258366",
+   "title": "Material distribution system and material distribution method thereof",
+   "notes": "Auto-selected anchor for B65G; gold = 15 families from 15 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Material distribution system and material distribution method thereof\nThe present invention provides a material distribution system and method thereof, comprising first, second and third conveyors, first, second, third and fourth material distribution paths, first and second material distribution rockers, and a movable material-distributing guide plate. Material conveyed on the second conveyor is delivered to the first or second material distribution rocker by switching the movable material-distributing guide plate, material conveyed on the first or second conveyor is delivered to the first or second material distribution path by switching the first material distribution rocker, and material conveyed on the second or third conveyor is delivered to the third or fourth material distribution path by switching the second material distribution rocker. Uniform distribution or non-uniform distribution of material conveyed on three routes of conveyors to four routes of material distribution paths may be achieved by material distribution facilitated by one movable material-distributing guide plate and two material distribution rockers.\nClaim 1: The invention claimed is: \n     \n       1. A material distribution system, comprising:\n a first material distribution rocker; \n a second material distribution rocker; \n three routes of conveyors, used for conveying material, respectively, comprising a first conveyor, a second conveyor and a third conveyor, said first conveyor being connected at one side thereof to a first stationary material-distributing guide plate provided toward said first material distribution rocker, said second conveyor being connected at one side thereof to a second movable material-distributing guide plate selectively switched toward said first material distribution rocker or second material distribution rocker, said third conveyor being connected at one side thereof to a third stationary material-distributing guide plate provided toward said second material distribution rocker; and \n four routes of material distribution paths, comprising a first material distribution path, a second material distribution path, a third material distribution path and a fourth material distribution path, said first material distribution path being provided above said second material distribution path, while said third material distribution path being provided above said fourth material distribution path; \n wherein said first material distribution rocker is used for receiving the material conveyed on said first conveyor or second conveyor through said first stationary material-distributing guide plate or second movable ma",
+   "subject": {
+    "number": "US-8851266-B2",
+    "efd": "2013-02-06",
+    "filing_date": "2013-06-07",
+    "publication_date": "2014-10-07",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "11372535",
+    "11440387",
+    "11458975",
+    "18069561",
+    "18082394",
+    "22642833",
+    "25030821",
+    "25389882",
+    "26819587",
+    "27311520",
+    "33130536",
+    "39672586",
+    "39744154",
+    "4186910",
+    "44170020"
+   ],
+   "n_gold_families": 15,
+   "hidden_edges": [
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-4771876-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-5638938-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-5671837-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-5692593-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-5810149-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-5909796-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-6000523-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-6000531-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-6484868-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-6811017-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-6851919-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-7191893-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-7717251-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-8079457-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8851266-B2",
+     "dst": "US-8490773-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b65g_US8955420B2",
+   "category": "wide_B65G",
+   "stratum": "B65G",
+   "mode": "novelty",
+   "anchor_publication": "US-8955420-B2",
+   "anchor_family": "48653279",
+   "title": "Glass cutting machine",
+   "notes": "Auto-selected anchor for B65G; gold = 8 families from 8 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Glass cutting machine\nA glass cutting machine includes a worktable, a cutting mechanism positioned above the worktable, and a plurality of grasping assemblies rotatably positioned on the worktable for transporting glass plates. Each grasping assembly includes a support shaft rotatably received in the worktable, a positioning bar fixed to an end of the support shaft, and one or more grasping members positioned on the positioning bar. The worktable includes several rotating members, and each rotating member includes a support disc that can be rotated to drive the glass plate to rotate.\nClaim 1: What is claimed is: \n     \n       1. A glass cutting machine for cutting at least one glass plate, comprising:\n a worktable, the worktable comprising a base and a support frame mounted on the base and positioned on both sides of the base; the base comprising a support surface, a receiving groove defined under the support surface, and a plurality of rotating members, the rotating members being extended through the support surface, and being partially received in the receiving groove; the support surface defining a plurality of positioning holes communicating with the receiving groove; each of the rotating members comprising a support disc and a rotating shaft fixed to the support disc, and the support disc being rotatably received in the positioning holes of the base, the support frame comprising a guiding plate, four side plates, and two assembly plates; the guiding plate being substantially rectangular, and the side plates substantially perpendicularly connecting to the four corners of the guiding plate; the assembly plates being parallel to the guiding plate, and each assembly plate connecting two of the four side plates opposite to each other; the assembly plates being fixed to opposite sides of the base; \n a cutting mechanism slidably positioned on the support frame; and \n at least one grasping assembly, \n wherein the at least one grasping assembly is rotatably positioned on the worktable for transporting the glass plate.",
+   "subject": {
+    "number": "US-8955420-B2",
+    "efd": "2011-12-27",
+    "filing_date": "2012-06-20",
+    "publication_date": "2015-02-17",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "10749827",
+    "24603447",
+    "26921631",
+    "34978862",
+    "47292053",
+    "47438939",
+    "48171055",
+    "9433925"
+   ],
+   "n_gold_families": 8,
+   "hidden_edges": [
+    {
+     "src": "US-8955420-B2",
+     "dst": "US-4024783-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8955420-B2",
+     "dst": "US-5373835-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8955420-B2",
+     "dst": "US-5904084-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8955420-B2",
+     "dst": "US-6530302-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8955420-B2",
+     "dst": "US-7472636-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8955420-B2",
+     "dst": "US-2012312229-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8955420-B2",
+     "dst": "US-2013012109-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8955420-B2",
+     "dst": "US-2013104761-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b65g_US9119382B2",
+   "category": "wide_B65G",
+   "stratum": "B65G",
+   "mode": "novelty",
+   "anchor_publication": "US-9119382-B2",
+   "anchor_family": "51386823",
+   "title": "Portable basket colony for growing and transport and method of use",
+   "notes": "Auto-selected anchor for B65G; gold = 17 families from 17 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Portable basket colony for growing and transport and method of use\nA colony basket and method of using the same for handling poultry from DOC through the growing process and on to a production facility comprising a harvesting system, a loading system, a transport system, an unloading and storing system, hanging system and cleaning system. The system and method performs the steps of harvesting and colonizing live poultry into a singly stackable and transportable colony basket, stacking and loading the trays on a transport, unloading and temporarily storing the poultry for subsequent processing.\nClaim 1: What is claimed is: \n     \n       1. A poultry colony basket system comprising:\n a. a colony basket having a perimetrical top rim flange defining an upward facing opening having a first geometry and a perimetrical bottom rim flange defining a downward facing opening where said downward facing opening is closed by a solid floor and said downward facing opening has a second geometry substantially identical to said first geometry of the top rim flange, said colony basket further comprising, \n b. vertically upright longitudinal side walls and vertically upright latitudinal side walls perpendicularly extended between said bottom and top rim flanges such that said bottom and top rim flanges are in substantially parallel planes; \n c. a vertical slot extending from a gap in the top rim flange downward into at least one of the latitudinal side walls adapted for receiving and retaining a sustenance assembly; \n d. a water channel extending through and retained in the vertical slot extending from the gap in the top rim flange downward into the at least one of the latitudinal side walls and said water channel having a downward pointing exit nozzle; \n e. a water trough suspended from the channel disposed beneath the nozzle for receiving water; \n f. a feed channel extending substantially parallel with respect to the water channel; and \n g. a feed trough suspended from the feed channel for receiving feed therein.",
+   "subject": {
+    "number": "US-9119382-B2",
+    "efd": "2013-02-26",
+    "filing_date": "2013-02-26",
+    "publication_date": "2015-09-01",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "19846778",
+    "21936224",
+    "22357347",
+    "22924551",
+    "24505294",
+    "24639370",
+    "24854779",
+    "24944620",
+    "24979485",
+    "26801986",
+    "26893423",
+    "27070443",
+    "3000510",
+    "32716969",
+    "34573330",
+    "46124144",
+    "47360609"
+   ],
+   "n_gold_families": 17,
+   "hidden_edges": [
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-932086-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-2065416-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-2562691-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-2715492-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-3368579-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-3507441-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-3520281-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-3727582-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-4036177-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-4527513-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "EP-0220782-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-4928633-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-2003056731-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-6766768-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-2005103278-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-7661392-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9119382-B2",
+     "dst": "US-2012325162-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b65g_US9481528B2",
+   "category": "wide_B65G",
+   "stratum": "B65G",
+   "mode": "novelty",
+   "anchor_publication": "US-9481528-B2",
+   "anchor_family": "46800265",
+   "title": "Temporary parking station for conveying devices of biological product containers",
+   "notes": "Auto-selected anchor for B65G; gold = 8 families from 9 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Temporary parking station for conveying devices of biological product containers\nA temporary parking station of conveying devices containing only one container of biological, products is described, interfaced with a laboratory automation system, comprising a conveyor belt with at least one dispatching lane with a stop gate adapted to queue the conveying devices let into the station and to release only one of said conveying devices at each step to a diverter fitted on a motorized belt, parallel to the dispatching lane, adapted to move said diverter in steps in either one direction or the other from a start of travel position to an end of travel position, diverting in steps only one at a time said conveying devices on a main conveyor belt moveable in a direction perpendicular to the motorized belt.\nClaim 1: The invention claimed is: \n     \n       1. A temporary parking station for conveying devices each containing only one container of biological products, interfacing with a laboratory automation system, comprising a conveyor belt with at least one dispatching lane for said conveying devices, wherein it includes at said dispatching lane a stop gate adapted to queue the conveying devices let into the station and to release only one of said conveying devices at each step, said conveying device proceeding along said dispatching lane to a diverter fitted on a motorized belt, parallel to the dispatching lane, adapted to move said diverter in steps in either one direction or the other from a start of travel position to an end of travel position, said steps of the diverter being timed with said steps of the stop gate, said diverter being adapted to divert for each of said steps only one of said conveying devices on a main conveyor belt moveable in a direction perpendicular to the motorized belt, said main conveyor belt being adapted to convey the conveying devices over a head belt, said conveying devices accumulating in tidy rows on the head belt and on the main conveyor belt, said head belt sliding perpendicularly to said main conveyor belt and being adapted to convey the conveying devices over a return belt parallel to said main conveyor belt and sliding in opposite direction, adapted to return the conveying devices over the dispatching lane of the conveyor belt.",
+   "subject": {
+    "number": "US-9481528-B2",
+    "efd": "2012-07-12",
+    "filing_date": "2013-07-10",
+    "publication_date": "2016-11-01",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "22451154",
+    "24304573",
+    "24401264",
+    "24470556",
+    "25345836",
+    "26829917",
+    "3405451",
+    "46207484"
+   ],
+   "n_gold_families": 8,
+   "hidden_edges": [
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-1474619-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-1481542-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-3604551-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-5769204-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-5918723-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-6056107-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-6269933-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-6622847-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9481528-B2",
+     "dst": "US-2014001008-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b65g_US9725242B2",
+   "category": "wide_B65G",
+   "stratum": "B65G",
+   "mode": "novelty",
+   "anchor_publication": "US-9725242-B2",
+   "anchor_family": "51542361",
+   "title": "System and method for the joint picking of breakable and unbreakable articles",
+   "notes": "Auto-selected anchor for B65G; gold = 16 families from 18 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "System and method for the joint picking of breakable and unbreakable articles\nIt is disclosed a method for picking, in accordance with the goods-to-man principle, a plurality of different articles in accordance with orders, wherein preferably at least one of the orders comprises both fragile and non-fragile articles, which are to be packed together into a shipping container, in a storage and order-picking system, wherein the storage and order-picking system comprises: a warehouse where the articles are stored as storage units, each respectively containing articles of one type only; a plurality of picking-and-packing stations, wherein each picking-and-packing station comprises at least one collecting zone and is configured to buffer a plurality of the articles and to provide the shipping container; a conveying system connecting the warehouse to the picking-and-packing stations; and a controlling unit configured to assign the orders to the picking-and-packing stations, to monitor the picking, and to control material flow; wherein the method comprises the following steps: collecting a plurality of orders; batch-orientated analyzing the collected orders by the controlling unit; batch-orientated assigning the analyzed orders to the picking-and-packing stations by the controlling unit, wherein each of the analyzed orders is assigned to, preferably one of, the collecting zones; article-orientated conveying the storage units via the conveying system from the warehouse to the picking-and-packing stations; removing, preferably manually, the articles conveyed to the picking-and-packing stations, and order-orientated distributing the removed articles to the corresponding collecting zones by depositing the removed articles in the corresponding collecting zones; and packing the collected articles into the shipping container at the corresponding picking-and-packing stations.\nClaim 1: Therefore what we claim is: \n     \n       1. A method for picking, according to the goods-to-man principle, a plurality of different articles in accordance with orders, wherein at least one of the orders has both fragile and non-fragile articles, which are packed together into one shipping container in a breakproof manner, in a storage and order-picking system, wherein the storage and order-picking system includes: a warehouse in which at least some of the articles are stored in terms of storage units, each of the storage units containing only one article type of fragile or non-fragile articles; at least one picking-and-packing station comprising a plurality of stationary collecting zones being configured to buffer a plurality of the articles and being configured to provide one or more shipping containers; a conveying system connecting the warehouse to the at least one picking-and-packing station; and a controlling unit configured to assign the at least one of the orders to the at least one picking-and-packing station, to monitor the picking, and to control article flow, wherein the method comprises the steps of:\n collecting a plurality of the orders which includes the at least one of the orders having both the fragile and the non-fragile articles; \n batch-orientated analyzing the collected orders by the controlling unit; \n batch-orientated assigning the analyzed orders to the at least one picking-and-packing station by the controlling unit, wherein each of the analyzed order",
+   "subject": {
+    "number": "US-9725242-B2",
+    "efd": "2013-09-13",
+    "filing_date": "2016-03-14",
+    "publication_date": "2017-08-08",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "22740886",
+    "25357147",
+    "26618957",
+    "34778094",
+    "36423939",
+    "38426455",
+    "38461164",
+    "38473949",
+    "39092082",
+    "39666066",
+    "41201869",
+    "41459806",
+    "44992921",
+    "45558003",
+    "45560843",
+    "54939226"
+   ],
+   "n_gold_families": 16,
+   "hidden_edges": [
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-3670867-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-6721762-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-2004200692-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-7050938-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-2009136328-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-2009288996-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-7988406-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-7991506-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-8073753-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-8195326-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "WO-2012085271-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-2013239524-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-8666536-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-8671649-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-8707658-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-8996157-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-9230233-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9725242-B2",
+     "dst": "US-9457966-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66c_US2019382246A1",
+   "category": "wide_B66C",
+   "stratum": "B66C",
+   "mode": "novelty",
+   "anchor_publication": "US-2019382246-A1",
+   "anchor_family": "51895893",
+   "title": "Nut and a method of use of the nut in a fastener system for crane mats",
+   "notes": "Auto-selected anchor for B66C; gold = 28 families from 28 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Nut and a method of use of the nut in a fastener system for crane mats\nThe present invention pertains to a nut to be used as part of a fastener to be used in multiple ways in various industries or methods. The nut has a drive mechanism and stud extending from the drive mechanism with a threaded bore. In addition the nut can be specifically used as a method and as part of special fastener that can be used to join cut, hard-wood members, other naturally occurring manufactured mat members or synthetically man made members, referred to as \u201ctimber(s)\u201d or \u201claminated\u201d, in forming a mat used for heavy construction equipment to run on over ground which is not stable. These mats are commonly referred to as \u201cCrane Mats\u201d or \u201cLaminated Mats\u201d in the construction, mining, pipeline, and oil and gas industries among others.\nClaim 1: What is claimed is: \n     \n         1 . A nut comprising:\n (a) a head with a drive;   (b) a stud extending from one side of the head, the stud having an internally threaded bore; and   (c) a pass-through aligned with the center of the threaded bore, the pass-through having an internal diameter opening capable of receiving a member that threads into the threaded bore.",
+   "subject": {
+    "number": "US-2019382246-A1",
+    "efd": "2013-05-16",
+    "filing_date": "2019-08-27",
+    "publication_date": "2019-12-19",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "10524959",
+    "10853971",
+    "22498852",
+    "22531492",
+    "23367004",
+    "23482872",
+    "2349342",
+    "2374499",
+    "24010931",
+    "24406903",
+    "24506351",
+    "24588666",
+    "24622822",
+    "25251434",
+    "25387610",
+    "25433275",
+    "25450315",
+    "26702601",
+    "26772671",
+    "26808592",
+    "3157600",
+    "3896041",
+    "39264292",
+    "44453805",
+    "46206011",
+    "48982040",
+    "49235232",
+    "51016028"
+   ],
+   "n_gold_families": 28,
+   "hidden_edges": [
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-280125-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-305328-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-1089380-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-1881660-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-2723607-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-3272269-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-3462114-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-4033243-A",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-4324037-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-4376596-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-4453283-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-4490083-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-4932178-A",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-5244326-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-5282692-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-5809713-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-6007271-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-6012763-A",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-6214428-B1",
+     "category": "SEA",
+     "type": "X"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-6418583-B1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-2003031509-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-6575660-B1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-2007056228-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-7818929-B2",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-2013215381-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-2013259568-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-2014082922-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019382246-A1",
+     "dst": "US-2014186573-A1",
+     "category": "SEA",
+     "type": "A"
+    }
+   ]
+  },
+  {
+   "id": "wide_b66c_US2020355160A1",
+   "category": "wide_B66C",
+   "stratum": "B66C",
+   "mode": "novelty",
+   "anchor_publication": "US-2020355160-A1",
+   "anchor_family": "59677128",
+   "title": "A bulkhead unit, a wind turbine blade comprising the bulkhead unit, a lifting device and methods of assembling and installing the bulkead unit",
+   "notes": "Auto-selected anchor for B66C; gold = 13 families from 13 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "A bulkhead unit, a wind turbine blade comprising the bulkhead unit, a lifting device and methods of assembling and installing the bulkead unit\nThis invention relates to a bulkhead unit, a wind turbine blade comprising the bulkhead unit, a lifting device and methods of assembling and installing the bulkhead unit in the wind turbine blade. The bulkhead unit comprises a bulkhead element substantially extending in a radial direction and a frame structure attached to the bulkhead element. The frame structure provides support for the bulkhead element and additional components mounted to the frame structure. The frame structure comprises a plurality of frame elements which are interconnected to form a number of areas that are aligned with corresponding openings in the bulkhead element. The lifting device is used to lift the bulkhead unit into position and fix the bulkhead unit relative to the blade shell.\nClaim 1: 1 . A bulkhead unit ( 19 ) for a wind turbine blade ( 5 ), the wind turbine blade ( 5 ) comprising a blade shell ( 11 ) defining a blade root portion ( 14 ) having an inner blade surface ( 37 ), wherein the bulkhead unit ( 19 ) comprises a bulkhead element ( 26 ) substantially extending in a radial direction, the bulkhead element ( 26 ) having a first side ( 41 ) surface and a second side ( 42 ) surface facing in opposite longitudinal directions and a first peripheral edge facing the inner blade surface ( 37 ) of the wind turbine blade ( 5 ) when installed, wherein outer dimensions of the bulkhead element ( 26 ) substantially corresponds to inner dimensions of the blade root portion ( 14 ), characterised in that the bulkhead unit ( 19 ) further comprises a frame structure ( 25 ) extending in the radial direction, the frame structure ( 25 ) is configured to be attached to at least the bulkhead element ( 26 ) and to arranged relative to said first or second side ( 41 ,  42 ) surface, wherein said frame structure ( 25 ) is configured to provide support for mounting of additional components.",
+   "subject": {
+    "number": "US-2020355160-A1",
+    "efd": "2017-08-21",
+    "filing_date": "2018-08-21",
+    "publication_date": "2020-11-12",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "37067181",
+    "40538803",
+    "43513744",
+    "44526030",
+    "44786415",
+    "46888371",
+    "48747370",
+    "50180533",
+    "53189834",
+    "53729532",
+    "55458314",
+    "55856496",
+    "57583856"
+   ],
+   "n_gold_families": 13,
+   "hidden_edges": [
+    {
+     "src": "US-2020355160-A1",
+     "dst": "CN-201963494-U",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "WO-2011144971-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "US-8245971-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "WO-2013041190-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "EP-2235364-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "US-8596578-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "CN-104819105-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "EP-2801721-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "US-2016312766-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "US-10384759-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "US-10486789-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "US-10502192-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2020355160-A1",
+     "dst": "US-10830215-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66c_US7506589B2",
+   "category": "wide_B66C",
+   "stratum": "B66C",
+   "mode": "novelty",
+   "anchor_publication": "US-7506589-B2",
+   "anchor_family": "33016900",
+   "title": "Telescopic rail and carriage assembly for suspending a patient lift",
+   "notes": "Auto-selected anchor for B66C; gold = 14 families from 14 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Telescopic rail and carriage assembly for suspending a patient lift\nA telescopic rail and carriage assembly for suspending a patient lift. The carriage has a downward projection to which the patient lift is to be connected. The telescopic rail has an inner rail section and an outer rail section. The outer rail section is provided with first longitudinally extending interior support surfaces for supporting a lower set of wheels of the carriage. The inner rail section is provided with second longitudinally extending interior support surfaces for guiding and supporting an upper set of wheels of the carriage. In the extended state, the carriage is guided by the either the first or the second longitudinally extending support surfaces except where the first and second rail sections overlap. In the overlap, the wheels of the carriage are supported by both the first and second longitudinally extending interior support surfaces. A support structure for suspending a patient lift, having a telescopic rail provided with a carriage with means for attaching the patient lift thereto, a pair of upstanding pole components each provided with a stabilizing ground support. The opposite ends of the telescopic rail are connected to the upper ends of the upstanding pole components.\nClaim 1: 1. A support structure for suspending a patient lift, comprising:\n two pairs of upstanding poles, each of the upstanding poles is provided with adjustable telescopic members for keeping a distance to wall structures, \n three telescopic rails, each provided with a carriage with means for attaching a load thereto, \n the opposite ends of two of the telescopic rails being connected to the respective pairs of upstanding pole components, \n the opposing ends of the third telescopic rail being suspended from the carriages in the other two rails, and \n two telescopic stabilizing rods extending between the opposite corners of the pairs of upstanding poles connected by the respective telescopic rails.",
+   "subject": {
+    "number": "US-7506589-B2",
+    "efd": "2003-05-15",
+    "filing_date": "2004-05-11",
+    "publication_date": "2009-03-24",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "14479084",
+    "21795451",
+    "22234694",
+    "22345351",
+    "23033754",
+    "24420581",
+    "24431084",
+    "24477422",
+    "25054554",
+    "25172674",
+    "25481970",
+    "25515153",
+    "25531338",
+    "4165752"
+   ],
+   "n_gold_families": 14,
+   "hidden_edges": [
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-2688410-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-4041875-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-4125908-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-4227464-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-4243147-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-4252063-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-5188035-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-5337908-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-5511256-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-5669518-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-5802633-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-5809591-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-6575100-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7506589-B2",
+     "dst": "US-7237491-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66c_US8474892B1",
+   "category": "wide_B66C",
+   "stratum": "B66C",
+   "mode": "novelty",
+   "anchor_publication": "US-8474892-B1",
+   "anchor_family": "48671122",
+   "title": "Lifting apparatus and method",
+   "notes": "Auto-selected anchor for B66C; gold = 9 families from 9 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Lifting apparatus and method\nThere is provided an assembly for hoisting and transporting objects having support receptacles affixed to its outer surface and for moving the objects into a desired close alignment in a predetermined location. The assembly includes a mounting bracket configured to mechanically engage with a lifting end of a crane and at least a pair of lifting plates pivotally coupled to the mounting bracket. The lifting plates have opposed non-parallel sides that are angled to engage the support receptacles during lifting of the object and during transportation of the object. When the crane moves the object to its desired location, the crane operator may pivot the assembly to facilitate aligning the object. Upon completion of alignment, the object is put down, and the lifting plates disengage from the support receptacles by sliding out of the slots of the support receptacles.\nClaim 1: The invention claimed is: \n     \n       1. An assembly for hoisting an object having support receptacles attached to a surface thereof, the assembly comprising:\n a mounting bracket configured to mechanically engage with a lifting end of a crane; \n a structural frame extending forward from and pivotally coupled to the mounting bracket; and \n lifting plates each having opposed non-parallel sides, the opposed non-parallel sides of the lifting plates angled to slidingly engage the support receptacles during lifting of the support receptacles and the object to which they are attached, the lifting plates coupled to the structural frame such that in a first structural frame pivot position a first lifting plate is closest to the mounting bracket and in a second structural frame pivot position another lifting plate is closest to the mounting bracket.",
+   "subject": {
+    "number": "US-8474892-B1",
+    "efd": "2012-06-13",
+    "filing_date": "2012-06-13",
+    "publication_date": "2013-07-02",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "20288534",
+    "22262445",
+    "22747869",
+    "24448518",
+    "25824030",
+    "27198975",
+    "38472991",
+    "6265859",
+    "6402726"
+   ],
+   "n_gold_families": 9,
+   "hidden_edges": [
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-3718222-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-4545720-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-4613271-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-4722658-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-5165835-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-5169195-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-6672467-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-2007280810-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8474892-B1",
+     "dst": "US-7478490-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66c_US8596474B2",
+   "category": "wide_B66C",
+   "stratum": "B66C",
+   "mode": "novelty",
+   "anchor_publication": "US-8596474-B2",
+   "anchor_family": "42557506",
+   "title": "Crane",
+   "notes": "Auto-selected anchor for B66C; gold = 26 families from 28 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Crane\nA crane, in particular a vehicle crane, includes a first crane arm and at least one second crane arm which are connected together by a joint. The crane arms are pivotable relative to each other by a drive having a piston-cylinder unit, in each case starting from one of the two end positions in which the crane arms are in substantially mutually parallel relationship until reaching a dead point when the longitudinal axis of the piston-cylinder unit is substantially on a line with the joint. There is provided at least one second drive by which it is possible to go beyond the dead point position of the piston-cylinder unit relative to the joint.\nClaim 1: The invention claimed is: \n     \n       1. A crane comprising:\n a first crane arm; \n a second crane arm connected to said first crane arm by a joint; \n a first drive including a piston-cylinder unit for pivoting said first crane arm and said second crane arm relative to each other, said first crane arm, said second crane arm, and said first drive being configured to pivot said first crane arm and said second crane arm starting from either one of two opposite end positions whereat said first crane arm and said second crane arm are in a substantially parallel relationship, said first drive being configured to pivot said first crane arm and said second crane arm relative to each other until said piston-cylinder unit of said first drive reaches a dead point position, the dead point position being a position whereat a longitudinal axis of said piston-cylinder unit is substantially on a line with said joint; and \n a second drive for pivoting said first crane arm and said second crane arm relative to each other while said piston-cylinder unit of said first drive moves through the dead point position.",
+   "subject": {
+    "number": "US-8596474-B2",
+    "efd": "2009-05-07",
+    "filing_date": "2010-05-03",
+    "publication_date": "2013-12-03",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "14161789",
+    "15492018",
+    "17666833",
+    "20259266",
+    "20329710",
+    "20428294",
+    "21745800",
+    "21745804",
+    "22656524",
+    "23609951",
+    "23799506",
+    "24217594",
+    "25046253",
+    "25107143",
+    "25213223",
+    "25461526",
+    "26327480",
+    "26631001",
+    "26755885",
+    "27174527",
+    "27520005",
+    "35054460",
+    "42103087",
+    "42311811",
+    "9262730",
+    "9548525"
+   ],
+   "n_gold_families": 26,
+   "hidden_edges": [
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3032206-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3032207-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3035711-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3216588-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3265219-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3389820-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3465904-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3533515-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3536216-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3870162-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-3913768-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-4109807-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-4183712-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-4185945-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-4393607-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-4475870-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-4925358-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-5083689-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-5266001-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-4925358-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-5584643-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-5885050-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-6095500-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-6290078-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-6966448-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-7134562-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-7698838-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8596474-B2",
+     "dst": "US-8142132-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66c_US9550475B1",
+   "category": "wide_B66C",
+   "stratum": "B66C",
+   "mode": "novelty",
+   "anchor_publication": "US-9550475-B1",
+   "anchor_family": "57795118",
+   "title": "Securely deploying outrigger foot",
+   "notes": "Auto-selected anchor for B66C; gold = 19 families from 19 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Securely deploying outrigger foot\nAn outrigger foot is configured to be disposed on an outrigger of a utility vehicle for detecting secure emplacement of the outrigger. The outrigger foot comprises a housing, a kingpin assembly, and a pad assembly. The housing is configured to be secured to the outrigger. The kingpin assembly is at least partially disposed within the housing. The kingpin assembly is adapted to be in a compressed position while the outrigger foot is securely in contact with the ground, and to be in an uncompressed position while the outrigger foot is free of secure contact with the ground. A proximity sensor is associated with the housing, such that the proximity sensor can detect a proximity of a portion of the kingpin assembly that is in the compressed position. The pad assembly is secured to the kingpin assembly for contacting the ground at various angles.\nClaim 1: Having thus described various embodiments of the invention, what is claimed as new and desired to be protected by Letters Patent includes the following: \n     \n       1. An outrigger foot configured to be disposed on an outrigger of a utility vehicle for detecting secure emplacement of the outrigger, the outrigger foot comprising:\n a housing configured to be secured to the outrigger; \n a kingpin assembly at least partially disposed within the housing, \n said kingpin assembly adapted to be in a compressed position while the outrigger foot is securely in contact with the ground, \n said kingpin assembly adapted to be in an uncompressed position while the outrigger foot is free of secure contact with the ground; \n a proximity sensor associated with the housing such that the proximity sensor can detect a proximity of a portion of the kingpin assembly that is in the compressed position, \n wherein the kingpin assembly being in the compressed position is indicative that the outrigger foot is securely in contact with the ground; and \n a pad assembly secured to the kingpin assembly for contacting the ground.",
+   "subject": {
+    "number": "US-9550475-B1",
+    "efd": "2015-09-09",
+    "filing_date": "2015-09-09",
+    "publication_date": "2017-01-24",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "17587297",
+    "23013520",
+    "23293065",
+    "23632735",
+    "25520017",
+    "33302416",
+    "37462392",
+    "37526505",
+    "37873140",
+    "40220834",
+    "41054151",
+    "46324159",
+    "47089534",
+    "47909659",
+    "49513731",
+    "50943968",
+    "51211693",
+    "53172542",
+    "9892596"
+   ],
+   "n_gold_families": 19,
+   "hidden_edges": [
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-3848750-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-4071147-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-4266809-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-5217126-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-5570975-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "GB-2368706-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-6811161-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-7150472-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-7338077-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-2009008917-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-7489098-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-7506405-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-2012279938-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-2013074377-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-8594679-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-2014116975-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-8757663-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-2015030383-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9550475-B1",
+     "dst": "US-2015137498-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66f_US10507574B2",
+   "category": "wide_B66F",
+   "stratum": "B66F",
+   "mode": "novelty",
+   "anchor_publication": "US-10507574-B2",
+   "anchor_family": "58778007",
+   "title": "Confined entry device",
+   "notes": "Auto-selected anchor for B66F; gold = 14 families from 15 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Confined entry device\nA seat assembly. The seat assembly is adapted for use in entering confined spaces or otherwise entering spaces through confined entryways. The seat assembly includes a seat that is slidably disposed along a track. In one embodiment, the seat is rotatable. The seat assembly further includes a wire or tether that has multiple clamps positioned along its length. The assembly is utilized by placing the track such that it extends through a confined entryway and then securing the clamps about the perimeter edge of the opening such that the tether is held taut. The tension in the wire exerts a force that maintains the track, the seat, and a user or any equipment thereon in a horizontal position through the opening. Users can the utilize the slidable seat to enter and exit the confined opening with minimal difficulty.\nClaim 1: I claim: \n     \n       1. A seat assembly for confined entry, comprising:\n a track comprising a rail, the rail extending longitudinally along a length of the track; \n a slider including a roller, the roller configured to slidably engage the rail; \n a seat rotatably attached to the slider; \n a wire attached to the underside of the track, the wire including a plurality of clamps disposed therealong, wherein the plurality of clamps comprise at least a clamp disposed at each end of the wire, wherein the plurality of clamps are configured to support the seat assembly.",
+   "subject": {
+    "number": "US-10507574-B2",
+    "efd": "2015-12-01",
+    "filing_date": "2016-12-01",
+    "publication_date": "2019-12-17",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "23511545",
+    "24074855",
+    "24151837",
+    "25272321",
+    "25772534",
+    "26668698",
+    "34226560",
+    "35810469",
+    "40532923",
+    "41118120",
+    "45933467",
+    "50824166",
+    "52584037",
+    "64014069"
+   ],
+   "n_gold_families": 14,
+   "hidden_edges": [
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-4185846-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-4271762-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-4706953-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-5092426-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-5711397-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-6227553-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-2005051048-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-7000730-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-2009095190-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-2009247376-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-7743710-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-2012091673-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-2015065320-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-9379528-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10507574-B2",
+     "dst": "US-2018319007-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66f_US11116325B2",
+   "category": "wide_B66F",
+   "stratum": "B66F",
+   "mode": "novelty",
+   "anchor_publication": "US-11116325-B2",
+   "anchor_family": "63581264",
+   "title": "Zero gravity bed",
+   "notes": "Auto-selected anchor for B66F; gold = 33 families from 33 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Zero gravity bed\nA bed frame is provided that includes a lower frame and an upper frame having a first section, a second section and a third section. The second section is positioned between the first section and the third section. The first section is pivotable relative to the lower frame. The third section is fixed relative to the lower frame. The second section is pivotable relative to the first section and the third section. A lifting assembly includes a first end that is coupled to the lower frame and a second end that is coupled to the second section. The lifting assembly is configured to selectively move the second section toward and away from the lower frame.\nClaim 1: What is claimed is: \n     \n       1. A bed frame comprising:\n a lower frame; \n an upper frame comprising a first section, a second section and a third section, the second section positioned between the first section and the third section, the first section being pivotable relative to the lower frame, the second section being pivotable relative to the first section and the third section; and \n a lifting assembly comprising a first end that is coupled to the lower frame and a second end that is coupled to the second section, the lifting assembly being configured to selectively move the second section toward and away from the lower frame, \n wherein the lifting assembly is configured to move the bed frame between a first configuration in which the sections are parallel to one another and a second configuration in which the first and third sections each extend at an obtuse angle relative to the second section, and \n wherein the third section is non-movable relative to the lower frame as the bed frame moves between the first and second configurations.",
+   "subject": {
+    "number": "US-11116325-B2",
+    "efd": "2017-03-24",
+    "filing_date": "2018-03-20",
+    "publication_date": "2021-09-14",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "11058589",
+    "11203631",
+    "20424645",
+    "22157248",
+    "22965573",
+    "23026948",
+    "23051022",
+    "23333662",
+    "23432192",
+    "23550410",
+    "23971698",
+    "24248005",
+    "24623857",
+    "24797327",
+    "25194493",
+    "25501717",
+    "25706955",
+    "26673424",
+    "2687016",
+    "27156386",
+    "31973049",
+    "35645506",
+    "36587466",
+    "3843678",
+    "40350286",
+    "42183292",
+    "44237047",
+    "48653145",
+    "52282981",
+    "54768684",
+    "58099307",
+    "59722423",
+    "9925973"
+   ],
+   "n_gold_families": 33,
+   "hidden_edges": [
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-618407-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-1345760-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2108913-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2470161-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-3312985-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-3793652-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-3887950-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-3958283-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-4395786-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-4403357-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-4674140-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-4684314-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-4792110-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-4944055-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-4996731-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-5109558-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-5245718-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-5369825-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-5392479-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-5613255-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-5996151-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-6912746-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2005166323-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2007245489-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2008289112-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2010205748-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-8424134-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2013160208-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2013185870-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2015196442-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2017251817-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-9955795-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-11116325-B2",
+     "dst": "US-2018242751-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66f_US2019322192A1",
+   "category": "wide_B66F",
+   "stratum": "B66F",
+   "mode": "novelty",
+   "anchor_publication": "US-2019322192-A1",
+   "anchor_family": "64380101",
+   "title": "Forklift Having An Integrated Battery Box",
+   "notes": "Auto-selected anchor for B66F; gold = 15 families from 15 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Forklift Having An Integrated Battery Box\nA forklift includes an integrated battery box. The forklift includes a forklift body having a mounting chamber with an opening to a side of the forklift body. The battery box is loaded into the mounting chamber from the side opening. After the battery box is loaded into the mounting chamber, a mechanical connection between the battery box and the forklift is realized by the locking mechanism, and a circuit connection between the battery box and an electric control mechanism of the forklift is realized by a plug-in device.\nClaim 1: 1 . A forklift having an integrated battery box, comprising:\n a forklift body including a mounting chamber having an opening configured to receive a battery box via plug-in and pull-out of the battery box on a left or right side of the mounting chamber,   the battery box enclosing a lithium battery;   a mechanical connection between the battery box and the forklift body via a locking mechanism that is moved to a locking position after the battery box is loaded into the mounting chamber;   a circuit connection between the battery box and an electric control mechanism of the forklift by insertion of a plug-in device into a socket in the battery box; and   further comprising power supply contacts and electric control contacts, with the power supply contacts and the electric control contacts being located in the socket in battery box.",
+   "subject": {
+    "number": "US-2019322192-A1",
+    "efd": "2018-04-19",
+    "filing_date": "2019-04-17",
+    "publication_date": "2019-10-24",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "10766826",
+    "20397520",
+    "24068143",
+    "29581990",
+    "3275514",
+    "40888145",
+    "42028240",
+    "42062632",
+    "44065851",
+    "48796331",
+    "51298517",
+    "53825090",
+    "6136444",
+    "62064741",
+    "7930230"
+   ],
+   "n_gold_families": 15,
+   "hidden_edges": [
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-1207600-A",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "FR-942997-A",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-3930552-A",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "DE-3127019-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "DE-19609497-A1",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "DE-19956623-A1",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-6340191-B1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "FR-2942997-A1",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-8439144-B2",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "CN-204549954-U",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-9278841-B2",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-9290088-B2",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-9321433-B2",
+     "category": "SEA",
+     "type": "A"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-9440830-B2",
+     "category": "SEA",
+     "type": "Y"
+    },
+    {
+     "src": "US-2019322192-A1",
+     "dst": "US-10062885-B2",
+     "category": "SEA",
+     "type": "A"
+    }
+   ]
+  },
+  {
+   "id": "wide_b66f_US2021163275A1",
+   "category": "wide_B66F",
+   "stratum": "B66F",
+   "mode": "novelty",
+   "anchor_publication": "US-2021163275-A1",
+   "anchor_family": "68161435",
+   "title": "Apparatus for Handling Heavy Components on Containers",
+   "notes": "Auto-selected anchor for B66F; gold = 8 families from 8 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Apparatus for Handling Heavy Components on Containers\nA machine for handling heavy components in a heavy equipment environment. In an example implementation, the machine includes a truck having at least two front wheels and at least one rear wheel. A outrigger portion extends forward from the truck. The front wheels are attached at a forward end of the outrigger portion. A mast extends vertically from a track extending forward from the truck on a base of the outrigger portion. The mast is movably extendable or retractable along the track. A carriage is mounted on the mast and configured to move vertically on the mast. A pair of forks are mounted on the carriage to move vertically when the carriage is controlled to move. A personnel platform is mounted on the carriage independent of the mounting of the forks on the carriage. A remote control panel is configured to override a cab control panel under operator control. The remote control panel includes a plurality of controls for moving the carriage and for extending or retracting the mast.\nClaim 1: What is claimed is: \n     \n         1 . A multi-loader comprising:\n a base comprising a cab configured to contain an operator to control the multi-loader and an outrigger portion of the base extending from a portion of the base supporting the cab to an end of the outrigger portion opposite the cab, wherein the end is supported by at least two wheels;   a mast extending vertically from a track disposed in the outrigger portion, where the mast is movably mounted on the track to move forward towards the end of the outrigger portion opposite the cab and rearward towards the cab;   a pair of forks movably mounted on the mast and configured to carry a load;   a personnel platform movably mounted on the mast and configured to support the operator;   a main control panel in the cab comprising user interface devices to control movement of the mast, movement of the platform and forks, and movement of the multi-loader; and   a remote control panel mounted on the personnel platform comprising user interface devices to control movement of the mast, and movement of the carriage.",
+   "subject": {
+    "number": "US-2021163275-A1",
+    "efd": "2018-04-11",
+    "filing_date": "2021-02-05",
+    "publication_date": "2021-06-03",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "22491640",
+    "22601965",
+    "25289648",
+    "39325345",
+    "43879426",
+    "44169554",
+    "47604169",
+    "57227084"
+   ],
+   "n_gold_families": 8,
+   "hidden_edges": [
+    {
+     "src": "US-2021163275-A1",
+     "dst": "US-3187917-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021163275-A1",
+     "dst": "US-5391043-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021163275-A1",
+     "dst": "US-5879124-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021163275-A1",
+     "dst": "US-2008095578-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021163275-A1",
+     "dst": "US-2011091306-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021163275-A1",
+     "dst": "US-2011243699-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021163275-A1",
+     "dst": "US-2013183127-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2021163275-A1",
+     "dst": "US-2017129753-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66f_US9309008B2",
+   "category": "wide_B66F",
+   "stratum": "B66F",
+   "mode": "novelty",
+   "anchor_publication": "US-9309008-B2",
+   "anchor_family": "42238793",
+   "title": "Aircraft engine module handling assembly",
+   "notes": "Auto-selected anchor for B66F; gold = 17 families from 17 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Aircraft engine module handling assembly\nAn aircraft engine module handling assembly including a carriage, a pivoting portion at a top of the carriage, a module support tooling, and an additional mechanism for assembly of the tooling on the pivoting portion, such that the module can be rotated from an original vertical position, observed when it reaches an assembly shop in a crate, to a horizontal position suitable for its assembly with another module of an engine.\nClaim 1: The invention claimed is: \n     \n       1. An aircraft engine module handling assembly, comprising:\n a moving carriage; and \n tooling positioned at an end of the module, wherein the tooling includes a mount and devices for attachment to the module; \n wherein the carriage includes an upper structure set up on a support frame, and a pivot for pivoting the upper structure with respect to the support frame around a horizontal axis, and \n wherein additional devices are provided on the upper structure and the tooling for securing the tooling to the upper structure in a position in which an axis of rotation of the module intersects the horizontal axis and can be pivoted from a vertical direction to a horizontal direction.",
+   "subject": {
+    "number": "US-9309008-B2",
+    "efd": "2009-11-20",
+    "filing_date": "2010-11-19",
+    "publication_date": "2016-04-12",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "22582345",
+    "23633657",
+    "23844139",
+    "24045975",
+    "24218691",
+    "24258375",
+    "25172866",
+    "27805693",
+    "35509967",
+    "35985331",
+    "36955587",
+    "41694623",
+    "41724169",
+    "42046412",
+    "42283297",
+    "43037042",
+    "9239829"
+   ],
+   "n_gold_families": 17,
+   "hidden_edges": [
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-1481503-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-2712874-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-2763053-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-3318466-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-3355162-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-4412774-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-5816367-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-6490906-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-6619640-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-7637487-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-2010155566-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-7770292-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-7963542-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-8118291-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-8621873-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-8646725-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9309008-B2",
+     "dst": "US-8833776-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_b66f_USRE48991E",
+   "category": "wide_B66F",
+   "stratum": "B66F",
+   "mode": "novelty",
+   "anchor_publication": "US-RE48991-E",
+   "anchor_family": "44815172",
+   "title": "Operator ride enhancement system",
+   "notes": "Auto-selected anchor for B66F; gold = 42 families from 49 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Operator ride enhancement system\nAn operator ride enhancement system that is coupleable to the frame of a vehicle includes a counterweight platform moveably coupled to the frame, and a resilient member engaged with the frame and the counterweight platform. The mass of the counterweight platform is configured to be approximately at least equal to a total mass supported by the counterweight platform during operation of the vehicle. The operator ride enhancement system attenuates and/or inhibits movement of the counterweight platform during operation of the vehicle.\nClaim 1: I claim: \n     \n       1. An operator ride enhancement system for use in a vehicle having a frame, the operator ride enhancement system comprising:\n a counterweight platform pivotally coupled to the frame of the vehicle about an axis and configured to support an operator engaging the operator ride enhancement system, the counterweight platform having a counterweight platform mass that is greater than approximately forty-five kilograms;   a resilient member engaged with the frame and the counterweight platform to attenuate movement of the counterweight platform about the axis; and   a control member engaged with the frame and the counterweight platform to inhibit movement of the counterweight platform along the axis.",
+   "subject": {
+    "number": "US-RE48991-E",
+    "efd": "2010-04-23",
+    "filing_date": "2020-03-09",
+    "publication_date": "2022-03-29",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "13260515",
+    "21979251",
+    "22821564",
+    "23205870",
+    "23313057",
+    "23510078",
+    "23525491",
+    "23547477",
+    "23949041",
+    "24226524",
+    "25062388",
+    "25344588",
+    "25358753",
+    "25482285",
+    "25535561",
+    "26530956",
+    "27010947",
+    "27609349",
+    "27647308",
+    "28675304",
+    "29716673",
+    "31991994",
+    "32767902",
+    "34423371",
+    "34436933",
+    "35503106",
+    "36144483",
+    "36690805",
+    "36740505",
+    "36740512",
+    "37082510",
+    "40328291",
+    "40341564",
+    "40362079",
+    "41015884",
+    "41399647",
+    "43973314",
+    "44169554",
+    "7635131",
+    "7786968",
+    "8084732",
+    "9492655"
+   ],
+   "n_gold_families": 42,
+   "hidden_edges": [
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-3029088-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-4392546-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-4971356-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5109939-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5116188-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5131802-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5230398-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5253853-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5579859-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5685555-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5833268-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5918693-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5964310-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-5984050-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6137398-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6206121-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6241263-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6257645-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6467581-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "JP-2003212483-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6623080-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6719258-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6773002-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2005095104-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6935693-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-6988560-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7063334-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7097186-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2006255622-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2006266573-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7152842-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7300092-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7337864-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2009038186-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2009045000-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7497505-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7673931-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7744149-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7823961-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2010290883-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2011001335-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2011017537-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-7896358-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2011108333-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2011260502-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-8096608-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-8616603-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-2014084616-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-RE48991-E",
+     "dst": "US-8944744-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_f16b_US10183855B2",
+   "category": "wide_F16B",
+   "stratum": "F16B",
+   "mode": "novelty",
+   "anchor_publication": "US-10183855-B2",
+   "anchor_family": "49724614",
+   "title": "Anti-theft device for a saddle",
+   "notes": "Auto-selected anchor for F16B; gold = 26 families from 26 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Anti-theft device for a saddle\nAnti-theft device for a saddle having at least one through hole, the device having at least one first fastening member and at least one second fastening member respectively provided with a first countercheck and a second countercheck, coupleable in abutment, from opposite sides of the at least one through hole, to the outer surfaces of the saddle, wherein the at least one first fastening member and/or the at least one second fastening member is/are housable, at least partially, inside the at least one through hole of said saddle, the anti-theft device having means for constraining in a not-removable way the at least one first fastening member to the at least one second fastening member.\nClaim 1: The invention claimed is: \n     \n       1. Anti-theft device for a saddle having one or more layers, said saddle being adapted with at least one through hole piercing at least one first layer of said saddle, or being adapted with at least one through hole piercing through said saddle, said device comprising:\n at least one first fastening member and at least one second fastening member, respectively, provided with a first countercheck and a second countercheck, directly or indirectly, coupleable in abutment, from opposite sides either of said at least one through hole piercing said at least one first layer of said saddle, or of said at least one through hole piercing through said saddle and, \n wherein said at least one first fastening member or said at least one second fastening member are housable, at least partially, inside said at least one through hole piercing said at least one first layer, or inside said at least one through hole piercing through said saddle, \n said anti-theft device further comprising constraining means for constraining in a not-removable way said at least one first fastening member to said at least one second fastening member, \n wherein said at least one first countercheck or said at least one second countercheck has a plate shape, \n wherein, when the anti-theft device is mounted on the saddle, said at least one first countercheck has a half-sphere or plate shape and said at least one second countercheck has substantially a plate or sphere shape, \n whe",
+   "subject": {
+    "number": "US-10183855-B2",
+    "efd": "2012-10-08",
+    "filing_date": "2013-10-04",
+    "publication_date": "2019-01-22",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "20129977",
+    "21953475",
+    "22114230",
+    "22306735",
+    "22528525",
+    "23046602",
+    "23417379",
+    "23647902",
+    "23990476",
+    "24658700",
+    "25163942",
+    "25468020",
+    "32866330",
+    "35424104",
+    "38263313",
+    "39640684",
+    "40623188",
+    "40997749",
+    "44883160",
+    "44912416",
+    "46147740",
+    "46247988",
+    "46303235",
+    "46800605",
+    "48960428",
+    "5804997"
+   ],
+   "n_gold_families": 26,
+   "hidden_edges": [
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-1352918-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-2647432-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-3135154-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-3828653-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-3862775-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-4830557-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-5161838-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-5347689-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-5399052-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-5542777-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-5732989-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-5909176-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-6039365-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-6550829-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-7597253-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-7686531-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-7696886-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-7764173-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-8026816-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-8267003-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-8321124-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-8486120-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-8764363-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-8939694-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-8988222-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-10183855-B2",
+     "dst": "US-9472125-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_f16b_US2022196287A1",
+   "category": "wide_F16B",
+   "stratum": "F16B",
+   "mode": "novelty",
+   "anchor_publication": "US-2022196287-A1",
+   "anchor_family": "82023263",
+   "title": "Water heater and cover assembly therefor",
+   "notes": "Auto-selected anchor for F16B; gold = 19 families from 19 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Water heater and cover assembly therefor\nA water heater and a cover assembly for the water heater is provided. The water heater includes a mixing valve disposed in fluid communication with each of a hot water conduit and a cold water pipe, to regulate temperature of hot water received from the hot water conduit. The cold water pipe branches from a cold water conduit and extends along a longitudinal axis of the tank to connect with the mixing valve. The cover assembly is mounted on a tank of the water heater. The cover assembly includes a first cover to conceal the cold water pipe, and a second cover to conceal the mixing valve and the hot water conduit extending between the tank and the mixing valve. The second cover is removably coupled to the first cover via one or more coupling elements.\nClaim 1: 1 . A water heater comprising:\n a tank;   a cold water conduit configured to direct flow of cold water into the tank;   a hot water conduit extending radially outward from the tank and configured to direct hot water out of the tank;   a mixing valve in fluid communication with each of the hot water conduit and a cold water pipe branching from the cold water conduit, the mixing valve being located adjacent to an outer side surface of the water heater, wherein the mixing valve is configured to regulate temperature of hot water received from the hot water conduit; and   a cover assembly mounted on the outer side surface of the water heater, the cover assembly configured to conceal each of the mixing valve, the hot water conduit, and the cold water pipe, wherein the cover assembly comprises:\n a first cover configured to conceal the cold water pipe extending along a longitudinal axis of the tank and extending between the mixing valve and the cold water conduit; and \n a second cover configured to conceal the mixing valve and the hot water conduit extending between the tank and the mixing valve, \n wherein the second cover is detachably attachable to the first cover via one or more coupling elements, thereby permitting selective access to the mixing valve.",
+   "subject": {
+    "number": "US-2022196287-A1",
+    "efd": "2020-12-18",
+    "filing_date": "2020-12-18",
+    "publication_date": "2022-06-23",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "22283307",
+    "22608784",
+    "22709698",
+    "23255982",
+    "23658682",
+    "24546760",
+    "24591986",
+    "24805427",
+    "24921256",
+    "24943636",
+    "25645764",
+    "43223290",
+    "45525711",
+    "47711909",
+    "55525432",
+    "56367300",
+    "57600935",
+    "61191539",
+    "71573472"
+   ],
+   "n_gold_families": 19,
+   "hidden_edges": [
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-1484056-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-1525503-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-1609858-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2223769-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2243249-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2642851-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-3065764-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-4872443-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-5085205-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-D400971-S",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-6336469-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2002069868-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2012024968-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2012067301-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-8991638-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2016084525-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2016201946-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2016377322-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022196287-A1",
+     "dst": "US-2018051911-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_f16b_US2022381288A1",
+   "category": "wide_F16B",
+   "stratum": "F16B",
+   "mode": "novelty",
+   "anchor_publication": "US-2022381288-A1",
+   "anchor_family": "84194635",
+   "title": "Composite sucker and composite suction bracket",
+   "notes": "Auto-selected anchor for F16B; gold = 14 families from 15 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Composite sucker and composite suction bracket\nA composite sucker is for being sucked on an attached surface. The composite sucker includes a suction element, a pressing element and a pressure adjusting element. The suction element is for being connected to and sucked on the attached surface. The suction element includes a suction elastic portion. An air space is formed between the suction elastic portion and the attached surface. The pressing element is connected to the suction element and includes a pressing elastic portion. The pressing elastic portion is disposed farther away from the attached surface than the suction elastic portion therefrom. The pressure adjusting element is connected to the suction element. The pressure adjusting element is able to drive the suction elastic portion to be deformed, so that a volume of the air space is able to become greater.\nClaim 1: What is claimed is: \n     \n         1 . A composite sucker, for being sucked on an attached surface, the composite sucker comprising:\n a suction element for being connected to and sucked on the attached surface, wherein the suction element comprises a suction elastic portion, and an air space is formed between the suction elastic portion and the attached surface;   a pressing element connected to the suction element, wherein the pressing element comprises a pressing elastic portion, the pressing elastic portion is disposed farther away from the attached surface than the suction elastic portion therefrom, and the pressing elastic portion and the suction elastic portion are driven to be deformed by each other; and   a pressure adjusting element connected to the suction element, wherein the pressure adjusting element is able to drive the suction elastic portion to be deformed, so that a volume of the air space is able to become greater.",
+   "subject": {
+    "number": "US-2022381288-A1",
+    "efd": "2021-05-25",
+    "filing_date": "2021-11-12",
+    "publication_date": "2022-12-01",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "29736061",
+    "34961111",
+    "37566200",
+    "38516792",
+    "39713371",
+    "40378883",
+    "40937033",
+    "45972156",
+    "4672636",
+    "50730607",
+    "52110090",
+    "54540472",
+    "56432454",
+    "5962895"
+   ],
+   "n_gold_families": 14,
+   "hidden_edges": [
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-4133575-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-6666420-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-6932306-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-2006289708-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-2007241246-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-7357361-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-7628362-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-7690610-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-7850133-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-2012097820-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-2012112023-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-2014374553-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-2015330438-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-2016215813-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-2022381288-A1",
+     "dst": "US-9746022-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_f16b_US7134170B2",
+   "category": "wide_F16B",
+   "stratum": "F16B",
+   "mode": "novelty",
+   "anchor_publication": "US-7134170-B2",
+   "anchor_family": "23295805",
+   "title": "Plastic retaining clip for rib attachment",
+   "notes": "Auto-selected anchor for F16B; gold = 11 families from 11 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Plastic retaining clip for rib attachment\nA resilient clip for engaging a structure and having a body portion with a pair of top flanges, a pair of fastening members and a pair of abutting flanges. Each of the fastening members has a base portion that is coupled to an associated one of the top flanges. Each of the abutting flanges has a locking fingers which engages the mounting structure. Finger flange portions are configured to engage a first side of a mounting flange on an interior trim component.\nClaim 1: What is claimed is: \n     \n       1. A fastener for coupling a flanged component to an aperture formed in a sheet metal component comprising:\n a body portion having a locking portion configured to be passed from a first side of the sheet metal to a second side of the sheet metal through the aperture to be mated with the aperture; \n an umbrella portion connected to the body portion; and \n a metal retainer connected to the body portion and disposed on the first side of the sheet metal and including a pair of generally parallel clamping flanges which are generally parallel to the locking portion, at least one of the clamping flanges having a locking member, the locking member configured to releasably engage a flange on the flanged component; \n wherein the locking portion engages only a portion of the entire periphery of the aperture and wherein the umbrella portion contacts the first side of the sheet metal around the aperture for covering the aperture.",
+   "subject": {
+    "number": "US-7134170-B2",
+    "efd": "2001-11-21",
+    "filing_date": "2002-11-21",
+    "publication_date": "2006-11-14",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "10695715",
+    "12281434",
+    "22365364",
+    "22537349",
+    "22576633",
+    "23176552",
+    "23403716",
+    "25087519",
+    "25272933",
+    "25536702",
+    "26704865"
+   ],
+   "n_gold_families": 11,
+   "hidden_edges": [
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-2178719-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-3006049-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-3860999-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-4683622-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-4865505-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-5347690-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-5353571-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-5517731-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-5542158-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-6049952-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-7134170-B2",
+     "dst": "US-6568045-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_f16b_US8444191B2",
+   "category": "wide_F16B",
+   "stratum": "F16B",
+   "mode": "novelty",
+   "anchor_publication": "US-8444191-B2",
+   "anchor_family": "46876726",
+   "title": "Removable automobile molding for dent and scratch protection",
+   "notes": "Auto-selected anchor for F16B; gold = 30 families from 30 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Removable automobile molding for dent and scratch protection\nA removable automobile molding has been developed that is an extruded plastic assembly, which attaches to the sides or fronts of the vehicle using a flexible magnetic film and can protect any surface of the automobile from dents or scratches. The flexible-plastic, guard assemblies are sized for each vehicle to allow car doors to be opened or closed with the assemblies attached and can be left on the vehicle either temporarily or permanently. Theft of the extruded plastic assemblies is prevented due to the use of spring-loaded clips attached to the extruded plastic assembly, which attach to the edges of the door and cannot be removed unless the door is open. For some vehicles the theft protection assembly may not be required or cannot be attached to the vehicle.\nClaim 1: We claim: \n     \n       1. A resilient vehicle side bumper comprising:\n an extruded plastic mounting plate having a flat surface; \n two or more hollow-core tubes, attached to the plate; \n a magnet attached to the flat surface of the extruded plate; and \n spring-loaded clips anchored within the hollow-core tubes, said clips having a shape and size to clip onto sides of a vehicle door to secure the bumper against removal unless the vehicle door is open, wherein the extruded plastic mounting plate and the two or more hollow-core tubes all have approximately the same length, are designed to contact with a surface of the vehicle and provide cushioning protection to the vehicle&#39;s surface.",
+   "subject": {
+    "number": "US-8444191-B2",
+    "efd": "2011-03-25",
+    "filing_date": "2011-03-25",
+    "publication_date": "2013-05-21",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "21809834",
+    "22717180",
+    "22722064",
+    "22747273",
+    "22757482",
+    "23109643",
+    "23125271",
+    "23201674",
+    "23272534",
+    "23396997",
+    "23621436",
+    "23811020",
+    "23937674",
+    "23969246",
+    "24197369",
+    "24465449",
+    "24540160",
+    "24564293",
+    "24658076",
+    "24875937",
+    "24907909",
+    "24912276",
+    "25127635",
+    "25474848",
+    "26934423",
+    "27206275",
+    "29584297",
+    "32658722",
+    "40096136",
+    "5770660"
+   ],
+   "n_gold_families": 30,
+   "hidden_edges": [
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-1516489-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-2048461-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-2889165-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-3131960-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-3147176-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-3243223-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-3582134-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-3795410-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-3865358-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-4014583-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-4127294-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-4401331-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-4437697-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-4879543-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-4969674-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-4991891-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-5050925-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-5060994-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-5071181-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-5156425-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-5286536-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-5520765-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-5740993-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-5975599-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-6179354-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-6186564-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-6247742-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-6926339-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-6955383-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-8444191-B2",
+     "dst": "US-7763332-B2",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  },
+  {
+   "id": "wide_f16b_US9326411B2",
+   "category": "wide_F16B",
+   "stratum": "F16B",
+   "mode": "novelty",
+   "anchor_publication": "US-9326411-B2",
+   "anchor_family": "43881194",
+   "title": "Connection device for connecting an electronic component to a housing part and electronic controller",
+   "notes": "Auto-selected anchor for F16B; gold = 8 families from 9 examiner citations (SEA/ISR/EXA only).",
+   "query_text": "Connection device for connecting an electronic component to a housing part and electronic controller\nA connection device is provided connecting an electronic component that is arranged on a carrier to a housing part. The connection device has a first bush for receiving a first fastening unit which is used to fasten the connection device to the carrier and a second bush for receiving a second fastening unit for fastening the connection device to the housing part. The first bush is thermally insulated from the second bush. A controller has an electronic component which is arranged on the carrier and which is connected or can be connected to the housing part by use of such a connection device.\nClaim 1: The invention claimed is: \n     \n       1. A controller, comprising:\n an electronic component; \n a carrier on which the electronic component is arranged; \n a connection device operatively configured to connect the electronic component arranged on the carrier to a housing part, the connection device comprising first and second bushes, the first bush receiving a first fastening unit configured to fasten the connection device to the carrier and the second bush receiving a second fastening unit configured to fasten the connection device to the housing part, wherein \n the first bush is thermally insulated from the second bush, \n the connection device comprises a frame in which the first and second bushes are received, and \n the frame surrounds the electronic component on at least two sides of the electronic component.",
+   "subject": {
+    "number": "US-9326411-B2",
+    "efd": "2010-03-10",
+    "filing_date": "2012-09-10",
+    "publication_date": "2016-04-26",
+    "jurisdiction": "US",
+    "has_claims": true
+   },
+   "gold_families": [
+    "23329560",
+    "23968199",
+    "26698571",
+    "38325428",
+    "38572855",
+    "39157074",
+    "41402269",
+    "42108497"
+   ],
+   "n_gold_families": 8,
+   "hidden_edges": [
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-4546408-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-5579217-A",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-6381136-B1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-2007232128-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-7561435-B2",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-2010039776-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-2010091460-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-2010097768-A1",
+     "category": "SEA",
+     "type": ""
+    },
+    {
+     "src": "US-9326411-B2",
+     "dst": "US-2010302735-A1",
+     "category": "SEA",
+     "type": ""
+    }
+   ]
+  }
+ ]
+}

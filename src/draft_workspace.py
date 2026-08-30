@@ -46,23 +46,45 @@ FALLBACK_ROOT = Path(__file__).resolve().parents[1] / "data" / "draft_workspaces
 SECTION_FILES = (
     ("title", "01-title.md", "Title"),
     ("cross_reference", "02-cross-reference.md", "Cross-Reference to Related Applications"),
-    ("field", "03-field.md", "Field of the Disclosure"),
-    ("background", "04-background.md", "Background"),
-    ("summary", "05-summary.md", "Summary"),
-    ("drawing_descriptions", "06-drawings.md", "Brief Description of the Drawings"),
-    ("detailed_description", "07-detailed-description.md", "Detailed Description"),
-    ("claims", "08-claims.md", "Claims"),
-    ("abstract", "09-abstract.md", "Abstract"),
+    ("government_support", "03-government-support.md",
+     "Statement Regarding Federally Sponsored Research or Development"),
+    ("field", "04-field.md", "Field of the Disclosure"),
+    ("background", "05-background.md", "Background"),
+    ("summary", "06-summary.md", "Summary"),
+    ("drawing_descriptions", "07-drawings.md", "Brief Description of the Drawings"),
+    ("detailed_description", "08-detailed-description.md", "Detailed Description"),
+    ("claims", "09-claims.md", "Claims"),
+    ("abstract", "10-abstract.md", "Abstract"),
+)
+LEGACY_SECTION_FILES = (
+    ("title", "01-title.md"),
+    ("cross_reference", "02-cross-reference.md"),
+    ("field", "03-field.md"),
+    ("background", "04-background.md"),
+    ("summary", "05-summary.md"),
+    ("drawing_descriptions", "06-drawings.md"),
+    ("detailed_description", "07-detailed-description.md"),
+    ("claims", "08-claims.md"),
+    ("abstract", "09-abstract.md"),
+    ("government_support", "10-government-support.md"),
 )
 SECTION_BY_KEY = {key: (name, heading) for key, name, heading in SECTION_FILES}
 NUMERALS_FILE = "numerals.md"
+CANONICAL_DRAFT_FILES = frozenset(
+    {name for _key, name, _heading in SECTION_FILES} | {NUMERALS_FILE})
 
 MAX_REFERENCE_CHARS = 24_000
 MAX_TOTAL_REFERENCE_CHARS = 900_000
 MAX_DOCUMENT_CHARS = 120_000
+MAX_CONVERSATION_CHARS = 32_000
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _NUMERAL_CELL_RE = re.compile(r"^\d{1,4}[a-zA-Z]?$", re.IGNORECASE)
+_PLAIN_NUMERAL_ROW_RE = re.compile(
+    r"^\s*(?:[-*+]\s+)?(?P<numeral>\d{1,4}[a-zA-Z]?)\s*"
+    r"(?:[:,]\s*|\s+-\s+)(?P<part>\S(?:.*\S)?)\s*$",
+    re.IGNORECASE,
+)
 
 
 def root() -> Path:
@@ -102,9 +124,77 @@ def _clean(text: Any, limit: int = 400_000) -> str:
 def write_sections(workspace: Path, sections: Mapping[str, str]) -> None:
     draft = Path(workspace) / "draft"
     draft.mkdir(parents=True, exist_ok=True)
+    _remove_noncanonical_draft_entries(draft)
     for key, name, heading in SECTION_FILES:
         body = _clean(sections.get(key), 400_000)
-        _write(draft / name, f"<!-- {heading} - body text only, no heading line. -->\n\n{body}")
+        _write(draft / name, body)
+    _remove_legacy_section_files(draft)
+
+
+def _remove_legacy_section_files(draft: Path) -> None:
+    current = {name for _key, name, _heading in SECTION_FILES}
+    for _key, name in LEGACY_SECTION_FILES:
+        if name not in current:
+            try:
+                (draft / name).unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _noncanonical_draft_entries(draft: Path) -> list[Path]:
+    if not draft.is_dir():
+        return []
+    return sorted(
+        (entry for entry in draft.iterdir() if entry.name not in CANONICAL_DRAFT_FILES),
+        key=lambda entry: entry.name,
+    )
+
+
+def _remove_noncanonical_draft_entries(draft: Path) -> list[str]:
+    removed = []
+    for entry in _noncanonical_draft_entries(draft):
+        removed.append(entry.name)
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink(missing_ok=True)
+    return removed
+
+
+def _reject_noncanonical_draft_entries(draft: Path) -> None:
+    removed = _remove_noncanonical_draft_entries(draft)
+    if not removed:
+        return
+    allowed = ", ".join(sorted(CANONICAL_DRAFT_FILES))
+    detail = (
+        "Removed noncanonical application files created during the drafting turn: "
+        + ", ".join(removed)
+        + ". Use 09-claims.md for claims and only these canonical draft files: "
+        + allowed
+        + "."
+    )
+    error_type = drafting.DraftingValidationError if drafting is not None else ValueError
+    raise error_type(detail)
+
+
+def _migrate_legacy_section_files(workspace: Path) -> bool:
+    """Shift the former 01-09 plus 10-support layout into true filing order."""
+    draft = Path(workspace) / "draft"
+    if not (draft / "10-government-support.md").exists():
+        return False
+    if (draft / "03-government-support.md").exists():
+        _remove_legacy_section_files(draft)
+        return False
+    bodies: dict[str, str] = {}
+    for key, name in LEGACY_SECTION_FILES:
+        try:
+            bodies[key] = (draft / name).read_text(encoding="utf-8")
+        except OSError:
+            bodies[key] = ""
+    for key, name, _heading in SECTION_FILES:
+        _write(draft / name, bodies.get(key, ""))
+    _remove_legacy_section_files(draft)
+    return True
 
 
 def read_sections(workspace: Path) -> dict[str, str]:
@@ -115,7 +205,9 @@ def read_sections(workspace: Path) -> dict[str, str]:
     A leading heading whose text matches the section's own name is dropped; any other heading is
     left alone, because in the detailed description headings are legitimate structure.
     """
+    _migrate_legacy_section_files(workspace)
     draft = Path(workspace) / "draft"
+    _reject_noncanonical_draft_entries(draft)
     out: dict[str, str] = {}
     for key, name, heading in SECTION_FILES:
         path = draft / name
@@ -131,6 +223,8 @@ def read_sections(workspace: Path) -> dict[str, str]:
             match = _HEADING_RE.match(lines[0])
             if match and _same_heading(match.group(1), heading):
                 lines.pop(0)
+            elif _exact_heading(lines[0], heading):
+                lines.pop(0)
         out[key] = "\n".join(lines).strip()
     return out
 
@@ -139,6 +233,12 @@ def _same_heading(found: str, expected: str) -> bool:
     normal = lambda s: re.sub(r"[^a-z]", "", s.lower())     # noqa: E731 - local, one use
     a, b = normal(found), normal(expected)
     return bool(a) and (a == b or a in b or b in a)
+
+
+def _exact_heading(found: str, expected: str) -> bool:
+    normal = lambda s: re.sub(r"[^a-z]", "", s.lower())     # noqa: E731 - local, one use
+    a, b = normal(found), normal(expected)
+    return bool(a) and a == b
 
 
 # ---------------------------------------------------------------------------------------------
@@ -150,9 +250,6 @@ def write_numerals(workspace: Path, numerals: Sequence[Mapping[str, Any]]) -> No
         for item in numerals if _clean(item.get("numeral"), 8))
     _write(Path(workspace) / "draft" / NUMERALS_FILE,
            "# Reference numerals\n\n"
-           "Every numeral used anywhere in the specification or on a drawing appears here exactly\n"
-           "once, against ONE part name. Keep this table and the text in step: it is checked\n"
-           "mechanically after every iteration.\n\n"
            "| Numeral | Part |\n| --- | --- |\n" + (rows or "| | |"))
 
 
@@ -164,12 +261,19 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
         return []
     out: list[dict[str, str]] = []
     for line in raw.splitlines():
-        if not line.strip().startswith("|"):
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+            numeral, part = cells[0], cells[1]
+        else:
+            match = _PLAIN_NUMERAL_ROW_RE.fullmatch(line)
+            if not match:
+                continue
+            numeral, part = match.group("numeral"), match.group("part")
+        if not _NUMERAL_CELL_RE.fullmatch(numeral):
             continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 2 or not _NUMERAL_CELL_RE.fullmatch(cells[0]):
-            continue
-        numeral, part = cells[0], cells[1]
         if not numeral or part.lower() in ("part", "---", "") or set(part) <= {"-", " "}:
             continue
         out.append({"numeral": numeral, "part": part})
@@ -179,25 +283,125 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------------------------
 # Figures
 # ---------------------------------------------------------------------------------------------
+_RENDERED_FIGURE_FILE_RE = re.compile(
+    r"^rendered-[A-Za-z0-9][A-Za-z0-9-]*\.png$", re.IGNORECASE)
+_FIGURE_ORDER_RE = re.compile(
+    r"\bFIG(?:URE)?\.?\s*(\d{1,3})([A-Za-z]?)\b", re.IGNORECASE)
+
+
+def _figure_order_key(value: Any) -> tuple[int, int, str, str]:
+    label = str(value or "").strip()
+    match = _FIGURE_ORDER_RE.search(label)
+    if not match:
+        return (1, 0, "", label.casefold())
+    return (0, int(match.group(1)), match.group(2).upper(), label.casefold())
+
+
+def figure_filename(label: Any, index: int = 0) -> str:
+    """Return the one workspace filename that belongs to a figure heading."""
+    clean_label = _clean(label, 240)
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", clean_label[:60]).strip("-").upper()
+    if not slug and index:
+        slug = f"FIG-{int(index)}"
+    return f"{slug}.md" if slug else ""
+
+
+def figure_heading(markdown: Any) -> str:
+    lines = str(markdown or "").splitlines()
+    if not lines or not lines[0].lstrip().startswith("#"):
+        return ""
+    return lines[0].lstrip().lstrip("#").strip()
+
+
+def _noncanonical_figure_entries(directory: Path) -> list[tuple[Path, str]]:
+    if not directory.is_dir():
+        return []
+    invalid = []
+    for entry in sorted(directory.iterdir(), key=lambda item: item.name):
+        if (entry.is_file() and not entry.is_symlink() and
+                _RENDERED_FIGURE_FILE_RE.fullmatch(entry.name)):
+            continue
+        expected = ""
+        if entry.is_file() and not entry.is_symlink() and entry.suffix.lower() == ".md":
+            try:
+                expected = figure_filename(figure_heading(
+                    entry.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                expected = ""
+            if expected and entry.name == expected:
+                continue
+        invalid.append((entry, expected))
+    return invalid
+
+
+def _reject_noncanonical_figure_entries(directory: Path) -> None:
+    """Put every figure file on its canonical name, and refuse only what cannot be placed.
+
+    A MIS-NAMED file is renamed, not deleted. The canonical name is derived from the file's own
+    ``# FIG.`` heading, so a file that has a heading already carries the answer and there is
+    nothing to ask anybody. Deleting it instead - which is what this did - threw away a drafting
+    agent's six finished figure briefs on its first publish and made it write them again, over a
+    filename convention it had no way to know. That is the wrong trade whichever way you read it:
+    the name is recoverable and the work is not.
+
+    What is still removed and still refuses the publish: a directory, a symlink, a non-Markdown
+    file, and a Markdown file with no figure heading to derive a name from. Those cannot be placed
+    and would be read back as figures that do not exist.
+    """
+    invalid = _noncanonical_figure_entries(directory)
+    if not invalid:
+        return
+    problems = []
+    for entry, expected in invalid:
+        if expected:
+            target = entry.parent / expected
+            #  A collision means two files claim one heading, which is a real conflict rather
+            #  than a naming slip: keep the one already on the canonical name.
+            if target.exists():
+                problems.append(
+                    f"{entry.name} duplicates {expected}, which already exists")
+                entry.unlink(missing_ok=True)
+                continue
+            entry.rename(target)
+            continue
+        problems.append(f"{entry.name} is not a Markdown figure specification with a "
+                        f"# FIG. heading")
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink(missing_ok=True)
+    if not problems:
+        return
+    detail = (
+        "Removed figure files that could not be placed: " + "; ".join(problems)
+        + ". Every file in figures/ must be Markdown opening with its own # FIG. heading, or a "
+          "rendered-*.png sheet."
+    )
+    error_type = drafting.DraftingValidationError if drafting is not None else ValueError
+    raise error_type(detail)
+
+
 def write_figures(workspace: Path, figures: Sequence[Mapping[str, Any]]) -> None:
     directory = Path(workspace) / "figures"
     directory.mkdir(parents=True, exist_ok=True)
     for existing in directory.iterdir():
         if existing.is_file() or existing.is_symlink():
             existing.unlink()
+        elif existing.is_dir():
+            shutil.rmtree(existing)
     for index, figure in enumerate(figures, 1):
-        label = _clean(figure.get("label") or f"FIG. {index}", 60)
-        slug = re.sub(r"[^A-Za-z0-9]+", "-", label).strip("-").upper() or f"FIG-{index}"
+        label = _clean(figure.get("label") or f"FIG. {index}", 240)
         body = [f"# {label}", "", _clean(figure.get("caption"), 4000)]
         numerals = figure.get("numerals") or []
         if numerals:
             body += ["", "## Numerals shown on this figure", ""]
             body += [f"- {_clean(n, 200)}" for n in numerals]
-        _write(directory / f"{slug}.md", "\n".join(body))
+        _write(directory / figure_filename(label, index), "\n".join(body))
 
 
 def read_figures(workspace: Path) -> list[dict[str, Any]]:
     directory = Path(workspace) / "figures"
+    _reject_noncanonical_figure_entries(directory)
     out = []
     for path in sorted(directory.glob("*.md")):
         try:
@@ -229,7 +433,7 @@ def read_figures(workspace: Path) -> list[dict[str, Any]]:
             numerals = sorted(draft_qa.numerals_used(raw), key=lambda n: int(re.sub(r"\D", "", n) or 0))
         out.append({"label": label or path.stem, "caption": body,
                     "numerals": numerals, "file": path.name})
-    return out
+    return sorted(out, key=lambda item: _figure_order_key(item.get("label")))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -257,13 +461,16 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
     _write_review(workspace, qa_report)
     install_tools(workspace, src_dir)
 
+    _migrate_legacy_section_files(workspace)
+    _remove_noncanonical_draft_entries(workspace / "draft")
+
     if sections is not None:
         write_sections(workspace, sections)
     else:
         for _key, name, heading in SECTION_FILES:
             path = workspace / "draft" / name
             if not path.exists():
-                _write(path, f"<!-- {heading} - body text only, no heading line. -->\n")
+                _write(path, "")
     if numerals or not (workspace / "draft" / NUMERALS_FILE).exists():
         write_numerals(workspace, numerals)
     #  Written unconditionally, including empty: the workspace mirrors the stored version, so a
@@ -287,6 +494,17 @@ def _brief(project: Mapping[str, Any]) -> str:
                  "- Prior-art search: none was run. Work with whatever art is in prior_art/, and "
                  "say plainly in your summary that the art you were given may be incomplete.")
     notes = _clean(project.get("inventor_notes"), 40_000)
+    # Projects created by the former intake form can retain instructions that directly conflict
+    # with the filing-clean gate. Preserve every other filing choice while upgrading only those
+    # two known legacy defaults to the current deterministic treatment.
+    notes = notes.replace(
+        "Priority status is not confirmed; leave a drafting note requesting it.",
+        "No domestic or foreign priority claim was supplied. Use 'Not applicable.' in the "
+        "cross-reference section.")
+    notes = notes.replace(
+        "Government support status is not confirmed; leave a drafting note requesting it.",
+        "No government support was supplied. Use 'Not applicable.' in the government support "
+        "section.")
     if notes:
         lines += ["", "## Inventor and filing notes", "", notes]
     return "\n".join(lines)
@@ -307,12 +525,34 @@ def _disclosure(project: Mapping[str, Any]) -> str:
 def _conversation(messages: Sequence[Mapping[str, Any]]) -> str:
     if not messages:
         return "# Conversation\n\n(this is the first turn)"
-    lines = ["# Conversation so far", ""]
+    blocks = []
     for message in messages:
         role = str(message.get("role") or "user")
         who = {"user": "USER", "agent": "YOU (the drafting agent)",
                "qa": "REVIEWER", "system": "SYSTEM"}.get(role, role.upper())
-        lines += [f"### {who}", "", _clean(message.get("body"), 12_000), ""]
+        blocks.append("\n".join([
+            f"### {who}", "", _clean(message.get("body"), 12_000), "",
+        ]))
+
+    selected = []
+    selected_chars = 0
+    for block in reversed(blocks):
+        additional = len(block) + 1
+        if selected and selected_chars + additional > MAX_CONVERSATION_CHARS:
+            break
+        selected.append(block)
+        selected_chars += additional
+    selected.reverse()
+
+    lines = ["# Conversation so far", ""]
+    omitted = len(blocks) - len(selected)
+    if omitted:
+        lines += [
+            f"{omitted} earlier conversation message(s) are not reproduced here. The current "
+            "draft and review files contain the durable state needed for this turn.",
+            "",
+        ]
+    lines.extend(selected)
     return "\n".join(lines)
 
 
@@ -526,6 +766,8 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------------------------
 _SEED_HEADINGS = (
     ("cross_reference", r"cross[- ]?reference|related applications?|priority claim"),
+    ("government_support", r"federally sponsored research|government (?:support|rights)|"
+                           r"federal (?:support|funding|award)"),
     ("field", r"technical field|field of (the )?(invention|disclosure)|^field$"),
     ("background", r"background|prior art|description of (the )?related art"),
     ("summary", r"summary|brief summary"),

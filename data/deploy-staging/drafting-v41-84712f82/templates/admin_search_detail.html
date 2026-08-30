@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Search {{ slug }} | Rotem Patents administration{% endblock %}
+{% block body %}
+<div class="wrap adminpage">
+  <div class="pagehead">
+    <div><h1>Search {{ slug }}</h1>
+      <p class="muted">Who ran this search, when, and what happened to it.</p></div>
+    <div class="dactions">
+      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ slug }}">Open the report</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/admin/searches">All searches</a>
+    </div>
+  </div>
+  {% if events %}
+  <div class="tablewrap">
+    <table class="admintable">
+      <thead><tr><th>Account</th><th>Query</th><th>Mode</th><th>State</th><th>Email</th><th>Times</th></tr></thead>
+      <tbody>
+      {% for e in events %}
+      <tr>
+        <td data-label="Account"><b>{{ e.full_name }}</b><span>{{ e.email }}</span></td>
+        <td data-label="Query"><span class="admq">{{ e.query }}</span></td>
+        <td data-label="Mode">{{ e.mode.replace('_',' ') }}{% if e.search_focus == 'claims' %} · claims{% endif %}</td>
+        <td data-label="State"><span class="badge {{ 'b-cached' if e.status == 'complete' else 'b-warn' }}">{{ e.status }}</span></td>
+        <td data-label="Email">{{ e.notification_status }}</td>
+        <td data-label="Times"><span>started {{ e.created_at }}</span>
+          <span>{% if e.completed_at %}finished {{ e.completed_at }}{% else %}never finished{% endif %}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="panel libempty">No account ran this search — it was started before accounts existed,
+    or from the on-box loopback API.</p>
+  {% endif %}
+</div>
+{% endblock %}

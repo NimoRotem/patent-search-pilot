@@ -1,0 +1,37 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: patents_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: patents
+      POSTGRES_USER: patents
+      POSTGRES_PASSWORD: patents_pilot_local
+    ports:
+      - "127.0.0.1:5433:5432"
+    # /dev/shm for parallel index builds (default 64MB is too small for parallel HNSW).
+    shm_size: "2gb"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    # Memory-limited: this runs on a shared 15GB box. Keep Postgres bounded.
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "work_mem=128MB"
+      - "-c"
+      - "maintenance_work_mem=1GB"
+      - "-c"
+      - "max_parallel_workers_per_gather=2"
+      - "-c"
+      - "effective_cache_size=4GB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U patents -d patents"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

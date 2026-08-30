@@ -1,0 +1,308 @@
+/* Drafting studio: the editable draft pane.
+ *
+ * A separate stylesheet rather than more of style.css, and deliberately so: style.css is the whole
+ * product's sheet and is edited by everything, and this pane's rules have to be able to win over
+ * the ones it already sets for `.dsec`. Loaded after it, so equal specificity is enough.
+ *
+ * The design rule for this pane is that it must read as a document, not as a form. The controls on
+ * a section are invisible until the pointer is near them, the heading rule is drawn by the header
+ * row rather than by the heading, and an open editor is the only place a border appears.
+ */
+
+/* ── the model picker in the header ─────────────────────────────────────────── */
+.modelpick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+}
+.modelpicklabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--faint);
+  font-weight: 650;
+}
+.modelpick select {
+  padding: 5px 26px 5px 9px;
+  font-size: 12.5px;
+  min-width: 132px;
+}
+
+/* ── the two boilerplate sections, folded away ──────────────────────────────── */
+/* They are four lines of "Not applicable." that cannot be deleted, because an application filed
+   without those headings is defective. They also must not be the first thing anyone reads. */
+.dboiler {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s3);
+  margin-bottom: 22px;
+}
+.dboiler > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 9px 14px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+  font-weight: 650;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dboiler > summary::-webkit-details-marker { display: none; }
+.dboiler > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform .14s ease;
+  flex: none;
+}
+.dboiler[open] > summary::before { transform: rotate(45deg); }
+.dboiler > summary:hover { color: var(--ink); }
+.dboiler .dsec { padding: 0 14px; margin-bottom: 16px; }
+.dboiler .dsec:first-of-type { padding-top: 4px; }
+
+/* ── a section ──────────────────────────────────────────────────────────────── */
+.dsechead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+.dsechead h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--faint);
+  padding-bottom: 0;
+  border-bottom: 0;
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+}
+.dsectools {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.dsec:hover .dsectools,
+.dsec:focus-within .dsectools,
+.dsec.editing .dsectools { opacity: 1; }
+@media (hover: none) { .dsectools { opacity: 1; } }
+
+.dsecbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+.dsecbtn svg { width: 15px; height: 15px; fill: currentColor; }
+.dsecbtn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(76, 141, 255, .32);
+}
+.dsec.editing .dsecedit {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(76, 141, 255, .32);
+}
+
+/* ── hand editing ───────────────────────────────────────────────────────────── */
+.dsecedit-box {
+  border: 1px solid var(--accent);
+  border-radius: var(--r);
+  background: var(--s1);
+  box-shadow: 0 1px 2px rgba(23, 33, 43, .05);
+  overflow: hidden;
+}
+.dsecinput {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 13px 15px;
+  resize: vertical;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  line-height: 1.76;
+  color: var(--ink);
+  background: var(--s1);
+}
+.dsecinput:focus { outline: none; box-shadow: none; }
+#sec-claims .dsecinput {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.dsecbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--s3);
+}
+.dsecmsg { margin-left: 4px; }
+.dsecmsg.good { color: var(--good); }
+.dsecmsg.bad { color: var(--bad); }
+
+/* ── asking the agent about one section ─────────────────────────────────────── */
+.dsecaskbox {
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  background: var(--s3);
+  padding: 9px 10px;
+  margin-bottom: 12px;
+}
+.dsecaskinput {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  padding: 9px 11px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  resize: none;
+  background: var(--s1);
+  color: var(--ink);
+}
+.dsecaskbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.dsecmic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  color: var(--muted);
+  cursor: pointer;
+}
+.dsecmic svg { width: 15px; height: 15px; fill: currentColor; }
+.dsecmic:hover { color: var(--ink); border-color: var(--faint); }
+/* Recording is a state the user must be able to see at a glance, so it is a colour change and a
+   pulse rather than a label that would move the toolbar around. */
+.dsecmic.on {
+  color: var(--accent-fg);
+  background: var(--bad);
+  border-color: var(--bad);
+  animation: dsecpulse 1.3s ease-in-out infinite;
+}
+@keyframes dsecpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(180, 35, 24, .45); }
+  50% { box-shadow: 0 0 0 5px rgba(180, 35, 24, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .dsecmic.on { animation: none; } }
+.dsecaskmsg.bad { color: var(--bad); }
+
+@media (max-width: 760px) {
+  .modelpick { order: 3; }
+  .modelpicklabel { display: none; }
+  .dsecaskbar > .small.muted { display: none; }
+}
+
+/* ── reconciling the drawings on demand ─────────────────────────────────────── */
+/* Drawings stopped riding along with every drafting turn, so there has to be somewhere to ask for
+   them. It sits above the sheets because that is where a person looks when one is wrong. */
+.drawreconcile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s3);
+  padding: 11px 13px;
+  margin-bottom: 12px;
+}
+.drawreconcile > div:first-child { flex: 1; min-width: 260px; }
+
+/* ── re-search rounds ───────────────────────────────────────────────────────── */
+/* The series is the argument, so it is drawn as one: a bar per round, newest first, and the
+   direction of travel called out rather than left to be read off the numbers. */
+.research {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s1);
+  padding: 13px 15px;
+  margin-bottom: 16px;
+}
+.rshead { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.rshead > div:first-child { flex: 1; min-width: 260px; }
+.rsrounds { margin-top: 12px; display: grid; gap: 7px; }
+.rsround {
+  display: grid;
+  grid-template-columns: 74px 120px 108px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.rsno { font-size: 12px; font-weight: 650; color: var(--muted); }
+.rsbar {
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+  border: 1px solid var(--line2);
+  overflow: hidden;
+}
+.rsbar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width .2s ease;
+}
+.rsscore { font-size: 12.5px; font-weight: 650; display: flex; align-items: baseline; gap: 6px; }
+.rsdelta { font-size: 11px; font-weight: 600; }
+.rsdelta.good { color: var(--good); }
+.rsdelta.bad { color: var(--bad); }
+.rsdelta.muted { color: var(--faint); }
+.rsmeta { min-width: 0; overflow-wrap: anywhere; }
+.rsverdict {
+  margin-top: 11px;
+  padding: 9px 11px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  border: 1px solid var(--line2);
+  background: var(--s3);
+}
+.rsverdict.good { background: var(--good-soft); border-color: rgba(24, 121, 78, .28); color: var(--good); }
+.rsverdict.bad { background: var(--bad-soft); border-color: rgba(180, 35, 24, .28); color: var(--bad); }
+
+@media (max-width: 760px) {
+  .rsround { grid-template-columns: 60px 1fr 92px; }
+  .rsmeta { grid-column: 1 / -1; }
+}
+
+/* What a turn is costing, while it costs it. */
+.chatspend {
+  margin-left: auto;
+  padding-right: 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.turnspend { font-variant-numeric: tabular-nums; }

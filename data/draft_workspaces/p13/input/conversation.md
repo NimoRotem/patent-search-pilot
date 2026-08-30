@@ -1,0 +1,43 @@
+# Conversation so far
+
+### USER
+
+Here is my invention.
+
+A reusable height-adjustable equipment platform supports a heavy machine above a roof, floor, vehicle bed, or other support surface while keeping the equipment deck parallel to a rectangular base frame. The base frame carries four upright guide towers, one near each corner. The equipment deck carries four corner posts that slide vertically in the respective guide towers. Each corner post has a rack along an inward-facing side. A pinion in each guide tower meshes with the rack of that corner post, so rotation of the pinion raises or lowers that corner of the deck.
+
+The two front pinions are fixed to a front transverse shaft and the two rear pinions are fixed to a rear transverse shaft. A sprocket on the front shaft, a sprocket on the rear shaft, and one endless synchronizing chain couple the shafts so all four pinions rotate together. A removable hand crank turns a worm input shaft. The worm input shaft drives a worm wheel fixed to the front transverse shaft. Turning the crank therefore raises or lowers all four corner posts by the same distance and prevents the deck from racking in the guide towers. The worm drive resists back-driving but is not the only load-holding feature.
+
+Each guide tower also carries a locking pawl that pivots between a locked position engaging the rack of its corner post and a released position clear of the rack. A compression spring biases each locking pawl toward the locked position. The four locking pawls are connected by four release cables to a release balance bar mounted on the base frame. A release handle pivots the balance bar. Pulling and holding the release handle tensions the four release cables and moves all four locking pawls clear of the racks. The balance bar can pivot slightly relative to the release handle so cable-length differences do not leave one pawl engaged while the other pawls are released. Releasing the handle lets the four pawl springs return the pawls into engagement with the nearest rack teeth. The deck load is then carried through the four engaged locking pawls and the guide towers rather than through the worm drive alone.
+
+Each locking pawl carries a locked-state flag that is visible through a window in the corresponding guide tower only when that pawl is fully engaged with a rack tooth. The operator must see all four flags before removing the hand crank or loading the deck. A mechanical interlock on the crank socket blocks insertion of the hand crank unless the release handle is in its pulled position, and blocks return of the release handle until the crank is removed. This sequence prevents a pawl from being dragged across a rack tooth while the platform is being adjusted and prevents the platform from being left with the pawls released.
+
+To use the platform, the operator places the base frame on the support surface, mounts the equipment on the deck, pulls and holds the release handle, inserts and turns the hand crank until the desired deck height is reached, removes the hand crank, releases the handle, and confirms that all four locked-state flags are visible. The synchronized shafts keep the deck parallel to the base frame throughout the height change. For service, a removable cover gives access to the worm drive, sprockets, chain, pawls, and cable adjusters without removing the equipment deck.
+
+In supported variants, the endless chain is replaced by a toothed belt or a train of gears, the hand crank is replaced by a motor acting on the same worm input shaft, or the platform uses three or more than four guide towers with one rack, pinion, spring-biased pawl, release cable, and locked-state flag at each guided post. The synchronized drive, independent pawl load locks, equalizing release balance bar, crank-and-release interlock, and visible confirmation of every engaged pawl remain the same.
+
+### YOU (the drafting agent)
+
+The finding is applied.
+
+Background, first paragraph: 'Heavy machines are frequently installed above the surface that carries them. A machine may have to stand clear of the roof, floor, vehicle bed, or other support surface beneath it. When the required standoff height is not known until the machine is in place, or when the height has to change later, a support of fixed height is inconvenient, because setting or resetting the height means lifting the machine off the support again.'
+
+Background, parallelism paragraph: 'The first problem is parallelism. If each corner of a deck is adjusted independently of the others, the corners are adjusted one after another. The deck twists and cocks in its guides while the adjustment is in progress, and the finished height at one corner differs from the finished height at another, so that the machine is left out of level.'
+
+The load-holding paragraph and the lock-state paragraph are untouched, so the specification still sets out the single load path of a drive train that both moves and holds the deck, the two lock failure modes, and the cable-length differences that can leave one lock engaged while the others release.
+
+On the two mechanical checks: all six described figures have complete briefs, each brief's numeral list matches its body, and together they assign all 28 numerals to a sheet, FIG. 1 carrying 10, 12, 14, 16, 36, 52, 60, 64; FIG. 2 carrying 10, 14, 16, 18, 20, 22, 24; FIG. 3 carrying 22, 24, 26, 28, 30, 32, 34; FIG. 4 carrying 14, 16, 18, 40, 42, 44, 54, 56; FIG. 5 carrying 10, 40, 46, 48, 50, 52, 62; FIG. 6 carrying 36, 38, 52, 58. Nothing was deleted from the numeral table or the specification to satisfy them, and no image file was created, since the figure files are Markdown specifications that the pipeline renders into sheets.
+
+As the drafting brief asked to be said plainly: no prior-art search was run, prior_art/INDEX.md lists no documents, and the art available to this draft may be incomplete.
+
+### YOU (the drafting agent)
+
+The complete application is in the workspace and ready for rendering.
+
+What it contains. Title as given in the brief; 'Not applicable.' for both the cross-reference and government-support sections; a field statement; a Background setting out the three problems the platform answers, loss of parallelism when corners are adjusted one after another, a drive train that is the only load path, and locks that are partly released or never returned, including that cable-length differences can leave one lock engaged while the others release; a Summary in aspects; a Brief Description of six figures; a Detailed Description in eight sections covering the overall arrangement, the synchronized drive, the independent load locks, the equalizing release linkage, visible confirmation of engagement, the crank and release interlock, the method of use and further embodiments; 20 claims; and a 139-word abstract.
+
+Claims. Claim 1 recites at least three guide towers with a post sliding in each, a rack on each post, a pinion per tower, a synchronizing transmission, a rotary input comprising a worm input shaft and worm wheel, a compression-spring-biased locking pawl per tower carrying the deck load into that tower, a release balance bar on the base frame with a cable to each pawl, and the bar pivotable relative to the handle so cable-length differences cannot leave one pawl engaged. Claims 2 to 12 step down through back-drive resistance, the four-corner geometry, the chain form, the belt or gear-train form, the inward-facing rack, the flag and window, the interlock, the motor, the cable adjuster, cover access, and the pawl-pivot load path. Claim 13 is a second independent apparatus claim on the interlock and flags with the balance-bar linkage, with claims 14 and 15 dependent. Claim 16 is the method, with claims 17 to 20 dependent.
+
+Drawings. Six briefs, each self-contained: FIG. 1 perspective (10, 12, 14, 16, 36, 52, 60, 64); FIG. 2 plan with the deck omitted for clarity (10, 14, 16, 18, 20, 22, 24) and carrying the 4-4 cutting-plane line with both endpoints, both arrows and the designation at each end; FIG. 3 transmission and worm drive diagram (22, 24, 26, 28, 30, 32, 34); FIG. 4 fragmentary section on line 4-4 of FIG. 2 (14, 16, 18, 40, 42, 44, 54, 56); FIG. 5 release linkage (10, 40, 46, 48, 50, 52, 62); FIG. 6 crank interlock (36, 38, 52, 58). Every numeral in the 28-entry table appears on at least one sheet, no sheet carries more than eight, and each brief's list matches its own body.
+
+Change this turn. Only the Background's opening sentence, now 'Heavy machines are frequently installed at a standoff height, standing clear of the roof, floor, vehicle bed, or other support surface that carries them.' Everything else was verified and left as it stands.

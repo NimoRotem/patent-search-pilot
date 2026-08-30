@@ -253,6 +253,27 @@ def _live_facts(force: bool):
     return live or _empty_live()
 
 
+def claims_publications():
+    """How many publications actually have their claims parsed, or None if unknown.
+
+    Read from `corpus_profile.json`, the same snapshot `/corpus` shows, so there is ONE number and
+    a weekly cron maintains it. Cheap: a small JSON read, no scan.
+
+    It exists because the search progress note told every user that the corpus held
+    "N publications with full claims and description text". MEASURED 2026-08-25: N is 4,984,254 and
+    the number with parsed claims is 814,523, which is 16%. Description text is rarer still. That
+    sentence is the wrong scope statement this module exists to prevent, and an attorney reading it
+    would believe the run had read five million patents' claims.
+    """
+    try:
+        d = json.loads((DATA / "corpus_profile.json").read_text())
+        rows = d.get("claims") or []
+        n = rows[0].get("pubs") if rows else None
+        return int(n) if n else None
+    except Exception:
+        return None
+
+
 def facts(force: bool = False) -> dict:
     """Scope + currency + reliability in one dict for the templates.
 
@@ -266,6 +287,7 @@ def facts(force: bool = False) -> dict:
     return {
         "publications": live.get("publications"),
         "chunks": live.get("chunks"),
+        "claims_publications": claims_publications(),
         "max_date": mx,
         "max_date_str": mx.isoformat() if mx else None,
         "min_date": live.get("min_date"),

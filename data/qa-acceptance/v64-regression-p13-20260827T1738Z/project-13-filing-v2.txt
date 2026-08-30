@@ -1,0 +1,201 @@
+TITLE OF THE INVENTION
+
+SINGLE-HANDLE SYNCHRONIZED EQUIPMENT PLATFORM WITH INDEPENDENT CORNER LOAD LOCKS
+
+CROSS-REFERENCE TO RELATED APPLICATIONS
+
+[0001] Not applicable.
+
+STATEMENT REGARDING FEDERALLY SPONSORED RESEARCH OR DEVELOPMENT
+
+[0002] Not applicable.
+
+FIELD OF THE INVENTION
+
+[0003] The present disclosure relates to height-adjustable support structures for machinery, and more particularly to a reusable equipment platform in which an equipment deck is guided at several posts, is raised and lowered by a synchronized rack and pinion drive operated from a single input, and is held at height by an independent spring-biased locking pawl at each post, all of the locking pawls being released together through an equalizing release linkage.
+
+BACKGROUND OF THE INVENTION
+
+[0004] Heavy machines are frequently installed at a standoff height, standing clear of the roof, floor, vehicle bed, or other support surface that carries them. When the required standoff height is not known until the machine is in place, or when the height has to change later, a support of fixed height is inconvenient, because setting or resetting the height means lifting the machine off the support again.
+[0005] A height-adjustable platform avoids that lifting, but it introduces three problems that a design must solve together before such a platform can carry a heavy machine dependably.
+[0006] The first problem is parallelism. If each corner of a deck is adjusted independently of the others, the corners are adjusted one after another. The deck twists and cocks in its guides while the adjustment is in progress, and the finished height at one corner differs from the finished height at another, so that the machine is left out of level.
+[0007] The second problem is load holding. A drive train that both moves the deck and holds it is a single load path. Its gearing, its fasteners, and its input coupling all have to carry the standing weight of the machine for as long as the machine is installed, and any wear, backlash, or maintenance operation on that drive train is a wear, backlash, or maintenance operation on the only thing supporting the load.
+[0008] The third problem is the state of the locks. Where a platform is held by separate mechanical locks, those locks must be released to adjust the height and must be returned afterwards. Two failure modes follow. A lock that is only partly released is dragged across the toothed member it engages while the platform is being adjusted, and a lock that is never returned leaves the platform standing on its drive train while looking, from the outside, exactly like a platform that is locked. Where several locks are pulled by one linkage through separate flexible connections, ordinary differences in connection length can leave one lock engaged while the other locks are released, because the shortest connection lifts its lock first and the longest connection may not lift its lock at all.
+[0009] There remains a need for a reusable height-adjustable equipment platform that changes the height of every post of a deck by the same distance from a single input, that holds the resulting height through load locks that are independent of the drive train, that releases every one of those load locks together despite differences in the lengths of the flexible connections that pull them, and that shows the operator, before the platform is loaded, that every load lock has in fact returned.
+
+BRIEF SUMMARY OF THE INVENTION
+
+[0010] A reusable height-adjustable equipment platform supports a machine above a support surface such as a roof, a floor, or a vehicle bed while keeping an equipment deck parallel to a base frame.
+[0011] In one aspect, the platform comprises a base frame carrying at least three upright guide towers and an equipment deck carrying a post for each guide tower, each post sliding vertically in its guide tower. Each post carries a rack, and each guide tower carries a pinion meshing with the rack of the post that slides in that guide tower, so that rotation of the pinion raises or lowers that post. A synchronizing transmission couples the pinions of all of the guide towers so that the pinions rotate together, and a rotary input comprising a worm input shaft and a worm wheel driven by the worm input shaft and fixed to a transverse shaft of the synchronizing transmission drives the synchronizing transmission, whereby a single input rotation raises or lowers every post by the same distance and the deck does not rack in the guide towers.
+[0012] In a further aspect, each guide tower carries a locking pawl mounted to pivot between a locked position engaging the rack of the post sliding in that guide tower and a released position clear of that rack, and a compression spring biases each locking pawl toward the locked position. The deck load at each post is carried through the engaged locking pawl and the guide tower rather than through the synchronizing transmission alone, so that the transmission is not the only load path under a standing machine.
+[0013] In a further aspect, a release balance bar is mounted on the base frame and is connected to every locking pawl by a respective release cable, and a release handle pivots the release balance bar. Pulling and holding the release handle tensions all of the release cables together and moves all of the locking pawls to their released positions. The release balance bar is pivotable relative to the release handle so that differences in the effective lengths of the release cables are taken up by pivoting of the release balance bar and no locking pawl is left engaged with its rack while the remaining locking pawls are released. Releasing the release handle allows each compression spring to return its locking pawl into engagement with the nearest tooth of the corresponding rack.
+[0014] In a further aspect, each locking pawl carries a locked-state flag that is visible through a window in the corresponding guide tower only when that locking pawl is fully engaged with a tooth of the rack, so that the state of every load lock can be confirmed before the platform is loaded.
+[0015] In a further aspect, a crank socket receives a removable hand crank that turns the rotary input, and a mechanical interlock on the crank socket blocks insertion of the hand crank into the crank socket unless the release handle is in its pulled position and blocks return of the release handle from its pulled position until the hand crank is removed from the crank socket. The interlock enforces an order of operations in which the locking pawls are clear of the racks before the platform can be driven and are returned to the racks only after the drive input has been disconnected, so that a locking pawl is neither dragged across a rack tooth during adjustment nor left released after adjustment.
+[0016] In a further aspect, the mesh between the worm input shaft and the worm wheel resists back-driving of the transmission by the deck load while the locking pawls carry that load.
+[0017] In a further aspect, a method of adjusting the height of such a platform comprises pulling and holding the release handle to move all of the locking pawls clear of the racks, turning the rotary input to raise or lower all of the posts by the same distance while the deck remains parallel to the base frame, releasing the release handle so that each compression spring returns its locking pawl into engagement with the nearest tooth of its rack, and confirming that the locked-state flag of every locking pawl is visible through the window of the corresponding guide tower.
+
+BRIEF DESCRIPTION OF THE SEVERAL VIEWS OF THE DRAWINGS
+
+[0018] FIG. 1 is a perspective view of a height-adjustable equipment platform standing on a support surface, showing the base frame, the equipment deck, the four guide towers, the corner posts, the release handle, the hand crank, and the removable cover.
+[0019] FIG. 2 is a schematic plan view of the platform with the equipment deck omitted for clarity, showing the base frame, the four guide towers, the corner posts with their racks, the pinion at each guide tower, and the front and rear transverse shafts.
+[0020] FIG. 3 is a schematic diagram of the synchronizing transmission and the worm drive, showing the front and rear transverse shafts, the sprockets, the endless synchronizing chain, the worm input shaft, and the worm wheel.
+[0021] FIG. 4 is an enlarged fragmentary sectional view of one guide tower and the corner post sliding in it, taken on line 4-4 of FIG. 2, on a vertical plane through the locking pawl of that guide tower, showing the rack, the locking pawl in its locked position on the pawl pivot, the compression spring, the locked-state flag, and the window of the guide tower.
+[0022] FIG. 5 is a schematic diagram of the release linkage, showing the base frame, the release handle, the release balance bar and its balance bar pivot, the four release cables with their cable adjusters, and the four locking pawls.
+[0023] FIG. 6 is a schematic detail view of the crank interlock, showing the crank socket, the hand crank, the release handle, and the mechanical interlock.
+
+DETAILED DESCRIPTION OF THE INVENTION
+
+[0024] The following description of embodiments refers to the accompanying drawings. Like reference numerals denote like parts throughout. Terms such as front, rear, upright, upward, and downward are used with reference to the orientation of the platform as it stands on a support surface, and are used for convenience of description rather than as limitations.
+[0025] Overall arrangement
+[0026] Referring to FIG. 1, a reusable height-adjustable equipment platform comprises a base frame 10 that rests on a support surface 64 and an equipment deck 12 that is carried above the base frame 10 and remains parallel to the base frame 10 at every height. The support surface 64 may be a roof, a floor, a vehicle bed, or any other surface able to carry the platform and the machine mounted on it. The base frame 10 is a rectangular frame. The equipment deck 12 receives the machine it supports, and the machine remains on the equipment deck 12 while the height of the equipment deck 12 is changed.
+[0027] The base frame 10 carries four upright guide towers 14, one near each corner of the base frame 10. The equipment deck 12 carries four corner posts 16, one depending from each corner of the equipment deck 12. Each corner post 16 slides vertically in a respective one of the guide towers 14.
+[0028] Referring to FIG. 2, each corner post 16 carries a rack 18 extending along the corner post 16 in the direction of travel. In the illustrated embodiment the rack 18 lies along an inward-facing side of the corner post 16, that is, the side of the corner post 16 that faces the interior of the base frame 10.
+[0029] A pinion 20 is mounted in each guide tower 14 and meshes with the rack 18 of the corner post 16 that slides in that guide tower 14, so that rotation of the pinion 20 raises or lowers that corner post 16 and the corner of the equipment deck 12 attached to it.
+[0030] Referring again to FIG. 1, a removable cover 60 gives access, on removal, to the synchronizing transmission, the locking pawls, and the cable adjusters described below, without removing the equipment deck 12.
+[0031] A release handle 52 and a hand crank 36 are the members the operator handles, and the sequence in which they may be handled is enforced mechanically, as described below.
+[0032] Synchronized drive
+[0033] The platform comprises a front transverse shaft 22, a rear transverse shaft 24, and a worm input shaft 32, each mounted for rotation.
+[0034] Referring again to FIG. 2, the two pinions 20 at the front of the platform are fixed to the front transverse shaft 22 and the two pinions 20 at the rear of the platform are fixed to the rear transverse shaft 24. Each of the front transverse shaft 22 and the rear transverse shaft 24 extends from one side of the platform to the other, so that the two pinions 20 fixed to it rotate through the same angle.
+[0035] Referring to FIG. 3, a front sprocket 26 is fixed to the front transverse shaft 22, a rear sprocket 28 is fixed to the rear transverse shaft 24, and one endless synchronizing chain 30 runs over the front sprocket 26 and the rear sprocket 28. The endless synchronizing chain 30 constrains the front transverse shaft 22 and the rear transverse shaft 24 to rotate through the same angle.
+[0036] The front transverse shaft 22, the rear transverse shaft 24, the front sprocket 26, the rear sprocket 28, and the endless synchronizing chain 30 together form a synchronizing transmission that couples all four pinions 20 for rotation together. Because all four pinions 20 rotate together, every corner post 16 travels by the same distance for a given input rotation, the equipment deck 12 rises and falls parallel to the base frame 10, and the equipment deck 12 does not rack in the guide towers 14 at any point during a height change, rather than being brought back to parallel after a sequence of separate corner adjustments.
+[0037] The worm input shaft 32 carries a worm that drives a worm wheel 34 fixed to the front transverse shaft 22. Rotation of the worm input shaft 32 therefore rotates the front transverse shaft 22, and through the endless synchronizing chain 30 the rear transverse shaft 24, and through the four pinions 20 the four corner posts 16. The worm input shaft 32 and the worm wheel 34 form a rotary input to the synchronizing transmission. The mesh between the worm of the worm input shaft 32 and the worm wheel 34 resists back-driving of the synchronizing transmission by the weight on the equipment deck 12. The worm drive is not, however, the only load-holding feature of the platform. Under a standing machine the load is carried by the locking pawls described below, so that the worm mesh, the sprockets, the endless synchronizing chain 30, and the pinions 20 are not the only members holding that load.
+[0038] The rotary input may be driven by a removable hand crank 36 received in a crank socket 38 coupled to the worm input shaft 32. The hand crank 36 and the crank socket 38 appear in FIG. 6. In another embodiment the hand crank 36 is replaced by a motor coupled to the same worm input shaft 32, the motor acting on the synchronizing transmission through the same worm wheel 34.
+[0039] The endless synchronizing chain 30 running over the front sprocket 26 and the rear sprocket 28 is one form of the synchronizing transmission. In other embodiments the endless synchronizing chain 30 and the sprockets are replaced by a toothed belt coupling the front transverse shaft 22 to the rear transverse shaft 24, or by a train of gears coupling the front transverse shaft 22 to the rear transverse shaft 24. In each case the transmission constrains all of the pinions 20 to rotate together.
+[0040] Independent load locks at each post
+[0041] Referring to FIG. 4, each guide tower 14 carries a locking pawl 40 mounted on a pawl pivot 42 fixed in that guide tower 14. Each locking pawl 40 pivots on its pawl pivot 42 between a locked position, in which the locking pawl 40 engages the rack 18 of the corner post 16 that slides in that guide tower 14, and a released position, in which the locking pawl 40 is clear of that rack 18 and the corner post 16 is free to travel. A compression spring 44 biases the locking pawl 40 toward the locked position, so that the locked position is the position the locking pawl 40 assumes in the absence of any applied release force.
+[0042] With the four locking pawls 40 in their locked positions, the weight of the equipment deck 12 and of the machine on it passes from each corner post 16 through the engaged locking pawl 40 into the guide tower 14 and thence into the base frame 10 and the support surface 64. The four locking pawls 40 are independent of one another: each is carried by its own guide tower 14, is biased by its own compression spring 44, and engages its own rack 18, so that the standing load is carried through the four engaged locking pawls 40 and the four guide towers 14 rather than through the synchronizing transmission alone. The worm mesh, the endless synchronizing chain 30, the sprockets, and the locking pawls 40 remain accessible through the removable cover 60 without removing the equipment deck 12.
+[0043] Equalizing release linkage
+[0044] Referring to FIG. 5, a release balance bar 48 is mounted on the base frame 10, and four release cables 46 connect the release balance bar 48 to the four locking pawls 40, one release cable 46 to each locking pawl 40. Each release cable 46 runs from an anchorage on the release balance bar 48 to one of the locking pawls 40 and is arranged so that tension in the release cable 46 pivots that locking pawl 40 against its compression spring 44 toward the released position. A cable adjuster 62 is provided in at least one of the release cables 46, and in the illustrated arrangement in each of them.
+[0045] The release handle 52 is connected to the release balance bar 48 at a balance bar pivot 50. Pulling the release handle 52 displaces the release balance bar 48 so as to tension all four release cables 46 and to move all four locking pawls 40 to their released positions, and the release handle 52 must be held in the pulled position for the locking pawls 40 to remain released. The release balance bar 48 is pivotable relative to the release handle 52 through a limited angle about the balance bar pivot 50. That freedom is what makes a single-handle release trustworthy at four separate locks. The four release cables 46 are flexible members whose effective lengths can differ from one another. If the release balance bar 48 were rigidly fixed to the release handle 52, the shortest release cable 46 would lift its locking pawl 40 first and would then absorb the remaining handle travel, and the longest release cable 46 might never develop enough tension to lift its locking pawl 40 at all, leaving one locking pawl 40 engaged with its rack 18 while the other three were released. That single engaged locking pawl 40 would then be dragged across its rack 18 as the platform was driven, and would resist the travel of the corner post 16 it holds. Because the release balance bar 48 can instead pivot slightly relative to the release handle 52, the pull is redistributed between the anchorages until every release cable 46 carries the tension needed to lift its locking pawl 40, and the difference in cable length is taken up as a small rotation of the release balance bar 48 rather than as an unreleased locking pawl 40.
+[0046] Releasing the release handle 52 slackens all four release cables 46 and lets each compression spring 44 return its locking pawl 40 into engagement with the nearest tooth of the corresponding rack 18. No further action by the operator is required to lock the platform, because the locked position is the rest position of every locking pawl 40.
+[0047] Visible confirmation of engagement
+[0048] Each locking pawl 40 carries a locked-state flag 54 that moves with the locking pawl 40, and each guide tower 14 has a window 56 positioned so that the locked-state flag 54 is visible through the window 56 only when that locking pawl 40 is fully engaged with a tooth of the rack 18, as shown in FIG. 4. When the locking pawl 40 is not fully engaged with a tooth of the rack 18, the locked-state flag 54 is displaced from the window 56 and is not visible. The confirmation is therefore a confirmation of the position of the load-carrying member itself rather than of the position of the release handle 52 or of the release balance bar 48.
+[0049] After the release handle 52 has been released and before loading the equipment deck 12, the operator confirms that all four locked-state flags 54 are visible through the four windows 56. A locked-state flag 54 that is not visible tells the operator, at the guide tower 14 concerned, that the locking pawl 40 there has not seated.
+[0050] Crank and release interlock
+[0051] Referring to FIG. 6, a mechanical interlock 58 is on the crank socket 38 and is coupled to the release handle 52. The mechanical interlock 58 blocks insertion of the hand crank 36 into the crank socket 38 unless the release handle 52 is in its pulled position, and blocks return of the release handle 52 from its pulled position until the hand crank 36 has been removed from the crank socket 38.
+[0052] The mechanical interlock 58 thereby enforces the order of operations. The platform cannot be driven until the locking pawls 40 have been released, so no locking pawl 40 is dragged across a rack 18 while the platform is being adjusted. The release handle 52 cannot return while the hand crank 36 is in the crank socket 38, so the platform is not left with the locking pawls 40 released. Once the hand crank 36 has been removed, the release handle 52 is free to return and the four compression springs 44 seat the four locking pawls 40.
+[0053] Method of use
+[0054] In use, the operator places the base frame 10 on the support surface 64 and mounts the machine on the equipment deck 12. To change the height, the operator pulls and holds the release handle 52, which displaces the release balance bar 48, tensions the four release cables 46, and moves all four locking pawls 40 clear of the four racks 18. With the release handle 52 held in the pulled position, the mechanical interlock 58 no longer blocks the crank socket 38, and the operator inserts the hand crank 36 into the crank socket 38. The operator turns the hand crank 36, which turns the worm input shaft 32, the worm wheel 34, the front transverse shaft 22, the endless synchronizing chain 30, the rear transverse shaft 24, and the four pinions 20, and so raises or lowers the four corner posts 16 by the same distance, the equipment deck 12 remaining parallel to the base frame 10 throughout the height change.
+[0055] When the desired height of the equipment deck 12 is reached, the operator removes the hand crank 36 from the crank socket 38, which frees the release handle 52, and then releases the release handle 52. The four compression springs 44 return the four locking pawls 40 into engagement with the nearest teeth of the four racks 18. The operator then confirms that the locked-state flag 54 of every locking pawl 40 is visible through the window 56 of the corresponding guide tower 14, and the machine on the equipment deck 12 is thereafter supported through the four engaged locking pawls 40 and the four guide towers 14.
+[0056] Further embodiments
+[0057] The four guide towers 14 near the corners of a rectangular base frame 10 with four corner posts 16 depending from the equipment deck 12 are one arrangement. In other embodiments the platform has three guide towers 14, or more than four guide towers 14, with one post sliding in each guide tower 14 and with one rack 18, one pinion 20, one locking pawl 40 biased by one compression spring 44, one release cable 46, and one locked-state flag 54 at each post. The synchronizing transmission then couples the pinions 20 of all of the guide towers 14, and the release balance bar 48 carries one anchorage for each release cable 46 and remains pivotable relative to the release handle 52 so that the same equalization is obtained over the number of locking pawls 40 present. The synchronized drive, the independent locking pawl load locks, the equalizing release balance bar 48, the interlock between the hand crank 36 and the release handle 52, and the visible confirmation of every engaged locking pawl 40 are unchanged by the number of posts.
+[0058] The rotary input may be the worm input shaft 32 with the worm wheel 34 turned by the hand crank 36, or the same worm input shaft 32 turned by a motor.
+[0059] The platform is reusable, and the worm drive, the sprockets, the endless synchronizing chain 30, the locking pawls 40, and the cable adjusters 62 are accessible through the removable cover 60 without removing the equipment deck 12.
+[0060] The foregoing describes embodiments of the platform. Features described in connection with one embodiment may be combined with features described in connection with another embodiment where the two are not mutually exclusive, and the scope of protection is defined by the claims.
+
+
+========================================================================
+
+CLAIMS
+
+What is claimed is:
+
+1. A height-adjustable equipment platform, comprising:
+
+a base frame;
+
+an equipment deck;
+
+at least three upright guide towers carried by the base frame;
+
+a plurality of posts carried by the equipment deck, one post sliding vertically in each guide tower;
+
+a rack carried by each of the posts and extending along that post;
+
+a pinion mounted in each guide tower and meshing with the rack of the post sliding in that guide tower, whereby rotation of the pinion raises and lowers that post;
+
+a synchronizing transmission coupling the pinions of the guide towers for rotation together;
+
+a rotary input comprising a worm input shaft and a worm wheel driven by the worm input shaft and fixed to a transverse shaft of the synchronizing transmission, the rotary input being arranged to drive the synchronizing transmission, whereby rotation of the rotary input moves every post by the same distance and the equipment deck remains parallel to the base frame;
+
+a locking pawl carried by each guide tower and mounted to pivot between a locked position engaging the rack of the post sliding in that guide tower and a released position clear of that rack;
+
+a compression spring biasing each locking pawl toward the locked position, a load of the equipment deck at each post being carried through the locking pawl carried by the guide tower in which that post slides, with that locking pawl in the locked position, and through that guide tower;
+
+a release balance bar mounted on the base frame;
+
+a release cable connecting the release balance bar to each locking pawl; and
+
+a release handle acting on the release balance bar, whereby pulling the release handle tensions the release cables and moves all of the locking pawls to the released positions;
+
+wherein the release balance bar is pivotable relative to the release handle, whereby a difference in effective length between the release cables is taken up by pivoting of the release balance bar and no locking pawl remains engaged with its rack while the remaining locking pawls are in the released positions.
+
+2. The platform of claim 1, wherein a mesh between the worm input shaft and the worm wheel resists back-driving of the synchronizing transmission by the load of the equipment deck while the locking pawls in the locked positions carry that load.
+
+3. The platform of claim 1, wherein the base frame is rectangular, the guide towers are four upright guide towers, one near each corner of the base frame, and each post is a corner post depending from a corner of the equipment deck.
+
+4. The platform of claim 3, wherein the synchronizing transmission comprises a front transverse shaft to which two of the pinions are fixed, a rear transverse shaft to which the other two of the pinions are fixed, a front sprocket fixed to the front transverse shaft, a rear sprocket fixed to the rear transverse shaft, and one endless synchronizing chain running over the front sprocket and the rear sprocket, the worm wheel being fixed to the front transverse shaft.
+
+5. The platform of claim 3, wherein the synchronizing transmission comprises a front transverse shaft to which two of the pinions are fixed, a rear transverse shaft to which the other two of the pinions are fixed, and one of a toothed belt coupling the front transverse shaft to the rear transverse shaft, and a train of gears coupling the front transverse shaft to the rear transverse shaft.
+
+6. The platform of claim 1, wherein the rack of each post lies along a side of that post facing an interior of the base frame.
+
+7. The platform of claim 1, wherein each locking pawl carries a locked-state flag and each guide tower has a window positioned such that the locked-state flag of the locking pawl carried by that guide tower is visible through the window only when that locking pawl is fully engaged with a tooth of the rack of the post sliding in that guide tower.
+
+8. The platform of claim 1, further comprising a crank socket coupled to the rotary input, a removable hand crank received in the crank socket, and a mechanical interlock on the crank socket, the mechanical interlock blocking insertion of the hand crank into the crank socket unless the release handle is in a pulled position and blocking return of the release handle from the pulled position until the hand crank has been removed from the crank socket.
+
+9. The platform of claim 1, further comprising a motor coupled to the worm input shaft and arranged to drive the synchronizing transmission through the rotary input.
+
+10. The platform of claim 1, further comprising a cable adjuster in at least one of the release cables.
+
+11. The platform of claim 10, further comprising a removable cover, removal of the removable cover giving access to the synchronizing transmission, the locking pawls, and the cable adjuster without removal of the equipment deck.
+
+12. The platform of claim 1, wherein each locking pawl is mounted on a pawl pivot fixed in the guide tower carrying that locking pawl, and the load of the equipment deck at each post passes from the post through the locking pawl in the locked position and into the guide tower and the base frame, rather than through the synchronizing transmission alone.
+
+13. A height-adjustable equipment platform, comprising:
+
+a base frame;
+
+an equipment deck;
+
+at least three upright guide towers carried by the base frame;
+
+a plurality of posts carried by the equipment deck, one post sliding vertically in each guide tower;
+
+a rack carried by each of the posts;
+
+a pinion mounted in each guide tower and meshing with the rack of the post sliding in that guide tower;
+
+a synchronizing transmission coupling the pinions of the guide towers for rotation together;
+
+a rotary input comprising a worm input shaft and a worm wheel driven by the worm input shaft and fixed to a transverse shaft of the synchronizing transmission, the rotary input being arranged to drive the synchronizing transmission, whereby rotation of the rotary input moves every post by the same distance and the equipment deck remains parallel to the base frame;
+
+a crank socket coupled to the rotary input;
+
+a removable hand crank received in the crank socket;
+
+a locking pawl carried by each guide tower and mounted to pivot between a locked position engaging the rack of the post sliding in that guide tower and a released position clear of that rack, and a compression spring biasing each locking pawl toward the locked position;
+
+a release balance bar mounted on the base frame, a release cable connecting the release balance bar to each locking pawl, and a release handle acting on the release balance bar and movable to a pulled position in which all of the locking pawls are held in the released positions, the compression springs returning the locking pawls to the locked positions when the release handle leaves the pulled position;
+
+a locked-state flag carried by each locking pawl and a window in each guide tower, the window of each guide tower being positioned such that the locked-state flag of the locking pawl carried by that guide tower is visible through that window only when that locking pawl is fully engaged with a tooth of the rack of the post sliding in that guide tower; and
+
+a mechanical interlock on the crank socket, the mechanical interlock blocking insertion of the hand crank into the crank socket unless the release handle is in the pulled position and blocking return of the release handle from the pulled position until the hand crank has been removed from the crank socket.
+
+14. The platform of claim 13, wherein the release balance bar is pivotable relative to the release handle such that a difference in effective length between the release cables is taken up by pivoting of the release balance bar.
+
+15. The platform of claim 13, wherein the worm input shaft is coupled to the crank socket, and a mesh between the worm input shaft and the worm wheel resists back-driving of the synchronizing transmission by a load of the equipment deck while the locking pawls in the locked positions carry that load.
+
+16. A method of adjusting the height of an equipment deck of a height-adjustable equipment platform that comprises a base frame carrying at least three upright guide towers, a plurality of posts carried by the equipment deck, one post sliding vertically in each guide tower, a rack carried by each of the posts, a pinion in each guide tower meshing with the rack of the post sliding in that guide tower, a synchronizing transmission coupling the pinions for rotation together, a rotary input comprising a worm input shaft and a worm wheel driven by the worm input shaft and fixed to a transverse shaft of the synchronizing transmission and driving the synchronizing transmission, a locking pawl carried by each guide tower and biased by a compression spring toward a locked position engaging the rack of the post sliding in that guide tower, a release balance bar connected to the locking pawls by respective release cables, and a release handle acting on the release balance bar, the method comprising:
+
+pulling and holding the release handle so as to tension the release cables and move all of the locking pawls clear of the racks, a difference in effective length between the release cables being taken up by pivoting of the release balance bar relative to the release handle;
+
+while the release handle is held, turning the rotary input so as to move all of the posts by the same distance, the equipment deck remaining parallel to the base frame while the posts move;
+
+releasing the release handle so that each compression spring returns its locking pawl into engagement with a nearest tooth of the rack of the post sliding in the guide tower carrying that locking pawl; and
+
+supporting a load on the equipment deck through the locking pawls engaged with the racks and through the guide towers.
+
+17. The method of claim 16, wherein the platform further comprises a locked-state flag carried by each locking pawl and a window in each guide tower through which the locked-state flag of the locking pawl carried by that guide tower is visible only when that locking pawl is fully engaged with a tooth of the rack of the post sliding in that guide tower, the method further comprising confirming, after releasing the release handle and before supporting the load on the equipment deck, that the locked-state flag of every locking pawl is visible through the window of the corresponding guide tower.
+
+18. The method of claim 16, wherein the platform further comprises a crank socket coupled to the rotary input, a removable hand crank, and a mechanical interlock on the crank socket, and wherein turning the rotary input comprises inserting the hand crank into the crank socket and turning the hand crank, insertion of the hand crank being blocked by the mechanical interlock unless the release handle is held pulled, and wherein the hand crank is removed from the crank socket before the release handle is released, return of the release handle being blocked by the mechanical interlock until the hand crank has been removed.
+
+19. The method of claim 16, further comprising placing the base frame on a support surface and mounting equipment on the equipment deck before pulling the release handle, the equipment remaining on the equipment deck while the posts move.
+
+20. The method of claim 16, further comprising removing a removable cover of the platform and adjusting a cable adjuster of at least one of the release cables without removing the equipment deck.
+
+========================================================================
+
+ABSTRACT OF THE DISCLOSURE
+
+A height-adjustable equipment platform has a base frame carrying upright guide towers and an equipment deck carrying posts sliding in them. Each post carries a rack, each tower a pinion meshing with that rack, and a synchronizing transmission couples the pinions so one rotary input moves every post equally and the deck stays parallel to the base frame. A spring-biased locking pawl in each tower engages the rack of the post sliding in it, so the standing load passes through the engaged pawls and the towers rather than through the transmission alone. Release cables connect the pawls to a release balance bar pivoted by a release handle and itself pivotable relative to it, so cable-length differences cannot leave one pawl engaged while the others release. A locked-state flag shows through a window of its tower only at full engagement.
