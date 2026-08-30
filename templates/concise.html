@@ -234,6 +234,57 @@
       are still posted from the report's own subject, so the papers are named exactly as they
       were; there is simply no panel asking anybody to retype them.  #}
 
+  {#  THE DECISION FIRST. The size control and the button sat UNDER the candidate table, so on
+      a report with forty-seven candidates the only two things a reader has to touch were two
+      screens below the heading and the page opened on a list with no visible way to act on
+      it. The order now matches the decision: choose the size, see what it ticked, build. #}
+  {% set target_docs = (docs|length) if docs else items_per_unit %}
+  <div class="card" style="margin:1em 0;padding:1em">
+    {#  ONE CONTROL AND ONE BUTTON. This page carried two of each: a "Package size" chooser with
+        a blue "Build the package" button above the table, and a fee-unit chooser with a "Build the
+        concise descriptions" button below it. They built the same package by two different routes,
+        the top one IGNORED every box ticked below it, and moving either one left the other saying
+        something different. Reported as "two buttons doing the same thing, confusing", and it was.
+
+        What is left is the decision: how big is the package. The fee is what that costs, so it is
+        on the option rather than in a control of its own; the ticks are the override, and they
+        follow the size. 1.290(f) charges one 1.17(o) unit per ten items OR FRACTION THEREOF, so
+        the steps are not gradual and the size is the honest thing to choose. #}
+{% set feehelp %}WHAT IT PICKS. The strongest citable documents by what the ledger says they KILL: what a document anticipates outright first, then whether a USPTO examiner already applied it against this family, then whole dependent additions, then evidence on the independent claims, and only then breadth. One document per patent family, because two members of one family are the same disclosure and citing both spends two slots to say one thing.
+
+WHAT IT SKIPS, and never picks for you: a document that is not prior art on the dates, one that appears to share an owner with the application, one whose full text was never read, and one the Office already has. Each is still listed below with the reason, and each can still be ticked by hand.
+
+THE USPTO FEE THIS IMPLIES. This is paid to the Office in Patent Center when you file. IPtorch does not charge for it and does not take it. 37 CFR 1.290(f) charges one 1.17(o) fee unit per TEN items or fraction thereof, so the steps are not gradual: twenty documents is not a little more than ten, it is double. At the {{ identity.entity_size }}-entity rate{% for f in fee_choices[:3] %}, {{ f.max_documents }} documents is {{ f.units }} unit{{ '' if f.units == 1 else 's' }} at ${{ f.dollars_pretty }}{% endfor %}. A third party is never eligible for the micro-entity discount. Change the entity size on your profile.
+
+1.290(g) makes three or fewer items free, but ONLY when the submission carries the first-and-only statement; MPEP 1134.01 is explicit that three without it still pays. Tick three documents by hand below if that is what you want.
+
+TIME. Measured at 15 to 20 seconds for ten documents: a model call and an enrichment fetch each, then the compliance pass, then a PDF and a DOCX apiece. Thirty is roughly a minute. You can leave the page while it runs.{% endset %}
+    <div class="feebar">
+      <label class="small" for="pkgSize"><b>Package size</b></label>
+      <select id="pkgSize" name="fee_units" class="input" style="max-width:30rem">
+        {% for f in fee_choices %}
+        <option value="{{ f.units }}" data-docs="{{ f.max_documents }}"
+                {% if f.max_documents == target_docs %}selected{% endif %}>up to {{ f.max_documents }} documents &middot; {{ f.units }} USPTO fee unit{{ '' if f.units == 1 else 's' }}, ${{ f.dollars_pretty }}</option>
+        {% endfor %}
+      </select>
+      {{ qhelp("the package builder", feehelp, title="What the package builder picks, and what filing it costs the Office") }}
+      <p class="small muted" style="margin:.35rem 0 0">
+        Changing this re-ticks the documents below. Tick or untick any of them to override it.
+        The fee is paid to the Office in Patent Center at the
+        <b>{{ identity.entity_size }}-entity</b> rate;
+        {% if identity.entity_size == 'small' %}small entity is assumed, set it in
+        <a href="{{ url_for('auth.account') }}">your profile</a> if that is wrong.{% else %}set in
+        <a href="{{ url_for('auth.account') }}">your profile</a>.{% endif %}
+      </p>
+      <p class="small" id="feeTally" style="margin:.3rem 0 0"></p>
+    </div>
+    <button class="btn primary" type="submit" style="margin-top:.8em">{% if docs %}Rebuild the package{% else %}Build the package{% endif %}</button>
+    <span class="small muted">Under a minute. One model call per document to phrase the disclosure
+      column; the citations are attached from the record.{% if docs %} Documents you already have
+      keep their numbers and their text.{% endif %}</span>
+
+  </div>
+
   <div class="card" style="margin:1em 0;padding:1em">
     <h2 style="margin-top:0">Documents{{ qhelp("how these documents are ranked", "Ranked by WHAT EACH DOCUMENT DOES TO THE CLAIMS, not by how much it resembles the invention: what the ledger computes it anticipates first, then whether a USPTO examiner applied it against this family, then whole dependent additions, then evidence on the independent claims, and only then breadth. One document per patent family.\n\nSTRONG counts the rows backed by a verbatim passage that survived the grounding check. The rest are characterisations: real evidence, but filed without quotation marks, because there is no passage to stand behind them.") }}</h2>
     <table class="tbl">
@@ -244,10 +295,9 @@
           paid slot it is not going to use. Same arithmetic as fill() below, so the tally is right
           before anything is clicked, and the size control re-runs fill() so it stays right after.
 
-          It used to be hard-wired to one fee unit. Choosing 20 or 30 at the top of the page left
-          ten boxes ticked and no way to tell which nine were about to be added; coming back to a
-          built package of twenty showed ten ticked as though half of it had gone. #}
-      {% set target_docs = (docs|length) if docs else items_per_unit %}
+          It used to be hard-wired to one fee unit. Choosing 20 or 30 left ten boxes ticked and
+          no way to tell which nine were about to be added; coming back to a built package of
+          twenty showed ten ticked as though half of it had gone. #}
       {% set taken = namespace(n=0) %}
       {% for c in cands %}
         {% set pick = c.default_include and taken.n < target_docs %}
@@ -348,49 +398,6 @@
       {% endfor %}
       </tbody>
     </table>
-    {#  ONE CONTROL AND ONE BUTTON. This page carried two of each: a "Package size" chooser with
-        a blue "Build the package" button above the table, and a fee-unit chooser with a "Build the
-        concise descriptions" button below it. They built the same package by two different routes,
-        the top one IGNORED every box ticked below it, and moving either one left the other saying
-        something different. Reported as "two buttons doing the same thing, confusing", and it was.
-
-        What is left is the decision: how big is the package. The fee is what that costs, so it is
-        on the option rather than in a control of its own; the ticks are the override, and they
-        follow the size. 1.290(f) charges one 1.17(o) unit per ten items OR FRACTION THEREOF, so
-        the steps are not gradual and the size is the honest thing to choose. #}
-{% set feehelp %}WHAT IT PICKS. The strongest citable documents by what the ledger says they KILL: what a document anticipates outright first, then whether a USPTO examiner already applied it against this family, then whole dependent additions, then evidence on the independent claims, and only then breadth. One document per patent family, because two members of one family are the same disclosure and citing both spends two slots to say one thing.
-
-WHAT IT SKIPS, and never picks for you: a document that is not prior art on the dates, one that appears to share an owner with the application, one whose full text was never read, and one the Office already has. Each is still listed below with the reason, and each can still be ticked by hand.
-
-THE USPTO FEE THIS IMPLIES. This is paid to the Office in Patent Center when you file. IPtorch does not charge for it and does not take it. 37 CFR 1.290(f) charges one 1.17(o) fee unit per TEN items or fraction thereof, so the steps are not gradual: twenty documents is not a little more than ten, it is double. At the {{ identity.entity_size }}-entity rate{% for f in fee_choices[:3] %}, {{ f.max_documents }} documents is {{ f.units }} unit{{ '' if f.units == 1 else 's' }} at ${{ f.dollars_pretty }}{% endfor %}. A third party is never eligible for the micro-entity discount. Change the entity size on your profile.
-
-1.290(g) makes three or fewer items free, but ONLY when the submission carries the first-and-only statement; MPEP 1134.01 is explicit that three without it still pays. Tick three documents by hand below if that is what you want.
-
-TIME. Measured at 15 to 20 seconds for ten documents: a model call and an enrichment fetch each, then the compliance pass, then a PDF and a DOCX apiece. Thirty is roughly a minute. You can leave the page while it runs.{% endset %}
-    <div class="feebar">
-      <label class="small" for="pkgSize"><b>Package size</b></label>
-      <select id="pkgSize" name="fee_units" class="input" style="max-width:30rem">
-        {% for f in fee_choices %}
-        <option value="{{ f.units }}" data-docs="{{ f.max_documents }}"
-                {% if f.max_documents == target_docs %}selected{% endif %}>up to {{ f.max_documents }} documents &middot; {{ f.units }} USPTO fee unit{{ '' if f.units == 1 else 's' }}, ${{ f.dollars_pretty }}</option>
-        {% endfor %}
-      </select>
-      {{ qhelp("the package builder", feehelp, title="What the package builder picks, and what filing it costs the Office") }}
-      <p class="small muted" style="margin:.35rem 0 0">
-        Changing this re-ticks the documents below. Tick or untick any of them to override it.
-        The fee is paid to the Office in Patent Center at the
-        <b>{{ identity.entity_size }}-entity</b> rate;
-        {% if identity.entity_size == 'small' %}small entity is assumed, set it in
-        <a href="{{ url_for('auth.account') }}">your profile</a> if that is wrong.{% else %}set in
-        <a href="{{ url_for('auth.account') }}">your profile</a>.{% endif %}
-      </p>
-      <p class="small" id="feeTally" style="margin:.3rem 0 0"></p>
-    </div>
-    <button class="btn primary" type="submit" style="margin-top:.8em">{% if docs %}Rebuild the package{% else %}Build the package{% endif %}</button>
-    <span class="small muted">Under a minute. One model call per document to phrase the disclosure
-      column; the citations are attached from the record.{% if docs %} Documents you already have
-      keep their numbers and their text.{% endif %}</span>
-
     {#  CONSIDERED AND NOT SELECTED. The claim grid on the report page ranks by what a reference
         reads on; the chart filed for it is built from what carries a verified passage. When those
         two disagree the selection looks arbitrary from either page alone, and reconciling it by

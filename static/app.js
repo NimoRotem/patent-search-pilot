@@ -1838,7 +1838,7 @@ function createProgress(mount, opts){
   const stages = STAGES.filter(s => s.key !== 'federate' || wide);
   const DONE_RANK = STAGES[STAGES.length - 1].rank;   // was hardcoded 6; the list is longer now
   const state = { rank: 0, detail: {}, since: Date.now(), started: Date.now(), msg: '',
-                  tokens: 0, elapsed: 0, elapsedTotal: 0, attempt: 0 };
+                  tokens: 0, elapsed: 0, elapsedTotal: 0, attempt: 0, feed: [], feedSeen: {} };
   /*  ONE LINE, NOT NINE ROWS. The checklist made sense when a stage could hold the page for two
       hours: the list told you where you were in a long run. The search is fast now, so the list
       is nine paragraphs of text that never change wrapped around one that does, and the reader
@@ -1853,11 +1853,19 @@ function createProgress(mount, opts){
       its numbers and how long it has been going. Everything else is worth exactly one click, so
       it is behind one: the stage's explanation and the whole run narrative, every stage with its
       own note, which is the checklist this used to be.  */
+  /*  WHAT IS HAPPENING, NOT WHAT THE PIPELINE IS. The panel behind the chevron used to be the
+      nine stages with their two-sentence notes: 1,600 characters of fixed prose that is identical
+      on every run and on every report, opened by somebody who wanted to know why the counter had
+      not moved in ten minutes. It answered a question nobody was asking.
+
+      It is a feed now: the references as they are read, newest first, with what came back from
+      each. The stage notes are still there, under it, for the one reading in which they help. */
   mount.innerHTML = '<div class="stagenow">' +
     '<button type="button" class="st-toggle" aria-expanded="false">' +
       '<span class="st-chev" aria-hidden="true"></span>' +
       '<span class="st-line"></span></button>' +
-    '<div class="st-detail" hidden><p class="st-note"></p><ol class="st-all"></ol></div></div>' +
+    '<div class="st-detail" hidden><ol class="st-feed" reversed></ol>' +
+      '<p class="st-note"></p><ol class="st-all"></ol></div></div>' +
     /* The overall clock lives INSIDE the component: the generating page has its own #elapsed
        footer, but most of a long run is watched from the report page's refining banner, which
        had no counter at all — "no overall time and token counter" was reported verbatim. */
@@ -1913,6 +1921,30 @@ function createProgress(mount, opts){
         (cur0.rank < DONE_RANK ? ' · ' + fmtDur(Date.now() - state.since) : '');
     }
     if (noteEl) noteEl.textContent = cur0.note;
+    const feedEl = mount.querySelector('.stagenow .st-feed');
+    if (feedEl){
+      /*  Newest first, because the interesting one is the one that just landed. Rebuilt whole:
+          the list is capped at 25 server-side, so this is 25 <li>s once a second at worst. */
+      if (!state.feed.length){
+        feedEl.hidden = true;
+      } else {
+        feedEl.hidden = false;
+        feedEl.innerHTML = state.feed.slice().reverse().map(function (r){
+          const bits = [];
+          if (r.chars > 0) bits.push(r.chars >= 1000 ? Math.round(r.chars / 1000) + 'k chars'
+                                                     : r.chars + ' chars');
+          if (r.n_features > 0) bits.push(r.n_features + ' limitation'
+                                          + (r.n_features === 1 ? '' : 's') + ' answered');
+          if (r.reused) bits.push('reused from this run');
+          if (r.found === false) bits.push('no full text');
+          if (r.note) bits.unshift(r.note);
+          return '<li><b>' + esc(r.pub) + '</b>'
+               + (r.title ? ' <span class="ttl">' + esc(r.title) + '</span>' : '')
+               + (bits.length ? ' <span class="muted">' + esc(bits.join(' · ')) + '</span>' : '')
+               + '</li>';
+        }).join('');
+      }
+    }
     if (allEl && allEl.childElementCount !== stages.length){
       allEl.innerHTML = stages.map(s =>
         '<li data-k="' + s.key + '"><b></b><span></span></li>').join('');
@@ -1979,6 +2011,20 @@ function createProgress(mount, opts){
     apply(ev){
       const r = KIND_RANK[ev.kind];
       if (r != null && r > state.rank){ state.rank = r; state.since = Date.now(); }
+      /*  THE FEED, before the merge: `detail` is cumulative (Object.assign), so a `pub` that
+          arrived three events ago is still sitting in it and cannot be told from a new one. The
+          server sends the whole rolling log, so a page opened mid-run is caught up rather than
+          starting empty; entries are keyed so a re-render never duplicates a row. */
+      const log = ev.read_log;
+      if (Array.isArray(log)){
+        log.forEach(function (r){
+          const k = (r && r.pub) + '#' + (r && r.n);
+          if (!r || !r.pub || state.feedSeen[k]) return;
+          state.feedSeen[k] = 1;
+          state.feed.push(r);
+        });
+        if (state.feed.length > 25) state.feed = state.feed.slice(-25);
+      }
       if (ev.detail) Object.assign(state.detail, ev.detail);
       if (typeof ev.tokens === 'number' && ev.tokens > state.tokens) state.tokens = ev.tokens;
       if (typeof ev.elapsed_sec === 'number' && ev.elapsed_sec > state.elapsed) state.elapsed = ev.elapsed_sec;

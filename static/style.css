@@ -2223,6 +2223,14 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .stagenow .st-detail{margin:.45rem 0 0;padding:.5rem .65rem;background:var(--s3);
   border:1px solid var(--line);border-radius:var(--r-sm);font-size:.86rem;line-height:1.5}
 .stagenow .st-note{margin:0 0 .5rem;color:var(--muted)}
+/*  The live feed of references being read. Newest first, so the eye lands on the one that just
+    arrived; monospace on the publication number because that is the part being scanned. */
+.stagenow .st-feed{margin:0 0 .6rem;padding-left:1.1rem;max-height:15rem;overflow:auto}
+.stagenow .st-feed li{margin:.2rem 0;line-height:1.35}
+.stagenow .st-feed li b{font-family:var(--mono,ui-monospace,SFMono-Regular,Menlo,monospace);
+  font-weight:600;color:var(--ink)}
+.stagenow .st-feed li .ttl{color:var(--ink);opacity:.85}
+.stagenow .st-feed li .muted{color:var(--muted);font-size:.92em}
 .stagenow .st-all{margin:0;padding-left:1.1rem;color:var(--muted)}
 .stagenow .st-all li{margin:.18rem 0}
 .stagenow .st-all li b{color:var(--ink);font-weight:600}

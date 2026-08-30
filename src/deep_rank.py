@@ -746,8 +746,19 @@ def read_wave(chosen, features, claim_items, hints, scores, slug, emit=None, wor
                 done[0] += 1
                 if not fresh:
                     reused[0] += 1
-                if done[0] % 5 == 0 or done[0] == len(chosen):
-                    emit("chart_progress", done=done[0], total=len(chosen), pub=pub)
+                #  ONE EVENT PER DOCUMENT, and it says WHICH document. It fired every fifth read
+                #  and carried only the publication number of whichever one happened to be fifth,
+                #  so the page showed a counter moving against a stage description that had not
+                #  changed in two hours. Reading is the longest stage of the run by a wide margin;
+                #  what is worth watching is the reference going past, not the count.
+                #
+                #  The cost is one SSE frame per reference: 210 frames over 20 minutes.
+                emit("chart_progress", done=done[0], total=len(chosen), pub=pub,
+                     title=(ref.get("title") or row.get("title") or "")[:120],
+                     chars=int(ref.get("chars") or 0), reused=(not fresh),
+                     found=bool(ref.get("found")),
+                     n_features=len([f for f in (ref.get("features") or [])
+                                     if (f or {}).get("verdict") in ("disclosed", "partial")]))
             return ref
 
     n = min(int(workers or CHART_WORKERS), max(1, len(chosen)))

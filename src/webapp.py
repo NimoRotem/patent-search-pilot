@@ -454,6 +454,80 @@ def _set_job(slug, **kw):
     runctx.event(slug, ev)
 
 
+#  WHAT IS BEING READ, RIGHT NOW, AND WHAT WAS READ JUST BEFORE.
+#
+#  The report page carried a stage name, a nine-paragraph explanation of the pipeline and a
+#  counter. Every one of those is fixed text: on a five-hour run the only thing that moved was
+#  "batch 130 of 210", against a description of the stage that had been on screen for two hours.
+#  Reported as "it's just stale for a long time; stream exactly what it's doing".
+#
+#  So the message names the reference, and the last few are kept on the job so a browser that
+#  opens the page mid-run is caught up instead of waiting for the next frame. Capped, because the
+#  whole job record is serialised into every event.
+_READ_LOG_MAX = int(os.environ.get("PROGRESS_READ_LOG", "25"))
+
+
+def _reading_line(head, data):
+    """"Reading in full: 132 of 210 · US20210231163A1 · Suction cup assembly · 84k chars"."""
+    bits = []
+    pubs = [str(p).strip() for p in ((data or {}).get("pubs") or []) if str(p).strip()]
+    pub = str((data or {}).get("pub") or "").strip()
+    req = str((data or {}).get("requirement") or "").strip()
+    if req:
+        bits.append(req)
+    if pubs:
+        bits.append(", ".join(pubs[:4]) + (" +%d" % (len(pubs) - 4) if len(pubs) > 4 else ""))
+    elif pub:
+        bits.append(pub)
+    title = str((data or {}).get("title") or "").strip()
+    if title:
+        bits.append(title[:70] + ("…" if len(title) > 70 else ""))
+    chars = int((data or {}).get("chars") or 0)
+    if chars > 0:
+        bits.append(("%dk chars" % round(chars / 1000)) if chars >= 1000 else "%d chars" % chars)
+    if (data or {}).get("reused"):
+        bits.append("from this run's own checkpoint")
+    return "%s: %s of %s%s" % (head, data.get("done"), data.get("total"),
+                              (" · " + " · ".join(bits)) if bits else "…")
+
+
+def _read_log(slug, data):
+    """Append what was just read to the job's rolling log. Newest last; capped.
+
+    Two shapes reach here. The per-document chart sends ONE reference with its title and size;
+    the evidence sweep sends the BATCH it just asked about, with the requirement it asked. Both
+    end up as rows naming a publication, which is what a reader recognises.
+    """
+    d = data or {}
+    n_done = int(d.get("done") or 0)
+    note = str(d.get("requirement") or "").strip()
+    rows = []
+    pubs = [str(p).strip() for p in (d.get("pubs") or []) if str(p).strip()]
+    if pubs:
+        rows = [{"pub": p, "title": "", "chars": 0, "reused": False, "found": True,
+                 "note": note, "n": n_done} for p in pubs]
+    else:
+        pub = str(d.get("pub") or "").strip()
+        if pub:
+            rows = [{"pub": pub, "title": str(d.get("title") or "")[:120],
+                     "chars": int(d.get("chars") or 0), "reused": bool(d.get("reused")),
+                     "found": bool(d.get("found", True)),
+                     "n_features": int(d.get("n_features") or 0), "note": note, "n": n_done}]
+    if not rows:
+        return
+    with _JOB_LOCK:
+        j = _JOBS.setdefault(slug, {})
+        log = j.get("read_log") or []
+        for row in rows:
+            #  A reference is read once for the chart and again in the evidence sweep, so the same
+            #  publication reappears legitimately. Only an exact repeat is dropped.
+            if any(r.get("pub") == row["pub"] and r.get("n") == row["n"]
+                   and r.get("note") == row.get("note") for r in log[-len(rows) - 4:]):
+                continue
+            log.append(row)
+        j["read_log"] = log[-_READ_LOG_MAX:]
+
+
 # ---------------------------------------------------------------------------------------------
 # Stage heartbeat.
 #
@@ -577,6 +651,11 @@ def _job_event(slug, job):
             # the message string, and to keep showing the last known state during the long silent
             # stretch between 'partial' and 'reranking'.
             "detail": job.get("detail") or {},
+            #  WHAT HAS ACTUALLY BEEN READ, newest last.  is merged cumulatively by the
+            #  client, so a publication number in it cannot be told from the one before; this is a
+            #  list and it is the whole rolling window, so a page opened an hour into a run is
+            #  caught up on the last 25 references instead of waiting for the next one.
+            "read_log": job.get("read_log") or [],
             #  LIVE COST AND CLOCK. A search runs for a long time and the page had no way to say
             #  how long or how much. `t0` is set where the job is created; the token figure is the
             #  process-wide counter differenced against its value at that moment, so it is an
@@ -1465,9 +1544,9 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                          msg=f"Reading the {data.get('n', 0)} strongest references IN FULL and "
                              f"charting what each one discloses…")
             elif stage == "chart_progress":
+                _read_log(slug, data)
                 _set_job(slug, kind="reading", detail=data,
-                         msg=f"Read {data.get('done')} of {data.get('total')} references in "
-                             f"full…")
+                         msg=_reading_line("Reading in full", data))
             #  The orphan-claim rescue (claim_rescue): a second, claim-driven search for the claims
             #  the whole run found nothing against. It runs after the reading, so without these the
             #  page would sit on "Read 420 of 420" for several more minutes.
@@ -1492,9 +1571,9 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                          msg=f"Evidence sweep: reading {data.get('n', 0)} more references "
                              f"against every requirement, in batches…")
             elif stage == "batch_read_progress":
+                _read_log(slug, data)
                 _set_job(slug, kind="reading", detail=data,
-                         msg=f"Evidence sweep: batch {data.get('done')} of "
-                             f"{data.get('total')}…")
+                         msg=_reading_line("Evidence sweep", data))
             elif stage == "rescue_read_start":
                 _set_job(slug, kind="rescuing", detail=data,
                          msg=f"Reading {data.get('n', 0)} references found for the uncovered "
