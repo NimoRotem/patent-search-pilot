@@ -1805,11 +1805,18 @@ def _external_block(query, doc, quick_deadline=False):
     try:
         brief = query_set.retrieval_text(query or "")
         claims = list((doc or {}).get("claims") or [])
-        specs = query_set.build(query, claims=claims)
+        #  THE SAME STRUCTURED READING THE LOCAL SEARCH USES. Cached in `novelty_units` on the
+        #  limitation texts, so the local lane and this one share one model call even though they
+        #  run on different threads. It is what puts the claim's own combinations at the FRONT of
+        #  the fan-out, ahead of the cross-industry analogies and therefore inside MAX_QUERIES.
+        analysis = query_set.novelty_analysis(
+            claims, spec_text=str((doc or {}).get('full_text') or '')[:400000]) if claims else None
+        specs = query_set.build(query, claims=claims, analysis=analysis)
         #  On the interactive tier this is the whole wall clock. See external.TIMEOUT_QUICK.
-        ext = external.run(specs, brief=brief, claims=claims,
+        ext = external.run(specs, brief=brief, claims=claims, analysis=analysis,
                            timeout=external.TIMEOUT_QUICK if quick_deadline else None)
-        print(f"[external] {len(ext.get('aspects') or [])} aspects, "
+        print(f"[external] {len(ext.get('aspects') or [])} aspects "
+              f"({ext.get('n_claim_aspects', 0)} from the claim), "
               f"{len(ext.get('queries') or [])} queries -> {ext.get('n_candidates', 0)} candidates, "
               f"{ext.get('n_families', 0)} families in {ext.get('elapsed', 0)}s "
               f"{ext.get('stats')}", flush=True)
@@ -6286,7 +6293,7 @@ def api_passage():
 
 @app.route("/api/build-settings")
 def _concise_run(slug, deep, pubs, subject, rep, identity,
-                 start_at=1, skip_compliance=False, model=None):
+                 start_at=1, skip_compliance=False, model=None, mode="novelty"):
     """Build the 1.290 papers for `pubs` and package them. Blocking; run it on a thread.
 
     LIFTED OUT OF THE ROUTE so it has two callers instead of one. It was a closure inside the
@@ -6299,6 +6306,19 @@ def _concise_run(slug, deep, pubs, subject, rep, identity,
     not touch `request`, `session` or `g`.
     """
     filing_identity = identity
+    #  LOCAL IMPORTS, and the reason this function had none. It was lifted out of the POST handler,
+    #  which imports both of these itself, and the lift took the body and left the imports behind.
+    #  `submission_compliance` is imported at module level so it survived; these two are not, so
+    #  EVERY packet build has died on its first statement with
+    #      NameError: name 'concise_description' is not defined
+    #  since the lift. It is invisible from the page: the build runs on a thread, the failure lands
+    #  in the job record, and the job record was only rendered while a build was RUNNING. So the
+    #  button appeared to do nothing at all, which is exactly what was reported.
+    #
+    #  `mode` was the same defect one line further down: the POST handler computes it from the
+    #  report meta and it was read here as a global that does not exist. It is a parameter now.
+    import concise_description
+    import concise_render
     try:
         docs = concise_description.build(
             deep, pubs, subject, start_at=start_at, report=rep,
@@ -6480,9 +6500,14 @@ def concise_descriptions(slug):
         #  The build runs in a thread and the page reloads when it finishes, so what the
         #  build DECIDED has to be read back from the job or it is lost at that reload.
         j = _concise_job(slug) or {}
+        #  A FAILED BUILD IS SHOWN, NOT ONLY RECORDED. The job carries its error, and the
+        #  only thing that ever rendered it was the progress panel, which is hidden unless a
+        #  build is RUNNING. So a build that died on its first statement left a page identical
+        #  to the one before the click. Whatever killed it, the person who clicked is told.
         return _render_picker(report=rep_for_pick, _deep=deep, slug=slug,
                               cands=_classify(slug, cands, deep),
-                              docs=_concise_built(slug), subject=subject, error=None,
+                              docs=_concise_built(slug), subject=subject,
+                              error=(j.get("error") if j.get("state") == "failed" else None),
                               blocked=j.get("blocked") or [],
                               building=(j.get("state") == "running"),
                               verdict=j.get("verdict") or _concise_verdict_on_disk(slug))
@@ -6634,7 +6659,7 @@ def concise_descriptions(slug):
     threading.Thread(target=_concise_run, name="concise-build", daemon=True,
                      args=(slug, deep, pubs, subject, rep_for_pick, filing_identity),
                      kwargs={"start_at": start_at, "skip_compliance": skip_compliance,
-                             "model": chosen_model}).start()
+                             "model": chosen_model, "mode": mode}).start()
     #  Post/Redirect/Get: rendering the result of the POST directly meant a browser refresh
     #  re-submitted the form, and a re-submit AFTER completion silently started a whole new
     #  build over the same directory. The GET shows the running build's progress.
