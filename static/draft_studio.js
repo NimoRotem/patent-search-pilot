@@ -54,6 +54,13 @@
     return data;
   }
 
+  /* How a review's verdict is said, in the masthead, in Review and against every version in
+     History. It lived at the top of the conversation panel, which the terminal replaced. */
+  const VERDICT = {
+    pass: ['good', 'consistent'], warn: ['warn', 'points to settle'],
+    fail: ['bad', 'not consistent yet'], unknown: ['muted', 'not reviewed'],
+  };
+
   // ── the drafting agent's terminal ──────────────────────────────────────────
   /* The agent is a real Claude Code session with this draft as its working directory, and this is
      that session's screen. It is the operators' own terminal, ported: the same append-only line
@@ -2472,6 +2479,11 @@
   }
 
   wireTerminal();
+  //  Paint the agent from the state the page was SERVED with, before asking the server again.
+  //  Without this the status pill keeps the template's placeholder until the first poll lands,
+  //  so a page opened on a working agent reads "starting" for a second and a page opened on a
+  //  dead one reads "starting" until something else happens to update it.
+  applyAgentState(S.agent);
   renderAll();
   routeFromHash();
   loadAgentState();
