@@ -669,6 +669,37 @@ def figures_mentioned(text: str) -> set[str]:
     return found
 
 
+_FLOW_DIAGRAM_RE = re.compile(
+    r"\b(?:process\s+flow(?:\s+diagram)?|flow\s+diagram|flowchart)\b",
+    re.IGNORECASE,
+)
+_DRAWING_VERBAL_LABEL_RE = re.compile(
+    r"(?:"
+    r"\b(?:block|box|diamond|circle|shape|step|node|terminal)\b[^.\n]{0,80}"
+    r"\b(?:label(?:ed|led)?|reads?|says?|asks?|titled|captioned)\b|"
+    r"\b(?:process|flow|it)\b[^.\n]{0,45}"
+    r"\b(?:starts?|begins?|proceeds?|continues?|advances?|moves?)\s+(?:at|with|to)\b|"
+    r"\bnext\s+is\b"
+    r")[^\"\u201c\u201d\n]{0,45}[\"\u201c]([^\"\u201c\u201d\n]{1,180})[\"\u201d]",
+    re.IGNORECASE,
+)
+_PERMITTED_DRAWING_MARK_RE = re.compile(
+    r"(?:FIG\.?\s*\d{1,3}|[A-Z](?:-[A-Z])?|[A-Z]?\d{1,4}[A-Z]?)",
+    re.IGNORECASE,
+)
+
+
+def _verbal_drawing_labels(caption: str) -> list[str]:
+    """Return verbal strings that a brief asks the geometry renderer to print."""
+    labels = []
+    for match in _DRAWING_VERBAL_LABEL_RE.finditer(str(caption or "")):
+        value = re.sub(r"\s+", " ", match.group(1)).strip(" .;:")
+        if not value or _PERMITTED_DRAWING_MARK_RE.fullmatch(value):
+            continue
+        labels.append(value)
+    return list(dict.fromkeys(labels))
+
+
 def _axial_hollow_cylinder_annulus_contradiction(caption: str) -> bool:
     """Detect a transverse annulus requested inside an expressly axial section."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip()
@@ -737,6 +768,26 @@ def _figure_checks(sections: Mapping[str, str],
     for index, figure in enumerate(figures, 1):
         caption = str(figure.get("caption") or "")
         label = str(figure.get("label") or f"FIG. {index}")
+        verbal_labels = _verbal_drawing_labels(caption)
+        if verbal_labels:
+            brief_issues.append(
+                f"{label}: verbal drawing text is requested inside a shape: "
+                f"{', '.join(repr(value[:100]) for value in verbal_labels[:4])}. Replace each "
+                "process or decision label with a reference numeral, list those reference "
+                "numerals on the sheet, and use the same numbered steps in the Detailed "
+                "Description.")
+        reference_numerals = {
+            _drawing_numeral(value) for value in (figure.get("numerals") or ())
+        }
+        reference_numerals = {
+            value for value in reference_numerals
+            if re.fullmatch(r"[A-Z]?\d{2,4}[A-Z]?", value or "", re.IGNORECASE)
+        }
+        if _FLOW_DIAGRAM_RE.search(caption) and len(reference_numerals) < 2:
+            brief_issues.append(
+                f"{label}: process-flow drawing has no numbered steps. Assign a distinct "
+                "reference numeral to every process and decision shape, list the numerals on "
+                "this sheet, and identify the same numbered steps in the Detailed Description.")
         if len(caption) > MAX_FIGURE_BRIEF_CHARS:
             brief_issues.append(
                 f"{label}: {len(caption)} characters (maximum {MAX_FIGURE_BRIEF_CHARS})")

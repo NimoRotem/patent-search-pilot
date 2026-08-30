@@ -448,7 +448,10 @@ Figure files are Markdown specifications only. Never create SVG, PNG, or other i
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 leader lines, cutting lines, arrows, and section designations deterministically. Describe the
 required geometry and relationships, and list the numerals, but never ask the geometry image to
-draw text or labels itself. Never address or
+draw text or labels itself. In every process-flow figure, give each process and decision shape a
+distinct reference numeral, list those numerals in the figure file and numerals.md, and identify
+the same numbered steps in the Detailed Description. Never put a verbal step name, question,
+YES/NO word, equation, or other phrase inside a process box or decision diamond. Never address or
 mention a draftsperson, drafter, illustrator, reviewer, attorney, or other person in a figure
 brief. When a part name is only a semantic identifier, say that it does not appear as drawing
 text.
