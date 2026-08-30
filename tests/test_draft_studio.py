@@ -189,6 +189,15 @@ def test_first_use_numeral_check_ignores_claim_numbers():
     assert check["status"] == "pass"
 
 
+def test_first_use_numeral_check_ignores_claim_references():
+    check = draft_qa._first_use_introduces(
+        "12. The method of claim 16, wherein pressure is released. "
+        "A retaining ring 16 secures the cartridge.",
+        {"16": "retaining ring"})
+
+    assert check["status"] == "pass"
+
+
 def test_two_numerals_for_the_same_part_are_caught():
     numerals = NUMERALS + [{"numeral": "24", "part": "sealing ring"}]
     broken = dict(GOOD)
