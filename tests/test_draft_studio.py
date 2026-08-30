@@ -198,6 +198,15 @@ def test_flowchart_briefs_with_numbered_steps_remain_renderable():
         "Drawing briefs are concise and renderable"]["status"] == "pass"
 
 
+def test_an_empty_figure_brief_is_refused_before_drawing():
+    figures = [{**FIGURES[0], "caption": " \n\t "}, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "empty drawing brief" in " ".join(check["items"]).lower()
+
+
 def test_verdict_never_fails_on_an_advisory_check_alone():
     """A heuristic must not be able to condemn a draft — see the calibration note in draft_qa."""
     advisory = [{"name": "Antecedent basis", "status": "fail", "severity": "advisory",

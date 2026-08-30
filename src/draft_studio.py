@@ -451,8 +451,10 @@ required geometry and relationships, and list the numerals, but never ask the ge
 draw text or labels itself. In every process-flow figure, give each process and decision shape a
 distinct reference numeral, list those numerals in the figure file and numerals.md, and identify
 the same numbered steps in the Detailed Description. Never put a verbal step name, question,
-YES/NO word, equation, or other phrase inside a process box or decision diamond. Never address or
-mention a draftsperson, drafter, illustrator, reviewer, attorney, or other person in a figure
+YES/NO word, equation, or other phrase inside a process box or decision diamond. Never erase a
+figure's geometry brief merely to remove verbal labels. Every figure file must still describe all
+visible shapes, their order and routes, and the target geometry for every listed numeral. Never
+address or mention a draftsperson, drafter, illustrator, reviewer, attorney, or other person in a figure
 brief. When a part name is only a semantic identifier, say that it does not appear as drawing
 text.
 
