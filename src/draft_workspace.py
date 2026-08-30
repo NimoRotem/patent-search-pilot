@@ -285,6 +285,16 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------------------------
 _RENDERED_FIGURE_FILE_RE = re.compile(
     r"^rendered-[A-Za-z0-9][A-Za-z0-9-]*\.png$", re.IGNORECASE)
+_FIGURE_ORDER_RE = re.compile(
+    r"\bFIG(?:URE)?\.?\s*(\d{1,3})([A-Za-z]?)\b", re.IGNORECASE)
+
+
+def _figure_order_key(value: Any) -> tuple[int, int, str, str]:
+    label = str(value or "").strip()
+    match = _FIGURE_ORDER_RE.search(label)
+    if not match:
+        return (1, 0, "", label.casefold())
+    return (0, int(match.group(1)), match.group(2).upper(), label.casefold())
 
 
 def figure_filename(label: Any, index: int = 0) -> str:
@@ -398,7 +408,7 @@ def read_figures(workspace: Path) -> list[dict[str, Any]]:
             numerals = sorted(draft_qa.numerals_used(raw), key=lambda n: int(re.sub(r"\D", "", n) or 0))
         out.append({"label": label or path.stem, "caption": body,
                     "numerals": numerals, "file": path.name})
-    return out
+    return sorted(out, key=lambda item: _figure_order_key(item.get("label")))
 
 
 # ---------------------------------------------------------------------------------------------

@@ -1404,6 +1404,19 @@ def test_figures_round_trip(tmp_path):
     assert not (figures / "scratch").exists()
 
 
+def test_figures_round_trip_keeps_numeric_order_after_figure_nine(tmp_path):
+    figures = [
+        {"label": f"FIG. {number}", "caption": f"View {number}.", "numerals": []}
+        for number in range(1, 11)
+    ]
+
+    draft_workspace.write_figures(tmp_path, figures)
+
+    assert [item["label"] for item in draft_workspace.read_figures(tmp_path)] == [
+        f"FIG. {number}" for number in range(1, 11)
+    ]
+
+
 def test_figure_snapshot_removes_and_rejects_a_filename_alias_from_the_current_turn(tmp_path):
     draft_workspace.write_figures(tmp_path, FIGURES)
     alias = tmp_path / "figures" / "FIG-1-SHORT.md"
