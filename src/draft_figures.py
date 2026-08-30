@@ -2543,11 +2543,91 @@ def _has_deterministic_stirring_scene(text: str) -> bool:
         re.search(r"\bplain rectangular body standing on a band\b[^.]{0,80}\bunderside\b", text))
 
 
+def _linear_process_cycle_nodes(caption: str) -> list[str]:
+    """Return the declared order for one exact all-process cycle, or no match."""
+    text = str(caption or "")
+    normalized = re.sub(r"\s+", " ", text).strip().lower()
+    node_match = _FLOWCHART_NODE_BLOCK_RE.search(text)
+    edge_match = _FLOWCHART_EDGE_BLOCK_RE.search(text)
+    vertical_layout = bool(
+        re.search(r"\bvertical (?:sequence|column|stack)\b", normalized) or
+        re.search(r"\barranged from top to bottom\b", normalized) or
+        re.search(r"\bone vertical column\b", normalized)
+    )
+    if not (
+            _FLOWCHART_CAPTION_RE.search(text) and node_match and edge_match and
+            vertical_layout):
+        return []
+
+    declared = [
+        (_flowchart_node_id(raw_node), str(raw_shape or "").lower())
+        for raw_node, raw_shape in _FLOWCHART_NODE_RE.findall(node_match.group(1))
+    ]
+    nodes = [node for node, _shape in declared if node]
+    if not (2 <= len(nodes) <= 8):
+        return []
+    if len(set(nodes)) != len(nodes) or any(
+            node in {"START", "END"} or shape != "process"
+            for node, shape in declared):
+        return []
+
+    edges = [
+        f"{source}->{target}"
+        for raw_source, raw_target in _FLOWCHART_EDGE_RE.findall(edge_match.group(1))
+        if (source := _flowchart_node_id(raw_source)) and
+        (target := _flowchart_node_id(raw_target))
+    ]
+    exact_edges = [
+        f"{source}->{target}"
+        for source, target in zip(nodes, nodes[1:] + nodes[:1])
+    ]
+    if len(edges) != len(set(edges)) or set(edges) != set(exact_edges):
+        return []
+
+    topology = flowchart_topology_spec(
+        text, [f"{node} = process step" for node in nodes])
+    if not topology.get("ok") or set(topology.get("expected") or ()) != set(exact_edges):
+        return []
+    return nodes
+
+
+def _linear_process_cycle_layout(
+        caption: str) -> list[tuple[str, tuple[int, int, int, int]]]:
+    """Lay out a short exact cycle as blank, vertically ordered process boxes."""
+    nodes = _linear_process_cycle_nodes(caption)
+    if not nodes:
+        return []
+    box_height = 90 if len(nodes) <= 5 else 70 if len(nodes) <= 7 else 62
+    available_height = 760
+    gap = min(70, max(
+        24, (available_height - (len(nodes) * box_height)) // (len(nodes) - 1)))
+    total_height = (len(nodes) * box_height) + ((len(nodes) - 1) * gap)
+    top = (900 - total_height) // 2
+    return [
+        (node, (500, top + (index * (box_height + gap)),
+                900, top + (index * (box_height + gap)) + box_height))
+        for index, node in enumerate(nodes)
+    ]
+
+
+def _linear_process_cycle_feedback_target(caption: str) -> str:
+    """Return the explicitly requested feedback entry side for a simple cycle."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if "feedback" not in sentence:
+            continue
+        if len(re.findall(r"\bright side\b", sentence)) >= 2:
+            return "right"
+    return "top"
+
+
 def _control_diagram_kind(caption: str) -> str:
     """Recognize controlled block and flow diagrams that must never contain model text."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     text = re.sub(r"\bsmall\s+empty\s+circle\b", "small circle", text)
     text = re.sub(r"\bwelded[- ]contactor\b", "welded contactor", text)
+    if _linear_process_cycle_nodes(caption):
+        return "linear_process_cycle"
     if (
             re.search(r"\bsystem diagram of a charging control system\b", text) and
             re.search(r"\belectrical branch\b[^.]{0,100}\bpair of heavy horizontal lines\b",
@@ -2944,6 +3024,15 @@ def _deterministic_control_diagram_anchors(
         caption: str) -> tuple[str, dict[str, tuple[int, int, str]]]:
     """Return exact raw-pixel targets for each supported control-diagram template."""
     kind = _control_diagram_kind(caption)
+    if kind == "linear_process_cycle":
+        return kind, {
+            node: (
+                (bounds[0] + bounds[2]) // 2,
+                (bounds[1] + bounds[3]) // 2,
+                f"well inside the blank process rectangle for node {node}",
+            )
+            for node, bounds in _linear_process_cycle_layout(caption)
+        }
     if kind == "charging_control_three_connectors":
         return kind, {
             "charging control system": (
@@ -3565,6 +3654,10 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             component_part = canonical_component_part(
                 re.split(r"\s*[;:|]\s*", part, maxsplit=1)[0])
             center = component_centers.get(component_part)
+        if center is None:
+            center = component_centers.get(numeral)
+            if center is not None:
+                component_part = numeral
         return component_part, center
 
     repaired = []
@@ -4058,7 +4151,44 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
              center_y - ((bottom - top) / 2) - top),
             "A", fill="black", font=font)
 
-    if kind == "charging_control_three_connectors":
+    if kind == "linear_process_cycle":
+        layout = _linear_process_cycle_layout(caption)
+        for _node, bounds in layout:
+            box(bounds)
+        for (_upper_node, upper), (_lower_node, lower) in zip(layout, layout[1:]):
+            center_x = (upper[0] + upper[2]) // 2
+            draw.line((center_x, upper[3], center_x, lower[1]), **line)
+            arrow((center_x, lower[1]), "down")
+
+        _first_node, first = layout[0]
+        _last_node, last = layout[-1]
+        first_center_x = (first[0] + first[2]) // 2
+        first_center_y = (first[1] + first[3]) // 2
+        last_center_y = (last[1] + last[3]) // 2
+        feedback_target = _linear_process_cycle_feedback_target(caption)
+        if feedback_target == "right":
+            feedback_path = [
+                (last[2], last_center_y),
+                (1100, last_center_y),
+                (1100, first_center_y),
+                (first[2], first_center_y),
+            ]
+            feedback_arrow = "left"
+            feedback_point = (first[2], first_center_y)
+        else:
+            feedback_y = max(25, first[1] - 35)
+            feedback_path = [
+                (last[2], last_center_y),
+                (1100, last_center_y),
+                (1100, feedback_y),
+                (first_center_x, feedback_y),
+                (first_center_x, first[1]),
+            ]
+            feedback_arrow = "down"
+            feedback_point = (first_center_x, first[1])
+        draw.line(feedback_path, fill="black", width=4, joint="curve")
+        arrow(feedback_point, feedback_arrow)
+    elif kind == "charging_control_three_connectors":
         # Two power conductors are explicit. The sensor loop surrounds only the upper one,
         # with white separation from the lower conductor so the count is pixel-verifiable.
         draw.line((160, 170, 1240, 170), **line)
@@ -7511,6 +7641,7 @@ def _deterministic_control_diagram_constraint_certificate(
     """Certify exact endpoint and connection pixels in controlled block diagrams."""
     kind = _control_diagram_kind(caption)
     if kind not in {
+            "linear_process_cycle",
             "charging_control_three_connectors", "charging_installation_flat",
             "edge_controller_flat",
             "edge_controller_flat_full_ports",
@@ -7554,6 +7685,94 @@ def _deterministic_control_diagram_constraint_certificate(
                 for y in range(max(0, top), min(height, bottom + 1))
                 for x in range(max(0, left), min(width, right + 1))
             )
+
+        if kind == "linear_process_cycle":
+            layout = _linear_process_cycle_layout(caption)
+            nodes = [node for node, _bounds in layout]
+            shape_outline_samples = []
+            shape_interior_samples = []
+            for _node, bounds in layout:
+                left, top, right, bottom = bounds
+                center_x = (left + right) // 2
+                center_y = (top + bottom) // 2
+                shape_outline_samples.extend([
+                    (left, center_y), (right, center_y),
+                    (center_x, top), (center_x, bottom),
+                ])
+                shape_interior_samples.append((center_x, center_y))
+
+            forward_samples = []
+            for (_upper_node, upper), (_lower_node, lower) in zip(
+                    layout, layout[1:]):
+                center_x = (upper[0] + upper[2]) // 2
+                forward_samples.extend([
+                    (center_x, upper[3]),
+                    (center_x, (upper[3] + lower[1]) // 2),
+                    (center_x, lower[1]),
+                ])
+
+            _first_node, first = layout[0]
+            _last_node, last = layout[-1]
+            first_center_x = (first[0] + first[2]) // 2
+            first_center_y = (first[1] + first[3]) // 2
+            last_center_y = (last[1] + last[3]) // 2
+            feedback_target = _linear_process_cycle_feedback_target(caption)
+            if feedback_target == "right":
+                feedback_samples = [
+                    (last[2], last_center_y),
+                    ((last[2] + 1100) // 2, last_center_y),
+                    (1100, last_center_y),
+                    (1100, (last_center_y + first_center_y) // 2),
+                    (1100, first_center_y),
+                    ((1100 + first[2]) // 2, first_center_y),
+                    (first[2], first_center_y),
+                ]
+            else:
+                feedback_y = max(25, first[1] - 35)
+                feedback_samples = [
+                    (last[2], last_center_y),
+                    ((last[2] + 1100) // 2, last_center_y),
+                    (1100, last_center_y),
+                    (1100, (last_center_y + feedback_y) // 2),
+                    (1100, feedback_y),
+                    (900, feedback_y),
+                    (first_center_x, feedback_y),
+                    (first_center_x, first[1]),
+                ]
+            topology = flowchart_topology_spec(
+                caption, [f"{node} = process step" for node in nodes])
+            return {
+                "linear_cycle_shape_sequence": {
+                    "ok": (
+                        len(layout) >= 2 and
+                        all(ink(point) for point in shape_outline_samples) and
+                        all(clear(point, 8) for point in shape_interior_samples)
+                    ),
+                    "shape_count": len(layout),
+                    "shape_order": ["process"] * len(layout),
+                    "node_order": nodes,
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                },
+                "linear_cycle_forward_paths": {
+                    "ok": all(ink(point) for point in forward_samples),
+                    "connection_count": max(0, len(layout) - 1),
+                    "line_samples": [list(point) for point in forward_samples],
+                },
+                "linear_cycle_feedback": {
+                    "ok": all(ink(point) for point in feedback_samples),
+                    "origin": nodes[-1],
+                    "target": nodes[0],
+                    "target_side": feedback_target,
+                    "line_samples": [list(point) for point in feedback_samples],
+                },
+                "linear_cycle_declared_topology": {
+                    "ok": topology.get("ok") is True,
+                    "nodes": nodes,
+                    "directed_edges": list(topology.get("expected") or []),
+                },
+            }
 
         if kind == "charging_control_three_connectors":
             sensor_outline = [(330, 115), (280, 165), (380, 165), (330, 215)]
@@ -8503,6 +8722,13 @@ def _deterministic_control_diagram_constraint_certificate(
             },
         }
     except (OSError, TypeError, ValueError, IndexError):
+        if kind == "linear_process_cycle":
+            return {
+                "linear_cycle_shape_sequence": {"ok": False},
+                "linear_cycle_forward_paths": {"ok": False},
+                "linear_cycle_feedback": {"ok": False},
+                "linear_cycle_declared_topology": {"ok": False},
+            }
         if kind == "current_allocation_cycle":
             return {
                 "allocation_flow_shape_sequence": {"ok": False},
