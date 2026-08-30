@@ -2225,6 +2225,20 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .stagenow .st-note{margin:0 0 .5rem;color:var(--muted)}
 /*  The live feed of references being read. Newest first, so the eye lands on the one that just
     arrived; monospace on the publication number because that is the part being scanned. */
+/*  The search page, redesigned 2026-08-30: say it, choose the search, go. */
+.searchintro h1{margin-bottom:.15em}
+.moderow{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.6rem 0 .2rem}
+.moderow .lab{font-size:.92em;color:var(--muted)}
+.moderow select{padding:.4em .55em;font:inherit;min-width:14rem}
+.moderow .eta{margin-left:auto;white-space:nowrap}
+/*  The build's settings on ONE line, wrapping only when the viewport forces it. */
+.advline{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.advline label{display:inline-flex;align-items:center;gap:.35rem;font-size:.93em;white-space:nowrap}
+.advline select{padding:.3em .45em;font:inherit}
+.advline .toggle{gap:.3rem}
+/*  Both opt-ins on the action bar, in one row with the button. */
+.gostick .toggle{white-space:nowrap}
+
 /*  The filter bar before anything has been read: visibly not yet a control. `disabled` on the
     fieldset is what actually stops it; this is what says so. */
 .resultfilters.inert > summary{opacity:.7}
