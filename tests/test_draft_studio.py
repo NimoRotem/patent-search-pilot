@@ -217,6 +217,13 @@ def test_flowchart_briefs_require_an_exact_machine_readable_topology():
     assert "flowchart nodes" in text and "flowchart directed edges" in text
 
 
+def test_drafting_contract_uses_blank_start_and_end_connectors_for_split_flows():
+    contract = re.sub(r"\s+", " ", draft_studio.DRAFT_SYSTEM.lower())
+
+    assert "end=connector" in contract and "start=connector" in contract
+    assert "never label a continuation connector" in contract
+
+
 def test_an_empty_figure_brief_is_refused_before_drawing():
     figures = [{**FIGURES[0], "caption": " \n\t "}, FIGURES[1]]
 
