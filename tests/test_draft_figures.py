@@ -9786,6 +9786,56 @@ def test_ensure_project_figures_collects_every_failed_sheet_before_repair(monkey
     assert out["errors"] == ["FIG. 1: wrong motor axis"]
 
 
+def test_ensure_project_figures_reports_final_pixel_anchor_failures_for_repair(monkeypatch):
+    """A retained sheet must tell the repair agent which endpoints remain ungrounded."""
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
+    semantic = accepted_semantic_audit()
+    semantic["pixel_anchor_audit"] = {
+        "ok": False,
+        "inspected": True,
+        "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [],
+        "allowed_spaces": [],
+        "ungrounded": [
+            {
+                "numeral": "306",
+                "part": "Network Interface",
+                "reason": "place the endpoint deeper inside the block",
+            },
+            {
+                "numeral": "312",
+                "part": "Fault Indicator",
+                "reason": "place the endpoint deeper inside the block",
+            },
+        ],
+    }
+    monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **k: {
+        "figure_id": 6,
+        "numeral_audit": accepted_ocr_audit(
+            sheet_number="1/1", expected=("306", "312")),
+        "semantic_audit": semantic,
+        "leader_audit": accepted_leader_audit(),
+    })
+
+    out = draft_figures.ensure_project_figures(
+        15, 91, sections={}, disclosure="controller blocks",
+        numeral_table=[
+            {"numeral": "306", "part": "Network Interface"},
+            {"numeral": "312", "part": "Fault Indicator"},
+        ],
+        figure_specs=[{
+            "label": "FIG. 6", "caption": "controller blocks",
+            "numerals": ["306", "312"],
+        }])
+
+    assert out["ok"] is False
+    assert out["errors"] == [
+        "FIG. 6: final pixel-anchor review failed: numeral 306 (Network Interface): "
+        "place the endpoint deeper inside the block; numeral 312 (Fault Indicator): "
+        "place the endpoint deeper inside the block"
+    ]
+
+
 def test_ensure_project_figures_defers_transient_capacity_errors(monkeypatch):
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
     monkeypatch.setattr(
