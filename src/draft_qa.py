@@ -71,6 +71,10 @@ _NUMERAL_IN_TEXT_RE = re.compile(
     r"(?<![\w.\-/])([a-z]?\d{1,4}[a-z]?)(?![\w%°]|\s*(?:%|percent))",
     re.IGNORECASE)
 _CLAIM_START_RE = re.compile(r"^\s*(\d{1,3})\s*[.)]\s+", re.MULTILINE)
+_CLAIM_CITATION_RE = re.compile(
+    r"\bclaims?\s+\d{1,3}(?:\s*(?:,|and|or|to|through|-|\u2013|\u2014)\s*"
+    r"(?:claims?\s+)?\d{1,3})*",
+    re.IGNORECASE)
 #  The reference-back phrase, then everything that is still a claim number.  The tail has to span
 #  "1 to 3", "1 or 4" and "1, 2 and 3" without running on into "wherein …", which is why the
 #  connectors are named rather than folded into a character class: a bare `[0-9,\s-]+` stops dead
@@ -606,7 +610,9 @@ def _first_use_introduces(spec_text: str, table: Mapping[str, str]) -> dict[str,
     cup 10" is a real defect, but so is a false positive here, so this can only ever advise.
     """
     problems = []
-    scan_text = _CLAIM_START_RE.sub("CLAIM ", _FIG_RE.sub("FIGURE", spec_text))
+    scan_text = _FIG_RE.sub("FIGURE", spec_text)
+    scan_text = _CLAIM_START_RE.sub("CLAIM ", scan_text)
+    scan_text = _CLAIM_CITATION_RE.sub("CLAIM_REFERENCE", scan_text)
     for numeral, part in table.items():
         head = _head_noun(part)
         if not head:
