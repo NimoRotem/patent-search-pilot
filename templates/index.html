@@ -206,8 +206,10 @@ is expected to be in our niche, and turn it back on before anything is filed.") 
     <div class="notifychoice slim">
       {#  One row: the sentence explaining that you may leave was three lines above a checkbox
           that says the same thing in six words. #}
-      <label class="notifyopt"><input type="checkbox" name="notify_email" value="1"
-        {% if current_user.email_on_completion %}checked{% endif %}>
+      {#  OFF, ALWAYS. The saved preference decided this, so somebody who once ticked "email
+          me on completion" was opted into one for every search afterwards without being asked
+          again. The preference still governs whether an email may be sent; this asks each time. #}
+      <label class="notifyopt"><input type="checkbox" name="notify_email" value="1">
         Email me when it is ready</label>
     </div>
     {% else %}

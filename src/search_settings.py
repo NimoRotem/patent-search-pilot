@@ -70,6 +70,69 @@ KNOBS = [
             "Turn it OFF to get the pre-2026-08-27 behaviour exactly."),
     },
     {
+        "key": "qs_clusters", "group": "retrieval", "kind": "bool", "default": True,
+        "env": "QS_CLUSTERS",
+        "label": "Search the claim's novelty COMBINATIONS, not only its separate requirements",
+        "effect": (
+            "QUALITY. A claim limitation on its own is usually conventional: a base with openings, "
+            "a flexible seal layer, a compressible layer. What is rare is the COMBINATION, and a "
+            "document is prior art because it discloses the combination, not because it discloses "
+            "one member. This groups 2 to 4 related requirements into a single query and gives "
+            "those queries the largest share of the retrieval budget.\n\n"
+            "It is also the only query class that carries a RELATIONSHIP. Audited on report "
+            "adhoc-f1410b74df48: claim 1 requires one seal portion to be harder and less "
+            "compressible than another, and requires the pair to bridge the gap at a step in the "
+            "workpiece. Neither was searched by anything, because splitting the claim into "
+            "components dissolves exactly the part that distinguishes it.\n\n"
+            "TIME: one retrieval pass per cluster, at 1.5x the depth of a whole-invention pass.\n\n"
+            "Turn it OFF for the pre-2026-08-30 behaviour: requirements searched one at a time."),
+    },
+    {
+        "key": "qs_max_clusters", "group": "retrieval", "kind": "int", "default": 6,
+        "min": 0, "max": 12, "env": "QS_MAX_CLUSTERS", "unit": "queries",
+        "label": "Most novelty-combination queries per search",
+        "effect": (
+            "TIME: one pass each, and they are the deepest passes in the run, so this is the "
+            "direct cost of the setting above.\n\n"
+            "QUALITY: the first cluster is the strongest combination in the claim set, the one an "
+            "examiner would have to find in a single document to reject it. Later clusters are "
+            "narrower pairs and each is worth less than the one before, which is why this is 6 "
+            "and not 12.\n\n"
+            "0 disables combination queries as surely as the switch above."),
+    },
+    {
+        "key": "qs_max_generic_limitations", "group": "retrieval", "kind": "int", "default": 2,
+        "min": 0, "max": 20, "env": "QS_MAX_GENERIC_LIMITATIONS", "unit": "queries",
+        "label": "Retrieval passes spent on conventional supporting parts",
+        "effect": (
+            "A battery, an alarm, a switch, a handle, a controller or a manual backup pump is in "
+            "an enormous number of patents in every field. A query for one returns an ocean of "
+            "art that has nothing to do with the invention, and it costs a pass that a novelty "
+            "combination could have had.\n\n"
+            "These requirements are NOT dropped. They stay in the claim ledger, they are still "
+            "charted against every reference that is read, and they still count as evidence when "
+            "a reference is ranked. They simply stop buying their own retrieval pass.\n\n"
+            "Raise it when a supporting part is genuinely unusual for the field, or when a claim "
+            "is mostly electronics. 0 spends every pass on the distinctive requirements."),
+    },
+    {
+        "key": "external_claim_first", "group": "retrieval", "kind": "bool", "default": True,
+        "env": "EXTERNAL_CLAIM_FIRST",
+        "label": "Ask the outside patent APIs about the claim before asking about analogies",
+        "effect": (
+            "The external planner decomposes the invention into product-neutral PROBLEMS and asks "
+            "other industries about each, which is how art from outside the indexed CPC branches "
+            "is reached at all. It is worth having. It is worth having SECOND.\n\n"
+            "Audited on report adhoc-f1410b74df48, running the planner alone reached laptops, "
+            "smartphones, electric vehicles, camera tripods, furniture, tyre monitors and medical "
+            "ventilators, and none of the 57 queries asked about a seal exposed through peripheral "
+            "openings, a differential hardness between two seal portions, or pressing a seal "
+            "through an opening to bridge a step. The fan-out is hard-capped at 78 queries, so "
+            "ORDER decides what is asked at all.\n\n"
+            "ON puts the claim's own combinations at the front. OFF restores the analogy-only "
+            "plan. No effect on a search with no claims."),
+    },
+    {
         "key": "qs_max_limitations", "group": "retrieval", "kind": "int", "default": 12,
         "min": 0, "max": 40, "env": "QS_MAX_LIMITATIONS", "unit": "queries",
         "label": "Most limitation queries per search",
@@ -99,7 +162,7 @@ KNOBS = [
     },
     {
         "key": "third_party_sources", "group": "retrieval", "kind": "bool",
-        "label": "Use third-party patent sources", "env": "THIRD_PARTY_SOURCES", "default": True,
+        "label": "Use third-party patent sources", "env": "THIRD_PARTY_SOURCES", "default": False,
         "effect": (
             "OFF means every search runs against our own corpus and nothing else: no PQAI, no "
             "BigQuery Google Patents, no SerpApi, no USPTO keyword search, and no fetching of "

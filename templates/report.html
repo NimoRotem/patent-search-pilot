@@ -1097,8 +1097,10 @@ You can also choose it later: the button on the toolbar above does the same thin
 been read.") }}
         {#  The same toggle as the search form's, because the escalation is a whole new run and
             inherits nothing from the one on screen. Defaults to what this report actually did. #}
-        <label class="toggle tpsrc"><input type="checkbox" name="third_party" value="1"
-                 {{ 'checked' if not v.local_only }}>
+        {#  OFF, ALWAYS. It opened ticked whenever the report it sits under had itself run
+            with third-party sources on, so the slow and expensive answer became the default for
+            anybody who had chosen it once. Asking seven outside APIs is a deliberate act. #}
+        <label class="toggle tpsrc"><input type="checkbox" name="third_party" value="1">
           3rd-party</label>
         {{ qhelp("third-party sources", "ON asks seven outside patent APIs as well as our own
 corpus: PQAI, Google Patents through BigQuery, SerpApi, the USPTO keyword search and the rest. OFF
@@ -1113,7 +1115,10 @@ WHAT IT COSTS, and it is not nothing: 296 of those 319 families were found by NO
 A local-only search cannot see art that is not in the 354,986 publications we hold, and it cannot
 recover the full text of a reference the corpus has only an abstract for. Use it when the answer
 is expected to be in our niche, and turn it back on before anything is filed.") }}
-        <label class="toggle rdbatch"><input type="checkbox" name="notify_email" value="1" checked>
+        {#  OFF, ALWAYS. `checked` was hard-coded here, so every escalation started by
+            promising an email nobody had asked for. The account preference still decides whether
+            one may be sent at all; this decides whether this run asks for one. #}
+        <label class="toggle rdbatch"><input type="checkbox" name="notify_email" value="1">
           Email me</label>
         {#  A RUN IN FLIGHT MUST NOT BE ABLE TO START ANOTHER. The controls were live while the
             search that owns the page was still going, so the obvious thing to do while waiting
