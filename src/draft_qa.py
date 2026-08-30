@@ -793,6 +793,14 @@ def _figure_checks(sections: Mapping[str, str],
                 f"{label}: process-flow drawing has no numbered steps. Assign a distinct "
                 "reference numeral to every process and decision shape, list the numerals on "
                 "this sheet, and identify the same numbered steps in the Detailed Description.")
+        flowchart_topology = draft_figures.flowchart_topology_spec(
+            caption, figure.get("numerals") or ())
+        if flowchart_topology["required"] and not flowchart_topology["ok"]:
+            brief_issues.append(
+                f"{label}: process-flow brief needs an exact machine-readable topology. "
+                "Add 'Flowchart nodes:' with every ID=shape and 'Flowchart directed edges:' "
+                "with every SOURCE->TARGET arrow. " +
+                " ".join(flowchart_topology["errors"]))
         if len(caption) > MAX_FIGURE_BRIEF_CHARS:
             brief_issues.append(
                 f"{label}: {len(caption)} characters (maximum {MAX_FIGURE_BRIEF_CHARS})")
