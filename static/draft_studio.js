@@ -1120,10 +1120,11 @@
   }
 
   function currentModel() {
-    return chosen.model || S.project.draft_model || agentState.default_model || '';
+    return chosen.model || agentState.model || S.project.draft_model ||
+      agentState.default_model || '';
   }
   function currentEffort() {
-    return chosen.effort || agentState.default_effort || '';
+    return chosen.effort || agentState.effort || agentState.default_effort || '';
   }
   const chosen = { model: '', effort: '' };
 

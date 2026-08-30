@@ -1736,6 +1736,31 @@ class StudioRepository:
                         "WHERE id=%s", (chosen, int(project_id)))
         return chosen
 
+    def set_terminal_effort(self, project_id: int, effort: str) -> str:
+        """Remember the reasoning effort this draft's agent was switched to.
+
+        Merged into the settings blob rather than given a column of its own: it is a preference
+        about one session, and a chip that reads "High" over an agent somebody set to Max is worse
+        than no chip. The Settings panel's `resolve` drops keys it does not know, so this is
+        invisible there, which is right - it is not one of that panel's fields.
+        """
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_drafting_projects "
+                "SET settings=coalesce(settings,'{}'::jsonb)||%s::jsonb,updated_at=now() "
+                "WHERE id=%s", (_dumps({"terminal_effort": str(effort or "")[:20]}),
+                                int(project_id)))
+        return str(effort or "")
+
+    def terminal_effort(self, project_id: int) -> str:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT settings->>'terminal_effort' AS effort "
+                        "FROM app_drafting_projects WHERE id=%s", (int(project_id),))
+            row = cur.fetchone() or {}
+            return str(row.get("effort") or "")
+
     def set_terminal_model(self, project_id: int, model: str) -> str:
         """Remember the model the interactive drafting agent was switched to.
 

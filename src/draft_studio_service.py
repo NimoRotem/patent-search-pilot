@@ -467,7 +467,13 @@ class StudioService:
                 "models": available.get("models") or [],
                 "efforts": available.get("efforts") or [],
                 "default_model": available.get("default_model") or "",
-                "default_effort": available.get("default_effort") or ""}
+                "default_effort": available.get("default_effort") or "",
+                #  What this draft was actually switched to, so a reloaded page does not go back
+                #  to claiming the server default over an agent running on something else.
+                "model": draft_terminal.normalize_model(
+                    self._project(principal, project_id).get("draft_model")),
+                "effort": draft_terminal.normalize_effort(
+                    self.repository.terminal_effort(project_id))}
 
     def start_terminal(self, principal: drafting.Principal, project_id: int, *,
                        restart: bool = False, fresh: bool = False) -> dict[str, Any]:
@@ -557,9 +563,11 @@ class StudioService:
                             effort: str) -> str:
         self._project(principal, project_id)
         try:
-            return draft_terminal.set_effort(project_id, effort)
+            chosen = draft_terminal.set_effort(project_id, effort)
         except draft_terminal.TerminalError as exc:
             raise drafting.DraftingConflict(str(exc)) from exc
+        self.repository.set_terminal_effort(project_id, chosen)
+        return chosen
 
     def stop_terminal(self, principal: drafting.Principal, project_id: int) -> bool:
         self._project(principal, project_id)

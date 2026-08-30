@@ -327,6 +327,12 @@
 .stabmore.on::after { transform: rotate(-135deg) translate(-2px, -2px); }
 .stabmore:hover { color: var(--ink); }
 
+/*  `display:flex` beats the `hidden` attribute - the UA's `[hidden]{display:none}` is a type
+    selector and loses to a class - so without this the fold never folded and the six sub-tabs sat
+    above the application on every tab including Draft, which is the one place the whole point was
+    to keep clear. The same trap is documented on `.setmodal[hidden]` further down; it is the
+    second time this stylesheet has been bitten by it. */
+.studiomore[hidden] { display: none; }
 .studiomore {
   display: flex;
   flex-wrap: wrap;

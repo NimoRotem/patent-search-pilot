@@ -5896,3 +5896,37 @@ def test_cancelling_any_turn_leaves_a_published_project_ready():
     assert "SET status='active'" not in project_update
     #  ...and the candidate goes with it, rather than being kept for a phase that cannot run.
     assert any("DELETE FROM app_draft_turn_candidates" in sql for sql, _p in statements)
+
+
+def test_the_chosen_effort_is_remembered_so_the_chip_does_not_lie():
+    """A chip that reads "High" over an agent somebody set to Max is worse than no chip.
+
+    The model is on a column already; effort had nowhere to live, so a reloaded page went back to
+    claiming the server default. It is merged into the settings blob rather than given a column of
+    its own, and the Settings panel's `resolve` drops keys it does not know, so it stays out of a
+    panel it does not belong in.
+    """
+    statements = []
+
+    class Cursor:
+        def execute(self, sql, params=None):
+            statements.append((" ".join(sql.split()), params))
+
+        def fetchone(self):
+            return {"effort": "max"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    repository = draft_studio.StudioRepository(cursor_factory=lambda **_kw: Cursor(),
+                                               migrate=False)
+    repository.set_terminal_effort(7, "max")
+
+    sql, params = statements[-1]
+    #  A merge, not a replace: everything else in that blob is somebody's Settings panel.
+    assert "settings=coalesce(settings,'{}'::jsonb)||%s::jsonb" in sql
+    assert json.loads(params[0]) == {"terminal_effort": "max"}
+    assert repository.terminal_effort(7) == "max"
