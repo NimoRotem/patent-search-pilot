@@ -8737,6 +8737,104 @@ def test_geometry_prompt_strips_inline_flowchart_metadata():
     assert "->" not in cleaned
 
 
+def _seven_step_linear_cycle_specification():
+    return """
+    A process flow diagram shows a vertical sequence of rectangular process shapes.
+    A first process shape for step 400 is at the top.
+    An arrow connects the first shape to a second process shape for step 402 below it.
+    An arrow connects the second shape to a third process shape for step 404 below it.
+    An arrow connects the third shape to a fourth process shape for step 406 below it.
+    An arrow connects the fourth shape to a fifth process shape for step 408 below it.
+    An arrow connects the fifth shape to a sixth process shape for step 410 below it.
+    An arrow connects the sixth shape to a seventh process shape for step 412 at the bottom.
+    A feedback arrow connects shape 412 on the right side back to shape 400 on the right side.
+    Flowchart nodes: 400=process, 402=process, 404=process, 406=process,
+    408=process, 410=process, 412=process.
+    Flowchart directed edges: 400->402, 402->404, 404->406, 406->408,
+    408->410, 410->412, 412->400.
+    """
+
+
+def test_machine_readable_linear_process_cycle_uses_exact_renderer():
+    caption = _seven_step_linear_cycle_specification()
+
+    assert draft_figures._control_diagram_kind(caption) == "linear_process_cycle"
+    png = draft_figures._deterministic_control_diagram_png(caption)
+
+    assert png is not None
+    renderer, anchors = draft_figures._deterministic_control_diagram_anchors(caption)
+    assert renderer == "linear_process_cycle"
+    assert list(anchors) == ["400", "402", "404", "406", "408", "410", "412"]
+    assert [anchors[node][1] for node in anchors] == sorted(
+        anchors[node][1] for node in anchors)
+    certificate = draft_figures._deterministic_geometry_certificate(png, caption)
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "linear_process_cycle"
+    constraints = certificate["certified_constraints"]
+    assert set(constraints) == {
+        "linear_cycle_shape_sequence",
+        "linear_cycle_forward_paths",
+        "linear_cycle_feedback",
+        "linear_cycle_declared_topology",
+    }
+    assert all(value["ok"] is True for value in constraints.values())
+    assert constraints["linear_cycle_shape_sequence"]["shape_count"] == 7
+    assert constraints["linear_cycle_forward_paths"]["connection_count"] == 6
+    assert constraints["linear_cycle_feedback"]["target_side"] == "right"
+    layout = draft_figures._linear_process_cycle_layout(caption)
+    first_bounds = layout[0][1]
+    first_center_y = (first_bounds[1] + first_bounds[3]) // 2
+    with Image.open(io.BytesIO(png)).convert("L") as rendered:
+        assert rendered.getpixel((950, first_center_y)) < 225
+        assert rendered.getpixel((700, first_bounds[1] - 20)) > 245
+
+    numerals = [f"{node} = process step" for node in anchors]
+    grounded, anchor_certificate = draft_figures._deterministic_anchor_overrides(
+        png, caption, numerals, [])
+    assert [item["numeral"] for item in grounded] == list(anchors)
+    assert anchor_certificate["ok"] is True
+    assert anchor_certificate["renderer"] == "linear_process_cycle"
+
+
+@pytest.mark.parametrize("old,new", [
+    ("412->400", "412->402"),
+    ("406=process", "406=decision"),
+])
+def test_machine_readable_linear_process_cycle_rejects_non_exact_graph(old, new):
+    caption = _seven_step_linear_cycle_specification().replace(old, new)
+
+    assert draft_figures._control_diagram_kind(caption) == ""
+    assert draft_figures._deterministic_control_diagram_png(caption) is None
+
+
+def test_machine_readable_linear_process_cycle_rejects_non_vertical_layout():
+    caption = _seven_step_linear_cycle_specification().replace(
+        "a vertical sequence of rectangular process shapes",
+        "a circular ring of rectangular process shapes",
+    )
+
+    assert draft_figures._control_diagram_kind(caption) == ""
+    assert draft_figures._deterministic_control_diagram_png(caption) is None
+
+
+def test_machine_readable_linear_process_cycle_defaults_feedback_to_top_entry():
+    caption = _seven_step_linear_cycle_specification().replace(
+        "A feedback arrow connects shape 412 on the right side back to shape 400 on the "
+        "right side.",
+        "A feedback arrow connects shape 412 back to the top of shape 400.",
+    )
+
+    png = draft_figures._deterministic_control_diagram_png(caption)
+    certificate = draft_figures._deterministic_geometry_certificate(png, caption)
+    assert certificate["certified_constraints"]["linear_cycle_feedback"][
+        "target_side"] == "top"
+    first_bounds = draft_figures._linear_process_cycle_layout(caption)[0][1]
+    first_center_y = (first_bounds[1] + first_bounds[3]) // 2
+    with Image.open(io.BytesIO(png)).convert("L") as rendered:
+        assert rendered.getpixel((700, first_bounds[1] - 20)) < 225
+        assert rendered.getpixel((950, first_center_y)) > 245
+
+
 def test_geometry_prompt_strips_a_complete_hyphenated_cutting_plane_paragraph():
     caption = (
         "The upper frame half 10 surrounds the pipe 90.\n\n"
