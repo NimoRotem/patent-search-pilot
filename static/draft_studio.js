@@ -903,19 +903,19 @@
     set('termVerb',busy?(verb||'Working'):'Idle');
     const secs=_liveSeconds(st,busy);
     set('termTime',secs===null?'':(busy?'':'last turn ')+_fmtElapsed(secs));
-    set('termTok',live.tok?((live.dir?live.dir+' ':'')+live.tok+' tokens'):'');
+    /*  THE DRAFT'S TOTAL, NOT THE SESSION'S. The number the CLI paints into the pane counts
+        the conversation it is in, so restarting the agent takes it back to zero while the
+        application has in fact cost everything it cost so far. That reading is worse than no
+        reading: it says the work was free. The durable figure comes from the usage ledger,
+        which counts every agent this draft has ever had. */
+    const total=USAGE&&USAGE.tokens_total
+      ?compactTokens(USAGE.tokens_total)+' tokens · '+money(USAGE.usd)
+      :(live.tok?((live.dir?live.dir+' ':'')+live.tok+' tokens'):'');
+    set('termTok',total);
     const note=$('termNote');
     if(note){
-      /*  The agent is told never to ask a question, and when one asks anyway the auto-push
-          takes the option the CLI recommends. Say so: an agent that answers itself and moves
-          on looks, from the outside, like an agent that ignored you. */
-      const pushed=TERM.lastAutoAnswer;
-      const txt=pushed&&(_nowMs()-pushed.at*1000)<180000
-        ?(pushed.answered?'Answered a question for you: '+pushed.selected.slice(0,60)
-                         :'A question needs you: '+pushed.selected.slice(0,60))
-        :(busy&&live.esc?'Stop to interrupt':'');
+      const txt=busy&&live.esc?'Stop to interrupt':'';
       if(note.textContent!==txt)note.textContent=txt;
-      note.classList.toggle('tl-pushed',!!(pushed&&txt&&txt[0]!=='S'));
     }
   }
 
@@ -961,9 +961,6 @@
         { credentials: 'same-origin', cache: 'no-store' });
       const data = await response.json();
       if (data.usage) paintUsage(data.usage);
-      if (Array.isArray(data.auto_answers) && data.auto_answers.length) {
-        TERM.lastAutoAnswer = data.auto_answers[data.auto_answers.length - 1];
-      }
       if (typeof data.visible_hash === 'string') TERM.visibleHash = data.visible_hash;
       if (typeof data.pane_width === 'number' && data.pane_width > 0) TERM.paneWidth = data.pane_width;
       if (data.exists === false) {
@@ -1636,6 +1633,15 @@
     const findings = (qa || {}).findings || [];
     const order = { fail: 0, warn: 1, pass: 2 };
     checks.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
+    const count = (status) => checks.filter((c) => c.status === status).length;
+    const failed = count('fail');
+    const warned = count('warn');
+    const outstanding = failed + warned + findings.length;
+    /*  Whether the INDEPENDENT reading actually happened. A mechanical-only pass writes
+        "the deterministic checks" as its model, and rendering "the reviewer raised nothing"
+        under that is a lie by omission: nothing was raised because nothing read it. */
+    const readOnlyByCode = !(qa || {}).model_name ||
+      /deterministic/i.test((qa || {}).model_name || '');
     body.innerHTML = `
       <div class="rvhead">
         <span class="verdict big ${tone}">${label}</span>
@@ -1644,17 +1650,33 @@
             ${esc((qa || {}).model_name || 'the deterministic checks')}${(qa || {}).last_error ?
               ' · reviewer error: ' + esc(qa.last_error) : ''}</div></div>
         <span class="grow"></span>
+        ${outstanding ? `<button type="button" class="btn sm" id="rvFix">Send all
+          ${outstanding} to the agent to fix</button>` : ''}
         <button type="button" class="btn ghost sm" id="rvRerun">Re-run the review</button>
       </div>
+      <div class="rvcounts">
+        <span class="${failed ? 'bad' : 'muted'}"><b>${failed}</b> failed</span>
+        <span class="${warned ? 'warn' : 'muted'}"><b>${warned}</b> warned</span>
+        <span class="muted"><b>${count('pass')}</b> passed</span>
+        <span class="muted"><b>${findings.length}</b> reviewer finding${
+          findings.length === 1 ? '' : 's'}</span>
+        <span class="grow"></span>
+        <span class="small muted" id="rvFixMsg" role="status"></span>
+      </div>
       <h4 class="rvsub">Mechanical checks <span class="small muted">decided in code, the same way
-        every time</span></h4>
+        every time. ${checks.length} of them, everything that did not pass is open</span></h4>
       <div class="checklist">${checks.map(checkRow).join('')}</div>
       <h4 class="rvsub">Reviewer findings <span class="small muted">judgements, each with the text
         it is about</span></h4>
-      ${findings.length ? findings.map(findingRow).join('') :
-        '<p class="muted small">The reviewer raised nothing.</p>'}`;
+      ${findings.length ? findings.map(findingRow).join('') : readOnlyByCode
+        ? `<p class="muted small">The independent reviewer has not read this version. Only the
+             mechanical checks above ran, so this is not a clean bill: it is silence.
+             <b>Re-run the review</b> for the reading.</p>`
+        : '<p class="muted small">The reviewer read this version and raised nothing.</p>'}`;
     const rerun = $('rvRerun');
     if (rerun) rerun.addEventListener('click', rerunReview);
+    const fix = $('rvFix');
+    if (fix) fix.addEventListener('click', sendReviewToAgent);
     //  A finding with a repair chip hands the wording straight to the agent's composer rather
     //  than sending it: the person decides whether that is the change they want.
     body.querySelectorAll('.fixchip').forEach((button) => button.addEventListener('click', () => {
@@ -1666,6 +1688,27 @@
     }));
     body.querySelectorAll('.openfigrepair').forEach((button) =>
       button.addEventListener('click', () => showPane('figures')));
+  }
+
+  /*  Hand the whole review to the agent in one go. Built on the SERVER from the stored report
+      rather than scraped out of this page: the text runs to thousands of characters, the items
+      are truncated for display, and a fix list assembled from what happens to be on screen is a
+      fix list missing whatever was collapsed. */
+  async function sendReviewToAgent() {
+    const button = $('rvFix');
+    const msg = $('rvFixMsg');
+    if (button) { button.disabled = true; button.textContent = 'Sending…'; }
+    try {
+      const out = await api(`/drafts/${PID}/studio/review/fix`, { method: 'POST', body: '{}' });
+      if (msg) {
+        msg.textContent = `Sent ${out.items} item(s) to the agent.`;
+        msg.className = 'small good';
+      }
+      startTermPolling();
+    } catch (error) {
+      if (msg) { msg.textContent = error.message; msg.className = 'small bad'; }
+      if (button) { button.disabled = false; button.textContent = 'Send to the agent to fix'; }
+    }
   }
 
   function checkRow(check) {
@@ -1681,7 +1724,7 @@
         `Resolve ${check.name.toLowerCase()}: ${(check.items || []).join(', ')}. ` +
         'Change the text only when the inventor disclosure supports the visible part; otherwise change the drawing.')}">
         Ask the agent to fix text</button></div>` : '';
-    return `<details class="chk ${tone}"${check.status === 'fail' ? ' open' : ''}>
+    return `<details class="chk ${tone}"${check.status === 'pass' ? '' : ' open'}>
       <summary><span class="dot"></span><b>${esc(check.name)}</b>${advisory}
         <span class="small">${esc(check.detail)}</span></summary>
       ${list(check.items, 'chkitems')}${repair}</details>`;

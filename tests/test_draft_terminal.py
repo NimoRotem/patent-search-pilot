@@ -672,3 +672,75 @@ def test_the_section_framing_actually_reaches_the_agent(monkeypatch):
 
     service.send_to_agent(None, 1, "Make it longer and more detailed")
     assert typed[-1] == "Make it longer and more detailed"
+
+
+# =============================================================================================
+# Handing the whole review to the agent
+# =============================================================================================
+QA_REPORT = {
+    "version_no": 3,
+    "verdict": "fail",
+    "model_name": "the deterministic checks",
+    "checks": [
+        {"name": "Abstract is in filing form", "status": "fail",
+         "detail": "The abstract is 168 words.", "items": []},
+        {"name": "Antecedent basis in the claims", "status": "warn",
+         "detail": "Two terms lack antecedent basis.",
+         "items": ["claim 7: the sealing lip", "claim 9: said cavity"]},
+        {"name": "Every section is written", "status": "pass", "detail": "", "items": []},
+    ],
+    "findings": [
+        {"severity": "major", "title": "Description drift", "where": "summary",
+         "detail": "The summary claims a range the disclosure does not give.",
+         "evidence": "between 2 and 8 millimetres", "fix": "Cut the range."},
+    ],
+}
+
+
+def test_the_fix_message_carries_every_check_that_did_not_pass_and_every_finding():
+    import draft_studio_service
+    message, items = draft_studio_service.review_fix_message(QA_REPORT)
+    assert items == 3
+    assert "Abstract is in filing form" in message
+    assert "Antecedent basis in the claims" in message
+    assert "claim 7: the sealing lip" in message
+    assert "Description drift" in message
+    assert "Cut the range." in message
+    #  A passing check is not work. Sending it back is noise the agent has to read past.
+    assert "Every section is written" not in message
+    #  And it must not leave the agent an opening to ask which ones to do.
+    assert "Do not ask me" in message
+
+
+def test_a_clean_review_has_nothing_to_send():
+    import draft_studio_service
+    clean = {"version_no": 4, "checks": [{"name": "x", "status": "pass", "items": []}],
+             "findings": []}
+    assert draft_studio_service.review_fix_message(clean) == ("", 0)
+
+
+def test_a_very_long_review_is_cut_at_a_line_and_says_so():
+    import draft_studio_service
+    huge = dict(QA_REPORT, checks=[
+        {"name": f"Check {n}", "status": "fail", "detail": "d" * 300,
+         "items": [f"item {i}" * 20 for i in range(40)]} for n in range(40)])
+    message, items = draft_studio_service.review_fix_message(huge)
+    assert items == 41
+    assert len(message) <= draft_studio_service.REVIEW_FIX_MAX_CHARS + 200
+    assert "was cut to fit" in message
+    assert not message.endswith("item")
+
+
+def test_sending_the_review_goes_through_the_agent(monkeypatch):
+    import draft_studio_service
+    typed = []
+    service = draft_studio_service.StudioService.__new__(draft_studio_service.StudioService)
+    monkeypatch.setattr(draft_studio_service.StudioService, "_require_terminal",
+                        lambda self, principal, pid: {"status": "ready"}, raising=False)
+    monkeypatch.setattr(draft_studio_service.StudioService, "send_to_agent",
+                        lambda self, principal, pid, text, **kw: typed.append(text),
+                        raising=False)
+    service.repository = type("R", (), {"latest_qa": staticmethod(lambda pid: QA_REPORT)})()
+    out = service.send_review_to_agent(None, 1)
+    assert out["items"] == 3 and out["version_no"] == 3
+    assert "Antecedent basis in the claims" in typed[0]

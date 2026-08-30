@@ -591,6 +591,21 @@ class StudioService:
             raise drafting.DraftingConflict(str(exc)) from exc
         return {"sent": True}
 
+    def send_review_to_agent(self, principal: drafting.Principal,
+                             project_id: int) -> dict[str, Any]:
+        """Hand the latest review to the drafting agent as one instruction."""
+        self._require_terminal(principal, project_id)
+        qa = self.repository.latest_qa(project_id)
+        if not qa:
+            raise drafting.DraftingValidationError(
+                "There is no review to send yet. Run one first.")
+        message, items = review_fix_message(qa)
+        if not items:
+            raise drafting.DraftingValidationError(
+                "The review found nothing to fix.")
+        self.send_to_agent(principal, project_id, message)
+        return {"sent": True, "items": items, "version_no": qa.get("version_no")}
+
     def terminal_keys(self, principal: drafting.Principal, project_id: int,
                       keys: Sequence[str]) -> list[str]:
         self._require_terminal(principal, project_id)
@@ -1118,6 +1133,62 @@ class StudioService:
             traceback.print_exc()
         finally:
             _REVIEWING.discard(int(project_id))
+
+
+REVIEW_FIX_MAX_CHARS = 12_000
+
+
+def review_fix_message(qa: Mapping[str, Any]) -> tuple[str, int]:
+    """The whole review, written out for the agent to work through, and how many items it holds.
+
+    Built here rather than in the browser. The page truncates an item list to keep a check
+    readable and collapses everything that passed, so a message assembled from what happens to be
+    on screen is a message missing whatever the reader had not opened. This reads the stored
+    report.
+    """
+    checks = [item for item in (qa.get("checks") or []) if item.get("status") != "pass"]
+    findings = list(qa.get("findings") or [])
+    if not checks and not findings:
+        return "", 0
+    lines = [
+        f"The review of version {qa.get('version_no') or 'this draft'} did not pass. Everything "
+        "it raised is below. Work through all of it, then publish.",
+        "",
+    ]
+    if checks:
+        lines.append("MECHANICAL CHECKS THAT DID NOT PASS")
+        for check in checks:
+            lines.append(f"- [{check.get('status')}] {str(check.get('name') or '')}: "
+                         f"{str(check.get('detail') or '')}")
+            for item in list(check.get("items") or [])[:40]:
+                lines.append(f"    - {str(item)[:400]}")
+        lines.append("")
+    if findings:
+        lines.append("REVIEWER FINDINGS")
+        for finding in findings:
+            lines.append(f"- [{finding.get('severity') or 'minor'}] "
+                         f"{str(finding.get('title') or '')} "
+                         f"({str(finding.get('where') or '')}): "
+                         f"{str(finding.get('detail') or '')}")
+            if finding.get("evidence"):
+                lines.append(f"    text: {str(finding['evidence'])[:400]}")
+            if finding.get("fix"):
+                lines.append(f"    suggested fix: {str(finding['fix'])[:400]}")
+        lines.append("")
+    lines += [
+        "Fix every one of them. Where a check is a false positive, change the wording or the "
+        "figure specification until it passes rather than leaving it and explaining why: the "
+        "check runs again on the next version and a draft nobody can get clean is a draft nobody "
+        "can file. Do not ask me which ones to do.",
+    ]
+    body = "\n".join(lines)
+    if len(body) > REVIEW_FIX_MAX_CHARS:
+        #  Truncated at a line boundary and SAID so, rather than cut mid-item and read as the
+        #  whole list.
+        body = body[:REVIEW_FIX_MAX_CHARS].rsplit("\n", 1)[0]
+        body += ("\n\n(That list was cut to fit. Run the review again after this round for the "
+                 "rest.)")
+    return body, len(checks) + len(findings)
 
 
 def frame_section_request(message: str, section_key: str) -> str:

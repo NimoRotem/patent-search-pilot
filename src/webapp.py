@@ -7400,6 +7400,18 @@ def draft_studio_cancel(project_id):
                              else drafting.DraftingValidationError("Unknown drafting turn."))
 
 
+@app.route("/drafts/<int:project_id>/studio/review/fix", methods=["POST"])
+def draft_studio_review_fix(project_id):
+    """Hand the whole review to the drafting agent, as one instruction it has to work through."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True,
+                        **_studio().send_review_to_agent(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
 @app.route("/drafts/<int:project_id>/studio/review", methods=["POST"])
 def draft_studio_review(project_id):
     """Re-run the consistency review over the current version without drafting anything."""

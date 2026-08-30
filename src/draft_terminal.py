@@ -1282,10 +1282,7 @@ def tail(project_id: int, *, known_lines: int = 0, last_hash: str = "") -> dict[
     total = pane_position(project_id)
     digest = visible_hash(project_id)
     width = pane_width(project_id)
-    base = {"exists": True, "pane_total": total, "pane_width": width, "visible_hash": digest,
-            #  So the page can say a question was answered on the reader's behalf rather than
-            #  leaving them to work out why the agent moved on by itself.
-            "auto_answers": auto_answers(project_id)[-3:]}
+    base = {"exists": True, "pane_total": total, "pane_width": width, "visible_hash": digest}
 
     if known_lines <= 0 or known_lines > total:
         raw = capture_full(project_id)

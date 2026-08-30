@@ -1013,6 +1013,22 @@ label.fset input:focus, label.fset select:focus { outline: 1px solid var(--accen
 .usagepanel p { margin: 0 0 6px; }
 .usagepanel p:last-child { margin-bottom: 0; }
 
-/*  The auto-push says what it did. An agent that answers its own question and moves on looks,
-    from the outside, exactly like an agent that ignored you. */
-.tl-note.tl-pushed { color: var(--warn, #d29922); }
+/*  The counts strip under the review verdict. A summary sentence says "3 failed, 2 warned"; this
+    is the same fact as something you can see at a glance and, more usefully, next to the button
+    that sends all of them to the agent. */
+.rvcounts {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.rvcounts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.rvcounts .bad b { color: var(--bad); }
+.rvcounts .warn b { color: var(--warn, #d29922); }
+.rvcounts .grow { flex: 1 1 auto; }
