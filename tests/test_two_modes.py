@@ -49,13 +49,23 @@ def test_the_fast_search_never_refuses():
 
 
 # ------------------------------------------------------------------ fast is a different shape
-def test_fast_retrieval_is_light_and_keeps_the_ranking():
+def test_fast_retrieval_is_light_and_skips_the_cross_encoder():
     kw = sm.agent_kwargs(sm.FAST)
     assert kw["fast_mode"] is True
     assert kw["max_rounds"] == 0, "refinement rounds added 5 to 15 families a pass"
-    assert kw["final_rerank"] is True, "the cross-encoder head IS the top-20 ranking"
+    #  MEASURED back to back on the same subject and corpus: 31.5s with the cross-encoder against
+    #  5.8s without, to score TWELVE documents, and 18 of the top 20 were unchanged by it. It is
+    #  not the model load either: a warm second pass over the same head took 17.0s against 21.2s
+    #  cold. Fusion ranks the fast search.
+    assert kw["final_rerank"] is False
     cfg = AgentConfig(**kw)
     assert cfg.fast_mode and cfg.fast_queries >= 1 and cfg.fast_elements >= 1
+
+
+def test_the_attack_still_reranks():
+    assert "final_rerank" not in sm.agent_kwargs(sm.ATTACK), \
+        "the attack keeps AgentConfig's default, which reranks"
+    assert AgentConfig().final_rerank is True
 
 
 def test_the_attack_keeps_the_full_shape():

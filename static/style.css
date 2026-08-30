@@ -2225,6 +2225,14 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .stagenow .st-note{margin:0 0 .5rem;color:var(--muted)}
 /*  The live feed of references being read. Newest first, so the eye lands on the one that just
     arrived; monospace on the publication number because that is the part being scanned. */
+/*  The filter bar before anything has been read: visibly not yet a control. `disabled` on the
+    fieldset is what actually stops it; this is what says so. */
+.resultfilters.inert > summary{opacity:.7}
+.resultfilters .filtergate{padding:.7em .9em;margin:.4em 0 .6em;border:1px dashed var(--line);
+  border-radius:8px;background:var(--card)}
+.resultfilters .controlswrap{border:0;margin:0;padding:0;min-width:0}
+.resultfilters .controlswrap[disabled]{opacity:.45;pointer-events:none}
+
 /*  The two searches, chosen before anything runs. Two cards, not a dropdown: the difference
     between them is a paragraph each, and a dropdown cannot carry one. */
 .modepick{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin:0 0 .9rem}

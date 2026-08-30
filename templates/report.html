@@ -1149,8 +1149,44 @@ is expected to be in our niche, and turn it back on before anything is filed.") 
   <!-- ── results ─────────────────────────────────────────────────────────── -->
   {#  Collapsed by default. Sorting and filtering is something a reader does occasionally and
       reads never, and open it cost a row above the first result on every page load. #}
-  <details class="resultfilters" id="resultfilters">
-    <summary>Filter and sort results</summary>
+  {#  NOT WHILE THE SEARCH IS RUNNING. Half of what it offers is computed from the reading
+      (relevancy score, elements covered, "covers element"), and the other half sorts a list
+      that is still growing under it. A control that cannot do what it says is worse than no
+      control, and this one sat above the first result on every page load. #}
+  {% if not v.partial %}
+  {#  AND NOT BEFORE ANYTHING HAS BEEN READ. "Covers element" needs a per-element verdict,
+      "Relevancy score" needs the rarity weighting over the charted set, and both come from
+      reading references end to end. Until then the whole box is inert and carries the one
+      button that changes that. `needs_read` is the gate. #}
+  {#  THE CARDS ON THIS PAGE, not `n_readable`. That counts what is in <slug>.deep.json, which
+      survives a re-run and is written by other paths, so a fast search that read nothing reported
+      50 readable references and the gate never closed. What the filters consume is the per-card
+      evidence, so that is what decides whether they can work. #}
+  {% set n_read_here = v.cards|selectattr('deep_read')|list|length %}
+  {% set needs_read = n_read_here < 1 %}
+  <details class="resultfilters{% if needs_read %} inert{% endif %}" id="resultfilters"
+           {% if needs_read %}data-needs-read="1"{% endif %}>
+    <summary>Filter and sort results{% if needs_read %}
+      <span class="small muted"> &middot; needs references read in full</span>{% endif %}</summary>
+  {% if needs_read %}
+  <div class="filtergate">
+    <p class="small" style="margin:0 0 .5em">
+      <b>Nothing has been read end to end yet.</b> Sorting by relevancy score, filtering by the
+      elements a reference covers and the ranking itself are all computed from the full text of
+      the references, not from the search. Read the strongest few and this becomes live.</p>
+    {% if current_user and not read_only %}
+    <button type="button" class="btn sm primary readall" id="readTop25"
+            data-n="25" data-pool="{{ v.n_unread or 25 }}"
+            title="Reads the 25 best-screened references end to end against every element, then scores and reorders the whole page over that evidence.">
+      Read the top 25 in full</button>
+    <span class="small muted">About a minute per ten references.</span>
+    {% else %}
+    <span class="small muted"><a href="{{ request.script_root }}/login">Sign in</a> to read
+      references in full.</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  <fieldset class="controlswrap"{% if needs_read %} disabled{% endif %}>
   <div class="controls" role="group" aria-label="Sort and filter the results">
     <span class="cgroup">
       <label class="lab" for="sortby">Sort by</label>
@@ -1205,8 +1241,10 @@ is expected to be in our niche, and turn it back on before anything is filed.") 
     {% endif %}
     <span id="shown" role="status" aria-live="polite" aria-atomic="true"></span>
   </div>
+  </fieldset>
   <div id="readAllProgress" class="readprog" hidden></div>
   </details>
+  {% endif %}
 
   <div class="cards" id="cards">
     {% for c in v.cards %}{{ refcard(c, v.partial) }}{% endfor %}

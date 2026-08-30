@@ -138,7 +138,24 @@ def agent_kwargs(mode) -> dict:
         "fast_mode": True,        # essence + a few alternates, no clusters, no limitations
         "elements_per_round": 0,
         "trim_element_channels": True,
-        "final_rerank": True,     # the cross-encoder head IS the top-20 ranking. It stays.
+        #  NO CROSS-ENCODER, AND THIS IS THE WHOLE OF WHY THE FAST SEARCH IS FAST.
+        #
+        #  MEASURED, same subject, same corpus, back to back:
+        #      with the cross-encoder ... 31.5 s
+        #      fusion only .............. 5.8 s
+        #  So it was 82% of the run, to score TWELVE documents. And it is not the model load:
+        #  scoring the same head a second time in the same process took 17.0 s against 21.2 s
+        #  cold, because a 568M-parameter XLM-RoBERTa reading full text pairs on a CPU is simply
+        #  that slow. At 25 documents it is 25 s and at 50 it is 39 s.
+        #
+        #  WHAT IT COSTS, measured on the same pair of runs: the top 20 by fusion and the top 20
+        #  after reranking share 18 of 20 members, and the top 40 share 39 of 40. It reorders
+        #  within the head rather than changing what is in it. Trading a reordering of the first
+        #  page for five sixths of the wall clock is the right trade for a search whose whole
+        #  promise is that it comes back before you look away.
+        #
+        #  It is still there for the attack, which is allowed to take as long as it takes.
+        "final_rerank": False,
         "ground": True,
     }
 

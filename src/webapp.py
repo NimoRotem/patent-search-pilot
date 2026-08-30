@@ -4338,6 +4338,20 @@ def _build_view_cached(slug, rep, regen=False):
                 #  it stays a permutation and stays deterministic.
                 cards = order_cards_by_evidence(cards)
                 view["ranked_by"] = "deep_rank"
+            elif (rep.get("search_mode") or "attack") == "fast":
+                #  THE SECOND RERANKER, AND THE ONE THAT WAS ACTUALLY THE WAIT.
+                #
+                #  Turning off the cross-encoder took the fast search from 31.5 s to 5.8 s of
+                #  retrieval, and the run still took 48 s: retrieval finished at 9 s and the
+                #  listwise pass held the page from 9.5 s to 48 s. It is an LLM judging the cards
+                #  against one another, several at a time, and it is worth its cost on a report
+                #  somebody is going to read for an hour. It is not worth five sixths of the wall
+                #  clock of a search whose whole promise is that it comes back immediately.
+                #
+                #  The fast search ships the fusion order. The ranking a reader actually acts on
+                #  comes from reading, which is one button away on the results page and is what
+                #  lights up the sort and filter controls.
+                view["ranked_by"] = "fusion"
             elif len(cards) > 1:
                 q = {"brief": query_set.retrieval_text(rep.get("query") or ""),
                      "elements": rep.get("elements") or [],
