@@ -376,7 +376,7 @@ the files - fix it and run it again rather than working around it.
 | `draft/numerals.md` | The reference-numeral table. One row per part. |
 | `figures/` | One Markdown file per sheet: what it shows and which numerals appear on it. Sheets the user has uploaded sit beside them as `rendered-*.png`, and you can open those. |
 | `review/previous-qa.md` | What the reviewer found last time. Fix all of it. |
-| `tools/` | `publish.py` (above) and `patent_lookup.py` (below). |
+| `tools/` | `publish.py` (above), `figure_check.py` and `patent_lookup.py` (below). |
 
 Write the section files as **body text only**. `draft/09-claims.md` holds the numbered claims and
 nothing else. Do not create files in `draft/` other than the ten sections and `numerals.md`:
@@ -395,10 +395,38 @@ with the same heading is a real conflict and one of them is dropped.
 finished sheets from the Drawings tab, and any sheet they have uploaded is sitting in `figures/`
 as a PNG you can open and read.
 
-What you *do* own is the drawing **text**: `figures/FIG-N.md`, the Brief Description of the
-Drawings (`draft/07-drawings.md`), and the numeral table. Keep those three consistent with each
-other and with whatever sheets are actually present. If the application needs a view the user has
-not supplied, describe it and say plainly in your reply that the sheet is still missing.
+**The sheet is the authority and the text is what moves.** You own the drawing *text*:
+`figures/FIG-N.md`, the Brief Description of the Drawings (`draft/07-drawings.md`), the figure
+cross-references in the detailed description, and the numeral table. When a sheet arrives, open
+it, read what is on it, and change the text to match it. Not the other way round.
+
+```
+python3 tools/figure_check.py        # what is on every sheet, and where the text disagrees
+```
+
+That prints, per sheet, the views it carries, every reference numeral and what its lead line
+lands on, any words printed on the drawing, and then the specific places where the specification
+and the sheets contradict each other. Run it after every upload and before every publish.
+
+Six things it looks for, because each one reached a real filing:
+
+- **A view with no number.** A magnified circle, a second arrangement beside the first, anything
+  with the word OR between it and its neighbour: that is a separate view under 37 CFR 1.84(u).
+  Give it its own number, `FIG. 2A`, and its own sentence in the Brief Description.
+- **A claimed feature that no sheet shows.** 37 CFR 1.83(a). If the claims recite a port, the
+  port has a numeral and appears in a view. Read your own independent claims against the sheets.
+- **A cross-reference pointing at the wrong view.** "As shown in FIG. 3" in a paragraph about a
+  part only FIG. 2 shows. These appear every time a figure is split or renumbered.
+- **A numeral the drawing and the text disagree about.** The check reads the sheet against your
+  numeral table and says which numerals do not agree with it.
+- **Hedging.** A drawing description says what a numbered view *is*, in the present tense.
+  Nothing in a specification "may illustrate" anything, and no sentence describes a view that has
+  no number.
+- **A numeral on a sheet that the description never mentions**, or the reverse.
+
+If the application needs a view the user has not supplied, describe what is needed and say
+plainly in your reply that the sheet is still missing. Never write a description of a view that
+does not exist.
 
 ## Citing prior art
 
@@ -511,6 +539,107 @@ if __name__ == "__main__":
 '''
 
 
+_FIGURE_CHECK_TOOL = '''#!/usr/bin/env python3
+"""Read the uploaded drawing sheets and say where the specification disagrees with them.
+
+    python3 tools/figure_check.py            what is on every sheet, and every disagreement
+    python3 tools/figure_check.py --json     the same thing as JSON
+
+The sheets are inspected once each and the reading is cached on the image itself, so running this
+again after a text edit costs nothing. Standard library only.
+"""
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CREDENTIALS = os.path.join(HERE, ".agent-home", "publish.json")
+
+
+def main(argv):
+    want_json = "--json" in argv
+    try:
+        with open(CREDENTIALS, "r", encoding="utf-8") as handle:
+            credentials = json.load(handle)
+    except (OSError, ValueError) as exc:
+        print("Cannot reach the drawing check: %s is unreadable (%s)." % (CREDENTIALS, exc))
+        return 2
+    url = credentials["url"].replace("/workspace/publish", "/workspace/figures")
+    request = urllib.request.Request(
+        url, data=b"{}", method="POST",
+        headers={"Content-Type": "application/json",
+                 "X-Draft-Agent-Token": credentials["token"]})
+    try:
+        with urllib.request.urlopen(request, timeout=600) as response:
+            payload = json.loads(response.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        print("REFUSED (%s): %s" % (exc.code, detail[:1000]))
+        return 1
+    except Exception as exc:                                    # noqa: BLE001
+        print("Cannot reach the drafting server: %s: %s" % (type(exc).__name__, exc))
+        return 1
+
+    if want_json:
+        print(json.dumps(payload, indent=1))
+        return 0
+    if not payload.get("ok"):
+        print("REFUSED: %s" % (payload.get("error") or "unknown"))
+        return 1
+    report = payload.get("report") or {}
+    sheets = report.get("sheets") or []
+    if not sheets:
+        print("No drawing sheet has been uploaded to this draft yet.")
+    for sheet in sheets:
+        print("=" * 78)
+        print("SHEET %s" % (sheet.get("label") or "(unlabelled upload)"))
+        for view in sheet.get("views") or []:
+            print("  view %-10s %-22s numerals: %s"
+                  % (view.get("legend") or "?", (view.get("kind") or "")[:22],
+                     ", ".join(view.get("numerals") or []) or "none"))
+        for view in sheet.get("unnumbered_views") or []:
+            print("  VIEW WITH NO NUMBER: %s  numerals: %s"
+                  % (view.get("looks_like") or "a separate picture",
+                     ", ".join(view.get("numerals") or []) or "none"))
+        for item in sheet.get("numerals") or []:
+            flag = "" if item.get("agrees_with_the_table") in ("yes", "unclear", "not_declared") \
+                else "   <-- does not agree with the numeral table"
+            lines = "" if int(item.get("lead_lines") or 1) < 2 \
+                else "  [%s lead lines]" % item.get("lead_lines")
+            print("    %-6s %s%s%s" % (item.get("value"), (item.get("points_at") or "")[:70],
+                                       lines, flag))
+        words = sheet.get("words_printed_on_the_sheet") or []
+        if words:
+            print("  words printed on the sheet: %s" % "; ".join(w for w in words if w)[:300])
+        if sheet.get("reference_numeral_key_printed"):
+            print("  a reference numeral key is printed on this sheet")
+        if sheet.get("divider_rules"):
+            print("  %s divider rule(s) drawn between views" % sheet.get("divider_rules"))
+
+    findings = report.get("findings") or []
+    print()
+    print("=" * 78)
+    print("%d disagreement(s) between the sheets and the text. Verdict: %s"
+          % (len(findings), report.get("verdict")))
+    print("=" * 78)
+    for finding in findings:
+        print()
+        print("[%s] %s" % (finding.get("severity", "").upper(), finding.get("title")))
+        print("  rule: %s   in: %s" % (finding.get("rule"), finding.get("where")))
+        if finding.get("detail"):
+            print("  %s" % finding["detail"])
+    if not findings:
+        print("\\nNothing. The specification and the sheets agree.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
+'''
+
+
 def install(workspace: Path, project_id: int) -> dict[str, Any]:
     """Lay down everything the agent needs that is not the draft itself.
 
@@ -524,6 +653,8 @@ def install(workspace: Path, project_id: int) -> dict[str, Any]:
     tools.mkdir(parents=True, exist_ok=True)
     (tools / "publish.py").write_text(_PUBLISH_TOOL, encoding="utf-8")
     (tools / "publish.py").chmod(0o755)
+    (tools / "figure_check.py").write_text(_FIGURE_CHECK_TOOL, encoding="utf-8")
+    (tools / "figure_check.py").chmod(0o755)
 
     home = agent_home(workspace)
     home.mkdir(parents=True, exist_ok=True)

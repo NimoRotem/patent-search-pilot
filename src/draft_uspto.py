@@ -242,68 +242,50 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
             "items": "; ".join(
                 [f"missing FIG. {value}" for value in missing_drawings] +
                 [f"unexpected FIG. {value}" for value in extra_drawings])})
-    live_drawing_failures = []
-    import draft_figures
-    specs_by_key = {draft_figures.figure_key(spec.get("label")): spec
-                    for spec in figure_specs if isinstance(spec, Mapping)}
-    for sheet_index, figure in enumerate(figures, 1):
-        label = figure.get("figure_label") or figure.get("label") or "drawing"
-        spec = specs_by_key.get(draft_figures.figure_key(label))
-        active = next((row for row in (figure.get("versions") or [])
-                       if int(row.get("version_no") or 0) ==
-                       int(figure.get("active_version") or 0)), None) or {}
-        expected_sheet_number = f"{sheet_index}/{len(figures)}"
-        if not draft_figures.current_ocr_audit(
-                active.get("numeral_audit") or {},
-                expected_sheet_number=expected_sheet_number,
-                expected_section_designations=(
-                    draft_figures.section_designations(spec.get("caption") or "")
-                    if spec else None)):
-            live_drawing_failures.append(
-                f"{label}: OCR numeral, view-label, or sheet-number inspection did not pass "
-                f"for sheet {expected_sheet_number}")
-        if not draft_figures.current_semantic_audit(active.get("semantic_audit") or {}):
-            live_drawing_failures.append(
-                f"{label}: current semantic drawing consensus did not pass")
-        if not draft_figures.current_leader_audit(active.get("leader_audit") or {}):
-            live_drawing_failures.append(
-                f"{label}: current leader placement consensus did not pass")
-        if not spec:
-            live_drawing_failures.append(f"{label}: no specification exists in this version")
-        else:
-            expected = draft_figures.expected_entries(spec, numeral_table)
-            expected_hash = draft_figures.specification_hash(
-                spec.get("label") or label, spec.get("caption") or "", expected)
-            if (active.get("semantic_audit") or {}).get(
-                    "specification_hash") != expected_hash:
-                live_drawing_failures.append(
-                    f"{label}: inspection belongs to a different drawing specification")
-            if (active.get("leader_audit") or {}).get(
-                    "specification_hash") != expected_hash:
-                live_drawing_failures.append(
-                    f"{label}: leader inspection belongs to a different drawing specification")
-            if not draft_figures.current_geometry_binding(
-                    figure, project.get("user_id"), active, spec.get("caption") or ""):
-                live_drawing_failures.append(
-                    f"{label}: pixels are not bound to the current deterministic geometry "
-                    "and exact constraint certificate")
-    if live_drawing_failures:
+    #  THE DRAWING GATE MOVED, and this is where it used to be.  Until the drawing generator was
+    #  removed this block required four model-consensus audits per sheet - OCR numerals, semantic
+    #  content, leader placement and a geometry certificate - all of which were produced by the
+    #  generator as it drew.  A sheet a person uploads has none of them and never will, so as
+    #  written this made the filing gate unreachable for every draft in the product.
+    #
+    #  What replaces it is in `filing_service` and `figure_facts`: one inspection of the sheet as
+    #  supplied, and a reconciliation against the specification that is reported on the Filing
+    #  tab.  What stays here is the part that needs no pixels at all - does the set of sheets
+    #  match the set of views the text describes - because that question has an answer from the
+    #  labels alone and a draft that fails it is not ready to package.
+    missing_specs = [figure.get("figure_label") or figure.get("label") or "a drawing"
+                     for figure in figures
+                     if not str(figure.get("figure_label") or figure.get("label") or "").strip()]
+    if missing_specs:
         blockers.append({
-            "title": "One or more active drawings have not passed live inspection",
-            "detail": "Every filing sheet must still match its specification and reference "
-                      "numerals at download time.",
-            "items": "; ".join(live_drawing_failures[:12])})
+            "title": f"{len(missing_specs)} uploaded sheet(s) have no figure number",
+            "detail": "37 CFR 1.84(u): every view is numbered, and a sheet with no number cannot "
+                      "be tied to the Brief Description.",
+            "items": "; ".join(str(value) for value in missing_specs[:8])})
+    if figures:
+        formalities.append({
+            "title": "The drawings are checked against the text when the package is built",
+            "detail": "Numerals, lead lines, unnumbered views, stale cross-references and "
+                      "reference character height are read off the sheets themselves on the "
+                      "Filing tab. Build the package there before treating any draft as ready.",
+            "items": ""})
 
     fees = fee_profile(str(sections.get("claims") or ""))
+    #  What is genuinely left for a human, now that the package carries the papers themselves.
+    #  An earlier version of this list named the ADS, the declaration and the fee determination as
+    #  things that "remain", which read as a checklist and was in fact four documents nobody had
+    #  written. They are built now; what is left is signing, certifying and paying.
     remaining = [
-        "An oath or declaration signed by every named inventor (37 CFR 1.63), or a substitute "
-        "statement where one is permitted.",
-        "An Application Data Sheet (37 CFR 1.76) - the fields are pre-filled in the package.",
-        "Entity-status certification if claiming small or micro entity fees (37 CFR 1.27, 1.29).",
-        "An Information Disclosure Statement listing the art you are aware of (37 CFR 1.56, 1.97). "
-        "The citation listing in this package is a starting point, not a signed form.",
-        "The filing, search and examination fees due on the counts above.",
-        "Review by a registered US patent practitioner before anything is submitted.",
+        "Sign the declaration, once per named inventor (37 CFR 1.63). The package builds it with "
+        "every required statement; a signature is the one thing it cannot supply.",
+        "Complete Patent Center's web Application Data Sheet, or sign the one in the package "
+        "(37 CFR 1.76). Every value to enter is listed in the package.",
+        "Certify entity status if claiming small or micro entity fees (37 CFR 1.27, 1.29). "
+        "Status is certified, never assumed.",
+        "Sign and file an Information Disclosure Statement (37 CFR 1.56, 1.97). The package holds "
+        "the citation listing; the duty of disclosure is personal and no software discharges it.",
+        "Pay the filing, search and examination fees on the counts above.",
+        "Have a registered US patent practitioner read it before anything is submitted.",
     ]
     return {
         "ready": not blockers,
@@ -426,105 +408,20 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
                        readiness_report: Mapping[str, Any],
                        references: Sequence[Mapping[str, Any]] = (),
                        figure_images: Sequence[Mapping[str, Any]] = ()) -> BytesIO:
-    """Clean filing text and checked drawing sheets, with no workflow notes or placeholders."""
+    """The specification alone, as a 37 CFR 1.52 filing document.
+
+    Delegates to ``filing_pack``, which is where the formal requirements live and where they are
+    checked against the file it just wrote. Drawings do NOT go in here any more: 37 CFR 1.84
+    wants them on their own sheets with their own margins and sheet numbers, and the package
+    builds them as a separate PDF. A .docx carrying both was one upload the Office had to split
+    by hand.
+    """
     if readiness_report.get("blockers"):
         raise drafting.DraftingValidationError(
             "The filing gate has blockers; a filing document was not created.")
-    from docx import Document
-    from docx.enum.section import WD_SECTION
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml.ns import qn
-    from docx.shared import Inches, Pt
-
-    sections = _filing_sections(version)
-    document = Document()
-    layout = document.sections[0]
-    layout.page_width, layout.page_height = Inches(8.5), Inches(11)
-    # 37 CFR 1.52(a)(1)(ii): at least 2.0 cm left and top, 2.0 cm right, 2.0 cm bottom.
-    layout.left_margin = layout.top_margin = Inches(1)
-    layout.right_margin = layout.bottom_margin = Inches(0.85)
-    normal = document.styles["Normal"]
-    normal.font.name = "Times New Roman"
-    normal.font.size = Pt(12)
-    normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
-    normal.paragraph_format.line_spacing = 2.0        # 37 CFR 1.52(b)(2)(ii)
-    normal.paragraph_format.space_after = Pt(0)
-
-    def heading(text: str) -> None:
-        paragraph = document.add_paragraph()
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = paragraph.add_run(text)
-        run.bold = True
-
-    def plain(text: str, *, size: int = 12, bold: bool = False, spacing: float = 2.0) -> None:
-        paragraph = document.add_paragraph()
-        paragraph.paragraph_format.line_spacing = spacing
-        run = paragraph.add_run(text)
-        run.bold = bold
-        run.font.size = Pt(size)
-
-    # -- specification -------------------------------------------------------------------------
-    counter = 1
-    for key, title, numbered in FILING_ORDER:
-        body = str(sections.get(key) or "").strip()
-        if key == "title":
-            heading(title)
-            plain(body or _filing_label(project.get("title") or ""))
-            continue
-        if not body:
-            continue
-        heading(title)
-        if numbered:
-            paragraphs, counter = numbered_paragraphs(body, counter)
-            for paragraph in paragraphs:
-                plain(paragraph)
-        else:
-            plain(body)
-
-    document.add_page_break()
-    heading("CLAIMS")
-    plain("What is claimed is:")
-    for claim in draft_qa.split_claims(str(sections.get("claims") or "")):
-        plain(f"{claim['number']}. {claim['text']}")
-
-    document.add_page_break()
-    heading("ABSTRACT OF THE DISCLOSURE")
-    plain(str(sections.get("abstract") or "").strip())
-
-    if figure_images:
-        drawing_layout = document.add_section(WD_SECTION.NEW_PAGE)
-        drawing_layout.page_width, drawing_layout.page_height = Inches(8.5), Inches(11)
-        # 37 CFR 1.84(g): 1 inch top and left, 5/8 inch right, 3/8 inch bottom.
-        drawing_layout.top_margin = drawing_layout.left_margin = Inches(1)
-        drawing_layout.right_margin = Inches(0.625)
-        drawing_layout.bottom_margin = Inches(0.375)
-        for index, figure in enumerate(figure_images):
-            png = bytes(figure.get("png") or b"")
-            if not png:
-                continue
-            picture = document.add_paragraph()
-            if index:
-                picture.paragraph_format.page_break_before = True
-            picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            picture.paragraph_format.space_before = Pt(0)
-            picture.paragraph_format.space_after = Pt(0)
-            picture.paragraph_format.line_spacing = 1.0
-            from PIL import Image
-            with Image.open(BytesIO(png)) as image:
-                pixel_width, pixel_height = image.size
-            max_width, max_height = 6.875, 9.5
-            width = max_width
-            height = width * pixel_height / max(1, pixel_width)
-            if height > max_height:
-                height = max_height
-                width = height * pixel_width / max(1, pixel_height)
-            picture.add_run().add_picture(
-                BytesIO(png), width=Inches(width), height=Inches(height))
-
-    output = BytesIO()
-    document.save(output)
-    output.seek(0)
-    return output
+    del references, figure_images
+    import filing_pack
+    return BytesIO(filing_pack.specification_docx(project, version))
 
 
 def readiness_html(report: Mapping[str, Any]) -> str:

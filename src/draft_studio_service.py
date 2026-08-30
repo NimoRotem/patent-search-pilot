@@ -629,6 +629,34 @@ class StudioService:
         return draft_terminal.kill(project_id)
 
     # -- what the agent publishes -----------------------------------------------------------------
+    def agent_figure_report(self, project_id: int, token: str) -> dict[str, Any]:
+        """What is on the uploaded sheets, and where the workspace text disagrees with them.
+
+        NO principal, for the same reason ``publish_workspace`` has none: the caller is the agent
+        inside the workspace, over loopback, holding this project's own token. It reads the
+        sections from the WORKSPACE rather than from the last published version, because the
+        agent runs this while it is editing and an answer about a version it has moved past would
+        send it to fix something it has already fixed.
+        """
+        import draft_figures
+        import filing_service
+        loaded = _runner()._load(int(project_id))
+        project = loaded["project"]
+        workspace = draft_workspace.for_project(int(project_id))
+        if not draft_terminal.verify_publish_token(workspace, token):
+            raise drafting.DraftingPermissionDenied("That is not this draft's agent token.")
+        snapshot = draft_workspace.snapshot(workspace)
+        figures = []
+        for figure in draft_figures.listing(int(project_id), int(project["user_id"])):
+            _mime, png = draft_figures.png_bytes(
+                int(figure["id"]), int(project["user_id"]),
+                int(figure.get("active_version") or 0))
+            if png:
+                figures.append({"label": draft_figures.canonical_figure_label(
+                    figure.get("figure_label")), "png": png})
+        return filing_service.agent_report(
+            sections=snapshot["sections"], numerals=snapshot["numerals"], figures=figures)
+
     def publish_workspace(self, project_id: int, token: str, *, note: str = "",
                           check: bool = False) -> dict[str, Any]:
         """Store the workspace as a new version, on the agent's own say-so.

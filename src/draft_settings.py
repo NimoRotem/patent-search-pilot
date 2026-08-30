@@ -81,7 +81,11 @@ def clean(supplied: Mapping[str, Any] | None,
     typed, the system uses something else, and the difference surfaces as inexplicable behaviour
     three turns later.
     """
-    out = resolve(stored)
+    #  Start from what is STORED and then apply today's defaults over the keys this panel owns.
+    #  `resolve` alone drops every key this panel does not know about, and `save_settings` writes
+    #  the result back whole, so saving one field here used to silently delete the terminal's
+    #  remembered effort and the whole filing profile.
+    out = {**dict(stored or {}), **resolve(stored)}
     for key, value in dict(supplied or {}).items():
         field = BY_KEY.get(key)
         if not field:

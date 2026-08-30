@@ -191,15 +191,25 @@ def version(path: str = "") -> str:
     return reported
 
 
-def _oauth_token() -> str:
+def _oauth_token(token_file: str = "") -> str:
     """The long-lived subscription token, cached briefly.
 
     Read from disk rather than the process environment because the web tier is started by
     supervisor with a deliberately small environment, and because a token rotated on disk should
     be picked up without a restart.
+
+    ``token_file`` names a DIFFERENT credential for one kind of run. Accounts run out separately,
+    and they run out weekly: on 2026-08-30 the default token's plan was exhausted while the
+    drafting subscription had capacity all day, so every headless run on this host failed for want
+    of a file name. A caller that knows which account should pay for its work says so.
     """
     global _CACHED_TOKEN
     with _ENV_LOCK:
+        if token_file:
+            try:
+                return Path(token_file).read_text(encoding="utf-8").strip()
+            except OSError:
+                return ""
         if _CACHED_TOKEN and time.time() - _CACHED_TOKEN[0] < 300:
             return _CACHED_TOKEN[1]
         token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
@@ -249,13 +259,14 @@ def config_dir(root: Path) -> Path:
     return out
 
 
-def _environment(cfg_dir: Path, *, auth_mode: str = "subscription") -> dict[str, str]:
+def _environment(cfg_dir: Path, *, auth_mode: str = "subscription",
+                 token_file: str = "") -> dict[str, str]:
     env = dict(os.environ)
     env["CLAUDE_CONFIG_DIR"] = str(cfg_dir)
     if auth_mode == "api":
         env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
     else:
-        token = _oauth_token()
+        token = _oauth_token(token_file)
         if token:
             env["CLAUDE_CODE_OAUTH_TOKEN"] = token
         # A stale ANTHROPIC_API_KEY in the service environment would be preferred over the
@@ -341,7 +352,8 @@ def _run_once(*, workspace: Path, prompt: str, system_prompt: str, schema: Mappi
               on_event: Callable[[Mapping[str, Any]], None] | None = None,
               cancel: threading.Event | None = None,
               max_budget_usd: float = MAX_BUDGET_USD,
-              auth_mode: str = "subscription") -> AgentRun:
+              auth_mode: str = "subscription",
+              oauth_token_file: str = "") -> AgentRun:
     """One agent turn inside ``workspace``.
 
     ``resume`` continues the project's own thread so the agent remembers the decisions it already
@@ -381,7 +393,8 @@ def _run_once(*, workspace: Path, prompt: str, system_prompt: str, schema: Mappi
                    transcript_path=str(transcript or ""))
     started = time.time()
     process = subprocess.Popen(
-        argv, cwd=str(workspace), env=_environment(cfg, auth_mode=auth_mode),
+        argv, cwd=str(workspace),
+        env=_environment(cfg, auth_mode=auth_mode, token_file=oauth_token_file),
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, bufsize=1, start_new_session=True)
     stderr_tail: list[str] = []
@@ -1139,8 +1152,18 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
     return out
 
 
-def _with_vertex_fallback(common: Mapping[str, Any], previous: AgentRun) -> AgentRun:
-    if (not VERTEX_FALLBACK or previous.ok or previous.cancelled or
+def _with_vertex_fallback(common: Mapping[str, Any], previous: AgentRun,
+                          *, enabled: bool = True) -> AgentRun:
+    """Continue on Vertex when the Claude routes are exhausted, unless the caller forbids it.
+
+    ``enabled=False`` exists for a run that CANNOT be done by this fallback rather than one that
+    would merely be done less well. The Vertex path is a hand-built tool layer: it reads text
+    files under six named workspace directories and it cannot open an image at all. A reviewer
+    whose whole job is to look at drawing sheets, handed that, reads none of them and reports
+    "do not file" about an application it never saw. Failing with a reason the page can show is
+    the honest answer; degrading silently is not.
+    """
+    if (not enabled or not VERTEX_FALLBACK or previous.ok or previous.cancelled or
             not _provider_unavailable_error(previous.error)):
         return previous
     vertex = _run_vertex_once(**common)
@@ -1242,7 +1265,9 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
         allowed_bash: Sequence[str] = (LOOKUP_COMMAND,),
         on_event: Callable[[Mapping[str, Any]], None] | None = None,
         cancel: threading.Event | None = None,
-        max_budget_usd: float = MAX_BUDGET_USD) -> AgentRun:
+        max_budget_usd: float = MAX_BUDGET_USD,
+        vertex_fallback: bool = True,
+        oauth_token_file: str = "") -> AgentRun:
     """Run through the configured auth route and fail over on subscription quota exhaustion."""
     global _SUBSCRIPTION_UNAVAILABLE
     common = {
@@ -1250,10 +1275,10 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
         "schema": schema, "session_id": session_id, "resume": resume, "model": model,
         "tools": tools, "timeout": timeout, "transcript": transcript,
         "allowed_bash": allowed_bash, "on_event": on_event, "cancel": cancel,
-        "max_budget_usd": max_budget_usd,
+        "max_budget_usd": max_budget_usd, "oauth_token_file": oauth_token_file,
     }
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    token = _oauth_token()
+    token = _oauth_token(oauth_token_file)
     mode = AUTH_MODE
     if mode == "api" and not api_key:
         raise AgentUnavailable("No Anthropic API key is configured.")
@@ -1284,11 +1309,11 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
     if (mode != "subscription" or first.ok or first.cancelled or
             not _subscription_limit_error(first.error) or
             (cancel is not None and cancel.is_set())):
-        return _with_vertex_fallback(common, first)
+        return _with_vertex_fallback(common, first, enabled=vertex_fallback)
 
     _SUBSCRIPTION_UNAVAILABLE = True
     if not api_key:
-        return _with_vertex_fallback(common, first)
+        return _with_vertex_fallback(common, first, enabled=vertex_fallback)
     fallback_session = first.session_id or session_id
     fallback_resume = bool(resume and not restarted_fresh and fallback_session)
     if not fallback_resume:
@@ -1301,7 +1326,7 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
         "The Claude subscription quota was unavailable, so the run continued through the "
         "configured Anthropic API account.")
     if not (fallback_resume and not fallback.ok and _missing_session_error(fallback.error)):
-        return _with_vertex_fallback(common, fallback)
+        return _with_vertex_fallback(common, fallback, enabled=vertex_fallback)
 
     fresh = _run_with_rate_limit_retries(
         {**common, "session_id": new_session_id(), "resume": False}, auth_mode="api")
@@ -1309,7 +1334,7 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
         fallback, fresh,
         "The prior conversation session was unavailable to the API account, so the run "
         "continued from the complete workspace in a fresh session.")
-    return _with_vertex_fallback(common, merged)
+    return _with_vertex_fallback(common, merged, enabled=vertex_fallback)
 
 
 def _terminate(process: subprocess.Popen, *, grace: int) -> None:

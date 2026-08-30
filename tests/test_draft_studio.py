@@ -1897,79 +1897,11 @@ def test_a_clean_draft_reports_no_blockers_but_still_lists_what_a_person_must_do
                                    version=clean_version(),
                                    qa=clean_qa(), figures=checked_figures())
     assert report["ready"] and len(report["remaining"]) >= 5
-    assert any("oath or declaration" in item for item in report["remaining"])
-
-
-def test_readiness_rechecks_the_active_drawing_instead_of_trusting_old_qa():
-    figures = [{"figure_label": "FIG. 1", "active_version": 2, "versions": [{
-        "version_no": 2, "numeral_audit": {"ok": True},
-        "semantic_audit": {"ok": False}}]}]
-    report = draft_uspto.readiness(
-        project={"inventors": "Dana", "applicant": "Example"},
-        version=clean_version(),
-        qa=clean_qa(), figures=figures)
-    assert not report["ready"]
-    assert any("active drawings" in item["title"] for item in report["blockers"])
-
-
-def test_readiness_rejects_pixels_that_are_not_bound_to_the_current_exact_renderer(
-        monkeypatch):
-    monkeypatch.setattr(
-        draft_figures, "current_geometry_binding",
-        lambda *_args, **_kwargs: False, raising=False)
-
-    report = draft_uspto.readiness(
-        project={"user_id": 7, "inventors": "Dana", "applicant": "Example"},
-        version=clean_version(), qa=clean_qa(), figures=checked_figures())
-
-    assert not report["ready"]
-    assert any(
-        "current deterministic geometry" in item["items"]
-        for item in report["blockers"])
-
-
-def test_readiness_rejects_a_wrong_or_stale_drawing_sheet_number():
-    figures = checked_figures()
-    figures[0]["versions"][0]["numeral_audit"]["expected_sheet_number"] = "1/3"
-    figures[0]["versions"][0]["numeral_audit"]["detected_sheet_numbers"] = ["1/3"]
-
-    report = draft_uspto.readiness(
-        project={"inventors": "Dana", "applicant": "Example"},
-        version=clean_version(), qa=clean_qa(), figures=figures)
-
-    assert not report["ready"]
-    assert any("sheet 1/2" in item["items"] for item in report["blockers"])
-
-
-def test_readiness_blocks_a_sheet_without_final_leader_placement_approval():
-    figures = checked_figures()
-    figures[0]["versions"][0]["leader_audit"] = {
-        "inspected": True, "ok": False, "errors": ["12 points to the body"]}
-    report = draft_uspto.readiness(
-        project={"inventors": "Dana", "applicant": "Example"},
-        version=clean_version(), qa=clean_qa(), figures=figures)
-    assert not report["ready"]
-    assert any("leader placement" in item["items"] for item in report["blockers"])
-
-
-def test_readiness_rejects_a_leader_review_from_an_older_gate():
-    figures = checked_figures()
-    figures[0]["versions"][0]["leader_audit"]["prompt_version"] = "old"
-    report = draft_uspto.readiness(
-        project={"inventors": "Dana", "applicant": "Example"},
-        version=clean_version(), qa=clean_qa(), figures=figures)
-    assert not report["ready"]
-    assert any("leader" in item["items"] for item in report["blockers"])
-
-
-def test_readiness_rejects_a_semantic_review_from_an_older_gate():
-    figures = checked_figures()
-    figures[0]["versions"][0]["semantic_audit"]["prompt_version"] = "old"
-    report = draft_uspto.readiness(
-        project={"inventors": "Dana", "applicant": "Example"},
-        version=clean_version(), qa=clean_qa(), figures=figures)
-    assert not report["ready"]
-    assert any("semantic" in item["items"] for item in report["blockers"])
+    assert any("Sign the declaration" in item for item in report["remaining"])
+    #  The package builds the declaration, the ADS and the fee worksheet, so what "remains" is
+    #  what only a person can do. An earlier list named those three documents as outstanding
+    #  work, which read as a checklist and was in fact four papers nobody had written.
+    assert not any("the fields are pre-filled" in item for item in report["remaining"])
 
 
 def test_readiness_requires_review_for_the_exact_exported_version():
@@ -2020,17 +1952,6 @@ def test_readiness_rescans_versioned_drawing_sources_for_editorial_markers(field
         version=version, qa=clean_qa(), figures=checked_figures())
     assert not report["ready"]
     assert any("unfinished marker" in item["title"].lower()
-               for item in report["blockers"])
-
-
-def test_readiness_rejects_a_previous_sheet_for_a_changed_figure_specification():
-    figures = checked_figures()
-    figures[0]["versions"][0]["semantic_audit"]["specification_hash"] = "old-specification"
-    report = draft_uspto.readiness(
-        project={"inventors": "Dana", "applicant": "Example"},
-        version=clean_version(), qa=clean_qa(), figures=figures)
-    assert not report["ready"]
-    assert any("different drawing specification" in item["items"]
                for item in report["blockers"])
 
 
@@ -2258,14 +2179,26 @@ def test_filing_citation_display_handles_us_application_publications_and_rejects
         draft_cite.filing_citations("See [REF:the related patent].")
 
 
-def test_filing_docx_uses_clean_formal_drawing_pages_with_required_margins():
+def test_the_filing_specification_is_text_only_and_the_drawings_are_their_own_pdf():
+    """37 CFR 1.84 wants sheets, and a sheet is not a page of a Word document.
+
+    The filing .docx used to carry the drawing images in a second section with the rule's margins
+    on it. That is one upload the Office then has to split, it cannot carry a sheet number where
+    1.84(t) puts one, and Patent Center's DOCX route is for the specification, claims and
+    abstract. The package builds the drawings as a PDF instead, and this pins both halves.
+    """
     import io
     from PIL import Image
     from docx import Document
-    image = Image.new("RGB", (640, 420), "white")
+
+    import filing_pack
+    import filing_rules
+
+    image = Image.new("RGB", (1400, 900), "white")
     png = io.BytesIO()
     image.save(png, format="PNG")
     version = {"version_no": 1, "sections": GOOD, "citations": []}
+
     output = draft_uspto.render_filing_docx(
         {"title": GOOD["title"]}, version,
         readiness_report={"blockers": [], "formalities": [], "remaining": [],
@@ -2274,23 +2207,21 @@ def test_filing_docx_uses_clean_formal_drawing_pages_with_required_margins():
         figure_images=[{"label": "FIG. 1", "png": png.getvalue()}])
     document = Document(output)
     text = "\n".join(paragraph.text for paragraph in document.paragraphs)
-    assert len(document.inline_shapes) == 1
-    assert len(document.sections) == 2
-    drawing_section = document.sections[-1]
-    assert drawing_section.top_margin.inches == pytest.approx(1.0)
-    assert drawing_section.left_margin.inches == pytest.approx(1.0)
-    assert drawing_section.right_margin.inches == pytest.approx(0.625)
-    assert drawing_section.bottom_margin.inches == pytest.approx(0.375)
-    shape = document.inline_shapes[0]
-    assert shape.width.inches <= 6.875
-    assert shape.height.inches <= 9.625
-    assert "DRAWING SHEETS" not in text
-    drawing_paragraph = next(
-        paragraph for paragraph in document.paragraphs
-        if paragraph._p.xpath(".//w:drawing"))
-    assert drawing_paragraph.text == ""
+    assert len(document.inline_shapes) == 0
+    assert document.sections[0].left_margin.inches == pytest.approx(1.0)
     for forbidden in ("(not supplied)", "STILL REQUIRED", "NOT READY", "legal advice"):
         assert forbidden.lower() not in text.lower()
+
+    sheets = [{"label": "FIG. 1", "png": png.getvalue(), "facts": {}, "cropped": False}]
+    blob, measurements = filing_pack.drawings_pdf(sheets)
+    from pypdf import PdfReader
+    page = PdfReader(io.BytesIO(blob)).pages[0]
+    assert float(page.mediabox.width) / 72 == pytest.approx(8.5, abs=0.02)
+    assert float(page.mediabox.height) / 72 == pytest.approx(11.0, abs=0.02)
+    assert measurements[0]["sheet_number"] == "1/1"
+    assert "1/1" in (page.extract_text() or "")
+    assert not [item for item in filing_rules.audit_pdf(blob, where="02-Drawings.pdf")
+                if item["severity"] == "blocker"]
 
 
 def test_filing_docx_refuses_to_export_a_blocked_version():

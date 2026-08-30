@@ -45,6 +45,7 @@ import drafting, draft_export, draft_worker
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
 import draft_novelty, draft_research                # re-search rounds and their reading
 import draft_studio, draft_studio_service, draft_uspto, draft_workspace
+import filing_profile, filing_qa, filing_service      # the filing package and its second reader
 import claim_chart, translate, drawings          # ported per-card enrichment
 import ingest_input                                # front-door document / patent-link -> search brief
 import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
@@ -7339,58 +7340,130 @@ def _readiness_for(principal, project_id):
     return project, version, report, references
 
 
-def _filing_figure_images(project, version):
-    """The exact active PNGs that passed both live drawing gates, in filing order."""
-    images = []
-    figures = _figures_for(project)
-    specs = (version or {}).get("figure_specs") or []
-    if isinstance(specs, str):
-        try:
-            specs = json.loads(specs)
-        except json.JSONDecodeError:
-            specs = []
-    specs_by_key = {
-        draft_figures.figure_key(item.get("label")): item
-        for item in specs if isinstance(item, dict)
-    }
-    for sheet_index, figure in enumerate(figures, 1):
-        spec = specs_by_key.get(draft_figures.figure_key(figure.get("figure_label")))
-        versions = figure.get("versions") or []
-        active = next((row for row in versions
-                       if int(row.get("version_no") or 0) ==
-                       int(figure.get("active_version") or 0)), None) or {}
-        if not (draft_figures.current_geometry_binding(
-                    figure, project.get("user_id"), active,
-                    (spec or {}).get("caption") or "") and
-                draft_figures.current_ocr_audit(
-                    active.get("numeral_audit") or {},
-                    expected_sheet_number=f"{sheet_index}/{len(figures)}",
-                    expected_section_designations=(
-                        draft_figures.section_designations(spec.get("caption") or "")
-                        if spec else None)) and
-                draft_figures.current_semantic_audit(active.get("semantic_audit") or {}) and
-                draft_figures.current_leader_audit(active.get("leader_audit") or {})):
-            raise drafting.DraftingValidationError(
-                f"{figure.get('figure_label') or 'A drawing'} has not passed all drawing checks.")
-        _mime, png = draft_figures.png_bytes(
-            figure["id"], project["user_id"], int(figure.get("active_version") or 0))
-        if not png:
-            raise drafting.DraftingValidationError(
-                f"{figure.get('figure_label') or 'A drawing'} has no active image.")
-        images.append({"label": draft_figures.canonical_figure_label(
-            figure.get("figure_label")), "png": png})
-    return images
-
-
 @app.route("/api/drafts/<int:project_id>/filing")
 def api_draft_filing(project_id):
+    """The Filing tab's whole state: the draft gate, the parties, the last package, the review."""
     try:
         _user, principal = _draft_identity()
-        _project, version, report, _refs = _readiness_for(principal, project_id)
+        project, version, report, _refs = _readiness_for(principal, project_id)
         report["version_no"] = version["version_no"]
-        return jsonify({"ok": True, "readiness": report})
+        profile = draft_studio.StudioRepository().filing_profile(project_id)
+        return jsonify({"ok": True, "readiness": report,
+                        "filing": filing_service.state(
+                            project=project, version_no=int(version["version_no"]),
+                            profile=profile)})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/filing/profile", methods=["POST"])
+def draft_studio_filing_profile(project_id):
+    """Save the parties, addresses and entity status the ADS and the declaration are built from."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        _drafting_service().get_project(principal, project_id, include_versions=False)
+        repository = draft_studio.StudioRepository()
+        body = request.get_json(silent=True) or {}
+        try:
+            values = filing_profile.clean(body, repository.filing_profile(project_id))
+        except ValueError as exc:
+            raise drafting.DraftingValidationError(str(exc)) from exc
+        repository.save_filing_profile(project_id, values)
+        return jsonify({"ok": True, "profile": filing_profile.public(values)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/filing/build", methods=["POST"])
+def draft_studio_filing_build(project_id):
+    """Build the filing package, and optionally hand it straight to the filing reviewer."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or {}
+        inputs = _filing_inputs(principal, project_id)
+        return jsonify({"ok": True, **filing_service.start_build(
+            project=inputs["project"], version=inputs["version"], profile=inputs["profile"],
+            numerals=inputs["numerals"], figures=inputs["figures"],
+            citations=inputs["citations"],
+            then_review=bool(body.get("review")), model=str(body.get("model") or ""))})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+
+
+@app.route("/drafts/<int:project_id>/studio/filing/review", methods=["POST"])
+def draft_studio_filing_review(project_id):
+    """Run the independent filing reviewer over the package that was last built."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        inputs = _filing_inputs(principal, project_id)
+        summary = filing_service.last_build(project_id)
+        if not summary or summary.get("error"):
+            raise drafting.DraftingValidationError(
+                "Build the filing package before reviewing it.")
+        if int(summary.get("version_no") or 0) != int(inputs["version"]["version_no"]):
+            raise drafting.DraftingValidationError(
+                "The package was built from an earlier version. Build it again first.")
+        outcome = filing_service.build(
+            project=inputs["project"], version=inputs["version"], profile=inputs["profile"],
+            numerals=inputs["numerals"], figures=inputs["figures"],
+            citations=inputs["citations"])
+        body = request.get_json(silent=True) or {}
+        return jsonify({"ok": True, **filing_qa.start(
+            project_id=project_id, built=outcome["built"],
+            sections=dict(inputs["version"].get("sections") or {}),
+            numerals=inputs["numerals"], figures=inputs["figures"],
+            reconciliation=outcome["reconciliation"], model=str(body.get("model") or ""))})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+
+
+@app.route("/drafts/<int:project_id>/download/filing.zip")
+def draft_filing_package(project_id):
+    """The package that was last built for this draft, exactly as it was audited."""
+    try:
+        _user, principal = _draft_identity()
+        project = _drafting_service().get_project(principal, project_id, include_versions=False)
+        blob = filing_service.package_bytes(project_id)
+        if not blob:
+            raise drafting.DraftingNotFound(
+                "No filing package has been built for this draft yet.")
+        summary = filing_service.last_build(project_id) or {}
+        stem = draft_export._clean_filename(str(project.get("title") or ""))
+        name = f"{stem}-filing-package-v{int(summary.get('version_no') or 0)}.zip"
+        return Response(blob, mimetype="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="{name}"'})
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/workspace/figures", methods=["POST"])
+def api_draft_workspace_figures(project_id):
+    """The drafting agent asking what is actually on the sheets. NOT a browser route.
+
+    Same capability as the publish endpoint next door: the per-project token this server wrote
+    into the workspace's private agent home, and a request that arrived on loopback. The agent
+    owns the drawing text and does not own the drawings, so this is how it finds out what it is
+    describing.
+    """
+    if not auth.is_loopback():
+        return jsonify({"ok": False, "error": "This endpoint is loopback-only."}), 403
+    token = request.headers.get("X-Draft-Agent-Token") or ""
+    try:
+        return jsonify({"ok": True,
+                        "report": _studio().agent_figure_report(project_id, token)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # noqa: BLE001 - the agent reads this
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"{type(exc).__name__}: {str(exc)[:300]}"}), 500
 
 
 @app.route("/drafts/<int:project_id>/download/filing.<fmt>")
@@ -7408,10 +7481,12 @@ def draft_filing_download(project_id, fmt):
         if fmt == "txt":
             return Response(draft_uspto.filing_text(project, version), mimetype="text/plain",
                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
+        #  No drawings in here. They go in the package as their own 37 CFR 1.84 sheets, and the
+        #  helper that used to collect them enforced the deleted drawing generator's audits, so
+        #  calling it refused every uploaded sheet in the product.
         return send_file(
             draft_uspto.render_filing_docx(project, version, readiness_report=report,
-                                           references=references,
-                                           figure_images=_filing_figure_images(project, version)),
+                                           references=references),
             as_attachment=True, download_name=name,
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     except drafting.DraftingError as exc:

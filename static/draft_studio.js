@@ -2126,48 +2126,280 @@
   }
 
   // ── filing ─────────────────────────────────────────────────────────────────
-  async function renderFiling() {
+  /* THREE THINGS ON ONE TAB, in the order they have to happen: who is filing, what the package
+     says when it is built, and what an independent reader made of it. The build is a button
+     rather than something this tab does on load, because it reads every uploaded sheet with a
+     vision pass and then audits every file it wrote: doing that on a page load would read as a
+     broken tab, and doing it on the three-second poll would do it for ever. */
+  let FILING = null;
+  let FILING_POLL = null;
+
+  async function renderFiling(force) {
     const body = $('filingBody');
-    body.innerHTML = '<p class="muted small">Checking the draft against the filing requirements…</p>';
-    let report;
+    if (FILING === null || force) {
+      body.innerHTML = '<p class="muted small">Checking the draft against the filing ' +
+        'requirements…</p>';
+    }
+    let payload;
     try {
-      report = (await api(`/api/drafts/${PID}/filing`)).readiness;
+      payload = await api(`/api/drafts/${PID}/filing`);
     } catch (error) {
       body.innerHTML = `<div class="emptypane"><h3>Not yet</h3><p>${esc(error.message)}</p></div>`;
       return;
     }
+    FILING = payload;
+    paintFiling();
+    const state = payload.filing || {};
+    const busy = state.building || state.qa_running;
+    if (busy && !FILING_POLL) {
+      FILING_POLL = setInterval(() => {
+        if (currentPane() !== 'filing') { clearInterval(FILING_POLL); FILING_POLL = null; return; }
+        renderFiling();
+      }, 4000);
+    } else if (!busy && FILING_POLL) {
+      clearInterval(FILING_POLL); FILING_POLL = null;
+    }
+  }
+
+  function currentPane() {
+    const open = document.querySelector('.spane.on');
+    return open ? open.id.replace('pane-', '') : '';
+  }
+
+  const SEVERITY = { blocker: 'bad', formality: 'warn', note: '' };
+
+  function findingList(items) {
+    const order = { blocker: 0, formality: 1, note: 2 };
+    return [...items].sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3))
+      .map((item) => `<li><b>${esc(item.title)}</b>
+        <span class="pillsm ${SEVERITY[item.severity] || ''}">${esc(item.severity)}</span>
+        ${esc(item.detail || '')}
+        <code>${esc(item.rule || '')} · ${esc(item.where || '')}</code>
+        ${item.fix ? `<code>Fix: ${esc(item.fix)}</code>` : ''}
+        ${item.evidence ? `<code>Read: ${esc(item.evidence)}</code>` : ''}</li>`).join('');
+  }
+
+  function paintFiling() {
+    const body = $('filingBody');
+    const report = FILING.readiness || {};
+    const state = FILING.filing || {};
+    const build = state.build || {};
+    const qa = state.qa || {};
+    const profile = state.profile || {};
+    const gaps = (profile.gaps || []);
+    const findings = build.findings || [];
+    const counts = ['blocker', 'formality', 'note'].map((s) =>
+      findings.filter((f) => f.severity === s).length);
     const block = (title, items, tone) => !items || !items.length ? '' :
       `<div class="rdy ${tone}"><h4>${esc(title)}</h4><ul>${items.map((item) =>
         `<li><b>${esc(item.title)}</b> ${esc(item.detail)}${item.items ?
           `<code>${esc(item.items)}</code>` : ''}</li>`).join('')}</ul></div>`;
-    const fees = report.fees || {};
+    const fees = build.fees || report.fees || {};
+
     body.innerHTML = `
-      <div class="rdyhead ${report.ready ? 'good' : 'bad'}">
-        <b>${report.ready ? 'Application text and drawings passed every automated filing check'
-                          : report.blockers.length + ' blocker(s) remain'}</b>
-        <span class="small">${report.ready ?
-          'The downloadable package contains the checked specification, claims, abstract, and drawing sheets.' :
-          'These would leave the application defective or incomplete as filed.'}</span>
+      ${build.built_at ? `
+        <div class="rdyhead ${build.ready ? 'good' : 'bad'}">
+          <b>${build.ready ? 'The package passed every mechanical filing check'
+                           : counts[0] + ' blocker(s) in the built package'}</b>
+          <span class="small">${esc(build.verdict || '')}${state.stale ?
+            ' · built from version ' + build.version_no + ', the draft is now on ' +
+            state.version_no : ''} · ${counts[1]} formality(ies), ${counts[2]} note(s)</span>
+        </div>` : `
+        <div class="rdyhead">
+          <b>No filing package has been built yet</b>
+          <span class="small">Building reads every uploaded sheet, reconciles it against the
+            specification, writes the specification, drawings, application data sheet,
+            declaration, fee worksheet and citation listing, and then audits every file it
+            wrote.</span>
+        </div>`}
+
+      <div class="rdyactions">
+        <button class="btn" id="filingBuild" ${state.building ? 'disabled' : ''}>${
+          state.building ? 'Building…' : (build.built_at ? 'Rebuild the package'
+                                                         : 'Build the filing package')}</button>
+        <button class="btn ghost" id="filingReview" ${
+          state.qa_running || state.building || !state.package_available ? 'disabled' : ''}>${
+          state.qa_running ? 'The reviewer is reading it…' : 'Run the independent filing review'}
+        </button>
+        ${state.package_available ?
+          `<a class="btn ghost sm" href="${BASE}/drafts/${PID}/download/filing.zip">Download the
+             package</a>` : ''}
+        <a class="btn ghost sm" href="${esc(state.patent_center_url || '')}" target="_blank"
+           rel="noopener">USPTO Patent Center ↗</a>
+        <span class="small" id="filingNote"></span>
       </div>
-      ${block('Blockers', report.blockers, 'bad')}
-      ${block('Formalities', report.formalities, 'warn')}
+      ${state.qa_available && state.qa_available.ok === false ?
+        `<p class="small muted">The independent reviewer cannot run here:
+          ${esc(state.qa_available.reason || '')}</p>` : ''}
+
+      ${build.error ? `<div class="rdy bad"><h4>The last build failed</h4>
+        <ul><li>${esc(build.error)}</li></ul></div>` : ''}
+
+      ${qa.status === 'complete' ? `
+        <div class="rdy ${qa.verdict === 'file_it' ? '' : qa.verdict === 'do_not_file' ?
+          'bad' : 'warn'}">
+          <h4>Independent filing review: ${esc(qa.verdict || '')}</h4>
+          <ul><li><b>${esc(qa.summary || '')}</b>
+            <code>${esc(qa.model || '')} · ${Math.round((qa.duration_ms || 0) / 1000)}s</code>
+          </li>${findingList(qa.findings || [])}</ul>
+          ${(qa.checked || []).length ? `<h4>What it verified and found correct</h4>
+            <ul>${(qa.checked || []).map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+        </div>` : qa.status === 'failed' ?
+        `<div class="rdy warn"><h4>The independent review did not run</h4>
+          <ul><li>${esc(qa.error || '')}</li></ul></div>` : ''}
+
+      ${findings.length ? `<div class="rdy ${counts[0] ? 'bad' : 'warn'}">
+        <h4>What the mechanical audit found in the package</h4>
+        <ul>${findingList(findings)}</ul></div>` : ''}
+
+      ${block('The draft itself', report.blockers, 'bad')}
+      ${block('Formalities in the draft', report.formalities, 'warn')}
+
+      <div class="rdy ${gaps.length ? 'bad' : ''}">
+        <h4>Who is filing${gaps.length ? `, ${gaps.length} field(s) still empty` : ''}</h4>
+        ${gaps.length ? `<ul>${gaps.map((g) =>
+          `<li><b>${esc(g.field)}</b> <code>${esc(g.rule)}</code></li>`).join('')}</ul>` :
+          '<ul><li>Every field the application data sheet and the declaration need is filled ' +
+          'in.</li></ul>'}
+        <div class="rdyactions"><button class="btn ghost sm" id="filingParties">${
+          gaps.length ? 'Fill them in' : 'Edit the filing details'}</button></div>
+        <div id="filingPartiesForm" hidden></div>
+      </div>
+
+      ${(build.sheets || []).length ? `<div class="rdy">
+        <h4>Drawing sheets in the package</h4>
+        <ul>${(build.measurements || []).map((m) => `<li><b>${
+          esc(m.label || 'no figure number')}</b> sheet ${esc(m.sheet_number)} ·
+          reference characters ${(m.character_cm || 0).toFixed(2)} cm
+          <code>37 CFR 1.84(p)(3) sets a floor of 0.32 cm${
+            m.character_pixels ? ` · measured at ${m.character_pixels} px on the artwork` :
+            ''}</code></li>`).join('')}</ul></div>` : ''}
+
       <div class="rdy">
         <h4>Claim counts for the fee calculation</h4>
         <ul><li>${fees.total} claims · ${fees.independent} independent ·
           ${fees.multiple_dependent} multiple dependent
           (counted as ${fees.billable} for fees)</li>
+          ${(fees.triggered || []).map((t) =>
+            `<li>${esc(String(t.quantity))} x ${esc(t.what || t.key || '')}
+               <code>fee code ${esc(t.code || '')}</code></li>`).join('')}
           ${(fees.surcharges || []).map((s) => `<li>${esc(s)}</li>`).join('')}
-          <li><a href="${esc(fees.fee_schedule_url)}" target="_blank" rel="noopener">Current fee
-            schedule ↗</a> - no amounts are printed here because they change.</li></ul>
+          <li><a href="${esc(state.fee_schedule_url || (fees.fee_schedule_url || ''))}"
+             target="_blank" rel="noopener">Current fee schedule ↗</a>. No amounts are printed
+             here because they change, and Patent Center totals them from these same counts.</li>
+        </ul>
       </div>
-      <div class="rdy"><h4>Patent Center submission formalities</h4>
-        <ul>${(report.remaining || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>
-      <div class="rdyactions">
-        <a class="btn" href="${BASE}/drafts/${PID}/download/filing.docx">Download the filing package</a>
-        <a class="btn ghost sm" href="${BASE}/drafts/${PID}/download/filing.txt">Plain text</a>
-        <a class="btn ghost sm" href="${esc(report.patent_center_url)}" target="_blank"
-           rel="noopener">USPTO Patent Center ↗</a>
+
+      <div class="rdy"><h4>What only a person can do</h4>
+        <ul>${(report.remaining || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>`;
+
+    const buildButton = $('filingBuild');
+    if (buildButton) buildButton.addEventListener('click', () => startFilingBuild(false));
+    const reviewButton = $('filingReview');
+    if (reviewButton) reviewButton.addEventListener('click', startFilingReview);
+    const partiesButton = $('filingParties');
+    if (partiesButton) partiesButton.addEventListener('click', toggleFilingParties);
+  }
+
+  async function startFilingBuild(review) {
+    const button = $('filingBuild');
+    if (button) { button.disabled = true; button.textContent = 'Building…'; }
+    try {
+      await api(`/drafts/${PID}/studio/filing/build`, {
+        method: 'POST', body: JSON.stringify({ review: !!review }) });
+    } catch (error) {
+      filingNote(error.message, 'bad');
+    }
+    renderFiling();
+  }
+
+  async function startFilingReview() {
+    const button = $('filingReview');
+    if (button) { button.disabled = true; button.textContent = 'The reviewer is reading it…'; }
+    try {
+      await api(`/drafts/${PID}/studio/filing/review`, { method: 'POST', body: '{}' });
+    } catch (error) {
+      filingNote(error.message, 'bad');
+    }
+    renderFiling();
+  }
+
+  function filingNote(text, tone) {
+    const box = document.getElementById('filingNote');
+    if (box) { box.textContent = text || ''; box.className = 'small ' + (tone || 'muted'); }
+  }
+
+  function toggleFilingParties() {
+    const holder = $('filingPartiesForm');
+    if (!holder) return;
+    if (!holder.hidden) { holder.hidden = true; return; }
+    const profile = (FILING.filing || {}).profile || {};
+    const values = profile.values || {};
+    const field = (key, label, value, required) =>
+      `<label class="fset"><span>${esc(label)}${required ? ' *' : ''}</span>
+        <input data-filing="${esc(key)}" value="${esc(value || '')}"></label>`;
+    holder.innerHTML = `
+      <div class="filingform">
+        <h5>Inventors (37 CFR 1.76(b)(1), 1.63(b))</h5>
+        <div id="filingInventors">${(values.inventors || [{}]).map((row, index) =>
+          `<div class="filinginv" data-index="${index}">
+            <b>Inventor ${index + 1}</b>
+            ${(profile.inventor_fields || []).map((f) =>
+              `<label class="fset"><span>${esc(f.label)}${f.required ? ' *' : ''}</span>
+                <input data-inv="${index}" data-key="${esc(f.key)}"
+                       value="${esc(row[f.key] || '')}"></label>`).join('')}
+          </div>`).join('')}</div>
+        <button class="btn ghost sm" id="filingAddInventor">Add another inventor</button>
+        <h5>Correspondence, applicant and status</h5>
+        ${(profile.fields || []).map((f) =>
+          field(f.key, f.label, values[f.key], f.required)).join('')}
+        <label class="fset"><span>Entity status (37 CFR 1.27, 1.29)</span>
+          <select data-filing="entity_status">${(profile.entity_choices || []).map((c) =>
+            `<option value="${esc(c.id)}"${c.id === values.entity_status ? ' selected' : ''}>${
+              esc(c.label)}</option>`).join('')}</select></label>
+        <label class="fset"><span>Application type</span>
+          <select data-filing="application_type">${(profile.application_types || []).map((c) =>
+            `<option value="${esc(c.id)}"${c.id === values.application_type ? ' selected' : ''}>${
+              esc(c.label)}</option>`).join('')}</select></label>
+        <div class="rdyactions"><button class="btn" id="filingSaveParties">Save</button>
+          <span class="small muted">Every value here is printed on a paper that gets filed.
+            Nothing is guessed at: a field left empty is named as missing on the paper that
+            needs it.</span></div>
       </div>`;
+    holder.hidden = false;
+    $('filingAddInventor').addEventListener('click', () => {
+      const values2 = collectFilingProfile();
+      values2.inventors.push({});
+      saveFilingProfile(values2, true);
+    });
+    $('filingSaveParties').addEventListener('click', () =>
+      saveFilingProfile(collectFilingProfile(), false));
+  }
+
+  function collectFilingProfile() {
+    const out = { inventors: [] };
+    document.querySelectorAll('#filingPartiesForm [data-filing]').forEach((input) => {
+      out[input.dataset.filing] = input.value;
+    });
+    document.querySelectorAll('#filingPartiesForm .filinginv').forEach((holder) => {
+      const row = {};
+      holder.querySelectorAll('[data-key]').forEach((input) => { row[input.dataset.key] = input.value; });
+      out.inventors.push(row);
+    });
+    return out;
+  }
+
+  async function saveFilingProfile(values, reopen) {
+    try {
+      await api(`/drafts/${PID}/studio/filing/profile`, {
+        method: 'POST', body: JSON.stringify(values) });
+    } catch (error) {
+      filingNote(error.message, 'bad');
+      return;
+    }
+    await renderFiling(true);
+    if (reopen) toggleFilingParties();
+    filingNote('Filing details saved. Rebuild the package to put them on the papers.', 'good');
   }
 
   // ── settings ───────────────────────────────────────────────────────────────

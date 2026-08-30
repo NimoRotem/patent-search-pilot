@@ -8,7 +8,7 @@ import draft_agent
 def test_api_auth_environment_does_not_inject_the_subscription_token(monkeypatch, tmp_path):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "stale-token")
-    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda *_a, **_k: "subscription-token")
 
     environment = draft_agent._environment(tmp_path, auth_mode="api")
 
@@ -20,7 +20,7 @@ def test_auto_auth_continues_a_resumed_run_through_api_after_subscription_limit(
         monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
     monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", False)
-    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda *_a, **_k: "subscription-token")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
     calls = []
 
@@ -52,7 +52,7 @@ def test_auto_auth_continues_a_resumed_run_through_api_after_subscription_limit(
 def test_auto_auth_skips_known_limited_subscription_on_later_runs(monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
     monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", True)
-    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda *_a, **_k: "subscription-token")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
     calls = []
 
@@ -211,7 +211,7 @@ def test_api_rate_limit_retry_keeps_a_resumed_drafting_session(monkeypatch, tmp_
 def test_resumed_run_restarts_from_workspace_when_conversation_is_missing(
         monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "subscription")
-    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda *_a, **_k: "subscription-token")
     monkeypatch.setattr(draft_agent, "new_session_id", lambda: "replacement-session")
     calls = []
 
@@ -260,7 +260,7 @@ def test_vertex_agent_takes_over_after_revoked_subscription_and_api_quota(
         monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
     monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", False)
-    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "revoked-subscription-token")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda *_a, **_k: "revoked-subscription-token")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
     calls = []
 
@@ -293,7 +293,7 @@ def test_vertex_agent_takes_over_after_subscription_and_api_quota_exhaustion(
         monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
     monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", False)
-    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda *_a, **_k: "subscription-token")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
     calls = []
 

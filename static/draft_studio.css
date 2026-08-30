@@ -900,3 +900,63 @@ body.modalopen { overflow: hidden; }
 .figbriefbody p { margin: 0 0 9px; }
 .figbriefbody p:last-child { margin-bottom: 0; }
 .figbriefbody b { color: var(--ink); }
+
+/* ── Filing ────────────────────────────────────────────────────────────────
+   The Filing tab shows three things in the order they happen: who is filing, what the built
+   package says, and what an independent reader made of it. A finding carries its severity as a
+   chip and its rule underneath, because "37 CFR 1.84(u)" is the part a practitioner acts on. */
+.pillsm {
+  display: inline-block;
+  margin: 0 5px 0 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--faint);
+  vertical-align: 1px;
+}
+.pillsm.bad { color: var(--bad); border-color: rgba(248, 81, 73, .35); }
+.pillsm.warn { color: var(--warn, #d29922); border-color: rgba(210, 153, 34, .35); }
+
+.filingform { margin-top: 12px; }
+.filingform h5 {
+  margin: 14px 0 8px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--faint);
+}
+.filingform h5:first-child { margin-top: 4px; }
+.filinginv {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.filinginv > b { display: block; margin-bottom: 7px; font-size: 12.5px; color: var(--ink); }
+label.fset {
+  display: grid;
+  grid-template-columns: minmax(150px, 34%) 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+label.fset > span { line-height: 1.4; }
+label.fset input, label.fset select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+label.fset input:focus, label.fset select:focus { outline: 1px solid var(--accent, #58a6ff); }
+@media (max-width: 640px) {
+  label.fset { grid-template-columns: 1fr; gap: 3px; }
+}

@@ -1727,6 +1727,31 @@ class StudioRepository:
             cur.execute("UPDATE app_drafting_projects SET settings=%s::jsonb,updated_at=now() "
                         "WHERE id=%s", (_dumps(dict(values)), int(project_id)))
 
+    def save_filing_profile(self, project_id: int, profile: Mapping[str, Any]) -> None:
+        """Store the parties, addresses and status the ADS and the declaration need.
+
+        Merged into the settings blob rather than written whole, and rather than given eight
+        columns of its own: it is one document's worth of fields on a table three other programs
+        write to, and the Settings panel must not be able to delete it by saving a model choice.
+        """
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_drafting_projects "
+                "SET settings=coalesce(settings,'{}'::jsonb)||%s::jsonb,updated_at=now() "
+                "WHERE id=%s", (_dumps({"filing": dict(profile)}), int(project_id)))
+
+    def filing_profile(self, project_id: int) -> dict[str, Any]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT settings->'filing' AS filing FROM app_drafting_projects "
+                        "WHERE id=%s", (int(project_id),))
+            row = cur.fetchone() or {}
+        value = row.get("filing")
+        if isinstance(value, str):
+            value = _json(value, {})
+        return dict(value) if isinstance(value, dict) else {}
+
     def set_draft_model(self, project_id: int, model: str) -> str:
         """Choose the model tier this project drafts on. '' means the host default."""
         self._ready()
