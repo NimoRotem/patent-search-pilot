@@ -5930,3 +5930,63 @@ def test_the_chosen_effort_is_remembered_so_the_chip_does_not_lie():
     assert "settings=coalesce(settings,'{}'::jsonb)||%s::jsonb" in sql
     assert json.loads(params[0]) == {"terminal_effort": "max"}
     assert repository.terminal_effort(7) == "max"
+
+
+# =============================================================================================
+# Who may have a drafting terminal
+# =============================================================================================
+def _service_for(principal_is_admin: bool, monkeypatch, **env):
+    import draft_studio_service
+    for key, value in {"DRAFT_TERMINAL_USERS": ""}.items():
+        monkeypatch.setenv(key, value)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    class DraftingService:
+        class repository:
+            @staticmethod
+            def get_project(_principal, project_id):
+                return {"id": project_id, "user_id": 91, "status": "ready"}
+
+    service = draft_studio_service.StudioService(DraftingService(), repository=object())
+    principal = drafting.Principal(user_id=91, is_admin=principal_is_admin, is_active=True)
+    return service, principal
+
+
+def test_a_drafting_terminal_is_not_handed_to_anyone_who_signs_up(monkeypatch):
+    """A drafting terminal is a real shell on the machine that serves this site.
+
+    The agent runs interactively with permissions bypassed, as the operator's own unix user: it
+    can read the application's .env, the box's credentials and every other tenant's files. That is
+    the right capability for the person who owns the box and the wrong one for a stranger, and
+    registration on this site is OPEN. Everything else in the studio is unaffected.
+    """
+    service, stranger = _service_for(False, monkeypatch)
+    assert service._may_use_terminal(stranger) is False
+
+    state = service.terminal_state(stranger, 7)
+    assert state["available"] is False
+    assert "not enabled for this account" in state["reason"]
+    #  ...and it is a refusal, not a quiet no-op, on every door into the agent.
+    for call in (lambda: service.start_terminal(stranger, 7),
+                 lambda: service.send_to_agent(stranger, 7, "write the claims"),
+                 lambda: service.terminal_tail(stranger, 7),
+                 lambda: service.interrupt_terminal(stranger, 7),
+                 lambda: service.set_terminal_model(stranger, 7, "claude-opus-5"),
+                 lambda: service.stop_terminal(stranger, 7)):
+        with pytest.raises(drafting.DraftingPermissionDenied):
+            call()
+
+
+def test_the_owner_of_the_box_has_one(monkeypatch):
+    service, admin = _service_for(True, monkeypatch)
+    assert service._may_use_terminal(admin) is True
+
+
+def test_an_account_can_be_named_without_a_code_change(monkeypatch):
+    """So widening this is a supervisor env line, not a deploy."""
+    service, member = _service_for(False, monkeypatch, DRAFT_TERMINAL_USERS="91, someone@else")
+    assert service._may_use_terminal(member) is True
+
+    service, other = _service_for(False, monkeypatch, DRAFT_TERMINAL_USERS="404,nobody@else")
+    assert service._may_use_terminal(other) is False

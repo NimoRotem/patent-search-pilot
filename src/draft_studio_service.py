@@ -58,6 +58,10 @@ MAX_AUTOMATIC_FILING_REPAIR_TURNS = max(
 _AUTOMATIC_FILING_REPAIR_KEY = re.compile(r"^auto-filing-repair-(\d+)-(\d+)$")
 _FILING_GATE_EXHAUSTED = "The automatic filing gate could not clear:"
 
+TERMINAL_NOT_FOR_THIS_ACCOUNT = (
+    "A drafting agent is not enabled for this account. Everything else in the studio works: the "
+    "draft, the review, the sources, the drawings and hand editing.")
+
 _STOP = threading.Event()
 _WAKE = threading.Event()
 _THREAD: threading.Thread | None = None
@@ -250,9 +254,14 @@ class StudioService:
         #  and the opening instruction is typed into it. Started in the background because the CLI
         #  takes a few seconds to reach its composer and the person should be looking at their
         #  studio by then, not at a spinner on the intake form.
-        threading.Thread(
-            target=self._open_first_agent, name=f"draft-open-{project['id']}", daemon=True,
-            args=(principal, int(project["id"]), input_kind)).start()
+        if self._may_use_terminal(principal):
+            threading.Thread(
+                target=self._open_first_agent, name=f"draft-open-{project['id']}", daemon=True,
+                args=(principal, int(project["id"]), input_kind)).start()
+        else:
+            self.repository.add_message(
+                project["id"], "system",
+                TERMINAL_NOT_FOR_THIS_ACCOUNT + " Everything you supplied is saved.")
         return project
 
     def _open_first_agent(self, principal: drafting.Principal, project_id: int,
@@ -455,11 +464,57 @@ class StudioService:
 
     # -- the drafting agent's terminal ------------------------------------------------------------
     #
-    #  Every method here re-checks ownership first, exactly like the rest of the class, because a
-    #  drafting terminal is a shell with the draft in it: reading its screen, typing into it and
-    #  killing it are all things only this project's owner may do.
+    #  Every method here re-checks ownership first, exactly like the rest of the class. Ownership
+    #  is not the whole of it, though: see _may_use_terminal.
+    def _may_use_terminal(self, principal: drafting.Principal) -> bool:
+        """Whether this account may have a drafting agent at all.
+
+        A DRAFTING TERMINAL IS A REAL SHELL. The agent runs interactively with permissions
+        bypassed, as the operator's own unix user, on the machine that serves this site: it can
+        read the application's .env, the box's credentials and every other tenant's files. That is
+        the right capability for the person who owns the box, and it is the same thing their own
+        dashboard gives them.
+
+        It is the wrong capability for a stranger, and registration on this site is OPEN - anyone
+        can sign up. So the terminal is admin-only unless an account is named in
+        DRAFT_TERMINAL_USERS (comma-separated ids or emails). Everything else in the studio - the
+        draft, review, sources, history, filing, uploads, hand editing - is unaffected.
+
+        The real fix, when this needs to be open to customers, is a separate unix user per agent
+        with no read access to the app: a permission ALLOW-LIST cannot do it, because a blanket
+        Bash deny removes the tool the publish contract needs and a deny LIST is a blacklist
+        somebody walks around with /bin/cat.
+        """
+        if getattr(principal, "is_admin", False):
+            return True
+        named = {item.strip().lower()
+                 for item in os.environ.get("DRAFT_TERMINAL_USERS", "").split(",")
+                 if item.strip()}
+        if not named:
+            return False
+        if str(principal.user_id) in named:
+            return True
+        try:
+            import accounts
+            email = str((accounts.get_user(principal.user_id) or {}).get("email") or "")
+        except Exception:                                       # noqa: BLE001 - deny, never crash
+            return False
+        return bool(email) and email.lower() in named
+
+    def _require_terminal(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
+        project = self._project(principal, project_id)
+        if not self._may_use_terminal(principal):
+            raise drafting.DraftingPermissionDenied(TERMINAL_NOT_FOR_THIS_ACCOUNT)
+        return project
+
     def terminal_state(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
         self._project(principal, project_id)
+        if not self._may_use_terminal(principal):
+            return {"available": False, "reason": TERMINAL_NOT_FOR_THIS_ACCOUNT,
+                    "status": "stopped", "detail": "", "exists": False, "running": False,
+                    "models": [], "efforts": [], "default_model": "", "default_effort": "",
+                    "model": "", "effort": "", "pane_width": 0, "pane_total": 0,
+                    "session": ""}
         available = draft_terminal.availability()
         state = draft_terminal.state(project_id)
         return {**state, "available": bool(available.get("ok")),
@@ -483,7 +538,7 @@ class StudioService:
         memory" means in practice: a new conversation, no transcript of the old one, and nothing
         it learned last week.
         """
-        project = self._project(principal, project_id)
+        project = self._require_terminal(principal, project_id)
         if project.get("status") == "archived":
             raise drafting.DraftingConflict("Restore this project before drafting on it.")
         try:
@@ -507,13 +562,13 @@ class StudioService:
 
     def terminal_tail(self, principal: drafting.Principal, project_id: int, *,
                       known_lines: int = 0, last_hash: str = "") -> dict[str, Any]:
-        self._project(principal, project_id)
+        self._require_terminal(principal, project_id)
         return draft_terminal.tail(project_id, known_lines=known_lines, last_hash=last_hash)
 
     def send_to_agent(self, principal: drafting.Principal, project_id: int,
                       message: str) -> dict[str, Any]:
         """Type a message into the drafting agent, starting it first if it is not running."""
-        project = self._project(principal, project_id)
+        project = self._require_terminal(principal, project_id)
         if project.get("status") == "archived":
             raise drafting.DraftingConflict("Restore this project before drafting on it.")
         body = str(message or "").replace("\x00", "").strip()
@@ -537,19 +592,19 @@ class StudioService:
 
     def terminal_keys(self, principal: drafting.Principal, project_id: int,
                       keys: Sequence[str]) -> list[str]:
-        self._project(principal, project_id)
+        self._require_terminal(principal, project_id)
         try:
             return draft_terminal.send_keys(project_id, keys)
         except draft_terminal.TerminalError as exc:
             raise drafting.DraftingValidationError(str(exc)) from exc
 
     def interrupt_terminal(self, principal: drafting.Principal, project_id: int) -> bool:
-        self._project(principal, project_id)
+        self._require_terminal(principal, project_id)
         return draft_terminal.interrupt(project_id)
 
     def set_terminal_model(self, principal: drafting.Principal, project_id: int,
                            model: str) -> str:
-        self._project(principal, project_id)
+        self._require_terminal(principal, project_id)
         try:
             chosen = draft_terminal.set_model(project_id, model)
         except draft_terminal.TerminalError as exc:
@@ -561,7 +616,7 @@ class StudioService:
 
     def set_terminal_effort(self, principal: drafting.Principal, project_id: int,
                             effort: str) -> str:
-        self._project(principal, project_id)
+        self._require_terminal(principal, project_id)
         try:
             chosen = draft_terminal.set_effort(project_id, effort)
         except draft_terminal.TerminalError as exc:
@@ -570,7 +625,7 @@ class StudioService:
         return chosen
 
     def stop_terminal(self, principal: drafting.Principal, project_id: int) -> bool:
-        self._project(principal, project_id)
+        self._require_terminal(principal, project_id)
         return draft_terminal.kill(project_id)
 
     # -- what the agent publishes -----------------------------------------------------------------
