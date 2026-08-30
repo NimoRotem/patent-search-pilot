@@ -1444,6 +1444,40 @@ details.draftpanel>summary{list-style:none;cursor:pointer;margin:-19px;padding:1
 .startfieldset .checkrow{display:flex;gap:14px;flex-wrap:wrap;margin:7px 0 0}
 .startfieldset .fieldlabel{display:block;padding:0;margin:14px 0 2px}
 
+/*  A collapsed section is still a section. The summary carries the number, the OPTIONAL badge and
+    one line saying what is inside, so nothing has to be opened to find out whether it is wanted.
+    The marker is drawn rather than left to the browser, which gives three different triangles. */
+.startfold{padding:0;margin-bottom:16px}
+.startfold>summary{list-style:none;cursor:pointer;padding:18px 22px;display:flex;
+  align-items:baseline;gap:12px;flex-wrap:wrap}
+.startfold>summary::-webkit-details-marker{display:none}
+.startfold>summary::before{content:'';flex:none;width:7px;height:7px;margin:0 2px 0 0;
+  border-right:1.7px solid var(--faint);border-bottom:1.7px solid var(--faint);
+  transform:rotate(-45deg) translate(-2px,-2px);transition:transform .14s ease}
+.startfold[open]>summary::before{transform:rotate(45deg) translate(-1px,-1px)}
+.startfold>summary h2{display:inline;font-size:16px;margin:0}
+.startfold>summary .foldnote{font-size:12.5px;color:var(--faint)}
+.startfold>summary:hover .foldnote{color:var(--muted)}
+.startfold>*:not(summary){margin-left:22px;margin-right:22px}
+.startfold>*:last-child{margin-bottom:20px}
+
+/*  One card per inventor. The fields are the ones 37 CFR 1.76 and 1.63 ask for, so what is typed
+    here is what appears on the application data sheet and the declaration. */
+.invcard{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px;
+  margin:0 0 10px;background:var(--s2)}
+.invhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.invhead b{font-size:13px}
+/*  `.btn` sets display, and an author rule setting display beats the UA's `[hidden]{display:none}`
+    outright. The same trap is documented twice in draft_studio.css; this is the third place it
+    has bitten, and here it left a Remove button over the only inventor on the form. */
+.invdrop[hidden]{display:none!important}
+.invgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 14px}
+.invgrid label{display:block;margin:0;font-weight:500}
+.invgrid label>span{display:block;font-size:11.5px;color:var(--muted);margin-bottom:3px}
+.invgrid .req{font-style:normal;color:var(--faint);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.04em}
+.invgrid input{margin:0}
+
 .studio{max-width:1560px;margin:0 auto;padding:18px 22px 26px}
 .studiohead{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:14px}
 .studiotitle h1{font-size:22px;margin:2px 0 6px}

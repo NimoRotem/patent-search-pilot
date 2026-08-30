@@ -71,7 +71,8 @@ _MIGRATIONS = (_MIGRATION, _SQL_DIR / "018_draft_studio_editing.sql",
                _SQL_DIR / "020_draft_research_rounds.sql",
                _SQL_DIR / "021_draft_project_settings.sql",
                _SQL_DIR / "022_draft_turn_spend.sql",
-               _SQL_DIR / "023_draft_source_review_cache.sql")
+               _SQL_DIR / "023_draft_source_review_cache.sql",
+               _SQL_DIR / "024_draft_usage.sql")
 
 
 class StudioError(drafting.DraftingError):

@@ -45,6 +45,7 @@ import drafting, draft_export, draft_worker
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
 import draft_novelty, draft_research                # re-search rounds and their reading
 import draft_studio, draft_studio_service, draft_uspto, draft_workspace
+import draft_usage                                  # tokens and metered-equivalent cost
 import filing_profile, filing_qa, filing_service      # the filing package and its second reader
 import claim_chart, translate, drawings          # ported per-card enrichment
 import ingest_input                                # front-door document / patent-link -> search brief
@@ -6358,9 +6359,58 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
     if cards and not selected:
         selected = [card.get("pub") for card in cards[:5] if card.get("pub")]
     source_document = (report_view or {}).get("query_document") or {}
+    #  The inventor rows the start page collects are the ADS rows, so nothing is typed twice:
+    #  what is entered here lands in the project's filing profile and the Filing tab opens with
+    #  those fields already filled and its gap list already shorter.
+    rows = filing_profile.resolve({"inventors": values.get("inventor_rows") or []},
+                                  {"inventors": values.get("inventors") or ""})["inventors"]
     return {"choices": choices, "report_view": report_view, "search_slug": slug,
             "source_document": source_document,
-            "selected": set(selected), "values": values, "error": error}
+            "selected": set(selected), "values": values, "error": error,
+            "inventor_fields": [{"key": key, "label": label, "required": required}
+                                for key, label, required in filing_profile.INVENTOR_FIELDS],
+            "inventor_rows": rows or [{}]}
+
+
+def _inventor_rows_from_form(form) -> list[dict[str, str]]:
+    """The inventor cards the start page posted, in order, with the empty ones dropped.
+
+    Named ``inventor_<index>_<field>`` rather than as parallel lists, because a browser posts
+    parallel lists in document order and one empty field in the middle silently shifts every
+    value after it onto the wrong inventor.
+    """
+    rows: dict[int, dict[str, str]] = {}
+    keys = {key for key, _label, _required in filing_profile.INVENTOR_FIELDS}
+    for name in form.keys():
+        match = re.fullmatch(r"inventor_(\d{1,2})_([a-z_]+)", name)
+        if not match or match.group(2) not in keys:
+            continue
+        rows.setdefault(int(match.group(1)), {})[match.group(2)] = form.get(name, "")
+    out = []
+    for index in sorted(rows):
+        row = rows[index]
+        if any(str(value or "").strip() for value in row.values()):
+            out.append(row)
+    return out
+
+
+def _apply_filing_profile(project_id: int, rows, applicant: str) -> None:
+    """Put what the start page collected into the project's filing profile.
+
+    Best effort on purpose: the project already exists by this point and a bad address must not
+    be the reason drafting never starts. Whatever does not land here is asked for again, by name,
+    on the Filing tab.
+    """
+    if not rows and not applicant:
+        return
+    try:
+        repository = draft_studio.StudioRepository()
+        values = filing_profile.clean(
+            {"inventors": rows, "applicant_name": applicant} if applicant
+            else {"inventors": rows}, repository.filing_profile(project_id))
+        repository.save_filing_profile(project_id, values)
+    except Exception:                                   # noqa: BLE001 - never block a draft
+        traceback.print_exc()
 
 
 def _structured_drafting_notes(values) -> str:
@@ -6428,8 +6478,12 @@ def drafts_list():
         user, principal = _draft_identity()
         include_all = bool(principal.is_admin and request.args.get("all") == "1")
         projects = _drafting_service().list_projects(principal, include_all=include_all)
+        #  One query for the whole list rather than one per row, and no scan: the list is not
+        #  where anybody watches a number move, and a scan per project would read every
+        #  transcript on the box to draw a page nobody is spending on.
+        usage = draft_usage.totals_for(project["id"] for project in projects)
         return render_template("drafts.html", projects=projects, include_all=include_all,
-                               user=user)
+                               user=user, usage=usage, tokens=draft_usage.compact)
     except drafting.DraftingError as exc:
         return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
 
@@ -6719,6 +6773,13 @@ def draft_start():
                    "government_support_details", "claim_strategy", "means_plus_function",
                    "protected_terms", "filing_deadline")}
         values["claim_types"] = request.form.getlist("claim_types")
+        inventor_rows = _inventor_rows_from_form(request.form)
+        if inventor_rows:
+            #  The cards are the authority when they hold anything. The plain list stays on the
+            #  project because the brief the agent reads is written from it.
+            values["inventors"] = "\n".join(
+                name for name in (filing_profile.full_name(row) for row in inventor_rows) if name)
+        values["inventor_rows"] = inventor_rows
         values = _draft_party_defaults(user, values)
         try:
             # A finished owned search is already a complete intake. The action on the report is a
@@ -6742,6 +6803,8 @@ def draft_start():
                     inventor_notes=_structured_drafting_notes(request.form),
                     applicant=direct_values.get("applicant") or "",
                     inventors=direct_values.get("inventors") or "", uploads=[])
+                _apply_filing_profile(project["id"], inventor_rows,
+                                      direct_values.get("applicant") or "")
                 return redirect(url_for("draft_studio_page", project_id=project["id"], created="1"))
 
             uploads = _uploads_from_request()
@@ -6761,6 +6824,7 @@ def draft_start():
                 input_kind=values["input_kind"] or "description", search_slug=slug,
                 publication_numbers=selected, inventor_notes=_structured_drafting_notes(request.form),
                 applicant=values["applicant"], inventors=values["inventors"], uploads=uploads)
+            _apply_filing_profile(project["id"], inventor_rows, values.get("applicant") or "")
             return redirect(url_for("draft_studio_page", project_id=project["id"], created="1"))
         except drafting.DraftingError as exc:
             ctx = _draft_new_context(user, principal, slug, selected, values, str(exc))
@@ -6918,10 +6982,31 @@ def api_draft_terminal(project_id):
 def api_draft_terminal_tail(project_id):
     try:
         _user, principal = _draft_identity()
-        return jsonify(_studio().terminal_tail(
+        payload = _studio().terminal_tail(
             principal, project_id,
             known_lines=request.args.get("known_lines", type=int) or 0,
-            last_hash=str(request.args.get("last_hash") or "")))
+            last_hash=str(request.args.get("last_hash") or ""))
+        #  The counter rides the terminal's own poll rather than a second timer of its own. That
+        #  is what makes it move while the agent works, and `draft_usage` rate-limits the disk
+        #  read so a one-second poll does not turn into a one-second scan.
+        try:
+            payload["usage"] = draft_usage.refresh(project_id)
+        except Exception:                                    # noqa: BLE001 - never break the tail
+            traceback.print_exc()
+        return jsonify(payload)
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/usage")
+def api_draft_usage(project_id):
+    """Tokens and metered-equivalent cost for one draft, by source and by model."""
+    try:
+        _user, principal = _draft_identity()
+        _drafting_service().get_project(principal, project_id, include_versions=False)
+        return jsonify({"ok": True,
+                        "usage": draft_usage.refresh(
+                            project_id, force=bool(request.args.get("force")))})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
 

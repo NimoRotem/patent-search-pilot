@@ -49,8 +49,13 @@
       </div>
     </section>
 
-    <section class="panel startpanel">
-      <h2>2 · Prior art <span class="opt">optional</span></h2>
+    {#  Two and three open on demand. Neither is needed to start drafting, and a page that asks
+        for eleven address fields before the first sentence reads as a form rather than as a
+        place to describe an invention. Both are marked so nobody has to open one to find out
+        whether it wants them. #}
+    <details class="panel startpanel startfold">
+      <summary><h2>2 · Prior art <span class="opt">optional</span></h2>
+        <span class="foldnote">A search you have run, or references to upload</span></summary>
       <p class="small muted">The draft is better with it. The agent reads each reference and
         writes claims that step around what it actually teaches. Without any, the draft is written
         from your description alone and says so.</p>
@@ -90,10 +95,12 @@
       <input type="file" id="priorart" name="files" accept=".pdf,.docx,.txt" multiple>
       <span class="small muted">Patents, papers, product manuals: anything the draft must take
         account of. You can add more at any point in the conversation.</span>
-    </section>
+    </details>
 
-    <section class="panel startpanel">
-      <h2>3 · Who is filing <span class="opt">optional now, required to file</span></h2>
+    <details class="panel startpanel startfold">
+      <summary><h2>3 · Who is filing <span class="opt">optional now, required to file</span></h2>
+        <span class="foldnote">Inventors, applicant, priority, and how the claims should be
+          written</span></summary>
       <div class="startgrid">
         <div>
           <label for="title">Working title</label>
@@ -106,8 +113,39 @@
                  value="{{ values.applicant or current_user.default_applicant or '' }}">
         </div>
       </div>
-      <label for="inventors">Named inventors, one per line</label>
-      <textarea id="inventors" name="inventors" rows="3" maxlength="2000">{{ values.inventors or current_user.default_inventors or '' }}</textarea>
+
+      {#  One card per inventor, holding the fields 37 CFR 1.76 and 1.63 need. Entered once here,
+          they appear on the application data sheet and the declaration without being typed
+          again. A name alone is enough to start; the rest is marked as what a filing needs. #}
+      <span class="fieldlabel">Named inventors</span>
+      <p class="small muted">A name is enough to start drafting. The residence and mailing
+        address are what the application data sheet and the declaration ask for, and every one
+        left empty is listed as missing on the paper that needs it.</p>
+      <div id="inventorList">
+        {% for row in inventor_rows %}
+        {% set index = loop.index0 %}
+        <div class="invcard" data-index="{{ index }}">
+          <div class="invhead">
+            <b>Inventor <span class="invnum">{{ loop.index }}</span></b>
+            <button type="button" class="btn ghost xs invdrop"
+                    {% if inventor_rows|length < 2 %}hidden{% endif %}>Remove</button>
+          </div>
+          <div class="invgrid">
+            {% for field in inventor_fields %}
+            <label>
+              <span>{{ field.label }}{% if field.required %} <i class="req">needed to
+                file</i>{% endif %}</span>
+              <input type="text" maxlength="300"
+                     name="inventor_{{ index }}_{{ field.key }}"
+                     data-invkey="{{ field.key }}"
+                     value="{{ row.get(field.key) or '' }}">
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn ghost sm" id="addInventor">Add another inventor</button>
 
       <fieldset class="startfieldset">
         <legend>Priority claim</legend>
@@ -174,7 +212,7 @@
             value="{{ values.filing_deadline or '' }}">
         </div>
       </div>
-    </section>
+    </details>
 
     <div class="startactions">
       <button class="btn big" type="submit">Start drafting</button>
@@ -221,6 +259,46 @@
     else url.searchParams.delete('search_slug');
     window.location.href = url.toString();
   });
+  //  ── inventors ────────────────────────────────────────────────────────────────────────────
+  //  An application can have any number of them and the form has to be able to say so. The rows
+  //  are renumbered on every change rather than given permanent ids, because the field NAMES
+  //  carry the index to the server and a gap in that sequence would drop an inventor silently.
+  const list = document.getElementById('inventorList');
+  const addInventor = document.getElementById('addInventor');
+
+  function renumberInventors() {
+    const cards = [...list.querySelectorAll('.invcard')];
+    cards.forEach((card, index) => {
+      card.dataset.index = index;
+      card.querySelector('.invnum').textContent = index + 1;
+      card.querySelectorAll('input[data-invkey]').forEach((input) => {
+        input.name = `inventor_${index}_${input.dataset.invkey}`;
+      });
+      const drop = card.querySelector('.invdrop');
+      if (drop) drop.hidden = cards.length < 2;
+    });
+  }
+
+  if (list && addInventor) {
+    addInventor.addEventListener('click', () => {
+      const card = list.querySelector('.invcard').cloneNode(true);
+      card.querySelectorAll('input').forEach((input) => { input.value = ''; });
+      list.appendChild(card);
+      renumberInventors();
+      const first = card.querySelector('input');
+      if (first) first.focus();
+    });
+    list.addEventListener('click', (event) => {
+      const drop = event.target.closest('.invdrop');
+      if (!drop) return;
+      const cards = list.querySelectorAll('.invcard');
+      if (cards.length < 2) return;
+      drop.closest('.invcard').remove();
+      renumberInventors();
+    });
+    renumberInventors();
+  }
+
   //  A first draft is minutes of work started by one click; a double submit would queue two.
   const form = document.getElementById('startform');
   form.addEventListener('submit', () => {

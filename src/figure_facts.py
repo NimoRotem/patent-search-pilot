@@ -211,7 +211,7 @@ def numeral_context(numerals: Sequence[Mapping[str, str]]) -> str:
 
 def inspect_sheet(png: bytes, *, label: str = "",
                   numerals: Sequence[Mapping[str, str]] = (),
-                  cache: bool = True) -> dict[str, Any]:
+                  cache: bool = True, project_id: int = 0) -> dict[str, Any]:
     """One inventory of one sheet, cached on the image bytes and the numeral table together.
 
     The table is part of the key because it is part of the question: "is numeral 14 pointing at
@@ -223,7 +223,7 @@ def inspect_sheet(png: bytes, *, label: str = "",
         stored = _cache_get(digest, context)
         if stored:
             return stored
-    result = _vision_call(png, label=label, context=context)
+    result = _vision_call(png, label=label, context=context, project_id=project_id)
     result["sha256"] = digest
     result["label"] = str(label or "")
     if cache:
@@ -263,7 +263,8 @@ def _guard():
         return None
 
 
-def _vision_call(png: bytes, *, label: str, context: str = "") -> dict[str, Any]:
+def _vision_call(png: bytes, *, label: str, context: str = "",
+                 project_id: int = 0) -> dict[str, Any]:
     """Vertex first, because it needs no key from this VM; Anthropic when a key is configured."""
     guard = _guard()
     if guard is not None:
@@ -294,6 +295,14 @@ def _vision_call(png: bytes, *, label: str, context: str = "") -> dict[str, Any]
                 from llm_spend_guard import price
                 guard.record(usd=price(model, usage), model=model, usage=usage,
                              detail="filing sheet inventory")
+            except Exception:                                      # noqa: BLE001
+                pass
+        #  Only on a cache MISS, which is the only place a sheet actually costs anything: the
+        #  caller reaches this function once per distinct image and never again.
+        if project_id:
+            try:
+                import draft_usage
+                draft_usage.record(int(project_id), source="figures", model=model, usage=usage)
             except Exception:                                      # noqa: BLE001
                 pass
         result = normalize(payload)

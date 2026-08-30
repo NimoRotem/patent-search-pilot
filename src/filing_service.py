@@ -70,7 +70,8 @@ def package_bytes(project_id: int) -> bytes:
 # Reading the sheets
 # =============================================================================================
 def inspect_sheets(figures: Sequence[Mapping[str, Any]],
-                   numerals: Sequence[Mapping[str, str]] = ()) -> dict[str, dict[str, Any]]:
+                   numerals: Sequence[Mapping[str, str]] = (),
+                   project_id: int = 0) -> dict[str, dict[str, Any]]:
     """One inventory per distinct uploaded image, keyed by its sha256."""
     out: dict[str, dict[str, Any]] = {}
     for figure in figures:
@@ -82,7 +83,8 @@ def inspect_sheets(figures: Sequence[Mapping[str, Any]],
             continue
         try:
             out[key] = figure_facts.inspect_sheet(
-                png, label=str(figure.get("label") or ""), numerals=numerals)
+                png, label=str(figure.get("label") or ""), numerals=numerals,
+                project_id=int(project_id))
         except Exception as exc:                                   # noqa: BLE001
             traceback.print_exc()
             out[key] = {"error": f"{type(exc).__name__}: {exc}"[:300],
@@ -120,7 +122,7 @@ def build(*, project: Mapping[str, Any], version: Mapping[str, Any],
     """Inspect, reconcile, build, audit. Returns the summary; writes the package to disk."""
     project_id = int(project["id"])
     sections = dict(version.get("sections") or {})
-    sheets = inspect_sheets(figures, numerals)
+    sheets = inspect_sheets(figures, numerals, project_id=project_id)
     reconciliation = reconcile(sheets=sheets, sections=sections, numerals=numerals)
     built = filing_pack.build(project=project, version=version, profile=profile,
                               figures=figures, sheet_facts=sheets, citations=citations)
@@ -200,14 +202,15 @@ def start_build(*, project: Mapping[str, Any], version: Mapping[str, Any],
 # What the drafting agent asks for
 # =============================================================================================
 def agent_report(*, sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
-                 figures: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+                 figures: Sequence[Mapping[str, Any]],
+                 project_id: int = 0) -> dict[str, Any]:
     """The sheet inventory and the reconciliation, written for the agent that has to fix it.
 
     The drafting agent owns the drawing TEXT and does not own the drawings. Handing it a list of
     what is actually printed on each sheet is the difference between writing a Brief Description
     from the brief it wrote earlier and writing one from the sheet the user supplied.
     """
-    sheets = inspect_sheets(figures, numerals)
+    sheets = inspect_sheets(figures, numerals, project_id=int(project_id or 0))
     findings = reconcile(sheets=sheets, sections=dict(sections), numerals=list(numerals))
     inventory = []
     for sheet in sheets.values():

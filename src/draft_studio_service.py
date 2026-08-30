@@ -655,7 +655,8 @@ class StudioService:
                 figures.append({"label": draft_figures.canonical_figure_label(
                     figure.get("figure_label")), "png": png})
         return filing_service.agent_report(
-            sections=snapshot["sections"], numerals=snapshot["numerals"], figures=figures)
+            sections=snapshot["sections"], numerals=snapshot["numerals"], figures=figures,
+            project_id=int(project_id))
 
     def publish_workspace(self, project_id: int, token: str, *, note: str = "",
                           check: bool = False) -> dict[str, Any]:

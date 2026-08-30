@@ -15,10 +15,20 @@
             be filed today; the numbering is bookkeeping and belongs in History. #}
         <span id="stVersion">{% if not project.latest_version_no %}no draft yet{% endif %}</span>
         <span id="stVerdict"></span>
+        {#  What this application has cost so far, updated off the terminal's own poll. Clicking
+            it opens the breakdown: which agent spent it and on which model. #}
+        <button type="button" class="usagechip" id="stUsage" aria-expanded="false"
+                title="Tokens and metered-equivalent cost for this draft">
+          <span id="stUsageTokens">0</span> tokens
+          <span class="usagesep">·</span>
+          <span id="stUsageCost">$0.00</span>
+          <span class="caret">&#9662;</span>
+        </button>
         {% if project.search_slug %}
         <a href="{{ request.script_root }}/report/{{ project.search_slug }}">prior-art search ↗</a>
         {% endif %}
       </div>
+      <div class="usagepanel" id="stUsagePanel" hidden></div>
     </div>
     <div class="studioactions">
       <a class="btn ghost sm" id="stDownloadMd"

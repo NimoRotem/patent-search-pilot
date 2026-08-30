@@ -27,7 +27,9 @@
       <div class="draftrow-main">
         <div class="draftrow-top">
           <span class="statuspill status-{{ d.status }}">{{ d.status }}</span>
-          <span class="small muted">version {{ d.latest_version_no or 0 }} · {{ d.reference_count or 0 }} sources</span>
+          <span class="small muted">version {{ d.latest_version_no or 0 }} · {{ d.reference_count or 0 }} sources{%
+            if usage.get(d.id) %} · {{ tokens(usage[d.id].tokens_total) }} tokens ·
+            ${{ '%.2f'|format(usage[d.id].usd) }}{% endif %}</span>
         </div>
         <h2><a href="{{ request.script_root }}/drafts/{{ d.id }}/studio">{{ d.title }}</a></h2>
         <p class="small muted">{% if d.search_slug %}From report <a href="{{ request.script_root }}/report/{{ d.search_slug }}">{{ d.search_slug }}</a>{% else %}No prior-art search attached{% endif %}{% if include_all %} · {{ d.full_name }} · {{ d.email }}{% endif %}</p>

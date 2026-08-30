@@ -960,3 +960,55 @@ label.fset input:focus, label.fset select:focus { outline: 1px solid var(--accen
 @media (max-width: 640px) {
   label.fset { grid-template-columns: 1fr; gap: 3px; }
 }
+
+/* ── Tokens and cost ───────────────────────────────────────────────────────
+   The chip sits in the masthead beside the status because it is about the whole application, and
+   it moves while the agent works. The panel under it says where the tokens went and, in words,
+   that the dollar figure is what the work WOULD have cost: the agent runs on a subscription and a
+   number nobody qualifies gets read as a bill. */
+.usagechip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.usagechip:hover { color: var(--ink); border-color: var(--faint); }
+.usagechip .usagesep { color: var(--faint); }
+.usagechip .caret { font-size: 9px; color: var(--faint); }
+.usagepanel {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  max-width: 620px;
+}
+.usagetable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-bottom: 10px;
+}
+.usagetable th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--faint);
+  font-weight: 500;
+  padding: 0 0 5px;
+  border-bottom: 1px solid var(--line);
+}
+.usagetable td { padding: 4px 0; color: var(--muted); }
+.usagetable td:first-child, .usagetable th:first-child { padding-right: 14px; }
+.usagetable .num { text-align: right; font-variant-numeric: tabular-nums; padding-left: 14px; }
+.usagetable tfoot td { border-top: 1px solid var(--line); color: var(--ink); padding-top: 6px; }
+.usagepanel p { margin: 0 0 6px; }
+.usagepanel p:last-child { margin-bottom: 0; }

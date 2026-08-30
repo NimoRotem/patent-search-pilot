@@ -940,6 +940,7 @@
       const response = await fetch(`${BASE}/api/drafts/${PID}/terminal/tail${query}`,
         { credentials: 'same-origin', cache: 'no-store' });
       const data = await response.json();
+      if (data.usage) paintUsage(data.usage);
       if (typeof data.visible_hash === 'string') TERM.visibleHash = data.visible_hash;
       if (typeof data.pane_width === 'number' && data.pane_width > 0) TERM.paneWidth = data.pane_width;
       if (data.exists === false) {
@@ -2125,6 +2126,90 @@
         'running its publish command, and it appears here.</p>'}`;
   }
 
+  // ── tokens and cost ────────────────────────────────────────────────────────
+  /* WHAT THIS COSTS, WHILE IT IS COSTING IT. The number rides the terminal's own poll rather
+     than a timer of its own: the drafting agent is what spends, and that is the request already
+     asking about it. The dollar figure is a metered EQUIVALENT, because the agent runs on a
+     subscription; the panel says so rather than leaving somebody to assume it is a bill. */
+  let USAGE = null;
+
+  function compactTokens(value) {
+    const number = Number(value || 0);
+    const units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'k']];
+    for (const [limit, suffix] of units) {
+      if (Math.abs(number) >= limit) {
+        const trimmed = number / limit;
+        return (trimmed < 10 ? trimmed.toFixed(1) : Math.round(trimmed)) + suffix;
+      }
+    }
+    return number.toLocaleString();
+  }
+
+  function money(value) {
+    const number = Number(value || 0);
+    return '$' + number.toLocaleString(undefined,
+      { minimumFractionDigits: 2, maximumFractionDigits: number < 1 ? 4 : 2 });
+  }
+
+  function paintUsage(usage) {
+    if (!usage) return;
+    USAGE = usage;
+    const tokens = $('stUsageTokens');
+    const cost = $('stUsageCost');
+    if (tokens) tokens.textContent = compactTokens(usage.tokens_total);
+    if (cost) cost.textContent = money(usage.usd);
+    const panel = $('stUsagePanel');
+    if (panel && !panel.hidden) paintUsagePanel();
+  }
+
+  function paintUsagePanel() {
+    const panel = $('stUsagePanel');
+    if (!panel || !USAGE) return;
+    const row = (name, item) => `<tr><td>${esc(name)}</td>
+      <td class="num">${compactTokens(item.tokens_total)}</td>
+      <td class="num">${money(item.usd)}</td>
+      <td class="num">${Number(item.calls || 0).toLocaleString()}</td></tr>`;
+    panel.innerHTML = `
+      <table class="usagetable">
+        <thead><tr><th>Where it went</th><th class="num">Tokens</th><th class="num">Cost</th>
+          <th class="num">Calls</th></tr></thead>
+        <tbody>${(USAGE.by_source || []).map((item) => row(item.label, item)).join('')}</tbody>
+        <tfoot><tr><td>Total</td>
+          <td class="num">${compactTokens(USAGE.tokens_total)}</td>
+          <td class="num">${money(USAGE.usd)}</td>
+          <td class="num">${Number(USAGE.calls || 0).toLocaleString()}</td></tr></tfoot>
+      </table>
+      ${(USAGE.by_model || []).length ? `<table class="usagetable">
+        <thead><tr><th>Model</th><th class="num">Tokens</th><th class="num">Cost</th>
+          <th class="num">Calls</th></tr></thead>
+        <tbody>${(USAGE.by_model || []).map((item) =>
+          row(item.model || 'unnamed', item)).join('')}</tbody></table>` : ''}
+      <p class="small muted">Input ${compactTokens(USAGE.tokens_input)} ·
+        output ${compactTokens(USAGE.tokens_output)} ·
+        cache written ${compactTokens(USAGE.tokens_cache_write)} ·
+        cache read ${compactTokens(USAGE.tokens_cache_read)}.</p>
+      <p class="small muted">${esc(USAGE.basis || '')}</p>`;
+  }
+
+  function wireUsage() {
+    const button = $('stUsage');
+    const panel = $('stUsagePanel');
+    if (!button || !panel) return;
+    button.addEventListener('click', async () => {
+      const open = panel.hidden;
+      panel.hidden = !open;
+      button.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (!open) return;
+      paintUsagePanel();
+      try {
+        const data = await api(`/api/drafts/${PID}/usage?force=1`);
+        paintUsage(data.usage);
+      } catch (error) { /* the chip keeps the last figure it had */ }
+    });
+    //  One read on load, so the number is right before the terminal has polled even once.
+    api(`/api/drafts/${PID}/usage`).then((data) => paintUsage(data.usage)).catch(() => {});
+  }
+
   // ── filing ─────────────────────────────────────────────────────────────────
   /* THREE THINGS ON ONE TAB, in the order they have to happen: who is filing, what the package
      says when it is built, and what an independent reader made of it. The build is a button
@@ -2723,6 +2808,7 @@
   }
 
   wireTerminal();
+  wireUsage();
   //  Paint the agent from the state the page was SERVED with, before asking the server again.
   //  Without this the status pill keeps the template's placeholder until the first poll lands,
   //  so a page opened on a working agent reads "starting" for a second and a page opened on a

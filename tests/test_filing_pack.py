@@ -550,3 +550,39 @@ def test_the_audit_text_separates_blockers_from_formalities():
         filing_rules.finding("37 CFR 1.84(o)", "formality", "sheet 1", "B", "b")])
     assert text.index("BLOCKERS") < text.index("FORMALITIES")
     assert "37 CFR 1.84(u)" in text
+
+
+# =============================================================================================
+# The intake form: many inventors, and what it hands the filing profile
+# =============================================================================================
+def test_inventor_cards_are_read_by_index_rather_than_as_parallel_lists():
+    """A browser posts parallel lists in document order, so one empty field in the middle shifts
+    every value after it onto the wrong inventor. The index is in the field name for that reason."""
+    from werkzeug.datastructures import MultiDict
+    import webapp
+    form = MultiDict([
+        ("inventor_0_given_name", "Ada"), ("inventor_0_family_name", "Lovelace"),
+        ("inventor_0_city", "Reno"),
+        ("inventor_1_given_name", ""), ("inventor_1_family_name", ""),
+        ("inventor_2_given_name", "Grace"), ("inventor_2_family_name", "Hopper"),
+        ("inventor_2_country", "US"), ("title", "not an inventor field"),
+        ("inventor_0_nonsense", "ignored"),
+    ])
+    rows = webapp._inventor_rows_from_form(form)
+    assert [(row["given_name"], row["family_name"]) for row in rows] == \
+        [("Ada", "Lovelace"), ("Grace", "Hopper")]
+    assert rows[1]["country"] == "US"
+    assert "nonsense" not in rows[0]
+
+
+def test_an_inventor_card_holds_every_field_the_ads_and_the_declaration_need():
+    keys = {key for key, _label, _required in filing_profile.INVENTOR_FIELDS}
+    assert {"given_name", "family_name", "city", "country",
+            "mailing_address", "mailing_postcode"} <= keys
+    rows = [{"given_name": "Ada", "family_name": "Lovelace"}]
+    profile = filing_profile.resolve({"inventors": rows})
+    assert filing_profile.full_name(profile["inventors"][0]) == "Ada Lovelace"
+    #  Naming an inventor is not the same as being able to file for them, and the gap list says
+    #  which field is still missing rather than that the section is incomplete.
+    missing = [gap["field"] for gap in filing_profile.gaps(profile)]
+    assert "Inventor 1: City of residence" in missing
