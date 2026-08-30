@@ -1781,45 +1781,28 @@ const LIVE_CORPUS_CLAIMS = Number((typeof window !== 'undefined' && window.CORPU
     attorney reading it would believe the run had searched five million patents' claims. The count
     now comes from the same snapshot /corpus shows, and the sentence says only what is true: how
     many publications there are, and how many of them the search can read claims for. */
-const LIVE_CORPUS_NOTE = (LIVE_CORPUS_N
-  ? 'Our own pgvector corpus of ' + LIVE_CORPUS_N.toLocaleString() + ' publications'
-    + (LIVE_CORPUS_CLAIMS
-        ? ', ' + LIVE_CORPUS_CLAIMS.toLocaleString() + ' of them with parsed claim text and the '
-          + 'rest reached by title, abstract and classification, '
-        : ', ')
-  : 'Our own pgvector corpus, ')
-  + 'searched through eight channels at once: dense and claim-dense embeddings, sparse BM25 over '
-  + 'claims and full text, CPC classification, backward and forward citations, query-by-example '
-  + 'and cross-lingual EN/DE.';
-/*  THE STAGE LIST IS WHAT THE USER BELIEVES IS HAPPENING, so it has to match what is.
+/*  THE STAGE LIST IS THE RANK AND THE NAME, and nothing else.
 
-    It did not. Two defects, both visible on a five-hour run:
-      * `KIND_RANK` topped out at `reranking`, so the deep read and the orphan-claim rescue — which
-        together are the overwhelming majority of a search's wall clock — had no stage at all. The
-        page parked on "Reranking and grounding" and its note for over two hours while the elapsed
-        timer counted, which reads as a hang and describes the wrong work entirely.
-      * the rerank note said "the closest 25 references" when retrieval.RERANK_TOP is 50, and the
-        corpus note listed a handful of channels as though the local index were the whole search.  */
+    It used to carry a two-sentence NOTE per stage as well: what the corpus is, which eight
+    channels are searched, what the screen scores, what the cross-encoder does. 1,600 characters of
+    prose, identical on every run and on every report, rendered in the panel a reader opens when
+    the counter has not moved for ten minutes. It was reported twice as the thing on screen, so it
+    is gone from the file and not only from the render: prose that nothing displays is prose the
+    next change re-displays. What the panel shows now is the run's own activity; see createProgress.
+
+    The name is still the headline when the server has sent no message of its own, and the rank is
+    still what the progress bar and KIND_RANK are keyed on.  */
 const STAGES = [
-  { key: 'decompose', rank: 0, name: 'Reading the disclosure',
-    note: 'Extracting the claims verbatim, splitting them into their separate limitations, and condensing the document into a search brief.' },
-  { key: 'search',    rank: 1, name: 'Searching our corpus',
-    note: LIVE_CORPUS_NOTE },
-  { key: 'expand',    rank: 2, name: 'Expanding the candidate set',
-    note: 'Following citations, patent families and EN/DE equivalents outward from the seed hits, plus the query document\'s own text chunks and a drawing-image match against the corpus figure index.' },
-  { key: 'federate',  rank: 3, name: 'Every external source, in parallel',
-    note: 'BigQuery Google Patents (all 170M publications), SerpApi Google Patents, PQAI, EPO OPS, USPTO ODP, OpenAlex, HimmPat (CN/JP/KR with English full text), IP Australia, Lens.org and KIPRIS — whichever are configured — fused with the local results by reciprocal rank.' },
-  { key: 'rounds',    rank: 4, name: 'Refinement rounds',
-    note: 'Re-querying on the limitations that are still uncovered, until new families stop appearing.' },
-  { key: 'screen',    rank: 5, name: 'Screening the candidates',
-    note: 'Every candidate scored 0-100 from its title, abstract and first claims, to decide which are worth reading in full.' },
-  { key: 'read',      rank: 6, name: 'Reading references in full',
-    note: 'Each selected reference read end to end against every claim limitation and disclosure. Every cell carries a verbatim quote that must be found in the reference and located in a specific passage, then survive an independent refuter. This is the longest stage.' },
-  { key: 'rescue',    rank: 7, name: 'Going back for uncovered claims',
-    note: 'Any limitation still without prior art gets its own search, and what comes back is read in full against the same checklist.' },
-  { key: 'rerank',    rank: 8, name: 'Reranking and grounding',
-    note: 'A bge-reranker cross-encoder rescores the closest ' + (window.RERANK_TOP || 50) + ' references, then the page is ordered by rarity-weighted grounded evidence and by how many claims each reference answers.' },
-  { key: 'done',      rank: 9, name: 'Report ready', note: '' }
+  { key: 'decompose', rank: 0, name: 'Reading the disclosure' },
+  { key: 'search', rank: 1, name: 'Searching our corpus' },
+  { key: 'expand', rank: 2, name: 'Expanding the candidate set' },
+  { key: 'federate', rank: 3, name: 'Every external source, in parallel' },
+  { key: 'rounds', rank: 4, name: 'Refinement rounds' },
+  { key: 'screen', rank: 5, name: 'Screening the candidates' },
+  { key: 'read', rank: 6, name: 'Reading references in full' },
+  { key: 'rescue', rank: 7, name: 'Going back for uncovered claims' },
+  { key: 'rerank', rank: 8, name: 'Reranking and grounding' },
+  { key: 'done', rank: 9, name: 'Report ready' },
 ];
 const KIND_RANK = {
   elements: 1, search_progress: 1, seeded: 2, seed_progress: 2, partial: 2,
