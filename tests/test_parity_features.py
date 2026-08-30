@@ -308,7 +308,9 @@ def test_the_parity_routes_all_exist():
     for endpoint in ("saved_patents", "api_library", "api_library_state", "api_improve_query",
                      "api_more_references", "report_details", "report_logo_upload", "report_logo",
                      "api_report_suggest", "report_share", "shared_report", "shared_report_logo",
-                     "draft_figure_generate", "draft_figure_png", "draft_figure_activate",
+                     #  `draft_figure_generate` was here and is gone with the drawing lane.
+                     #  A sheet is uploaded, served, activated and deleted; nothing makes one.
+                     "draft_studio_figure_upload", "draft_figure_png", "draft_figure_activate",
                      "draft_figure_delete", "auth.accept_invitation", "auth.verify_email",
                      "auth.admin_invite", "auth.admin_delete_user", "auth.admin_search_detail"):
         assert endpoint in have, f"{endpoint} is missing"
@@ -322,8 +324,13 @@ def test_share_and_invite_are_reachable_without_a_session():
     assert "auth.accept_invitation" in auth._OPEN_ENDPOINTS
     assert "auth.verify_email" in auth._OPEN_ENDPOINTS
     #  ...and nothing that writes is open
-    for endpoint in ("report_share", "api_library", "draft_figure_generate", "export"):
+    for endpoint in ("report_share", "api_library", "draft_studio_figure_upload", "export"):
         assert endpoint not in auth._OPEN_ENDPOINTS
+    #  One endpoint IS open and is meant to be: the drafting agent publishing its own work back
+    #  from inside the workspace, with no session and no cookie jar. Its capability is the
+    #  per-project token this server wrote into that workspace, and the view checks that AND
+    #  auth.is_loopback() before it touches anything.
+    assert "api_draft_workspace_publish" in auth._OPEN_ENDPOINTS
 
 
 def test_ids_is_an_export_format(app_client):

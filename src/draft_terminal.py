@@ -625,6 +625,11 @@ def ensure(project_id: int, workspace: Path, *, model: str = "",
     home = agent_home(workspace)
     created = False
     if not exists(project_id):
+        #  Set BEFORE the session exists. `history-limit` is a session option that is read when a
+        #  pane is created, so setting it afterwards leaves that pane on the 2000-line default and
+        #  silently truncates the scrollback of a long drafting session. Global on this socket,
+        #  which is private to the drafting agents.
+        _tmux("set-option", "-g", "history-limit", "20000")
         command = [
             "new-session", "-d", "-s", session_name(project_id), "-c", str(workspace),
             "-x", str(PANE_COLS), "-y", str(PANE_ROWS),
@@ -645,7 +650,6 @@ def ensure(project_id: int, workspace: Path, *, model: str = "",
         if result.returncode != 0:
             raise TerminalError(result.stderr.strip() or "tmux refused to create the session.")
         created = True
-        _tmux("set-option", "-t", _target(project_id), "history-limit", "20000")
 
     if created or not _claude_running(project_id):
         _launch(project_id, workspace, model=normalize_model(model) or DEFAULT_MODEL)

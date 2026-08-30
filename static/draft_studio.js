@@ -937,7 +937,8 @@
       if (typeof data.pane_width === 'number' && data.pane_width > 0) TERM.paneWidth = data.pane_width;
       if (data.exists === false) {
         if (!TERM.fullText) el.textContent = agentState.available
-          ? 'No drafting agent is running on this draft. Press Restart to open one.'
+          ? 'No drafting agent is running on this draft. Press Start above, or just send a '
+            + 'message below and one opens.'
           : agentState.reason || 'The drafting agent is not available on this server.';
         return;
       }
@@ -1015,6 +1016,15 @@
         ? '<span class="statusdetail"> · ' + esc(agentState.detail) + '</span>' : '');
     const stop = $('termStop');
     if (stop) stop.classList.toggle('visible', status === 'busy');
+    //  The same button, named for what it will do. "Restart" over a dead pane is a question
+    //  about a session that is not there.
+    const restart = $('termRestart');
+    if (restart && !restart.disabled) {
+      restart.textContent = status === 'stopped' ? 'Start' : 'Restart';
+      restart.title = status === 'stopped'
+        ? 'Open a drafting agent on this application'
+        : 'Kill this agent and start a new one on the published draft';
+    }
     updateLiveBar();
   }
 
@@ -1144,9 +1154,12 @@
 
   async function restartAgent() {
     const button = $('termRestart');
-    if (!window.confirm('Start a new drafting agent on this application?\n\n' +
-        'The current one is stopped and everything it has not published is lost. The new agent ' +
-        'starts from the published draft with no memory of the old conversation.')) return;
+    //  Nothing to confirm when there is nothing running: this is "start it", and asking whether
+    //  the user is sure they want to begin is a dialog that only ever gets one answer.
+    if (agentState.status !== 'stopped' &&
+        !window.confirm('Start a new drafting agent on this application?\n\n' +
+          'The current one is stopped and everything it has not published is lost. The new agent ' +
+          'starts from the published draft with no memory of the old conversation.')) return;
     if (button) { button.disabled = true; button.textContent = 'Starting…'; }
     try {
       applyAgentState(await api(`/drafts/${PID}/terminal/start`, {
@@ -1157,7 +1170,7 @@
       const hint = $('termHint');
       if (hint) { hint.textContent = error.message; hint.className = 'small bad'; }
     } finally {
-      if (button) { button.disabled = false; button.textContent = 'Restart'; }
+      if (button) { button.disabled = false; renderAgentStatus(); }
     }
   }
 

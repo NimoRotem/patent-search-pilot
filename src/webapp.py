@@ -4802,6 +4802,15 @@ def api_flags(slug):
 
 
 # ---- patent figures for a draft: generate, edit, keep every version -------------------------
+def _figures_for(project):
+    """This project's drawings, or [] if the store is unavailable: never break the page."""
+    try:
+        return draft_figures.listing(project["id"], project["user_id"])
+    except Exception:
+        traceback.print_exc()
+        return []
+
+
 def _figure_project(principal, project_id):
     """The project, checked against this principal , figures inherit the draft's permissions."""
     return _drafting_service().get_project(principal, project_id)
@@ -6439,54 +6448,6 @@ def draft_new():
     if selected:
         target["pubs"] = ",".join(selected)
     return redirect(url_for("draft_start", **target))
-
-
-def _draft_detail_context(principal, project_id):
-    service = _drafting_service()
-    project = service.get_project(principal, project_id, include_versions=True)
-    chosen_no = request.args.get("version", type=int) or int(project.get("latest_version_no") or 0)
-    version = next((v for v in project.get("versions", [])
-                    if int(v.get("version_no") or 0) == chosen_no), None)
-    version_diff = ""
-    if version:
-        previous = next((v for v in project.get("versions", [])
-                         if int(v.get("version_no") or 0) == int(version["version_no"]) - 1), None)
-        if previous:
-            chunks = []
-            for key, heading in drafting.SECTION_ORDER:
-                before = str((previous.get("sections") or {}).get(key) or "").splitlines()
-                after = str((version.get("sections") or {}).get(key) or "").splitlines()
-                if before != after:
-                    chunks.extend(difflib.unified_diff(
-                        before, after, fromfile=f"v{previous['version_no']} {heading}",
-                        tofile=f"v{version['version_no']} {heading}", lineterm=""))
-            version_diff = "\n".join(chunks)[:60_000]
-    try:
-        report_view = _draft_report_loader(principal, project["search_slug"], project["user_id"])
-    except drafting.DraftingError:
-        report_view = {"cards": []}
-    selected_pubs = {r["publication_number"] for r in project.get("references", [])}
-    jobs = project.get("jobs") or []
-    return {"project": project, "version": version,
-            "latest_job": jobs[0] if jobs else None,
-            "report_cards": report_view.get("cards") or [], "selected_pubs": selected_pubs,
-            "section_order": drafting.SECTION_ORDER, "version_diff": version_diff,
-            "generation_key": secrets.token_urlsafe(24),
-            "error": request.args.get("error", ""), "message": request.args.get("message", ""),
-            "created": request.args.get("created") == "1",
-            #  Figures live beside the draft, not inside a version: a drawing survives a
-            #  regeneration of the text, which is what makes iterating on it worth doing.
-            "figures": _figures_for(project),
-            "figure_suggestions": draft_figures.figures_from_draft((version or {}).get("sections") or {})}
-
-
-def _figures_for(project):
-    """This project's figures, or [] if the store is unavailable , never break the draft page."""
-    try:
-        return draft_figures.listing(project["id"], project["user_id"])
-    except Exception:
-        traceback.print_exc()
-        return []
 
 
 @app.route("/drafts/<int:project_id>")
