@@ -101,6 +101,15 @@ CHANNELS = ["dense", "claim_dense", "bm25", "claim_bm25"]
 _MATCH_VERDICTS = ("disclosed", "partial")
 
 
+def _stage_tier(key, default):
+    """Which tier this stage asks for. Settings page first, then the code default."""
+    try:
+        import model_settings
+        return model_settings.tier_for(key, default)
+    except Exception:
+        return default
+
+
 def second_look(ref, labels, hints, texts):
     """Ask ONE reference the narrow question about a few claims. -> cells changed.
 
@@ -238,7 +247,8 @@ def plan(claims, brief="", title="", independents=(), description=""):
     }
     try:
         out = llm.chat_json(_PLAN_SYS, json.dumps(payload, ensure_ascii=False),
-                            max_tokens=6000) or {}
+                            max_tokens=6000,
+                            tier=_stage_tier("claim_rescue", "fast")) or {}
     except Exception:
         traceback.print_exc()
         return {}

@@ -105,12 +105,37 @@ class profile_context:
 _TLS = threading.local()
 
 
+def _scan_profile(wide):
+    """The three HNSW GUCs for a pass, resolved from the settings AT CALL TIME.
+
+    Read per call rather than at import, so a change on the search-settings page takes effect on
+    the next pass instead of at the next restart. An import-time read would have made that page a
+    lie, which is the defect it exists to end.
+
+    Falls back to the module constants if the settings module cannot be imported at all, so
+    retrieval degrades to today's behaviour rather than to no behaviour.
+    """
+    ef = SEED_EF_SEARCH if wide else EF_SEARCH
+    scan = "relaxed_order"
+    try:
+        import search_settings as _ss
+        ef = int(_ss.get("ef_search_seed" if wide else "ef_search_element"))
+        scan = str(_ss.get("hnsw_iterative_scan"))
+    except Exception:
+        pass
+    return ef, scan, (SEED_MAX_SCAN_TUPLES if wide else MAX_SCAN_TUPLES)
+
+
 def _apply_scan_profile(conn, wide):
+    ef, scan, tuples = _scan_profile(wide)
     with conn.cursor() as c:
-        c.execute("SET hnsw.ef_search = %d" % (SEED_EF_SEARCH if wide else EF_SEARCH))
-        c.execute("SET hnsw.iterative_scan = relaxed_order")
-        c.execute("SET hnsw.max_scan_tuples = %d"
-                  % (SEED_MAX_SCAN_TUPLES if wide else MAX_SCAN_TUPLES))
+        c.execute("SET hnsw.ef_search = %d" % ef)
+        #  The value of this GUC is a bare word (`off`, `relaxed_order`, `strict_order`), never a
+        #  quoted string, so it is interpolated rather than parameterised. `_scan_profile` only
+        #  ever returns one of the three, because `search_settings` refuses anything else.
+        c.execute("SET hnsw.iterative_scan = %s" % scan)
+        c.execute("SET hnsw.max_scan_tuples = %d" % tuples)
+    return (bool(wide), ef, scan, tuples)
 
 
 def worker_conn(wide=False):
@@ -125,8 +150,12 @@ def worker_conn(wide=False):
         conn = db.connect(autocommit=True, readonly=True)
         _TLS.conn = conn
         _TLS.wide = None
-    if getattr(_TLS, "wide", None) != bool(wide):
-        _apply_scan_profile(conn, bool(wide))
+    #  Compare the whole RESOLVED profile, not just the wide flag. The widths now come from the
+    #  settings page, so "same wide flag" no longer implies "same GUCs", and a thread that had
+    #  already run one pass would otherwise keep the old width for the life of the process.
+    want = (bool(wide),) + _scan_profile(bool(wide))
+    if getattr(_TLS, "prof", None) != want:
+        _TLS.prof = _apply_scan_profile(conn, bool(wide))
         _TLS.wide = bool(wide)
     return conn
 
@@ -136,6 +165,7 @@ def close_worker_conn():
     conn = getattr(_TLS, "conn", None)
     _TLS.conn = None
     _TLS.wide = None
+    _TLS.prof = None
     if conn is not None:
         try:
             conn.close()
@@ -210,7 +240,15 @@ class RetrieverBase:
         _apply_scan_profile(self.conn, self._wide)
 
     def _fetch(self):
-        return SEED_CHUNK_FETCH if self._profile_wide else CHUNK_FETCH
+        #  Settings-resolved on the wide path for the same reason the GUCs are: the pool is the
+        #  other half of the recall setting, and pinning it at import would half-apply the page.
+        if not self._profile_wide:
+            return CHUNK_FETCH
+        try:
+            import search_settings as _ss
+            return int(_ss.get("chunk_fetch_seed"))
+        except Exception:
+            return SEED_CHUNK_FETCH
 
     def _cap(self):
         return SEED_PUB_CAP if self._profile_wide else PUB_CAP

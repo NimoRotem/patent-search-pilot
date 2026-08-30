@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import traceback
 import urllib.error
 import urllib.request
@@ -52,12 +53,19 @@ _READ_SYS = (
     "You are reading a scanned USPTO file-wrapper document. Return JSON only:\n"
     '{"applied":[{"number":"...","statute":"102(a)(1)|102(a)(2)|103|double patenting",'
     '"claims":"1-3, 5-9","note":"one clause on what it was applied for"}],'
-    '"considered":["every patent or publication number listed as cited or considered"],'
+    '"considered":["every cited or considered reference, FULLY QUALIFIED: two-letter country '
+    'code, then the number, then the kind code"],'
     '"summary":"two sentences, factual, on what this document decides"}\n'
     "Transcribe every number exactly as printed. NEVER invent, complete or correct a number you "
-    "cannot fully read — omit the row instead. `applied` is only for references the examiner "
+    "cannot fully read , omit the row instead. `applied` is only for references the examiner "
     "actually applied in a rejection; a number that merely appears in a citation list belongs in "
-    "`considered`."
+    "`considered`.\n"
+    "THE COUNTRY CODE IS NOT OPTIONAL. On an IDS or a form 892 the country sits in its own column, "
+    "separate from the number, and a number without it is unusable: '10 2018 114 561' could be "
+    "anything, 'DE 10 2018 114 561 B4' is a document. Read the country out of its column and put it "
+    "in front of every number you return, with the kind code after it where the form prints one. "
+    "Examples of the shapes you will see: 'US 2021/0031317 A1', 'DE 20 2024 100 869 U1', "
+    "'WO 2010/135788 A1', 'CN 203781619 U', 'EP 4 321 468 B1', 'GB 152 821 A'."
 )
 
 
@@ -92,6 +100,63 @@ def fetch_pdf(rec, log=print):
     return b""
 
 
+#  DETERMINISTIC BACKSTOP FOR THE NUMBERS ON A FORM.
+#
+#  An IDS or a form 892 is a TABLE of publication numbers, and asking a model to transcribe a table
+#  is asking it to be a worse OCR than OCR. Measured on US 19/318,450: the model returned 4 of the
+#  9 numbers actually on the wrapper, and among the five it dropped was the closest reference in the
+#  case. So the model still reads the document, for the statute and the claim mapping it is
+#  genuinely good at, and this sweeps the text layer for numbers underneath it. The union is what
+#  gets resolved.
+#
+#  FALSE POSITIVES ARE FREE HERE. `resolve` keeps only what the corpus actually holds, so a date or
+#  an application number that looks like a publication simply fails to resolve. They are kept out of
+#  `missing`, which stays the model's list, so the log still means what it says.
+_SWEEP = [
+    #  US pre-grant publication: 2021/0031317, US 2021/0031317 A1
+    re.compile(r"\bUS[\s.]*?(\d{4})[/\s-](\d{7})\b", re.I),
+    re.compile(r"\b(20\d{2})/(\d{7})\b"),
+    #  US grant: 11,772,214 / US 11772214 B2
+    re.compile(r"\bUS[\s.]*?(\d{1,2},\d{3},\d{3})\b", re.I),
+    re.compile(r"\b(\d{1,2},\d{3},\d{3})\b"),
+    #  Foreign, incl. the German grouped style DE 10 2022 119 118 and DE 20 2024 100 869 U1
+    re.compile(r"\b(DE|EP|WO|CN|JP|KR|GB|FR|AT|CH|ES|IT|NL|SE|CA|AU|TW|RU|BR|IN)"
+               r"[\s.-]*((?:\d[\d\s,/.-]{3,20}\d))\s*([A-Z]\d?)?", re.I),
+]
+
+
+def sweep_numbers(blob, log=print):
+    """Every publication number in a wrapper PDF's text layer. -> [str]. Never raises."""
+    text = ""
+    try:
+        pr = subprocess.run(["pdftotext", "-layout", "-", "-"], input=blob,
+                            capture_output=True, timeout=120)
+        text = pr.stdout.decode("utf-8", "replace")
+    except Exception:
+        pass
+    if len(text.strip()) < 40:
+        try:                                    # scanned form with no text layer, or poppler absent
+            import io
+            import pypdf
+            text = "\n".join((pg.extract_text() or "")
+                              for pg in pypdf.PdfReader(io.BytesIO(blob)).pages)
+        except Exception:
+            return []
+    out, seen = [], set()
+    for rx in _SWEEP:
+        for m in rx.finditer(text):
+            if not [x for x in m.groups() if x]:
+                continue
+            raw = m.group(0).strip()
+            n = normalise(raw)
+            if n and n not in seen:
+                seen.add(n)
+                out.append(raw)
+    if log and out:
+        log("[prosecution] text sweep found %d candidate number(s) on the form" % len(out))
+    return out
+
+
 def read_document(rec, log=print, use_cache=True):
     """OCR one wrapper document into {applied, considered, summary}. -> {} when unreadable."""
     if not ENABLED:
@@ -111,7 +176,9 @@ def read_document(rec, log=print, use_cache=True):
         from google.genai import types
         parts = [types.Part.from_bytes(data=blob, mime_type="application/pdf"),
                  "Which references did the examiner apply, under which statute, to which claims?"]
-        resp = llm._call_vision(_READ_SYS, parts, max_tokens=6000)
+        #  STRONG VISION. Two to six calls a search, and their output seeds the entire reading
+        #  list, so this is the cheapest place in the pipeline to spend a better model.
+        resp = llm._call_vision(_READ_SYS, parts, max_tokens=6000, strong=True)
         txt = (getattr(resp, "text", "") or "").strip()
         got = json.loads(txt[txt.index("{"):txt.rindex("}") + 1])
     except Exception:
@@ -121,6 +188,7 @@ def read_document(rec, log=print, use_cache=True):
            "description": rec.get("description"), "pdf": rec.get("pdf"),
            "applied": [a for a in (got.get("applied") or []) if isinstance(a, dict)],
            "considered": [str(x) for x in (got.get("considered") or []) if x],
+           "swept": sweep_numbers(blob, log=log),
            "summary": str(got.get("summary") or "")}
     try:
         os.makedirs(CACHE, exist_ok=True)
@@ -139,6 +207,11 @@ def read_document(rec, log=print, use_cache=True):
 _PUB = re.compile(r"^(?:US)?\s*(\d{4})\s*[/-]?\s*(\d{6,7})\s*(?:A\d?)?$", re.I)
 _PAT = re.compile(r"^(?:US)?\s*(\d[\d,]{5,10})\s*(?:[AB]\d?)?$", re.I)
 _FOREIGN = re.compile(r"^([A-Z]{2})\s*[-/ ]?\s*([0-9][0-9 ,./-]{3,})\s*([A-Z]\d?)?$", re.I)
+#  A PCT number is year + 6-digit serial. Nothing else is printed that way.
+_WO = re.compile(r"^(\d{4})\s*/\s*(\d{6})\s*(?:A\d?)?$")
+#  The German grouped style: a 10-prefixed application (DE 10 2018 114 561) or a 20-prefixed
+#  utility model (DE 20 2024 100 869). No other office prints numbers in these groups.
+_DE_GROUPED = re.compile(r"^(?:10|20)\s+\d{4}\s+\d{3}\s+\d{3}\s*(?:[A-Z]\d?)?$", re.I)
 
 
 def normalise(number):
@@ -151,17 +224,27 @@ def normalise(number):
     t = " ".join(str(number or "").strip().split())
     if not t:
         return ""
+    m = _FOREIGN.match(t)                        # country-qualified: try this FIRST
+    if m:
+        return "%s-%s" % (m.group(1).upper(), re.sub(r"\D", "", m.group(2)))
     m = _PUB.match(t)
     if m and len(m.group(2)) == 7:               # a pre-grant pub is year + 7-digit serial
         return "US-%s%s" % (m.group(1), m.group(2))
-    m = _PAT.match(t)
+    #  SHAPES A FORM PRINTS WITHOUT THEIR COUNTRY, because the country is in the next column over.
+    #  Each of these is unambiguous on its own, and a wrong guess costs nothing: `resolve` keeps
+    #  only what the corpus actually holds. Measured on US 19/318,450, where nine of the twelve
+    #  numbers on the wrapper arrived bare and every one of them was dropped here.
+    m = _WO.match(t)                             # 2010/135788 -> a PCT publication
+    if m:
+        return "WO-%s%s" % (m.group(1), m.group(2))
+    m = _DE_GROUPED.match(t)                     # 10 2018 114 561 / 20 2024 100 869 -> German
+    if m:
+        return "DE-%s" % re.sub(r"\D", "", t)
+    m = _PAT.match(t.replace(" ", ""))           # 152 821, 4 321 468: spaced grant numbers
     if m:
         digits = m.group(1).replace(",", "")
         if 6 <= len(digits) <= 8:
             return "US-%s" % digits
-    m = _FOREIGN.match(t)
-    if m:
-        return "%s-%s" % (m.group(1).upper(), re.sub(r"\D", "", m.group(2)))
     return ""
 
 
@@ -243,6 +326,7 @@ def mine(dossier, log=print, limit_docs=6, emit=None):
     """
     out = {"documents": [], "applied": [], "considered": [], "seeds": [], "missing": [],
            "error": ""}
+    swept = []
     if not ENABLED:
         out["error"] = "prosecution mining disabled"
         return out
@@ -271,8 +355,19 @@ def mine(dossier, log=print, limit_docs=6, emit=None):
                                    "source": "%s %s %s" % (rec.get("app"), rec.get("code"),
                                                            rec.get("date"))})
         raw_numbers.extend(got.get("considered") or [])
+        swept.extend(got.get("swept") or [])
     found, missing = resolve(raw_numbers, log=log)
     out["missing"] = missing
+    #  The sweep's numbers are resolved SEPARATELY so a date that looks like a patent number cannot
+    #  land in `missing` and make the log read as a failure. Only what the corpus holds survives.
+    extra = [n for n in swept if n not in raw_numbers]
+    if extra:
+        found_extra, _ = resolve(extra, log=None)
+        new = {k: v for k, v in found_extra.items() if k not in found}
+        if new and log:
+            log("[prosecution] the text sweep recovered %d reference(s) the reader missed: %s"
+                % (len(new), ", ".join(sorted(new.values()))))
+        found.update(new)
     #  APPLIED FIRST. A reference an examiner used in a rejection outranks one that merely sat in
     #  an information disclosure statement, and the seed order is the order the reading budget is
     #  spent in.

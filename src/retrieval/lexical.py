@@ -180,6 +180,63 @@ class PostgresLexicalBackend(LexicalBackend):
     def available(self) -> bool:
         return True
 
+    # -- the deadline --------------------------------------------------------------------------
+    def _deadline_ms(self):
+        try:
+            import search_settings as _ss
+            return max(0, int(_ss.get("lexical_timeout_ms")))
+        except Exception:
+            return 0
+
+    def _bounded(self, run):
+        """One lexical query under a deadline, so a slow channel cannot own the pass.
+
+        THE MEASUREMENT. This channel is Postgres `to_tsvector('english')` over every chunk in the
+        corpus. It was measured at 20 s to 176 s for ONE pass when the corpus held 1.4M chunks; it
+        now holds 11.2M. On a deep run making up to 39 passes it was 54% of every one of them,
+        worth about 22 minutes of a 112-minute search, which is more than the entire vector side of
+        retrieval costs.
+
+        It is also the lowest-weighted channel in the fusion, on purpose: it ranks by raw lexeme
+        count, and for CJK text the `english` configuration has no segmenter, so there it is not
+        degraded but dead.
+
+        A pass that hits the deadline returns nothing FROM THIS CHANNEL and records that it did,
+        through `failclosed`. "The keyword channel timed out" and "the keyword channel found
+        nothing" are different statements, and letting the second stand for the first is exactly
+        the class of bug `failclosed` was written for.
+        """
+        ms = self._deadline_ms()
+        if ms <= 0:
+            return run()
+        conn = self.r.conn
+        try:
+            with conn.cursor() as c:
+                c.execute("SET statement_timeout = %d" % ms)
+        except Exception:
+            return run()                      # cannot arm it: run unbounded rather than not at all
+        try:
+            return run()
+        except Exception as e:
+            import psycopg
+            cancelled = isinstance(e, getattr(psycopg.errors, "QueryCanceled", ())) or (
+                "statement timeout" in str(e).lower())
+            if not cancelled:
+                raise
+            import failclosed
+            return failclosed.fallback(
+                "retrieval.lexical",
+                "keyword channel exceeded its %d ms deadline" % ms, [],
+                kind="lexical_timeout")
+        finally:
+            #  Always disarm: this connection is per-thread and lives for the life of the process,
+            #  so a timeout left set here would silently apply to the dense channel next.
+            try:
+                with conn.cursor() as c:
+                    c.execute("SET statement_timeout = 0")
+            except Exception:
+                pass
+
     # -- the two production queries ----------------------------------------------------------
     def publications(self, query, *, fields=(), filters=None, limit=1000, operator="or",
                      max_terms=None, rank="density"):
@@ -203,8 +260,8 @@ class PostgresLexicalBackend(LexicalBackend):
                    f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                    f"WHERE tq.q IS NOT NULL AND {kind_clause} AND c.tsv @@ tq.q {dc} "
                    f"GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
-            return self.r._families_from_chunks(
-                sql, [query, *dp, limit * FAMILY_OVERFETCH], limit)
+            return self._bounded(lambda: self.r._families_from_chunks(
+                sql, [query, *dp, limit * FAMILY_OVERFETCH], limit))
         kc = _kind_in(kinds)
         kind_clause = (kc + " AND ") if kc else ""
         sql = (f"WITH tq AS (SELECT to_tsquery('english', NULLIF(array_to_string(ARRAY("
@@ -214,8 +271,8 @@ class PostgresLexicalBackend(LexicalBackend):
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                f"WHERE tq.q IS NOT NULL AND {kind_clause}"
                f"c.tsv @@ tq.q {dc} GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
-        return self.r._families_from_chunks(
-            sql, [query, *dp, limit * FAMILY_OVERFETCH], limit)
+        return self._bounded(lambda: self.r._families_from_chunks(
+            sql, [query, *dp, limit * FAMILY_OVERFETCH], limit))
 
     def search(self, query, *, fields=(), filters=None, limit=1000, operator="or",
                max_terms=None, rank="density"):

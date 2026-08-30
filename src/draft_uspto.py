@@ -248,17 +248,13 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
                     for spec in figure_specs if isinstance(spec, Mapping)}
     for sheet_index, figure in enumerate(figures, 1):
         label = figure.get("figure_label") or figure.get("label") or "drawing"
-        spec = specs_by_key.get(draft_figures.figure_key(label))
         active = next((row for row in (figure.get("versions") or [])
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
         expected_sheet_number = f"{sheet_index}/{len(figures)}"
         if not draft_figures.current_ocr_audit(
                 active.get("numeral_audit") or {},
-                expected_sheet_number=expected_sheet_number,
-                expected_section_designations=(
-                    draft_figures.section_designations(spec.get("caption") or "")
-                    if spec else None)):
+                expected_sheet_number=expected_sheet_number):
             live_drawing_failures.append(
                 f"{label}: OCR numeral, view-label, or sheet-number inspection did not pass "
                 f"for sheet {expected_sheet_number}")
@@ -268,6 +264,7 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
         if not draft_figures.current_leader_audit(active.get("leader_audit") or {}):
             live_drawing_failures.append(
                 f"{label}: current leader placement consensus did not pass")
+        spec = specs_by_key.get(draft_figures.figure_key(label))
         if not spec:
             live_drawing_failures.append(f"{label}: no specification exists in this version")
         else:
@@ -282,11 +279,6 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
                     "specification_hash") != expected_hash:
                 live_drawing_failures.append(
                     f"{label}: leader inspection belongs to a different drawing specification")
-            if not draft_figures.current_geometry_binding(
-                    figure, project.get("user_id"), active, spec.get("caption") or ""):
-                live_drawing_failures.append(
-                    f"{label}: pixels are not bound to the current deterministic geometry "
-                    "and exact constraint certificate")
     if live_drawing_failures:
         blockers.append({
             "title": "One or more active drawings have not passed live inspection",

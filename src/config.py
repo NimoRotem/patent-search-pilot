@@ -25,7 +25,10 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", "nimo-gpt")
 
 # Embedding
 EMBED_MODEL = "text-embedding-3-small"
-EMBED_DIM = 768                       # main run (Matryoshka shortening via dimensions param)
+EMBED_DIM = int(os.environ.get("EMBED_DIM", "1024"))
+#  1024 since the v2 cutover: the corpus is voyage-4-lite at 1024 dimensions. This MUST
+#  match the width of chunks.embedding, and the model MUST match the one the corpus was
+#  built with. A mismatched query embedder does not error, it ranks nonsense confidently.
 BENCH_DIMS = [1024, 3072]             # small benchmark subset only (spec §7/§8)
 
 # LLM for the coverage-ledger agent (query generation / terminology). OpenAI side of the house.

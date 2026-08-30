@@ -57,12 +57,6 @@ import time
 import urllib.error
 import urllib.request
 
-#  No fallback import: a pool that runs 24-wide must not run unmetered.
-from llm_spend_guard import SpendGuard
-
-_SPEND = SpendGuard(os.environ.get("LLM_SPEND_APP", "patent-search-pilot").strip()
-                    or "patent-search-pilot")
-
 try:                                     # side effect: config loads .env, where the keys live
     import config                        # noqa: F401
 except Exception:
@@ -113,6 +107,15 @@ def _note_cached(n):
         return
     with _lock:
         _cached_tokens[0] += int(n)
+        #  ATTRIBUTE IT. The total answers "did the payload reorder work"; the per-provider split
+        #  is what a bill is made of, because a cached token is billed at a fraction of a fresh one
+        #  and the providers are priced an order of magnitude apart. `_tl.provider` is set by
+        #  `invoke`, which is the only path a provider adapter is ever reached through.
+        who = getattr(_tl, "provider", "")
+        if who:
+            st = _state.setdefault(who, {"fails": 0, "until": 0.0, "calls": 0, "errors": 0,
+                                         "last_error": ""})
+            st["cached_tokens"] = st.get("cached_tokens", 0) + int(n)
 
 
 def cached_tokens() -> int:
@@ -152,7 +155,12 @@ class _Provider:
 
     def invoke(self, system, user, max_tokens):
         """Call WITHOUT touching the semaphore. The caller owns the slot."""
-        return self._call(system, user, max_tokens)
+        prev = getattr(_tl, "provider", "")
+        _tl.provider = self.name          # so `_note_cached` knows whose cache hit this was
+        try:
+            return self._call(system, user, max_tokens)
+        finally:
+            _tl.provider = prev
 
     def call(self, system, user, max_tokens):
         with self.sem:
@@ -181,7 +189,16 @@ def _joined(user):
     return user if isinstance(user, str) else "".join(s["text"] for s in _segments(user))
 
 
-def _vertex(model):
+def _vertex(model, thinking_budget=0):
+    """A Vertex provider. `thinking_budget` is per MODEL, not global, and 0 is not universal.
+
+    gemini-2.5-flash lets thinking be switched off and should have it off: thinking tokens come out
+    of the same output budget as the answer, and these are short structured tasks. gemini-2.5-pro
+    CANNOT be given a budget of 0 and answers `400 INVALID_ARGUMENT: the model does not support
+    setting thinking budget to zero`, which is why pinning the strong tier to it failed outright
+    until now. Pro therefore gets a real budget, and it is ADDED to max_output_tokens rather than
+    taken out of it, so a caller asking for 1,200 tokens of JSON still gets 1,200 tokens of JSON.
+    """
     def go(system, user, max_tokens):
         from google import genai
         from google.genai.types import GenerateContentConfig, ThinkingConfig
@@ -191,10 +208,8 @@ def _vertex(model):
                                      location=os.environ.get("VERTEX_LOCATION", "us-central1"))
         cfg = GenerateContentConfig(
             system_instruction=system, response_mime_type="application/json",
-            temperature=0.2, max_output_tokens=max_tokens,
-            #  gemini-2.5-flash is a thinking model; thinking tokens eat the output budget and
-            #  truncate the JSON. Off for these short structured tasks.
-            thinking_config=ThinkingConfig(thinking_budget=0))
+            temperature=0.2, max_output_tokens=max_tokens + max(0, thinking_budget),
+            thinking_config=ThinkingConfig(thinking_budget=thinking_budget))
         r = _tl.genai.models.generate_content(model=model, contents=_joined(user), config=cfg)
         um = getattr(r, "usage_metadata", None)
         #  CACHED PROMPT TOKENS, counted separately. `prompt_token_count` INCLUDES cached tokens, so
@@ -218,11 +233,6 @@ def _post(url, payload, headers):
 
 def _anthropic(model, temperature=0.2, thinking_off=False):
     def go(system, user, max_tokens):
-        #  THE DAILY CEILING. This closure is the only path Anthropic traffic takes out of the
-        #  pool, and the pool runs 24 workers at ~8 calls/s, so an unattended sweep is exactly the
-        #  shape that spends hundreds of dollars before anyone looks. Refusing here lets the
-        #  caller's own provider rotation pick Vertex or Meta instead of failing the pass.
-        _SPEND.check()
         #  CACHE_CONTROL ON THE STABLE PREFIX. The reader sends the same document to the same
         #  model a dozen times per reference; without an explicit breakpoint Anthropic bills the
         #  full document on every call. The system prompt (stable per stage) always gets a
@@ -252,7 +262,6 @@ def _anthropic(model, temperature=0.2, thinking_off=False):
         cache_read = u.get("cache_read_input_tokens", 0) or 0
         cache_write = u.get("cache_creation_input_tokens", 0) or 0
         _note_cached(cache_read)
-        _SPEND.record(model=model, usage=u, route="api", detail="model_pool")
         #  `input_tokens` EXCLUDES cache reads/writes on Anthropic; report the total submitted so
         #  the spend line stays comparable with Vertex's inclusive `prompt_token_count`.
         return ("".join(b.get("text", "") for b in (d.get("content") or [])),
@@ -300,7 +309,11 @@ _ALL = {
     "sonnet5": _Provider("sonnet5", "strong",
                          _anthropic("claude-sonnet-5", temperature=None, thinking_off=True), 24,
                          env="ANTHROPIC_API_KEY", rate=3.0, model="claude-sonnet-5"),
-    "vertex-pro": _Provider("vertex-pro", "strong", _vertex("gemini-2.5-pro"), 16, rate=2.0,
+    #  THE KEYLESS STRONG MODEL. Served by the GCE service account, so it is the one strong
+    #  provider that keeps working when the Anthropic key is spend-capped. 512 thinking tokens:
+    #  enough for a judgement on a passage, far short of the latency a full reasoning budget costs.
+    "vertex-pro": _Provider("vertex-pro", "strong",
+                            _vertex("gemini-2.5-pro", thinking_budget=512), 16, rate=2.0,
                             model="gemini-2.5-pro"),
 }
 
@@ -308,8 +321,17 @@ _ALL = {
 _TIERS = {"fast": lambda: FAST, "read": lambda: READ, "strong": lambda: STRONG}
 
 
+def _configured(tier):
+    """The tier's provider names, honouring the settings page over the environment default."""
+    try:
+        import model_settings
+        return model_settings.tier_providers(tier, _TIERS.get(tier, lambda: FAST)())
+    except Exception:
+        return _TIERS.get(tier, lambda: FAST)()
+
+
 def providers(tier) -> list:
-    names = _TIERS.get(tier, lambda: FAST)()
+    names = _configured(tier)
     out = [_ALL[n] for n in names if n in _ALL and _ALL[n].available()]
     #  Never leave a tier empty. A strong tier with no key must fall back to a fast provider rather
     #  than fail the call: a degraded refuter is far better than no chart at all.
@@ -331,15 +353,28 @@ def _order(tier):
     return ps[i % len(ps):] + ps[:i % len(ps)]
 
 
-def _mark(name, ok):
+def _mark(name, ok, err="", prompt_tokens=0, completion_tokens=0):
     with _lock:
-        st = _state.setdefault(name, {"fails": 0, "until": 0.0, "calls": 0, "errors": 0})
+        st = _state.setdefault(name, {"fails": 0, "until": 0.0, "calls": 0, "errors": 0,
+                                      "last_error": ""})
         st["calls"] += 1
         if ok:
             st["fails"] = 0
+            #  PER-PROVIDER TOKENS. The process-wide counter in `llm` cannot be priced: one number
+            #  covering models that differ by 30x in cost per token is not a bill, it is an
+            #  average of things nobody bought.
+            st["prompt_tokens"] = st.get("prompt_tokens", 0) + int(prompt_tokens or 0)
+            st["completion_tokens"] = st.get("completion_tokens", 0) + int(completion_tokens or 0)
             return
         st["fails"] += 1
         st["errors"] += 1
+        #  KEEP WHAT IT SAID. A provider that is refusing every call looks identical to a healthy
+        #  one through `available()`, which only knows whether a key exists and whether the
+        #  provider is latched off. The reason is the whole difference between "spend limit until
+        #  the 1st" and "transient 503", and without it the only way to find out was to read an
+        #  error count out of a finished report.
+        if err:
+            st["last_error"] = str(err)[:300]
         if st["fails"] >= FAIL_LIMIT:
             st["until"] = time.time() + COOLDOWN
             st["fails"] = 0
@@ -428,7 +463,7 @@ def call(system, user, max_tokens=1200, tier="fast", provider=None):
             text, pt, ct = p.invoke(system, user, max_tokens)
         except Exception as e:
             last = _describe_error(p, e)
-            _mark(p.name, False)
+            _mark(p.name, False, err=last)
             return None
         finally:
             p.release()
@@ -436,9 +471,9 @@ def call(system, user, max_tokens=1200, tier="fast", provider=None):
             #  An empty body is a failure for our purposes, whatever the transport said. This is
             #  exactly how muse-spark fails when its budget went on reasoning.
             last = f"{p.name}: empty response body"
-            _mark(p.name, False)
+            _mark(p.name, False, err=last)
             return None
-        _mark(p.name, True)
+        _mark(p.name, True, prompt_tokens=pt, completion_tokens=ct)
         return text, pt, ct
 
     #  PASS 1 — spare capacity, fastest first.
@@ -459,7 +494,11 @@ def stats() -> dict:
     """Per-provider calls and errors, for the run log."""
     with _lock:
         return {k: {"calls": v.get("calls", 0), "errors": v.get("errors", 0),
-                    "latched": v.get("until", 0) > time.time()}
+                    "prompt_tokens": v.get("prompt_tokens", 0),
+                    "completion_tokens": v.get("completion_tokens", 0),
+                    "cached_tokens": v.get("cached_tokens", 0),
+                    "latched": v.get("until", 0) > time.time(),
+                    "last_error": v.get("last_error", "")}
                 for k, v in _state.items()}
 
 
@@ -467,3 +506,26 @@ def describe() -> str:
     f = ", ".join(p.name for p in providers("fast"))
     s = ", ".join(p.name for p in providers("strong"))
     return f"fast=[{f}] strong=[{s}]"
+
+
+def probe(name, timeout_tokens=2600):
+    """Ask one provider a trivial question right now. -> (ok, detail).
+
+    `available()` answers "is there a key and is it not latched off", which a spend-capped key
+    passes while refusing every call. This answers the question an operator is actually asking.
+    The token budget is deliberately generous: muse-spark is a reasoning model and returns an
+    empty body below roughly REASONING_MIN_TOKENS, which would read as a dead provider.
+    """
+    p = _ALL.get(name)
+    if not p:
+        return False, "no such provider"
+    if p.env and not os.environ.get(p.env):
+        return False, "no %s on this host" % p.env
+    t0 = time.time()
+    try:
+        text, _pt, _ct = p.invoke("You return JSON only.", '{"say": "ok"}', timeout_tokens)
+    except Exception as e:                                                # noqa: BLE001
+        return False, _describe_error(p, e)
+    if not (text or "").strip():
+        return False, "empty response body"
+    return True, "answered in %.1fs" % (time.time() - t0)

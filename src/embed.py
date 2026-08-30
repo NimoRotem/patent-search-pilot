@@ -52,7 +52,45 @@ def _embed_vertex(texts, dim, task_type):
     return [list(e.values) for e in r.embeddings]
 
 
+#  ---------------------------------------------------------------- voyage (v2 corpus)
+#  MongoDB serves the Voyage models at ai.mongodb.com and that account is PAID; the direct Voyage
+#  account has no working payment method and its sync endpoint is capped at 3 requests a minute,
+#  which is unusable for interactive search. MEASURED 2026-08-27: 20.8M tokens/min sustained.
+VOYAGE_BASE = os.environ.get("VOYAGE_BASE", "https://ai.mongodb.com/v1")
+VOYAGE_MODEL = os.environ.get("VOYAGE_MODEL", "voyage-4-lite")
+VOYAGE_MAX_INPUTS = 1000           # hard provider limit; 1,001 is rejected outright
+
+
+@retry(wait=wait_exponential(min=0.5, max=8), stop=stop_after_attempt(8),
+       retry=retry_if_exception_type(Exception))
+def _voyage_call(texts, dim, input_type):
+    import json as _json
+    import urllib.request as _url
+    body = _json.dumps({"input": list(texts), "model": VOYAGE_MODEL,
+                        "input_type": input_type, "output_dimension": dim}).encode()
+    r = _url.Request(VOYAGE_BASE + "/embeddings", method="POST", data=body)
+    r.add_header("Authorization", "Bearer " + os.environ["MDB_MODEL_API_KEY"])
+    r.add_header("Content-Type", "application/json")
+    with _url.urlopen(r, timeout=180) as fh:
+        d = _json.loads(fh.read())
+    #  Order by the returned index rather than trusting arrival order to match the input list.
+    return [x["embedding"] for x in sorted(d["data"], key=lambda x: x.get("index", 0))]
+
+
+def _embed_voyage(texts, dim, task_type):
+    #  Voyage embeds queries and documents asymmetrically, and the app expresses that with Gemini's
+    #  task_type vocabulary. Translate rather than leak the provider's naming upward.
+    input_type = "query" if str(task_type).upper() == "RETRIEVAL_QUERY" else "document"
+    texts = list(texts)
+    out = []
+    for i in range(0, len(texts), VOYAGE_MAX_INPUTS):
+        out.extend(_voyage_call(texts[i:i + VOYAGE_MAX_INPUTS], dim, input_type))
+    return out
+
+
 def embed_texts(texts, dim, task_type="RETRIEVAL_DOCUMENT"):
+    if EMBED_PROVIDER == "voyage":
+        return _embed_voyage(texts, dim, task_type)
     if EMBED_PROVIDER == "vertex":
         return _embed_vertex(texts, dim, task_type)
     from openai import OpenAI

@@ -39,6 +39,7 @@ across both would let a waking shard hold a slot the dense channel needed, which
 serialisation the cold tier exists to avoid.
 """
 from __future__ import annotations
+from config import EMBED_DIM  # noqa: E402
 
 import atexit
 import os
@@ -504,7 +505,7 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
         wide_profile = bool(wide)
         if wide_profile != getattr(self, "_wide", False):
             self.scan_profile(wide=wide_profile)
-        qvec = embed.embed_query(query[:8000], 768)
+        qvec = embed.embed_query(query[:8000], EMBED_DIM)
         ch = {}
         presets = PRESETS
         # Callers may pass an explicit bounded channel sequence.  Resolve that before a mapping

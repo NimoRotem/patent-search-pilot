@@ -154,8 +154,42 @@ def _from_report(rep):
         "agent_calls": agent.get("calls"),
         "agent_tokens": (int(agent.get("prompt_tokens") or 0)
                          + int(agent.get("completion_tokens") or 0)) or None,
+        #  WHAT IT COST. Priced from the per-provider token counts and the per-source call counts,
+        #  because the two halves of a search are billed in different units and a token total
+        #  cannot see the external APIs at all.
+        "spend": _spend_of(rep),
     }
     return {k: v for k, v in out.items() if v not in (None, "")}
+
+
+def _spend_of(rep):
+    """-> a spend breakdown for this report, or None. Never raises: a price is not worth a 500."""
+    try:
+        import model_pool
+        import spend
+        dr = (rep or {}).get("deep_rank") or {}
+        ext = (rep or {}).get("external") or {}
+        providers = (dr.get("llm") or {}).get("providers") or {}
+        if not providers and not ext.get("queries_by_source"):
+            return None
+        models = {name: p.model for name, p in (model_pool._ALL or {}).items()}
+        got = spend.breakdown(providers, models=models,
+                              external=ext.get("queries_by_source") or {})
+        return got or None
+    except Exception:
+        traceback.print_exc()
+        return None
+
+
+def _write(path, data):
+    """Atomic write. A half-written receipt reads as garbage and would be cached as one."""
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(data, fh)
+        os.replace(tmp, path)
+    except Exception:
+        traceback.print_exc()
 
 
 def load(reports_dir, slug, report=None, seconds=None):
@@ -170,6 +204,15 @@ def load(reports_dir, slug, report=None, seconds=None):
                 got = json.load(fh)
             if seconds and not got.get("seconds"):
                 got["seconds"] = round(float(seconds), 1)
+            #  A RECEIPT WRITTEN BEFORE PRICING HAS NO SPEND BLOCK, and the history list reads the
+            #  sidecar only (deriving one costs a full report read, and that page renders hundreds
+            #  of rows). So fill it in once, here, the first time somebody opens the search: after
+            #  that the figure is on the row without anybody paying for it again.
+            if "spend" not in got and report is not None:
+                sp = _spend_of(report)
+                if sp:
+                    got["spend"] = sp
+                    _write(p, got)
             return got
         except Exception:
             traceback.print_exc()
@@ -181,6 +224,11 @@ def load(reports_dir, slug, report=None, seconds=None):
         #  Better than nothing and clearly labelled: the reading stage's own clock is most of a
         #  deep run, but it is not the whole run.
         out["seconds_partial"] = out["deep_seconds"]
+    #  KEEP WHAT IT COST TO DERIVE. Deriving a receipt means reading a multi-megabyte report; the
+    #  history list will not do that for hundreds of rows, so without persisting it here the cost
+    #  figure would be recomputed on every single expand and never reach the row itself.
+    if report is not None and out.get("spend"):
+        _write(p, out)
     return out
 
 

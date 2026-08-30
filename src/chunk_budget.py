@@ -28,7 +28,7 @@ rows = []
 for e in gs['entries']:
     subj = evaluate.subject_from(e)
     dc, dp = _date_clause(subj, e['mode'])
-    qv = _vec(embed.embed_query(e['query_text'][:8000], 768))
+    qv = _vec(embed.embed_query(e['query_text'][:8000], EMBED_DIM))
     sql = (f"SELECT c.publication_id, p.simple_family_id fam "
            f"FROM chunks c JOIN publications p ON p.id=c.publication_id "
            f"WHERE c.embedding IS NOT NULL {dc} "

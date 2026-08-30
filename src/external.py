@@ -68,6 +68,18 @@ INTERNAL_URL = os.environ.get("FEDERATION_INTERNAL_URL", "http://10.128.0.13:863
 FED_KEY = os.environ.get("FEDERATION_KEY", "")
 ENABLED = os.environ.get("EXTERNAL_ENABLED", "1") != "0"
 TIMEOUT = float(os.environ.get("EXTERNAL_TIMEOUT", "120"))
+#  THE INTERACTIVE TIER'S OWN DEADLINE.
+#
+#  MEASURED on a quick run: "8 aspects, 57 queries -> 15,593 candidates, 400 families in 58.5s",
+#  inside a search whose whole wall clock was 73s. The external fan-out IS the quick search: the
+#  local channels finish in seconds and the last retrieval passes sit blocked on this, all three
+#  reporting the same 47.8s because they are waiting on the same join.
+#
+#  It is one POST to a service that honours the deadline we send it, so shortening it is not a
+#  truncation of our own work: it is telling seven third-party APIs how long we are prepared to
+#  wait, and taking whatever landed. The deep tier keeps the full 120s, where a minute against a
+#  ten-minute read is noise and reach is the thing it is buying.
+TIMEOUT_QUICK = float(os.environ.get("EXTERNAL_TIMEOUT_QUICK", "25"))
 
 #  How many aspects to decompose the invention into. Each becomes up to four queries.
 MAX_ASPECTS = int(os.environ.get("EXTERNAL_MAX_ASPECTS", "9"))
@@ -905,6 +917,15 @@ def citable(families, subject_obj, mode) -> list:
     return [f for f in families if f[2] in ok]
 
 
+def _queries_by_source(queries) -> dict:
+    """How many requests each external source was actually asked to serve."""
+    out = {}
+    for q in queries or []:
+        src = (q or {}).get("source") or "?"
+        out[src] = out.get(src, 0) + 1
+    return out
+
+
 def credit_sources(cands, fam_of, kept):
     """Which source put which family in front of the reader. -> ({src: n}, {src: n_unique})
 
@@ -933,7 +954,7 @@ def credit_sources(cands, fam_of, kept):
              for s, fams in by_source.items()})
 
 
-def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
+def run(query_specs, brief: str = "", claims=None, on_event=None, timeout=None) -> dict:
     """Plan, fan out, materialise, rank. Never raises.
 
     -> {"ok", "families": [(fam, score, pid)], "aspects", "queries", "stats", "n_candidates",
@@ -957,7 +978,7 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
         except Exception:
             pass
 
-    res = bulk(p["queries"])
+    res = bulk(p["queries"], timeout=(timeout if timeout else TIMEOUT))
     cands = res.get("candidates") or []
     #  Per-source outcome, recorded so "zero hits" and "the adapter 401d" are never the same fact.
     import failclosed
@@ -1040,6 +1061,10 @@ def summary(ext: dict) -> dict:
         "n_in_corpus": ext.get("n_in_corpus", 0),
         "n_families": ext.get("n_families", 0),
         "per_source": per_source,
+        #  CALLS, not hits. `per_source` counts what came back; a patent API is billed per REQUEST,
+        #  so without this the external half of a search could not be priced at all , and it is the
+        #  half that costs real money per unit rather than per token.
+        "queries_by_source": _queries_by_source(ext.get("queries") or []),
         "elapsed": ext.get("elapsed", 0.0),
         "error": ext.get("error") or "",
     }

@@ -7,6 +7,7 @@ stopping signal — NEW relevant families produced per query. Stop when marginal
 families is consistently low across channels, capped by budget (not loop count).
 """
 from __future__ import annotations
+from config import EMBED_DIM  # noqa: E402
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import os
@@ -155,6 +156,11 @@ class AgentConfig:
     #  claim becomes its own query vector in the query set (query_set.build): a claim is the right
     #  query for a claim-level match even though, measured, it is a poor query on its own.
     input_claims: list = field(default_factory=list)
+    #  The subject's OWN specification, for the claim construction. A patentee is his own
+    #  lexicographer and his definition of a term is a construction of the claim, so the sentence
+    #  that says what "170 to 190 degrees" means is usually one paragraph from the claim and
+    #  nowhere in it. Empty is fine: the geometry rule still runs, the lexicography does not.
+    input_spec: str = ""
 
 
 class CoverageAgent:
@@ -221,7 +227,7 @@ class CoverageAgent:
         # map the strongest reranked families to this element as evidence
         evidence = []
         if element:
-            qv = embed.embed_query(query[:2000], 768) if getattr(self, "_ground", True) else None
+            qv = embed.embed_query(query[:2000], EMBED_DIM) if getattr(self, "_ground", True) else None
             for fk, pid, score, prov in res.family_ranked[:5]:
                 if qv is not None:                       # full coordinate grounding (report path)
                     g = self._ground_vec(pid, qv, subject, retriever=r)
@@ -353,6 +359,7 @@ class CoverageAgent:
         #  Honest upper bound: seed pass(es) + the query set + per-element seed passes + rounds.
         search_max = ((2 if split_claim_seed else 1)
                       + 6 + query_set.MAX_CLAIMS + min(8, len(elements))
+                      + query_set.max_limitations() * 2      # each may carry a construction
                       + cfg.max_rounds * cfg.elements_per_round * 3)
 
         def searched(progress_stage, query, *args, progress_round=None, **kwargs):
@@ -373,7 +380,7 @@ class CoverageAgent:
             emit(progress_stage, detail)
             return result
 
-        def searched_batch(progress_stage, specs, progress_round=None):
+        def searched_batch(progress_stage, specs, progress_round=None, yield_gate=False):
             """Run independent passes concurrently, then apply them in their original order.
 
             A psycopg connection cannot be shared by concurrent queries. Production Retriever
@@ -409,6 +416,33 @@ class CoverageAgent:
                     if callable(close):
                         close()
 
+            #  THE YIELD GATE. MEASURED on run FT-D (871 s, 5,005 families): passes 25 to 30
+            #  took 23.5 s, 23.6 s, 23.5 s, 65.0 s, 64.5 s and 64.4 s, and moved the family count
+            #  from 4,912 to 5,005. That is 60 to 90 s of wall clock on a six-worker pool for 93
+            #  new families out of 5,005, i.e. 1.9%. The tail of a pass loop is where the slow
+            #  queries live, because the slow queries are the long ones.
+            #
+            #  It gates by CANCELLING the futures that have not started rather than by submitting
+            #  in waves: waves would make every pass wait for the slowest member of its wave, which
+            #  costs more throughput than the gate saves. At most `workers` passes are already
+            #  running when it fires, and their results are discarded.
+            #
+            #  Only the caller asks for it, and only the refinement rounds do. The whole-invention
+            #  seed passes and the per-element attribution passes always run in full: they are what
+            #  the ranking backbone and the coverage ledger are built from, and a ledger with an
+            #  element nothing was ever searched for reads as "no prior art" rather than "not
+            #  looked for".
+            gate_pct = 0.0
+            gate_win = 3
+            if yield_gate:
+                try:
+                    import search_settings as _ss
+                    gate_pct = float(_ss.get("pass_yield_min_pct"))
+                    gate_win = int(_ss.get("pass_yield_window"))
+                except Exception:
+                    gate_pct = 0.0
+            lean = 0
+
             out = []
             with ThreadPoolExecutor(max_workers=workers,
                                     thread_name_prefix="patent-agent-search") as ex:
@@ -416,9 +450,23 @@ class CoverageAgent:
                 # Consume in input order. All futures are already running/queued, so this keeps
                 # ledger tie behavior deterministic without forfeiting retrieval concurrency.
                 for spec, future in zip(specs, futures):
+                    if gate_pct > 0 and lean >= gate_win:
+                        stopped = sum(1 for f in futures if f.cancel())
+                        print(f"[agent] yield gate: {gate_win} passes under {gate_pct}% new "
+                              f"families; {stopped} of {len(specs)} passes cancelled "
+                              f"at fam={len(ledger.families_seen)}", flush=True)
+                        emit("pass_gate", {"cancelled": stopped, "of": len(specs),
+                                           "window": gate_win, "min_pct": gate_pct,
+                                           "families": len(ledger.families_seen)})
+                        break
                     fetched, seconds = future.result()
+                    before_fam = len(ledger.families_seen)
                     result = self._apply_search(
                         fetched, ledger, is_seed=bool(spec.get("is_seed")))
+                    if gate_pct > 0:
+                        total = max(1, len(ledger.families_seen))
+                        gained = len(ledger.families_seen) - before_fam
+                        lean = lean + 1 if (100.0 * gained / total) < gate_pct else 0
                     search_done += 1
                     print(f"[agent] pass {search_done}/{search_max} {seconds}s "
                           f"batched({workers}w) wide={bool(spec.get('wide'))} "
@@ -475,7 +523,9 @@ class CoverageAgent:
         #  #37 while finding it in 9 of the 14. These are SEED-bucket passes: they describe the
         #  whole invention, so they belong in the ranking backbone, not in element attribution.
         try:
-            specs = query_set.build(query_text, elements=elements, claims=(cfg.input_claims or []))
+            specs = query_set.build(query_text, elements=elements,
+                                    claims=(cfg.input_claims or []),
+                                    spec_text=(cfg.input_spec or ""))
         except Exception:
             specs = []
         extra = [s for s in query_set.seed_specs(specs)
@@ -500,6 +550,33 @@ class CoverageAgent:
             dict({"query": el, "element": el},
                  **({"cfg": _find_cfg} if _find_cfg else {})) for el in elements[:6 if cfg.find_mode else 8]
         ])
+
+        #  ONE PASS PER CLAIM LIMITATION. A claim is a conjunction, and the art that discloses its
+        #  third requirement resembles the invention barely at all: measured, every reference an
+        #  attorney filed against US 2026/0109053 A1 was cited for exactly ONE requirement, and a
+        #  query built from the whole invention ranked them nowhere. Measured the other way on the
+        #  v2 corpus, one brief-shaped query put 1 of 6 known-relevant references in the top 25 and
+        #  three limitation-shaped queries put 3 of 6 in the union of their top 30.
+        #
+        #  `element=None`, deliberately. These are candidate-producing passes, not attribution: the
+        #  coverage ledger was constructed from the element list, and handing it a limitation as
+        #  though it were an element would put a row in it that nothing else in the pipeline knows
+        #  about. The per-limitation verdicts come later, from the ledger's own reading.
+        #  Constructions ride with the limitations: they are the same question asked in the
+        #  words the art actually uses, and on the case this was built for they are the ONLY
+        #  form that reaches the art at all.
+        lim_specs = [s for s in specs if s.kind in ("limitation", "construction")]
+        if cfg.find_mode:
+            #  The find tier buys reach, not depth: six requirements on the cheap dense channels is
+            #  seconds, and it is where the measured recall gain sits.
+            lim_specs = lim_specs[:6]
+        if lim_specs:
+            emit("limitation_queries", {"n": len(lim_specs),
+                                        "queries": [s.as_dict() for s in lim_specs]})
+            searched_batch("seed_progress", [
+                dict({"query": s.text, "element": None},
+                     **({"cfg": _find_cfg} if _find_cfg else {})) for s in lim_specs])
+
         ledger.note_round(len(ledger.families_seen))
         emit("seeded", {"families": len(ledger.families_seen)})
         #  A SECOND SNAPSHOT, once the query set and the element passes have run. There used to be
@@ -525,7 +602,7 @@ class CoverageAgent:
                 de = plan.get("de")
                 if de:
                     ledger.languages.add("de")
-                    alt_vecs = [embed.embed_query(de, 768)]
+                    alt_vecs = [embed.embed_query(de, EMBED_DIM)]
                 for q in (plan.get("queries") or [el])[:3]:
                     round_specs.append({
                         "query": q,
@@ -535,7 +612,7 @@ class CoverageAgent:
                         "assignees": plan.get("assignees"),
                         "alt_vecs": alt_vecs,
                     })
-            searched_batch("round_progress", round_specs, progress_round=rnd)
+            searched_batch("round_progress", round_specs, progress_round=rnd, yield_gate=True)
             ledger.note_round(len(ledger.families_seen) - before)
             emit("round", {"round": rnd, "families": len(ledger.families_seen)})
             #  and one per refinement round, for the same reason.

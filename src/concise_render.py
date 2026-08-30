@@ -174,6 +174,14 @@ def filing_notes(doc_model):
     sc = c.get("self_collision") or {}
     if sc.get("note"):
         out.append(("Common ownership", sc["note"]))
+    #  AN EXCLUSION IS ABOUT ONE PUBLICATION AND A FAMILY IS MANY. Where the sweep found a member
+    #  that published earlier, that is the most valuable line on this page: the disclosure is
+    #  available even though this publication of it is not. See family_sweep.
+    sib = c.get("sibling") or {}
+    if sib.get("best"):
+        out.append(("An earlier member of this family", sib.get("note") or ""))
+    elif sib.get("checked") is False and sib.get("note"):
+        out.append(("Family", sib["note"]))
     tr = c.get("translation") or {}
     if tr.get("translated"):
         out.append(("Translation", "%d relied-on passage%s machine-translated into English; the "
@@ -182,6 +190,26 @@ def filing_notes(doc_model):
                        "A verified human translation may be required before filing.")))
     elif tr.get("note"):
         out.append(("Translation", tr["note"]))
+    else:
+        #  A FROZEN NOTE CANNOT LEARN. This block is read back from a model.json written when the
+        #  description was generated, so a document built before an office was added to the
+        #  non-English list keeps saying nothing about its language for ever, while the packet
+        #  beside it correctly attaches a translation. That is exactly how the page came to list
+        #  SU1296407A1 with a copy and no translation note under an audit line that said every
+        #  non-English item had one. Derived live, from the same list the audit uses, so the next
+        #  office added is right on documents that already exist.
+        try:
+            import submission_compliance
+            lang = submission_compliance.source_language(doc_model.get("pub"))
+        except Exception:                                                 # noqa: BLE001
+            lang = ""
+        if lang:
+            out.append(("Translation",
+                        "This is a %s-language document. The passages relied on are quoted from an "
+                        "English translation held in the search corpus, not from the original "
+                        "text, and that translation is what is attached to the packet. A verified "
+                        "translation of the relied-on portions should accompany the filing."
+                        % lang))
     qz = c.get("quotes") or {}
     if qz.get("note"):
         out.append(("Quotations", qz["note"]))

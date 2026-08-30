@@ -33,6 +33,8 @@ import os
 import re
 import traceback
 
+import citation                            # the one grammar for a pinpoint, writer and checker
+
 CITE_MAX = int(os.environ.get("CONCISE_CITES_PER_ROW", "4"))
 #  A row is worth filing when the reference actually says something about the claim. "absent" and
 #  "uncertain" are not findings, and an unverified cell has no passage behind it.
@@ -40,6 +42,15 @@ _USABLE_VERDICTS = ("disclosed", "partial")
 
 
 # --------------------------------------------------------------------------- biblio
+
+
+def _stage_tier(key, default):
+    """Which tier this stage asks for. Settings page first, then the code default."""
+    try:
+        import model_settings
+        return model_settings.tier_for(key, default)
+    except Exception:
+        return default
 
 
 def _display(pub, allow_fetch=True):
@@ -233,34 +244,13 @@ def _cite(cell):
     The corpus stores US pre-grant text by paragraph number and granted claims by claim number, so
     that is what gets cited. Column/line coordinates are NOT synthesised: the reader never saw a
     column-and-line layout, and inventing one would be a fabricated citation in a filed paper.
+
+    The grammar lives in `citation` because the compliance pass has to read back exactly what this
+    wrote: it verifies the quotation appears AT this place, and a location it cannot parse is a
+    location it cannot check. A place that does not resolve to a claim, a paragraph, a figure or
+    the abstract returns "" rather than a fragment of prose an examiner cannot turn to.
     """
-    coord = cell.get("coord")
-    if isinstance(coord, str):
-        try:
-            coord = json.loads(coord.replace("'", '"'))
-        except Exception:
-            coord = {}
-    coord = coord if isinstance(coord, dict) else {}
-    para = coord.get("para_no") or ""
-    if para:
-        p = re.sub(r"^p0*", "", str(para)) or str(para)
-        return "Paragraph [%s]" % p.zfill(4)
-    if coord.get("claim_no"):
-        return "Claim %s" % coord["claim_no"]
-    if coord.get("figure") or coord.get("fig_no"):
-        return "FIG. %s" % (coord.get("figure") or coord.get("fig_no"))
-    loc = (cell.get("location") or "").strip()
-    if not loc:
-        return ""
-    m = re.match(r"^paragraph\s+p?0*(\d+)$", loc, re.I)
-    if m:
-        return "Paragraph [%s]" % m.group(1).zfill(4)
-    m = re.match(r"^claim\s+(\d+)$", loc, re.I)
-    if m:
-        return "Claim %s" % m.group(1)
-    if loc.lower().startswith("abstract"):
-        return "Abstract"
-    return loc[:80]
+    return citation.render(citation.of_cell(cell))
 
 
 def _dedupe_keep_order(items):
@@ -324,14 +314,16 @@ def rows_for_reference(ref, claims):
             for l in labels:
                 cell = by_label[l]
                 m = meta.get(l) or {}
-                rows.append(_row(n, m.get("text") or "", cell, quote_claim=True, label=l))
+                rows.append(_row(n, m.get("text") or "", cell, quote_claim=True, label=l,
+                                 pub=ref.get("pub")))
         else:
             best = max(labels, key=lambda l: (by_label[l].get("bar") == "discloses",
                                               float(by_label[l].get("confidence") or 0)))
             m = meta.get(best) or {}
             merged = dict(by_label[best])
             merged["_extra_cites"] = [_cite(by_label[l]) for l in labels if l != best]
-            rows.append(_row(n, m.get("text") or "", merged, quote_claim=False, label=best))
+            rows.append(_row(n, m.get("text") or "", merged, quote_claim=False, label=best,
+                             pub=ref.get("pub")))
     return rows
 
 
@@ -352,12 +344,17 @@ def _filing_safe(note):
     return t.strip(" ,;")
 
 
-def _row(claim_no, claim_text, cell, quote_claim, label):
+def _row(claim_no, claim_text, cell, quote_claim, label, pub=""):
     cites = _dedupe_keep_order([_cite(cell)] + list(cell.get("_extra_cites") or []))[:CITE_MAX]
     strong = (cell.get("bar") or "") == "discloses"
     return {
         "claim_no": claim_no,
         "label": label,
+        #  THE PUBLICATION THIS ROW'S CITATIONS BELONG TO, kind code and all. A1 and B4 of one
+        #  application number paragraphs differently and do not have the same claims, so a row that
+        #  cannot say which publication its pinpoint came from cannot be checked, and one that is
+        #  carried onto a sibling resolves to nothing. See citation.same_publication.
+        "cite_pub": pub or "",
         "quote_claim": bool(quote_claim),
         "claim_text": " ".join(str(claim_text or "").split()),
         "claim_paraphrase": _paraphrase(claim_text),
@@ -393,6 +390,14 @@ _SYS = (
     "answer is an error.\n"
     "- Do NOT assert anticipation, obviousness, invalidity or patentability. State disclosure "
     "only. A submission under 1.290 may not argue the merits.\n"
+    "- INFER NOTHING. Every sentence must be a restatement of something the supplied passage "
+    "actually says. If the passage says a member is annular and generally cylindrical, do NOT "
+    "write that it therefore extends along a longitudinal axis: that is you supplying a claim "
+    "limitation. Do not write that the reference 'constitutes', 'amounts to', 'may be considered' "
+    "or 'corresponds to the claimed' anything. Do not use 'implying', 'suggesting', 'indicating', "
+    "'appears to', 'effectively' or 'thereby' to carry a fact the passage does not contain. "
+    "Argument is the one defect that gets a submission discarded rather than corrected, and it "
+    "does not need a single word from the patentability vocabulary to be argument.\n"
     "- Where the evidence is partial, say what IS disclosed and stop. Do NOT write what the "
     "reference fails to disclose, does not teach, or is silent on. The supplied notes are an "
     "analyst's working commentary and often contain such hedges; drop them. A submission "
@@ -405,7 +410,7 @@ _SYS = (
 )
 
 
-def phrase(doc, tier="strong", model=None):
+def phrase(doc, tier=None, model=None):
     """Fill in `summary` and each row's `disclosure`, grounded in the cells. Best-effort.
 
     A failure here must not lose the document: every row already carries the reader's own note,
@@ -433,7 +438,8 @@ def phrase(doc, tier="strong", model=None):
         #  `model`, when a person chose one in the rebuild dialog, pins this call to it
         #  instead of letting the strong tier pick. Unset is the default behaviour.
         got = llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False),
-                            max_tokens=8000, tier=tier, provider=model) or {}
+                            max_tokens=8000, provider=model,
+                            tier=tier or _stage_tier("concise_description", "strong")) or {}
     except Exception:
         traceback.print_exc()
         return doc
@@ -534,21 +540,41 @@ def sole_reach_notes(deep):
     return sorted(out, key=lambda d: (_claim_no(d["limitation"]), d["limitation"]))
 
 
-def unreached_limitations(deep):
-    """Limitations NO reference in the search reaches at all. -> [{"limitation", "text"}]
+def unreached_limitations(deep, report=None):
+    """Limitations NO reference in the search reaches at all. -> [{"limitation", "text", ...}]
 
     The other half of the same answer, and the one that decides whether a claim survives. Said
     plainly rather than left to be inferred from an empty column.
+
+    AND NEVER SAID FLAT WHEN THE WORDS WERE THE ONLY THING SEARCHED. Counsel, 2026-08-26: claim
+    1[e], "the contact surface angle ranges in size from 170° to 190°", was reported reached by 0
+    of 232 references. 170 to 190 degrees means "parallel to the direction the magnet travels",
+    which GB 874,600 claims outright and which this search had already selected as Document 6. The
+    sentence was true of the vocabulary and false of the art. So each row carries its construction
+    and, where the construction was not itself searched, the caveat that goes beside it.
     """
+    import claim_construction
     labels = [c for c in (deep or {}).get("claims") or [] if isinstance(c, dict)]
     touched = set()
     for ref in ((deep or {}).get("references") or []):
         for c in (ref.get("claims") or []):
             if isinstance(c, dict) and c.get("item") and (c.get("verdict") or "") != "absent":
                 touched.add(c["item"])
-    return [{"limitation": c.get("label"),
-             "text": str(c.get("text") or "").strip()}
-            for c in labels if c.get("label") not in touched]
+    stored = ((report or {}).get("claim_construction") or {})
+    out = []
+    for c in labels:
+        if c.get("label") in touched:
+            continue
+        text = str(c.get("text") or "").strip()
+        #  The run's own construction when the report carries one (it also holds the applicant's
+        #  definitions and whether the concept reached the portfolio); the geometry alone when it
+        #  does not, so an older report is gated too rather than trusted.
+        con = stored.get(c.get("label")) or claim_construction.construe(text)
+        out.append({"limitation": c.get("label"), "text": text,
+                    "construction": con,
+                    "confirmed": claim_construction.zero_is_confirmable(con),
+                    "caveat": claim_construction.zero_caveat(con)})
+    return out
 
 
 def _by_marginal_coverage(ranked):
@@ -841,7 +867,10 @@ def office_action_candidates(report):
     wrapper, it is non-patent literature, and finding it requires knowing the parent exists. What
     it IS, is a printed publication under 37 CFR 1.290(a) in which a USPTO examiner has already
     made limitation-by-limitation findings on substantially these claims — so the examiner's
-    analysis does the arguing that 1.290(b) forbids the submitter from doing.
+    analysis does the arguing that the submitter may not do. (The no-argument constraint is the
+    concise-description requirement of 1.290(d)(2) as construed by MPEP 1134.01, NOT 1.290(b),
+    which is the timing provision. This said (b) until 2026-08-27, and it said it on a paper
+    written to be read by an examiner.)
     """
     mined = ((report or {}).get("prosecution") or {}).get("mined") or {}
     out = []
@@ -900,8 +929,10 @@ def office_action_doc(cand, subject, n=1):
             "verdict": "disclosed", "bar": "discloses", "strong": True,
             "quote": "",
             #  Factual and attributed: the examiner did this, on this date, in this application.
-            #  It states what the document SAYS, which 1.290(d)(2) asks for; it does not argue that
-            #  the pending claims are unpatentable, which 1.290(b) forbids.
+            #  It states what the document SAYS, which 1.290(d)(2) asks for; it does not argue
+            #  that the pending claims are unpatentable, which 1.290(d)(2) as construed by
+            #  MPEP 1134.01 does not permit. (1.290(b) is the TIMING provision, and citing it for
+            #  this was wrong on a paper an examiner reads.)
             "note": ("The examiner rejected %s over %s%s."
                      % (where.strip(), ref,
                         " under 35 U.S.C. %s" % statute if statute and "double" not in

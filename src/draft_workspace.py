@@ -300,15 +300,6 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
     (workspace / "figures").mkdir(parents=True, exist_ok=True)
     (workspace / "review").mkdir(parents=True, exist_ok=True)
 
-    #  Drawing evidence is written by the image pipeline, which no longer runs inside a drafting
-    #  turn. Left on disk it is both stale and expensive: one project carried 31,000 characters of
-    #  figure audit JSON that every run could read and none should have believed.
-    for stale in (workspace / "review").glob("figure-*"):
-        try:
-            stale.unlink()
-        except OSError:
-            pass
-
     _write(workspace / "input" / "brief.md", _brief(project))
     _write(workspace / "input" / "disclosure.md", _disclosure(project))
     _write(workspace / "input" / "conversation.md", _conversation(conversation))
@@ -378,36 +369,16 @@ def _disclosure(project: Mapping[str, Any]) -> str:
     return header + "\n" + _clean(project.get("disclosure_text"), 400_000)
 
 
-#  How much of the conversation the agent is given. It is a REMINDER of what has been asked, not
-#  an archive: at turn 55 of one project this file had reached 38,000 characters and every word of
-#  it was re-read on every run of every round. What decides the draft is the disclosure, the
-#  current text and the review; older exchanges are already reflected in all three.
-MAX_CONVERSATION_MESSAGES = max(4, int(os.environ.get("DRAFT_CONVERSATION_MESSAGES", "12")))
-MAX_CONVERSATION_CHARS = max(2000, int(os.environ.get("DRAFT_CONVERSATION_CHARS", "12000")))
-
-
 def _conversation(messages: Sequence[Mapping[str, Any]]) -> str:
     if not messages:
         return "# Conversation\n\n(this is the first turn)"
-    elided = max(0, len(messages) - MAX_CONVERSATION_MESSAGES)
-    messages = list(messages)[-MAX_CONVERSATION_MESSAGES:]
     lines = ["# Conversation so far", ""]
-    if elided:
-        lines += [f"_{elided} earlier message(s) are not reproduced here. What they settled is in "
-                  "input/disclosure.md, in the current draft, and in review/previous-qa.md._", ""]
     for message in messages:
         role = str(message.get("role") or "user")
         who = {"user": "USER", "agent": "YOU (the drafting agent)",
                "qa": "REVIEWER", "system": "SYSTEM"}.get(role, role.upper())
-        lines += [f"### {who}", "", _clean(message.get("body"), 2_000), ""]
-    out = "\n".join(lines)
-    if len(out) > MAX_CONVERSATION_CHARS:
-        #  A single agent message can be thousands of words of reasoning. Keep the end, which is
-        #  what was most recently asked and answered, and say plainly that the start was cut.
-        out = ("# Conversation so far\n\n_The earlier part of this conversation is not "
-               "reproduced. What it settled is in input/disclosure.md, in the current draft, and "
-               "in review/previous-qa.md._\n\n" + out[-MAX_CONVERSATION_CHARS:])
-    return out
+        lines += [f"### {who}", "", _clean(message.get("body"), 12_000), ""]
+    return "\n".join(lines)
 
 
 def _write_materials(workspace: Path, documents: Sequence[Mapping[str, Any]]) -> None:
@@ -725,87 +696,3 @@ def snapshot(workspace: Path) -> dict[str, Any]:
 def iter_section_texts(sections: Mapping[str, str]) -> Iterable[tuple[str, str, str]]:
     for key, _name, heading in SECTION_FILES:
         yield key, heading, str(sections.get(key) or "")
-
-
-# =================================================================================================
-# Handing a reviewer its material instead of sending it to look for it
-# =================================================================================================
-#  A reviewer used to be given a LIST OF SIXTEEN FILE PATHS and told to read them. Measured on
-#  project 8: that review took 27 internal model turns and put 458,000 tokens through the model to
-#  judge a draft whose entire text is 16,000. The arithmetic is not subtle. Every Read is another
-#  model turn, and every model turn re-reads the whole conversation so far, so the cost of fetching
-#  a workspace one file at a time is quadratic in the number of files while the workspace itself is
-#  a constant. Handing the same bytes over in the prompt costs them exactly once.
-#
-#  There is a second reason, and it is the one that matters for correctness: an agent that fetches
-#  its own material decides how much of it to read. "Read draft/ in full - every section, not a
-#  sample" is in the prompt because it stopped doing that. A reviewer that is HANDED the sections
-#  cannot skim eleven of them.
-#  ORDERED SO THE UNCHANGING PART COMES FIRST, because a prompt cache is a PREFIX match: the
-#  first byte that differs from the last call throws away everything after it. Within one turn the
-#  draft is rewritten up to six times while the disclosure, the brief, the conversation and the
-#  figure briefs do not move, so putting draft/ last is the difference between six cache writes
-#  and one write plus five reads of the same 12,000 tokens.
-MATERIAL_DIRECTORIES = ("input", "figures", "draft")
-#  Same reasoning inside input/: the disclosure is fixed for the life of the project, the request
-#  is written fresh every turn.
-MATERIAL_ORDER = ("input/disclosure.md", "input/brief.md", "input/conversation.md",
-                  "input/request.md")
-MATERIAL_SUFFIXES = frozenset({".md", ".txt", ".json"})
-#  Above this, inlining stops being the cheap option and the tool-driven path is honest again.
-#  A cap that silently truncated would be worse than either: the reviewer would report on a draft
-#  it had only been shown part of, and say nothing about the part it never saw.
-MAX_MATERIAL_CHARS = max(20_000, int(os.environ.get("DRAFT_MATERIAL_CHARS", "400000")))
-
-
-def text_materials(workspace: Path,
-                   directories: Sequence[str] = MATERIAL_DIRECTORIES) -> dict[str, str]:
-    """Every text file a reviewer is told to read, keyed by workspace-relative path.
-
-    Directory order is the reading order the prompts always asked for, and within a directory the
-    files sort by name, which is why the section files are numbered.
-    """
-    found: dict[str, str] = {}
-    root = Path(workspace)
-    for name in directories:
-        directory = root / name
-        if not directory.is_dir():
-            continue
-        for path in sorted(directory.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in MATERIAL_SUFFIXES:
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            found[str(path.relative_to(root))] = text
-    out: dict[str, str] = {}
-    for name in MATERIAL_ORDER:
-        if name in found:
-            out[name] = found.pop(name)
-    out.update(found)
-    return out
-
-
-def render_materials(materials: Mapping[str, str]) -> str:
-    """The material as one block, delimited so a model can quote a path back precisely."""
-    blocks = []
-    for path, text in materials.items():
-        blocks.append(f"===== BEGIN {path} =====\n{text.rstrip()}\n===== END {path} =====")
-    return "\n\n".join(blocks)
-
-
-def material_block(workspace: Path,
-                   directories: Sequence[str] = MATERIAL_DIRECTORIES) -> tuple[str, list[str]]:
-    """The rendered material and the paths it covers, or ('', []) if it is too large to inline.
-
-    An empty return is not an error and is not a truncation: it means this workspace is big enough
-    that the caller should keep its file tools and let the agent fetch what it needs. The caller
-    must SAY which of the two happened, because the two paths have different failure modes.
-    """
-    materials = text_materials(workspace, directories)
-    if not materials:
-        return "", []
-    if sum(len(text) for text in materials.values()) > MAX_MATERIAL_CHARS:
-        return "", []
-    return render_materials(materials), list(materials)
