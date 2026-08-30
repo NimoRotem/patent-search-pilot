@@ -49,11 +49,29 @@
       {% endif %}
       {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users"{% if endpoint.startswith('auth.admin_') %} class="active" aria-current="page"{% endif %}>Admin</a>{% endif %}
       {% if current_user %}
-        <a href="{{ request.script_root }}/account" class="accountnav{% if endpoint == 'auth.account' %} active{% endif %}" aria-label="Signed in as {{ current_user.full_name }}, {{ current_user.email }}"{% if endpoint == 'auth.account' %} aria-current="page"{% endif %}>
-          <span class="accountname">{{ current_user.full_name }}</span>
-          <span class="accountemail">{{ current_user.email }}</span>
-        </a>
-        <a class="signout" href="{{ request.script_root }}/logout">Sign out</a>
+        {#  THE ORDINARY ACCOUNT CONTROL. This printed the full name and the email address on two
+            stacked lines inside the header, next to a separate "Sign out" link: a two-row block in
+            a one-row bar, showing the reader an address they already know.
+
+            What every site does instead, and what this does now: one chip carrying the name, a
+            menu behind it, and the address inside the menu where it identifies WHICH account you
+            are about to sign out of. A <details>, so it needs no script, is keyboard reachable and
+            closes on Escape. #}
+        <details class="acctmenu{% if endpoint == 'auth.account' %} active{% endif %}">
+          <summary aria-label="Signed in as {{ current_user.full_name }}, {{ current_user.email }}">
+            <span class="acctinit" aria-hidden="true">{{ (current_user.full_name or current_user.email)[:1]|upper }}</span>
+            <span class="acctname">{{ current_user.full_name or current_user.email.split('@')[0] }}</span>
+          </summary>
+          <div class="acctpop" role="menu">
+            <div class="acctwho">
+              <b>{{ current_user.full_name }}</b>
+              <span>{{ current_user.email }}</span>
+            </div>
+            <a class="mo" role="menuitem" href="{{ request.script_root }}/account">Profile and filing details</a>
+            <a class="mo" role="menuitem" href="{{ request.script_root }}/history">Your searches</a>
+            <a class="mo mo-out" role="menuitem" href="{{ request.script_root }}/logout">Sign out</a>
+          </div>
+        </details>
       {% elif account_mode %}
         <a href="{{ request.script_root }}/login">Sign in</a>
         <a class="navcta" href="{{ request.script_root }}/register">Create account</a>

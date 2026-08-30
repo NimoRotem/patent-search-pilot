@@ -586,3 +586,86 @@ def test_an_inventor_card_holds_every_field_the_ads_and_the_declaration_need():
     #  which field is still missing rather than that the section is incomplete.
     missing = [gap["field"] for gap in filing_profile.gaps(profile)]
     assert "Inventor 1: City of residence" in missing
+
+
+# =============================================================================================
+# Which claims stand alone, and what the set costs
+# =============================================================================================
+CLAIM_SET = """1. A vibration device comprising a rigid base and a chamber.
+
+2. The vibration device of claim 1, wherein the base is metal.
+
+3. A method of using the vibration device of claim 1, comprising placing it on a surface.
+
+4. The vibration device of any one of claims 1 to 3, wherein the chamber is annular."""
+
+
+def test_a_claim_is_marked_independent_or_dependent_with_what_it_depends_on():
+    import draft_qa
+    rows = {row["number"]: row for row in draft_qa.claim_map(CLAIM_SET)["claims"]}
+    assert rows[1]["independent"] and rows[1]["depends_on"] == []
+    assert not rows[2]["independent"] and rows[2]["depends_on"] == [1]
+    assert rows[4]["multiple_dependent"] and rows[4]["depends_on"] == [1, 2, 3]
+
+
+def test_a_claim_that_names_a_new_subject_is_independent_even_when_it_cites_another():
+    """MPEP 608.01(n). "A method of using the device of claim 1" introduces a method; the Office
+    bills it as independent. Reading only the reference undercounts the fee and hides a slot the
+    applicant has already paid for."""
+    import draft_qa
+    rows = {row["number"]: row for row in draft_qa.claim_map(CLAIM_SET)["claims"]}
+    assert rows[3]["independent"] is True
+    assert rows[3]["new_subject"] is True
+    assert draft_qa.claim_map(CLAIM_SET)["independent_numbers"] == [1, 3]
+
+
+def test_the_page_the_review_and_the_fee_worksheet_count_the_same_claims():
+    import draft_qa
+    import draft_uspto
+    counted = draft_qa.claim_map(CLAIM_SET)
+    assert filing_pack.fee_profile(CLAIM_SET)["independent"] == counted["independent"]
+    assert draft_uspto.fee_profile(CLAIM_SET)["independent"] == counted["independent"]
+    assert filing_pack.fee_profile(CLAIM_SET)["billable"] == counted["billable"]
+
+
+def test_the_free_allowance_is_reported_in_both_directions():
+    import draft_qa
+    one = draft_qa.claim_map("1. A device comprising a base.")
+    assert one["free_independent_left"] == 2 and one["excess_independent"] == 0
+    many = draft_qa.claim_map("\n\n".join(
+        f"{n}. A device number {n} comprising a base." for n in range(1, 6)))
+    assert many["independent"] == 5
+    assert many["excess_independent"] == 2 and many["free_independent_left"] == 0
+
+
+def test_a_set_under_the_free_allowance_is_raised_as_an_advisory_not_an_error():
+    import draft_qa
+    checks = draft_qa.run_checks(
+        sections={"claims": "1. A device comprising a base.\n\n"
+                            "2. The device of claim 1, wherein it is red."},
+        numerals=[], figures=[], allow_remote=False)
+    row = next(c for c in checks if c["name"] == "Independent claims within the free allowance")
+    assert row["status"] == "warn" and row["severity"] == "advisory"
+    assert "2 more would cost nothing" in row["detail"]
+
+    clean = draft_qa.run_checks(
+        sections={"claims": "\n\n".join(
+            f"{n}. A device number {n} comprising a base." for n in range(1, 4))},
+        numerals=[], figures=[], allow_remote=False)
+    assert next(c for c in clean
+                if c["name"] == "Independent claims within the free allowance")["status"] == "pass"
+
+
+def test_the_target_reaches_the_agent_through_the_brief_on_every_rebuild():
+    """A setting, not an intake note: somebody who changes it on turn nine has to be obeyed on
+    turn nine."""
+    import draft_workspace
+    assert draft_workspace.independent_claim_target({}) == 3
+    assert draft_workspace.independent_claim_target(
+        {"settings": {"independent_claims": 5}}) == 5
+    assert draft_workspace.independent_claim_target(
+        {"settings": '{"independent_claims": 2}'}) == 2
+    brief = draft_workspace._brief({"title": "X", "settings": {"independent_claims": 5}})
+    assert "Aim for 5 independent claim(s)" in brief
+    assert "2 of these are charged for" in brief
+    assert "never write one the disclosure does not support" in brief.replace("\n", " ")

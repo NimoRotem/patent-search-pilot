@@ -1032,3 +1032,40 @@ label.fset input:focus, label.fset select:focus { outline: 1px solid var(--accen
 .rvcounts .bad b { color: var(--bad); }
 .rvcounts .warn b { color: var(--warn, #d29922); }
 .rvcounts .grow { flex: 1 1 auto; }
+
+/*  Claims: which stand alone, and what the set costs. The chip is on the claim rather than in a
+    legend because the question "is this one independent" is asked while reading claim 14, not
+    while reading a summary at the top. */
+.claimcounts {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--muted);
+}
+.claimcounts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.claimcounts .grow { flex: 1 1 auto; }
+.claimcounts .good { color: var(--good); }
+.claimcounts .warn { color: var(--warn, #d29922); }
+.ctag {
+  display: inline-block;
+  margin: 0 8px 0 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--faint);
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+.ctag.ind { color: var(--accent); border-color: rgba(76, 141, 255, .4); }
+/*  The left rule is the marker, so it has to differ. Every claim already carried an accent rule
+    in the light theme, which meant it said nothing at all. */
+.dsectext.claims .claim.cind { border-left-color: var(--accent); }

@@ -493,6 +493,10 @@ def _brief(project: Mapping[str, Any]) -> str:
     lines.append(f"- Prior-art search: {slug}" if slug else
                  "- Prior-art search: none was run. Work with whatever art is in prior_art/, and "
                  "say plainly in your summary that the art you were given may be incomplete.")
+    #  Read from the project's settings on every workspace build, not written once into the
+    #  inventor notes at intake: the number is a setting somebody can change on turn nine, and a
+    #  brief that still carries the intake value would quietly ignore them.
+    lines += ["", "## Independent claims", "", _independent_claim_note(project)]
     notes = _clean(project.get("inventor_notes"), 40_000)
     # Projects created by the former intake form can retain instructions that directly conflict
     # with the filing-clean gate. Preserve every other filing choice while upgrading only those
@@ -508,6 +512,47 @@ def _brief(project: Mapping[str, Any]) -> str:
     if notes:
         lines += ["", "## Inventor and filing notes", "", notes]
     return "\n".join(lines)
+
+
+#  37 CFR 1.16(h): the basic filing fee includes three independent claims. Below three is money
+#  already paid for nothing; above three is charged per claim.
+DEFAULT_INDEPENDENT_CLAIMS = 3
+FREE_INDEPENDENT_CLAIMS = 3
+
+
+def independent_claim_target(project: Mapping[str, Any]) -> int:
+    settings = (project or {}).get("settings")
+    if isinstance(settings, str):
+        try:
+            settings = json.loads(settings)
+        except ValueError:
+            settings = {}
+    try:
+        value = int((settings or {}).get("independent_claims")
+                    or DEFAULT_INDEPENDENT_CLAIMS)
+    except (TypeError, ValueError):
+        value = DEFAULT_INDEPENDENT_CLAIMS
+    return max(1, min(value, 10))
+
+
+def _independent_claim_note(project: Mapping[str, Any]) -> str:
+    target = independent_claim_target(project)
+    lines = [f"Aim for {target} independent claim(s)."]
+    if target <= FREE_INDEPENDENT_CLAIMS:
+        lines.append(
+            f"The basic filing fee includes {FREE_INDEPENDENT_CLAIMS}, so up to that costs "
+            "nothing extra. Fewer than three leaves paid-for slots empty.")
+    else:
+        lines.append(
+            f"{FREE_INDEPENDENT_CLAIMS} are included in the basic filing fee and "
+            f"{target - FREE_INDEPENDENT_CLAIMS} of these are charged for under 37 CFR 1.16(h). "
+            "The user asked for that deliberately.")
+    lines.append(
+        "Use the slots for a different statutory class (apparatus, method, system) or a genuinely "
+        "different point of novelty. Never restate one independent claim in other words to reach "
+        "the number, and never write one the disclosure does not support: an unsupported claim is "
+        "worse than an empty slot.")
+    return " ".join(lines)
 
 
 def _disclosure(project: Mapping[str, Any]) -> str:

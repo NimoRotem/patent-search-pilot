@@ -1610,11 +1610,62 @@
     });
   }
 
+  /*  WHICH CLAIMS STAND ALONE, and what the set costs. Marked from the server's reading
+      (S.claims), never parsed again here: the review and the fee worksheet bill off that same
+      reading, and a second parser in the browser would disagree with them the first time
+      somebody writes "A method of using the device of claim 1" - which the Office counts as
+      independent even though it names another claim. */
   function claimsHtml(text) {
-    return String(text || '').split(/\n(?=\s*\d{1,3}\s*[.)]\s)/)
+    const map = (S.claims && S.claims.claims) ? S.claims : null;
+    const byNumber = {};
+    if (map) map.claims.forEach((c) => { byNumber[c.number] = c; });
+    const blocks = String(text || '').split(/\n(?=\s*\d{1,3}\s*[.)]\s)/)
       .filter((c) => c.trim())
-      .map((claim) => `<div class="claim">${esc(claim.trim()).replace(/\n/g, '<br>')}</div>`)
-      .join('');
+      .map((claim) => {
+        const body = claim.trim();
+        const number = parseInt((body.match(/^\s*(\d{1,3})\s*[.)]/) || [])[1], 10);
+        const info = byNumber[number];
+        let tag = '';
+        if (info && info.independent) {
+          tag = `<span class="ctag ind" title="${info.new_subject
+            ? 'Names its own subject, so the Office counts it as independent even though it '
+              + 'refers to another claim'
+            : 'Stands on its own'}">independent${info.new_subject ? ' *' : ''}</span>`;
+        } else if (info) {
+          tag = `<span class="ctag dep"${info.multiple_dependent
+            ? ' title="A multiple dependent claim is counted as the number of claims it refers'
+              + ' to (37 CFR 1.75(c)) and carries a surcharge"' : ''}>${
+            info.multiple_dependent ? 'multiple dependent' : 'dependent'} on ${
+            info.depends_on.join(', ')}</span>`;
+        }
+        return `<div class="claim${info && info.independent ? ' cind' : ''}">${
+          tag}${esc(body).replace(/\n/g, '<br>')}</div>`;
+      }).join('');
+    return claimsCountsHtml() + blocks;
+  }
+
+  function claimsCountsHtml() {
+    const m = S.claims;
+    if (!m || !m.total) return '';
+    const spare = m.free_independent_left;
+    const note = m.excess_independent
+      ? `<span class="warn">${m.excess_independent} over the ${m.included_independent} included;
+          37 CFR 1.16(h) charges for each</span>`
+      : spare
+        ? `<span class="good">${spare} more independent claim${spare === 1 ? '' : 's'} cost
+            nothing: ${m.included_independent} are included in the basic filing fee</span>`
+        : `<span class="muted">using all ${m.included_independent} included in the basic filing
+            fee</span>`;
+    const excess = m.excess_total
+      ? ` · <span class="warn">${m.excess_total} claim(s) over the ${m.included_total}
+          included</span>` : '';
+    return `<div class="claimcounts">
+      <span><b>${m.independent}</b> independent</span>
+      <span><b>${m.dependent}</b> dependent</span>
+      ${m.multiple_dependent ? `<span><b>${m.multiple_dependent}</b> multiple dependent</span>`
+        : ''}
+      <span class="muted">${m.billable} billed of ${m.total}</span>
+      <span class="grow"></span>${note}${excess}</div>`;
   }
 
   // ── review ─────────────────────────────────────────────────────────────────

@@ -1843,7 +1843,8 @@ td.cell-unrelated .cmark{color:var(--bad)}td.cell-no-coord .cmark,td.cell-unchec
 .msg{border-radius:4px}.msg-user{background:#eef4fd}.msg-agent{background:#f7f7f5}.msg-qa{background:#fff}
 .chatcompose textarea{background:#fff}.studiotabs{background:#f8f8f6}.stab{font-size:12.5px}
 .spane{background:#fff}.dsectext{font-family:Georgia,"Times New Roman",serif;font-size:15px;line-height:1.76}
-.dsectext.claims .claim{font-family:Inter,ui-sans-serif,sans-serif;background:#fafaf8;padding:11px 13px;border-left-color:var(--accent)}
+.dsectext.claims .claim{font-family:Inter,ui-sans-serif,sans-serif;background:#fafaf8;padding:11px 13px;border-left-color:var(--line2)}
+.dsectext.claims .claim.cind{border-left-color:var(--accent)}
 .fignew,.figblock,.finding,.chk,.rdy{background:#fafaf8;border-radius:4px}
 .photosketch,.draftsearch{background:#fafaf8;border-radius:4px}
 .draweditor{background:#fff;border:1px solid var(--line2);border-top:3px solid var(--accent);border-radius:4px}

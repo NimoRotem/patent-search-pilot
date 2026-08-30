@@ -1188,6 +1188,77 @@ def claim_dependencies(claim_text: str) -> list[int]:
     return sorted(numbers)
 
 
+#  A claim opening "A …" or "An …" introduces its own subject. One opening "The …" points back.
+_NEW_SUBJECT_RE = re.compile(r"^\s*(?:An?|At least one|One or more)\s+\S", re.IGNORECASE)
+
+
+def _introduces_new_subject(claim_text: str) -> bool:
+    return bool(_NEW_SUBJECT_RE.match(str(claim_text or "")))
+
+
+def claim_map(claims_text: str, *, target_independent: int = STANDARD_INDEPENDENT_CLAIMS
+              ) -> dict[str, Any]:
+    """Every claim, whether it stands alone, and what that costs.
+
+    ONE PLACE DECIDES. The page marks a claim independent, the fee worksheet counts the same
+    claims, and the review checks the same counts; a second implementation in the browser would
+    drift from this one on the first claim written as "The device of any of claims 1 to 3".
+
+    ``billable`` is the count 37 CFR 1.16(i) charges on, which is not the number of claims: a
+    multiple dependent claim counts as the number of claims it refers to.
+    """
+    claims = split_claims(claims_text or "")
+    rows: list[dict[str, Any]] = []
+    independent: list[int] = []
+    multiple = 0
+    extra = 0
+    for claim in claims:
+        depends = claim_dependencies(claim["text"])
+        number = int(claim["number"])
+        #  MPEP 608.01(n): a claim that names a NEW subject is independent for fee purposes even
+        #  where it mentions another claim. "A method of using the device of claim 1" is such a
+        #  claim: it introduces a method with an indefinite article, and the Office bills it as
+        #  independent. A true dependent claim points back with the definite one, "The device of
+        #  claim 1". Reading only the reference undercounts the independent claims, which
+        #  understates the fee and hides a slot the applicant has already paid for.
+        if depends and _introduces_new_subject(claim["text"]):
+            depends = []
+            rows_note = True
+        else:
+            rows_note = False
+        if not depends:
+            independent.append(number)
+        elif len(depends) > 1:
+            multiple += 1
+            #  37 CFR 1.75(c): counted as the number of claims it refers to.
+            extra += len(depends) - 1
+        rows.append({"number": number, "text": claim["text"],
+                     "independent": not depends, "depends_on": depends,
+                     "multiple_dependent": len(depends) > 1,
+                     #  Worth saying on the page: this one looks like a dependent claim and is
+                     #  counted as an independent one.
+                     "new_subject": rows_note})
+    total = len(claims)
+    billable = total + extra
+    target = max(1, int(target_independent or STANDARD_INDEPENDENT_CLAIMS))
+    return {
+        "claims": rows,
+        "total": total,
+        "independent": len(independent),
+        "independent_numbers": independent,
+        "dependent": total - len(independent),
+        "multiple_dependent": multiple,
+        "billable": billable,
+        "target_independent": target,
+        "included_independent": STANDARD_INDEPENDENT_CLAIMS,
+        "included_total": STANDARD_TOTAL_CLAIMS,
+        "free_independent_left": max(0, STANDARD_INDEPENDENT_CLAIMS - len(independent)),
+        "excess_independent": max(0, len(independent) - STANDARD_INDEPENDENT_CLAIMS),
+        "excess_total": max(0, billable - STANDARD_TOTAL_CLAIMS),
+        "below_target": max(0, target - len(independent)),
+    }
+
+
 _CLAIM_ACTION_FORMS = {
     "advance": "advancing",
     "activate": "activating",
@@ -1369,7 +1440,11 @@ def _claim_checks(claims_text: str, spec_text: str) -> list[dict[str, Any]]:
             "Multiple dependent claims are allowed but each is counted as several claims for "
             "fees (37 CFR 1.75(c)) and carries a surcharge.", severity="warn", items=multiples))
 
-    independents = [c for c in claims if not claim_dependencies(c["text"])]
+    #  The same reading the page and the fee worksheet use, so the three never disagree about
+    #  which claims are independent.
+    _map = claim_map(claims_text)
+    _independent_numbers = set(_map["independent_numbers"])
+    independents = [c for c in claims if int(c["number"]) in _independent_numbers]
     if not independents:
         out.append(_check("At least one independent claim", "fail",
                           "Every claim depends on another; there is no independent claim."))
@@ -1397,6 +1472,28 @@ def _claim_checks(claims_text: str, spec_text: str) -> list[dict[str, Any]]:
             "Standard USPTO claim count", "pass",
             f"The set has {len(claims)} total claim(s) and {len(independents)} independent "
             "claim(s), within the standard no-excess-claim-fee counts."))
+
+    #  AND THE OTHER DIRECTION, which nothing looked at. Three independent claims are included in
+    #  the basic filing fee: a set with one has left two on the table, and the second and third
+    #  are where a different statutory class or a different point of novelty goes. Advisory, not
+    #  an error - the number of independent claims is the applicant's call, and the target is a
+    #  project setting - but it should never be an unremarked default.
+    if 0 < len(independents) < STANDARD_INDEPENDENT_CLAIMS:
+        spare = STANDARD_INDEPENDENT_CLAIMS - len(independents)
+        out.append(_check(
+            "Independent claims within the free allowance", "warn",
+            f"{len(independents)} independent claim(s). The basic filing fee includes "
+            f"{STANDARD_INDEPENDENT_CLAIMS}, so {spare} more would cost nothing under 37 CFR "
+            "1.16(h). Add one only where the disclosure genuinely supports a different statutory "
+            "class or a different point of novelty; padding is worse than an empty slot.",
+            severity="advisory",
+            items=[f"independent claim(s): {[c['number'] for c in independents]}",
+                   f"{spare} more are included in the fee already paid"]))
+    elif independents:
+        out.append(_check(
+            "Independent claims within the free allowance", "pass",
+            f"{len(independents)} independent claim(s), using the "
+            f"{STANDARD_INDEPENDENT_CLAIMS} included in the basic filing fee."))
 
     out.append(_claim_parallel_verb_forms(claims))
     out.append(_antecedent_basis(claims))

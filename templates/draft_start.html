@@ -181,6 +181,16 @@
             </select>
           </div>
           <div>
+            <label for="independentClaims">Independent claims to aim for</label>
+            <select id="independentClaims" name="independent_claims">
+              {% set chosen_independent = values.independent_claims or '3' %}
+              {% for n in ['1', '2', '3', '4', '5', '6'] %}
+              <option value="{{ n }}"{% if n == chosen_independent|string %} selected{% endif %}>
+                {{ n }}{% if n == '3' %} (included in the filing fee){% elif n|int > 3 %} ({{ n|int - 3 }} charged under 37 CFR 1.16(h)){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
             <label for="meansFunction">Means-plus-function language</label>
             <select id="meansFunction" name="means_plus_function">
               <option value="avoid"{% if (values.means_plus_function or 'avoid') == 'avoid' %} selected{% endif %}>Avoid unless requested later</option>

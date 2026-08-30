@@ -854,19 +854,13 @@ def declaration_pdf(project: Mapping[str, Any], version: Mapping[str, Any],
 def fee_profile(claims_text: str, *, specification_sheets: int = 0,
                 drawing_sheets_count: int = 0) -> dict[str, Any]:
     """The counts that decide the fees, and which surcharges each one triggers."""
-    claims = draft_qa.split_claims(claims_text or "")
-    independent = multiple = extra_from_multiple = 0
-    for claim in claims:
-        dependencies = draft_qa.claim_dependencies(claim["text"])
-        if not dependencies:
-            independent += 1
-        elif len(dependencies) > 1:
-            multiple += 1
-            #  37 CFR 1.75(c): a multiple dependent claim is counted as the number of claims it
-            #  refers to, which is why one of them can cost more than ten ordinary claims.
-            extra_from_multiple += len(dependencies) - 1
-    total = len(claims)
-    billable = total + extra_from_multiple
+    #  One reading of the claim set, shared with the review and with the page, so a claim the
+    #  worksheet bills as independent is the one the page marks independent.
+    counted = draft_qa.claim_map(claims_text or "")
+    independent = counted["independent"]
+    multiple = counted["multiple_dependent"]
+    total = counted["total"]
+    billable = counted["billable"]
     sheets = int(specification_sheets) + int(drawing_sheets_count)
     size_blocks = 0
     if sheets > filing_rules.SIZE_FEE_FREE_SHEETS:

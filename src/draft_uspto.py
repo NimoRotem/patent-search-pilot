@@ -76,19 +76,14 @@ def _filing_label(value: Any) -> str:
 # =============================================================================================
 def fee_profile(claims_text: str) -> dict[str, Any]:
     """The claim counts that decide the filing fee, and which surcharges they trigger."""
-    claims = draft_qa.split_claims(claims_text)
-    independent, multiple, extra_from_multiple = 0, 0, 0
-    for claim in claims:
-        dependencies = draft_qa.claim_dependencies(claim["text"])
-        if not dependencies:
-            independent += 1
-        elif len(dependencies) > 1:
-            multiple += 1
-            # 37 CFR 1.75(c): a multiple dependent claim is counted as the number of claims to
-            # which it refers, which is why one of them can cost more than ten ordinary claims.
-            extra_from_multiple += len(dependencies) - 1
-    total = len(claims)
-    billable = total + extra_from_multiple
+    #  Delegated so the readiness page, the filing worksheet, the review and the claim list all
+    #  count the same claims. They did not before: a method claim that referred to claim 1 was
+    #  read as dependent here and billed as independent by the Office.
+    counted = draft_qa.claim_map(claims_text or "")
+    independent = counted["independent"]
+    multiple = counted["multiple_dependent"]
+    total = counted["total"]
+    billable = counted["billable"]
     surcharges = []
     if independent > 3:
         surcharges.append(f"{independent - 3} independent claim(s) over the three included "

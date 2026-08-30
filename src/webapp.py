@@ -6413,6 +6413,25 @@ def _apply_filing_profile(project_id: int, rows, applicant: str) -> None:
         traceback.print_exc()
 
 
+def _apply_claim_target(principal, project_id: int, value) -> None:
+    """Remember how many independent claims this project asked for.
+
+    Stored as a project SETTING rather than written into the intake notes, because the brief the
+    agent reads is rebuilt from the settings on every turn: a number written once into the notes
+    would keep telling the agent three after somebody changed it to five.
+    """
+    try:
+        target = int(str(value or "").strip() or 0)
+    except (TypeError, ValueError):
+        return
+    if not 1 <= target <= 10 or target == draft_workspace.DEFAULT_INDEPENDENT_CLAIMS:
+        return
+    try:
+        _studio().save_settings(principal, project_id, {"independent_claims": target})
+    except Exception:                                   # noqa: BLE001 - never block a draft
+        traceback.print_exc()
+
+
 def _structured_drafting_notes(values) -> str:
     """Turn explicit intake choices into a stable brief instead of accepting a catch-all box."""
     priority = str(values.get("priority_status") or "unknown")
@@ -6771,7 +6790,7 @@ def draft_start():
                   ("title", "disclosure_text", "inventor_notes", "applicant", "inventors",
                    "input_kind", "priority_status", "priority_details", "government_support",
                    "government_support_details", "claim_strategy", "means_plus_function",
-                   "protected_terms", "filing_deadline")}
+                   "protected_terms", "filing_deadline", "independent_claims")}
         values["claim_types"] = request.form.getlist("claim_types")
         inventor_rows = _inventor_rows_from_form(request.form)
         if inventor_rows:
@@ -6805,6 +6824,8 @@ def draft_start():
                     inventors=direct_values.get("inventors") or "", uploads=[])
                 _apply_filing_profile(project["id"], inventor_rows,
                                       direct_values.get("applicant") or "")
+                _apply_claim_target(principal, project["id"],
+                                    request.form.get("independent_claims"))
                 return redirect(url_for("draft_studio_page", project_id=project["id"], created="1"))
 
             uploads = _uploads_from_request()
@@ -6825,6 +6846,7 @@ def draft_start():
                 publication_numbers=selected, inventor_notes=_structured_drafting_notes(request.form),
                 applicant=values["applicant"], inventors=values["inventors"], uploads=uploads)
             _apply_filing_profile(project["id"], inventor_rows, values.get("applicant") or "")
+            _apply_claim_target(principal, project["id"], values.get("independent_claims"))
             return redirect(url_for("draft_studio_page", project_id=project["id"], created="1"))
         except drafting.DraftingError as exc:
             ctx = _draft_new_context(user, principal, slug, selected, values, str(exc))
@@ -6895,6 +6917,9 @@ def _studio_payload(state):
                     "tokens_cache_read", "tokens_cache_write", "started_at", "completed_at")}
                   for t in state["turns"][:40]],
         "active_turn": state.get("active_turn"),
+        #  Which claims stand alone, decided on the server so the page, the review and the fee
+        #  worksheet never disagree about it.
+        "claims": state.get("claims"),
         "version": {"version_no": version.get("version_no"), "sections": version.get("sections"),
                     "citations": version.get("citations"),
                     "change_note": version.get("change_note"),

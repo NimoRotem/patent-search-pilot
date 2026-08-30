@@ -25,6 +25,12 @@ FIELDS: tuple[dict[str, Any], ...] = (
      "label": "Review model",
      "help": "The independent reviewer and the source-fidelity check. It reads and judges rather "
              "than writes, so a cheaper tier here changes cost far more than quality."},
+    {"key": "independent_claims", "kind": "int", "default": 3, "min": 1, "max": 10,
+     "label": "Independent claims to aim for",
+     "help": "The basic filing fee includes three, so three is the default: a set with one has "
+             "left two paid-for slots empty, and that is usually where a different statutory "
+             "class or a different point of novelty goes. Above three, 37 CFR 1.16(h) charges "
+             "for each one. The agent still only writes a claim the disclosure supports."},
     {"key": "finalization_rounds", "kind": "int", "default": 6, "min": 2, "max": 6,
      "label": "Repair rounds per turn",
      "help": "How many times a turn may fix what the review found before it gives up. Fewer means "
@@ -128,6 +134,18 @@ def prompt_additions(settings: Mapping[str, Any] | None) -> str:
     """
     resolved = resolve(settings)
     blocks = []
+    #  Only when this project has moved OFF the default. Every workspace brief states the target
+    #  on every rebuild, so the agent is never without it; repeating the default here would pad
+    #  the system prompt of every run to say what it already knows.
+    target = int(resolved.get("independent_claims") or 3)
+    if target != BY_KEY["independent_claims"]["default"]:
+        blocks.append(
+            "INDEPENDENT CLAIMS\n"
+            f"This project asked for {target} independent claim(s). Three are included in the "
+            "basic filing fee; each one above three is charged under 37 CFR 1.16(h) and the user "
+            "chose that deliberately. Use the slots for a different statutory class or a "
+            "different point of novelty, never to restate one claim in other words, and never "
+            "write one the disclosure does not support.")
     if resolved.get("style_notes"):
         blocks.append("DRAFTING STYLE SET BY THE OPERATOR OF THIS PROJECT\n"
                       + str(resolved["style_notes"]).strip())

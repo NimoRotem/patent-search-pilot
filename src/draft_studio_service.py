@@ -27,6 +27,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 import draft_agent
 import draft_cite
+import draft_qa
 import draft_settings
 import draft_studio
 import draft_terminal
@@ -824,6 +825,11 @@ class StudioService:
             "documents": self.repository.documents(project_id),
             "searches": self.repository.searches(project_id),
             "version": latest_version,
+            #  Which claims stand alone, decided once on the server. The page marks them, the
+            #  review counts them and the fee worksheet bills them off the same reading.
+            "claims": draft_qa.claim_map(
+                str((latest_version or {}).get("sections", {}).get("claims") or ""),
+                target_independent=draft_workspace.independent_claim_target(project)),
             #  The drafting agent IS the terminal now, so what the page needs to know about it is
             #  whether one can run here and whether this draft's own session is up.
             "agent": self.terminal_state(principal, project_id),
