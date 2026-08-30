@@ -1991,6 +1991,46 @@ def test_flowchart_topology_rejects_disconnected_closed_components():
     assert "disconnected" in " ".join(spec["errors"]).lower()
 
 
+def test_flowchart_topology_supports_blank_cross_sheet_connectors():
+    first = draft_figures.flowchart_topology_spec(
+        """
+        A process flow diagram ends at a blank continuation connector.
+        Flowchart nodes: 200=process, 202=process, END=connector.
+        Flowchart directed edges: 200->202, 202->END.
+        """,
+        ["200 = first step", "202 = second step"],
+    )
+    second = draft_figures.flowchart_topology_spec(
+        """
+        A process flow diagram begins at a blank continuation connector.
+        Flowchart nodes: START=connector, 204=process, END=terminator.
+        Flowchart directed edges: START->204, 204->END.
+        """,
+        ["204 = third step"],
+    )
+
+    assert first["ok"] is True, first["errors"]
+    assert first["expected"] == ["200->202", "202->END"]
+    assert second["ok"] is True, second["errors"]
+    assert second["expected"] == ["START->204", "204->END"]
+
+
+def test_flowchart_topology_rejects_lettered_connector_ids():
+    spec = draft_figures.flowchart_topology_spec(
+        """
+        A process flow diagram starts at a connector labeled A.
+        Flowchart nodes: A=connector, 210=process, END=terminator.
+        Flowchart directed edges: A->210, 210->END.
+        """,
+        ["210 = next step"],
+    )
+
+    assert spec["ok"] is False
+    errors = " ".join(spec["errors"])
+    assert "START" in errors and "END" in errors
+    assert "letter" in errors.lower()
+
+
 def test_flowchart_topology_audit_rejects_extra_connection_even_if_model_approves():
     caption = """
     A process flow diagram with numbered shapes.
@@ -2128,6 +2168,9 @@ def test_flowchart_topology_inspection_traces_three_ways_and_vetoes_one_extra_pa
     assert any("forward trace" in prompt for prompt in prompts)
     assert any("reverse trace" in prompt for prompt in prompts)
     assert any("second route into the terminator" in prompt for prompt in prompts)
+    assert all("unnumbered blank connector" in prompt for prompt in prompts)
+    assert all("report it as start" in prompt and "report it as end" in prompt
+               for prompt in prompts)
     assert all(call["config"].response_json_schema ==
                draft_figures.FLOWCHART_TOPOLOGY_RESPONSE_SCHEMA for call in calls)
 
