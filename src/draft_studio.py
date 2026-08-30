@@ -1762,21 +1762,17 @@ class StudioRepository:
             cancelled = cur.fetchone()
             if not cancelled:
                 return
-            automatic_filing = bool(
-                cancelled.get("kind") == "gate_resume" or
-                _AUTOMATIC_GATE_RESUME_TURN_KEY.match(
-                    str(cancelled.get("idempotency_key") or "")))
-            if automatic_filing:
-                # A published text version is not filing-ready while its mandatory drawing
-                # continuation is incomplete. Keep the candidate so the exact package can resume.
-                cur.execute("UPDATE app_drafting_projects SET status='active',updated_at=now() "
-                            "WHERE id=%s", (int(project_id),))
-            else:
-                cur.execute("UPDATE app_drafting_projects SET status=CASE "
-                            "WHEN latest_version_no>0 THEN 'ready' ELSE 'active' END,"
-                            "updated_at=now() WHERE id=%s", (int(project_id),))
-                cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s",
-                            (int(turn_id),))
+            #  A published version is ready, whatever kind of turn was cancelled over it.
+            #  This used to hold a `gate_resume` apart and park the project at 'active', because
+            #  a text version was not filing-ready until its mandatory drawing continuation had
+            #  generated and inspected every sheet. There is no drawing continuation any more, so
+            #  that branch would leave a project saying "generating" with nothing left to
+            #  generate and no way out of it.
+            cur.execute("UPDATE app_drafting_projects SET status=CASE "
+                        "WHEN latest_version_no>0 THEN 'ready' ELSE 'active' END,"
+                        "updated_at=now() WHERE id=%s", (int(project_id),))
+            cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s",
+                        (int(turn_id),))
 
     @staticmethod
     def _turn(row: Mapping[str, Any]) -> dict[str, Any]:

@@ -4796,28 +4796,6 @@ def test_terminal_failure_retains_candidate_until_a_project_completes(monkeypatc
     assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _ in queries)
 
 
-def test_cancelling_an_automatic_drawing_continuation_cannot_claim_filing_readiness():
-    queries = []
-
-    class Cursor:
-        def execute(self, query, params=()):
-            queries.append((query, params))
-
-        def fetchone(self):
-            return {"kind": "gate_resume"}
-
-    @contextmanager
-    def cursor_factory(**_kwargs):
-        yield Cursor()
-
-    repository = draft_studio.StudioRepository(cursor_factory, migrate=False)
-    repository.cancel_turn(7, 33)
-
-    assert any("SET status='active'" in query for query, _params in queries)
-    assert not any("THEN 'ready'" in query for query, _params in queries)
-    assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _params in queries)
-
-
 def test_cancelling_an_ordinary_turn_restores_the_published_version_state():
     queries = []
 
@@ -5884,3 +5862,37 @@ def test_two_files_claiming_one_heading_is_a_conflict_not_a_rename(tmp_path):
         draft_workspace._reject_noncanonical_figure_entries(figures)
     assert "Keep me." in (figures / "FIG-3-DETAIL.md").read_text(encoding="utf-8")
     assert not (figures / "copy.md").exists()
+
+
+def test_cancelling_any_turn_leaves_a_published_project_ready():
+    """There is no drawing continuation left to be pending on.
+
+    A cancelled `gate_resume` used to park the project at 'active', because a text version was
+    not filing-ready until its automatic drawing phase had generated and inspected every sheet.
+    With that phase gone, the same branch would leave a project reading "generating" with nothing
+    left to generate and nothing that could ever move it on.
+    """
+    statements = []
+
+    class Cursor:
+        def execute(self, sql, params=None):
+            statements.append((" ".join(sql.split()), params))
+
+        def fetchone(self):
+            return {"kind": "gate_resume", "idempotency_key": "auto-filing-repair-3-1"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    repository = draft_studio.StudioRepository(cursor_factory=lambda **_kw: Cursor(),
+                                               migrate=False)
+    repository.cancel_turn(7, 3)
+
+    project_update = next(sql for sql, _p in statements if "app_drafting_projects" in sql)
+    assert "latest_version_no>0 THEN 'ready'" in project_update
+    assert "SET status='active'" not in project_update
+    #  ...and the candidate goes with it, rather than being kept for a phase that cannot run.
+    assert any("DELETE FROM app_draft_turn_candidates" in sql for sql, _p in statements)
