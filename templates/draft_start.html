@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Draft a patent application | IPtorch{% endblock %}
+{#  The drafting app's own stylesheet, which it alone serves. style.css comes from the app at the
+    root of this hostname, a different process with its own copy, so a rule for this page cannot
+    live there and be seen. #}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='draft_studio.css', v=asset_version) }}">
+{% endblock %}
 {% block body %}
 <div class="wrap startpage">
   <h1>Draft a patent application</h1>

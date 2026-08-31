@@ -65,7 +65,30 @@ from config import DATA, ROOT
 import base64, uuid
 import concurrent.futures as _cf
 
+import os as _os                                   # the shared-chrome loader, below
+import jinja2 as _jinja
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
+
+#  ONE MASTHEAD, ONE FILE, FOR EVERY APP BEHIND THIS DOMAIN.
+#
+#  It used to be a copy in each app's templates/, and a copy has no way of knowing the original
+#  moved. /drafts served a header two versions old for weeks for exactly that reason: it is a
+#  DIFFERENT PROCESS behind the same hostname, so editing this app's template changed nothing
+#  there and nothing said so. nimo2 is a second copy of this same app, which would have made
+#  three copies of one header.
+#
+#  THE SHARED DIRECTORY IS SEARCHED FIRST, ahead of the app's own templates/, and that ordering
+#  is the durable part: putting a local _chrome.html back does not bring the drift back, because
+#  a local copy can no longer win. templates/_chrome.html is also a symlink to the same file, so
+#  even a process that never runs this code still resolves to one place.
+#
+#  Anything rendered from here must work with no page context beyond the request: see the
+#  partial's own note. /api/chrome serves it to the register lookup, which is a third process.
+_CHROME_DIR = _os.environ.get("IPTORCH_CHROME_DIR", "/home/nimrod_rotem/iptorch-chrome")
+if _os.path.isdir(_CHROME_DIR):
+    app.jinja_loader = _jinja.ChoiceLoader([_jinja.FileSystemLoader(_CHROME_DIR),
+                                            app.jinja_loader])
+    print("[chrome] masthead from %s" % _CHROME_DIR, flush=True)
 
 
 def _asset_version():

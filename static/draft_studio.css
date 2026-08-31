@@ -1069,3 +1069,50 @@ label.fset input:focus, label.fset select:focus { outline: 1px solid var(--accen
 /*  The left rule is the marker, so it has to differ. Every claim already carried an accent rule
     in the light theme, which meant it said nothing at all. */
 .dsectext.claims .claim.cind { border-left-color: var(--accent); }
+
+/*  ── moved here from style.css, 2026-08-31 ─────────────────────────────────────────────────
+    style.css is served by the app at the ROOT of this hostname, which is a different process
+    with its own copy of the file. A rule added to this app's copy reaches nobody: the browser
+    asks the root app for /static/style.css and gets its version. draft_studio.css has an exact
+    nginx route to THIS app, so it is the only stylesheet the drafting pages can count on.
+    The claims rule is the clearest case: an accent left border on every claim, set in the shared
+    file, made the independent marker invisible, and the fix could only land here. */
+/*  A collapsed section is still a section. The summary carries the number, the OPTIONAL badge and
+    one line saying what is inside, so nothing has to be opened to find out whether it is wanted.
+    The marker is drawn rather than left to the browser, which gives three different triangles. */
+.startfold{padding:0;margin-bottom:16px}
+.startfold>summary{list-style:none;cursor:pointer;padding:18px 22px;display:flex;
+  align-items:baseline;gap:12px;flex-wrap:wrap}
+.startfold>summary::-webkit-details-marker{display:none}
+.startfold>summary::before{content:'';flex:none;width:7px;height:7px;margin:0 2px 0 0;
+  border-right:1.7px solid var(--faint);border-bottom:1.7px solid var(--faint);
+  transform:rotate(-45deg) translate(-2px,-2px);transition:transform .14s ease}
+.startfold[open]>summary::before{transform:rotate(45deg) translate(-1px,-1px)}
+.startfold>summary h2{display:inline;font-size:16px;margin:0}
+.startfold>summary .foldnote{font-size:12.5px;color:var(--faint)}
+.startfold>summary:hover .foldnote{color:var(--muted)}
+.startfold>*:not(summary){margin-left:22px;margin-right:22px}
+.startfold>*:last-child{margin-bottom:20px}
+
+/*  One card per inventor. The fields are the ones 37 CFR 1.76 and 1.63 ask for, so what is typed
+    here is what appears on the application data sheet and the declaration. */
+.invcard{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px;
+  margin:0 0 10px;background:var(--s2)}
+.invhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.invhead b{font-size:13px}
+/*  `.btn` sets display, and an author rule setting display beats the UA's `[hidden]{display:none}`
+    outright. The same trap is documented twice in draft_studio.css; this is the third place it
+    has bitten, and here it left a Remove button over the only inventor on the form. */
+.invdrop[hidden]{display:none!important}
+.invgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 14px}
+.invgrid label{display:block;margin:0;font-weight:500}
+.invgrid label>span{display:block;font-size:11.5px;color:var(--muted);margin-bottom:3px}
+.invgrid .req{font-style:normal;color:var(--faint);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.04em}
+.invgrid input{margin:0}
+
+
+/*  Every claim wore the accent rule in the shared stylesheet, so the rule said nothing. Neutral
+    for a claim that points back, accent for one that stands alone. */
+.dsectext.claims .claim { border-left-color: var(--line2); }
+.dsectext.claims .claim.cind { border-left-color: var(--accent); }
