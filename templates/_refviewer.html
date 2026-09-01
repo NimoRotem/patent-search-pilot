@@ -1,0 +1,48 @@
+{#  THE FULL DOCUMENT, THE PASSAGE AND THE FIGURE VIEWER.
+
+    Lifted out of report.html so a page that is not the report can show a ranked reference the
+    way the report shows it. The studio's Research panel renders the SAME cards through
+    /api/cards/<slug>, and those cards call openDetail() and openLb() in static/app.js, which
+    need these three nodes to exist. Without them the card is drawn correctly and every click on
+    it does nothing, which is a worse failure than not showing the card at all.
+
+    One copy, included by both, because two copies of a dialog are two dialogs to keep in step
+    and the difference only shows up when somebody clicks.  #}
+<div id="soOverlay" hidden inert aria-hidden="true">
+  <aside class="slideover" role="dialog" aria-modal="true" aria-label="Full document">
+    <div class="so-head">
+      <button type="button" id="soBack" hidden>‹ Back</button>
+      <div class="bc" id="soBreadcrumb"></div>
+      <button type="button" id="soLink">Copy link</button>
+      <button type="button" id="soClose">✕ Close</button>
+    </div>
+    <div class="so-body" id="soBody"></div>
+  </aside>
+</div>
+
+{#  The passage behind one grid cell. Both grids truncate their quote to what fits a table cell;
+    this is where the whole thing lives, with the reference, the passage it came from and the
+    reader's note. One dialog, reused by every cell, so a 48 x 10 grid costs one node. #}
+<div class="qpop" id="qpop" hidden role="dialog" aria-modal="true" aria-labelledby="qpopEl">
+  <div class="qpop-box">
+    <div class="qpop-head">
+      <span class="qpop-v" id="qpopVerdict"></span>
+      <b id="qpopEl"></b>
+      <button type="button" id="qpopClose" aria-label="Close the passage">✕</button>
+    </div>
+    <blockquote id="qpopQuote"></blockquote>
+    <p class="qpop-note" id="qpopNote"></p>
+    <div class="qpop-foot">
+      <span id="qpopLoc"></span>
+      <button type="button" class="pnlink" id="qpopRef"></button>
+    </div>
+  </div>
+</div>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Figure viewer">
+  <button type="button" class="x" id="lbclose" onclick="closeLb()" aria-label="Close the figure viewer">✕</button>
+  <button type="button" class="nav l" id="lbprev" onclick="lbNav(-1)" aria-label="Previous figure">‹</button>
+  <div id="lbstage"></div>
+  <button type="button" class="nav r" id="lbnext" onclick="lbNav(1)" aria-label="Next figure">›</button>
+  <div class="cap" id="lbcap"></div>
+</div>

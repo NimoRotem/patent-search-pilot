@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Sign in | IPtorch{% endblock %}
+{% block title %}Sign in | {{ brand }}{% endblock %}
 {% block body %}
 <div class="wrap authwrap">
   <section class="panel authcard" aria-labelledby="login-title">
@@ -17,7 +17,7 @@
       <button class="btn" type="submit">Sign in</button>
     </form>
     <div class="authlinks">
-      <a href="{{ request.script_root }}/register">Create an account</a>
+      {% if not personal_tools %}<a href="{{ request.script_root }}/register">Create an account</a>{% endif %}
       <a href="{{ request.script_root }}/forgot-password">Forgot password?</a>
     </div>
   </section>

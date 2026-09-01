@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>{% block title %}IPtorch{% endblock %}</title>
+<title>{% block title %}{{ brand }}{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23175cd3'/><path d='M9 8h10l4 4v12H9zM19 8v5h5M12 18h8M12 22h6' fill='none' stroke='white' stroke-width='1.8'/></svg>">
 {% block head %}{% endblock %}
@@ -32,16 +32,16 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
 <footer>
   <div class="wrap footergrid">
     <div class="footerbrand">
-      <strong>IPtorch</strong>
+      <strong>{{ brand }}</strong>
       {#  It said "search and drafting". Drafting is withheld from customers while it is
           unfinished, so the footer of every page was advertising something they cannot open. #}
-      <span>Prior art search with the evidence attached. Not legal advice.</span>
+      {% if not personal_tools %}<span>Prior art search with the evidence attached. Not legal advice.</span>{% endif %}
     </div>
     <nav class="footlinks" aria-label="Footer navigation">
       <a href="{{ request.script_root }}/about">How it works</a>
       {% if current_user %}
         <a href="{{ request.script_root }}/account">Account</a>
-      {% elif account_mode %}
+      {% elif account_mode and not personal_tools %}
         <a href="{{ request.script_root }}/register">Create account</a>
       {% endif %}
     </nav>

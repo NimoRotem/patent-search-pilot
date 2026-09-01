@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Account | IPtorch{% endblock %}
+{% block title %}Account | {{ brand }}{% endblock %}
 {% block body %}
 <div class="wrap accountpage">
   <div class="pagehead"><div><h1>Profile</h1><p class="muted">{{ user.email }}{% if user.is_admin %} · administrator{% endif %}</p></div></div>

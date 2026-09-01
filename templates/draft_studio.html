@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ project.title }} | IPtorch drafting{% endblock %}
+{% block title %}{{ project.title }} | {{ brand }} drafting{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='draft_studio.css', v=asset_version) }}">
 {% endblock %}
@@ -59,6 +59,10 @@
       <button type="button" class="chatfold" id="chatFold"
               title="Hide the drafting agent" aria-label="Hide the drafting agent"
               aria-expanded="true"></button>
+      {#  Only visible once the panel is collapsed, and then it is the whole point: a 34px strip
+          with nothing written on it reads as the agent having disappeared, and the fold is
+          remembered for ever. #}
+      <span class="chatspine" aria-hidden="true">Drafting agent</span>
       <div class="termbar">
         <span class="termname">Drafting agent</span>
         <span class="status-pill unknown" id="termStatus">
@@ -142,7 +146,26 @@
 
     </section>
   </div>
+
+  <!-- ── research ────────────────────────────────────────────────────────────
+       BELOW THE DRAFT AND BELOW THE AGENT, FULL WIDTH, because a ranked reference is a
+       document and a document needs the page. This was three controls in a tab: a quick
+       pass, a re-search round and "search the current draft", side by side, offering what
+       read as one thing in three vocabularies. What is here now is the product's own
+       search, started from this draft, with the effort setting exposed and the results
+       drawn as the search results they are.
+
+       The panel is rendered by the bundle rather than by Jinja because it is entirely
+       state: which levels exist, what has been run, what is running, and the cards, which
+       arrive as server-rendered HTML from /api/cards/<slug>. -->
+  <section class="researchbox" id="researchPanel" aria-label="Research">
+    <div class="small muted">Loading research…</div>
+  </section>
 </div>
+
+{#  The slide-over, the passage popup and the figure lightbox. The Research cards are the
+    report's own cards and they call into app.js, which needs these nodes on the page. #}
+{% include "_refviewer.html" %}
 
 <div class="setmodal" id="setModal" hidden role="dialog" aria-modal="true"
      aria-labelledby="setModalTitle">

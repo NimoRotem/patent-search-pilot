@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ brand }}{% endblock %}
+{#  THE SIGNED-OUT ROOT, AND IT IS MEANT TO BE EMPTY.
+
+    What was here was the product landing page: what the service does, how much of the patent
+    corpus it indexes, and an invitation to create an account. None of that belongs on a personal
+    workbench. Somebody who is not signed in has no business here and is told nothing about what
+    is behind the door, including whether anything is.
+#}
+{% block body %}
+<div class="wrap gatewrap">
+  <div class="gatecard">
+    <svg class="gatemark" viewBox="0 0 36 36" aria-hidden="true">
+      <rect x="1" y="1" width="34" height="34" rx="8"></rect>
+      <path d="M10.5 8.5h10l5 5v14h-15z"></path>
+      <path d="M20.5 8.5v5h5M14 19h8M14 23h6"></path>
+    </svg>
+    <a class="btn" href="{{ request.script_root }}/login">Sign in</a>
+  </div>
+</div>
+<style>
+  /*  No masthead nav, no footer links, no corpus figures: the shell renders those only for a
+      signed-in reader, and there is nothing else on the page to give it away. */
+  .gatewrap{min-height:58vh;display:flex;align-items:center;justify-content:center}
+  .gatecard{display:flex;flex-direction:column;align-items:center;gap:22px}
+  .gatemark{width:44px;height:44px;opacity:.5}
+  .gatemark rect{fill:var(--line2);stroke:var(--line2)}
+  .gatemark path{fill:none;stroke:var(--s1);stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+  footer .footlinks,footer .footerbrand span{display:none}
+</style>
+{% endblock %}

@@ -10,6 +10,13 @@
     `partial` says the ranking is not final yet: while it is true the card shows a pending
     relevancy rather than a number that is about to change under the reader.  #}
 {% macro refcard(c, partial=False) %}
+    {#  WHERE THIS RENDER'S DRAWINGS LIVE. Two apps serve this domain and each keeps its own
+        recovered-drawing directory, so /refdrawing/<pub>/<file> resolves to whichever app nginx
+        gives the path to, not to the one that rendered the card. On the report page that is the
+        same app and `request.script_root` is right; the drafting studio renders these cards from
+        the other app and passes a base that comes back to itself. Measured before this existed:
+        every drawing on every studio card was a 404 from the wrong app. #}
+    {% set _refbase = refdraw_base if refdraw_base is defined and refdraw_base else request.script_root %}
     <article class="refcard" data-pub="{{ c.pub }}" data-family="{{ c.family or '' }}"
          data-rank="{{ c.rank }}" data-rel="{{ c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy }}"
          data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
@@ -53,7 +60,7 @@
                 shows immediately, iptorch-style, instead of only the ~2 above-fold ones. decoding
                 stays async so decode never blocks first paint. #}
             <img loading="eager" decoding="async"
-                 src="{% if im0.file %}{{ request.script_root }}/refdrawing/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
+                 src="{% if im0.file %}{{ _refbase }}/refdrawing/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
                  alt="{% if im0.from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
             <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
             <span class="zoomhint" aria-hidden="true">🔍</span>

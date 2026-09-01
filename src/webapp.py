@@ -43,7 +43,8 @@ import runstore                                    # durable lease and terminal-
 import drafting, draft_export, draft_worker
 #  Phase two: the drafting CONVERSATION. A Claude Code agent edits a workspace of files, a second
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
-import draft_novelty, draft_research                # re-search rounds and their reading
+import research_levels                             # the research slider: one search, four depths
+import draft_intake                                # what the intake was given, and what it is
 import draft_studio, draft_studio_service, draft_uspto, draft_workspace
 import draft_usage                                  # tokens and metered-equivalent cost
 import filing_profile, filing_qa, filing_service      # the filing package and its second reader
@@ -233,6 +234,18 @@ class _PrefixMiddleware:
 
 
 app.wsgi_app = _PrefixMiddleware(app.wsgi_app)
+
+#  IS THIS THE PERSONAL WORKBENCH OR THE PUBLIC PRODUCT?
+#  rotem.ai/patents is Nimo's own tools: no signup, no landing page, no product name. The public
+#  IPtorch deployment runs the same code with this off, so nothing here changes it.
+PERSONAL_TOOLS = os.environ.get("PERSONAL_TOOLS", "").strip().lower() in ("1", "true", "yes")
+APP_BRAND = os.environ.get("APP_BRAND", "IPtorch").strip() or "IPtorch"
+
+
+@app.context_processor
+def _inject_brand():
+    return {"brand": APP_BRAND, "personal_tools": PERSONAL_TOOLS}
+
 
 
 @app.errorhandler(404)
@@ -2460,6 +2473,18 @@ def index():
         signed_out = auth.accounts_enabled(app) and not auth.current_user() and not auth.is_admin()
     except Exception:
         signed_out = False
+    #  PERSONAL TOOLS MODE. This install is not a product with customers; it is Nimo's own
+    #  workbench behind rotem.ai/patents. A signed-out visitor therefore gets NOTHING: no landing
+    #  page describing a service, no corpus figures, no invitation to sign up. The same codebase
+    #  deployed publicly is unaffected, because the flag defaults off.
+    if PERSONAL_TOOLS:
+        if signed_out:
+            return render_template("personal_gate.html")
+        #  SEARCHING HAPPENS ON THE PRODUCT, NOT HERE. The search box was the last thing on
+        #  this root; with it gone the root has no page of its own, so it opens the tool people
+        #  actually come here for. The search ENGINE stays imported and running, because the
+        #  drafting studio calls it in-process; only the UI is gone.
+        return redirect(request.script_root + "/drafts")
     if signed_out:
         return render_template("landing.html", corpus=facts)
     return render_template("index.html", corpus=facts)
@@ -2573,6 +2598,55 @@ def factory_pulse_api():
         return jsonify({"ok": False, "error": "sign in to read factory status"}), 403
     import factory_pulse
     return jsonify(factory_pulse.view())
+
+
+@app.route("/api/session-check")
+def api_session_check():
+    """Who is this, for the sibling filing apps that hold no accounts of their own.
+
+    The trademark and patent filing apps are separate services on separate ports. They
+    could have shared this app's signing key and verified the cookie themselves, which
+    would be less code and worse: a key drifts, and a session revoked here would go on
+    working there. They ask instead, so a deactivated account or a changed password
+    stops working everywhere the moment it stops working here.
+
+    Deliberately thin: whether there is a user, their address, and whether they are an
+    admin. Nothing else, because it is read across a process boundary on every page.
+    """
+    user = auth.current_user()
+    if not user:
+        return jsonify({"authenticated": False})
+    return jsonify({"authenticated": True, "email": user.get("email"),
+                    "full_name": user.get("full_name"),
+                    "is_admin": bool(user.get("is_admin"))})
+
+
+@app.route("/api/chrome")
+def api_chrome():
+    """The workbench masthead, for the sibling apps that render their own pages.
+
+    The register lookup and the portfolio tracker are separate processes behind the same domain,
+    and both were serving pages with no header at all: opening either felt like leaving, with no
+    way back except the browser's back button. Copying the nav into two more codebases would put
+    it out of date the first time a link moved, so they fetch the real one instead.
+
+    Rendered against THIS request's session, so the nav is the one that reader's account has.
+    """
+    #  WHICH ITEM IS LIT. The partial decides that from `endpoint`, and the endpoint of THIS
+    #  request is api_chrome, so without being told, the masthead renders on the sibling's page
+    #  with nothing marked current and reads as a header borrowed from somewhere else. Only a
+    #  known name is honoured: it is a query parameter and it lands in a class attribute.
+    known = {"index", "history", "patent_lookup", "tracking", "corpus_page", "about",
+             "observations.observations_page", "drafts"}
+    active = (request.args.get("active") or "").strip()
+    resp = jsonify({
+        "html": render_template("_chrome.html", endpoint=active if active in known else ""),
+        "css": url_for("static", filename="style.css", v=ASSET_VERSION),
+        "signed_in": bool(auth.current_user()),
+    })
+    #  Same-origin only. It carries the reader's name and e-mail.
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
 
 
 @app.route("/patentlookup")
@@ -2993,8 +3067,25 @@ def _extract_jobs_sweep():
             _EXTRACT_JOBS.pop(min(_EXTRACT_JOBS, key=lambda k: _EXTRACT_JOBS[k].get("t", 0)), None)
 
 
-def _start_extract_job(data, filename, url):
-    """Start a background extraction. Returns the job id, or None when the box is at capacity."""
+def _search_extract_payload(res):
+    """What the SEARCH page takes from an extraction: a token for the stashed vectors and
+    drawings, and none of the heavy material itself."""
+    res["doc_token"] = _stash_doc(res)
+    res.pop("chunks", None)
+    res.pop("figure_images", None)
+    res.pop("full_text", None)
+    return res
+
+
+def _start_extract_job(data, filename, url, finish=None):
+    """Start a background extraction. Returns the job id, or None when the box is at capacity.
+
+    `finish` turns the raw extraction into whatever the caller's page needs. The search page and
+    the drafting intake read the same PDF and want different things out of it: a search runs on a
+    condensed brief and bounded vectors, a draft must start from the applicant's verbatim text and
+    keep the drawings. One reader, two consumers, rather than a second extraction path that would
+    drift from this one.
+    """
     _extract_jobs_sweep()
     if not _EXTRACT_SLOTS.acquire(blocking=False):
         return None
@@ -3013,12 +3104,9 @@ def _start_extract_job(data, filename, url):
                    if data is not None else ingest_input.extract_link(url, on_stage=on_stage))
             res.pop("status", None)
             if res.get("ok"):
-                res["doc_token"] = _stash_doc(res)
-                res.pop("chunks", None)
-                res.pop("figure_images", None)
-                res.pop("full_text", None)
+                payload = (finish or _search_extract_payload)(res)
                 _extract_job_set(job, state="done", pct=100, stage="done",
-                                 msg="Ready", result=res)
+                                 msg="Ready", result=payload)
             else:
                 _extract_job_set(job, state="error", pct=100,
                                  msg=res.get("error") or "extraction failed")
@@ -3035,6 +3123,12 @@ def _start_extract_job(data, filename, url):
 
 @app.route("/extract/status/<job>")
 def extract_status(job):
+    return _extract_status(job)
+
+
+def _extract_status(job):
+    """One poll answer. The drafting intake serves it under its own prefix, because /extract is
+    given to the app at the root of this domain and the job lives in THIS process."""
     job = re.sub(r"[^0-9a-f]", "", str(job))[:64]
     with _EXTRACT_JOBS_LOCK:
         rec = _EXTRACT_JOBS.get(job)
@@ -3326,6 +3420,18 @@ def api_cards(slug):
     """
     if not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
+    return _cards_response(slug)
+
+
+def _cards_response(slug, refdraw_base=""):
+    """The ranked references of one report, rendered, from `offset` onward.
+
+    Factored out because the drafting studio needs exactly this and CANNOT USE /api/cards. That
+    path is served by the app at the root of this domain, which keeps its own reports directory;
+    a report generated by the drafting app does not exist as far as it is concerned, so the studio
+    asking for its own report's cards there gets somebody else's 401. The studio has its own,
+    project-scoped route into this same function instead.
+    """
     p = report_path(slug)
     if not p.exists():
         return jsonify({"cards": "", "n": 0, "partial": True, "ready": False})
@@ -3359,7 +3465,8 @@ def api_cards(slug):
     fresh = cards[offset:]
     html = ""
     if fresh:
-        html = render_template("_cards.html", v=view, cards=fresh, partial=partial)
+        html = render_template("_cards.html", v=view, cards=fresh, partial=partial,
+                               refdraw_base=refdraw_base)
     return jsonify({"cards": html, "n": len(cards), "added": len(fresh),
                     "partial": partial, "ready": not partial,
                     "families": rep.get("n_families") or 0})
@@ -4490,6 +4597,16 @@ REFDRAW_PREFIX = "/refdrawing"
 @app.route("%s/<pub>/<path:fname>" % REFDRAW_PREFIX)
 @app.route("/figures/<pub>/<path:fname>")
 def figures(pub, fname):
+    return _send_reference_drawing(pub, fname)
+
+
+def _send_reference_drawing(pub, fname):
+    """One recovered drawing off this app's own figure directory.
+
+    Its own function because the drafting studio needs the same bytes at a URL the proxy gives to
+    THIS app. /refdrawing/ is answered by the app at the root of the domain, which keeps a
+    different figure directory, so every drawing on a studio card was a 404 from the wrong app.
+    """
     if not _safe_pub(pub) or not _FNAME_RE.match(fname):   # reject traversal / odd names early
         abort(404)
     # Recovery persists assets under the corpus' hyphenated key even when a federated result is
@@ -4987,6 +5104,10 @@ def api_improve_query():
 # ---- the saved-patent library: references that outlive the search that found them ------------
 @app.route("/library")
 def saved_patents():
+    #  REMOVED 2026-09-01. Saved publications belonged to the search product, and searching
+    #  is not done on this workbench any more. Refused rather than deleted so a bookmark
+    #  gets an answer; the rows are still in app_saved_patents if they are ever wanted.
+    abort(404)
     user = _require_user()
     q = (request.args.get("q") or "").strip()
     rows = library.listing(user["id"], query=q)
@@ -6794,6 +6915,114 @@ def _uploads_from_request(default_kind="prior_art"):
     return out
 
 
+#  ── the drafting intake's own front door ─────────────────────────────────────────────────────
+#
+#  The same reader the search page uses, under a prefix the proxy gives to THIS app. /extract and
+#  /extract/status belong to the app at the root of the domain: it would read the document
+#  perfectly well and then stash it in its own process and its own directory, where nothing here
+#  could reach it.
+def _attach_intake_drawings(principal, project, intake):
+    """Put the drawings that came with the document into the new project.
+
+    THE REASON THE WHOLE FEATURE EXISTS. Reading an existing patent for its text and dropping its
+    sheets leaves a draft whose detailed description refers to FIG. 3 that nobody has. The sheets
+    arrive numbered in their own order and keep it, so the agent's drawing descriptions line up
+    with what is actually there.
+
+    Never fatal. A project with its text and no drawings is recoverable by uploading them; a
+    project that failed to exist because a PNG would not normalise is not.
+    """
+    figures = list(intake.get("figures") or [])
+    if not figures:
+        return
+    labels = draft_intake.figure_labels(len(figures))
+    stored = 0
+    for label, blob in zip(labels, figures):
+        try:
+            _studio().upload_figure(principal, int(project["id"]), image=blob,
+                                    content_type="image/png", label=label)
+            stored += 1
+        except Exception:                                      # noqa: BLE001 - one bad sheet
+            traceback.print_exc()
+    if stored:
+        note = intake.get("figure_descriptions") or ""
+        _studio().repository.add_message(
+            int(project["id"]), "system",
+            f"{stored} drawing(s) came with the document and are attached as "
+            f"{labels[0]} to {labels[stored - 1]}. They are the sheets from the source, so the "
+            "drawing descriptions must match them or the sheets must be replaced."
+            + (f"\n\nRead by the model: {note[:1500]}" if note else ""))
+
+
+@app.route("/drafts/start/extract", methods=["POST"])
+def draft_start_extract():
+    """A PDF, a Word file, plain text, or a patent link, read into drafting material.
+
+    Text AND drawings, because starting from an existing patent and moving it to a neighbouring
+    invention is the point, and that cannot be done from text alone.
+    """
+    try:
+        _draft_identity()
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    auth.require_csrf()
+    upload = request.files.get("file")
+    url = (request.form.get("url") or "").strip()
+    data = None
+    if upload is not None and (upload.filename or "").strip():
+        data = upload.read(ingest_input.MAX_BYTES + 1)
+        if len(data) > ingest_input.MAX_BYTES:
+            return jsonify({"ok": False, "error": "That file is larger than "
+                            f"{ingest_input.MAX_BYTES // (1024 * 1024)} MB."}), 413
+    elif not url:
+        return jsonify({"ok": False, "error": "Drop a file or paste a patent link."}), 400
+
+    #  Captured now, not read later: `finish` runs on a background thread, where there is no
+    #  request to ask for a script root.
+    base = request.script_root
+
+    def figure_url(token, index):
+        return f"{base}/drafts/start/extract/{token}/figure/{int(index)}"
+
+    def finish(res):
+        material = draft_intake.material_from_extract(res)
+        #  A LINK TO A PUBLICATION WE HOLD IS WORTH MORE THAN THE LINK. The reader is built for a
+        #  search, so for a publication it returns the abstract and stops: measured on
+        #  US-9108319-B2, 535 characters, no claims, no drawings, out of a corpus that has all
+        #  three. Drafting from that is drafting from an abstract.
+        material = draft_intake.enrich_from_corpus(material)
+        return draft_intake.public(material, draft_intake.stash(material), figure_url)
+
+    job = _start_extract_job(data, (upload.filename if upload is not None else ""), url,
+                             finish=finish)
+    if job is None:
+        return jsonify({"ok": False, "error": "The server is reading other documents right now. "
+                                              "Try again in a minute."}), 429
+    return jsonify({"ok": True, "job": job, "state": "running"}), 202
+
+
+@app.route("/drafts/start/extract/status/<job>")
+def draft_start_extract_status(job):
+    try:
+        _draft_identity()
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    return _extract_status(job)
+
+
+@app.route("/drafts/start/extract/<token>/figure/<int:index>")
+def draft_start_extract_figure(token, index):
+    """A drawing out of a not-yet-submitted extraction, for the preview strip."""
+    try:
+        _draft_identity()
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    path = draft_intake.figure_path(token, index)
+    if path is None:
+        abort(404)
+    return send_from_directory(path.parent, path.name)
+
+
 @app.route("/drafts/start", methods=["GET", "POST"])
 def draft_start():
     """Open a drafting project from a description, or from a draft the user already has."""
@@ -6809,9 +7038,12 @@ def draft_start():
 
     if request.method == "POST":
         auth.require_csrf()
+        #  `input_kind` is NOT read from the form. The page no longer asks which kind of thing
+        #  was brought, and a hidden field the browser could still set would be a second answer
+        #  to a question the server settles for itself further down.
         values = {key: request.form.get(key, "") for key in
                   ("title", "disclosure_text", "inventor_notes", "applicant", "inventors",
-                   "input_kind", "priority_status", "priority_details", "government_support",
+                   "priority_status", "priority_details", "government_support",
                    "government_support_details", "claim_strategy", "means_plus_function",
                    "protected_terms", "filing_deadline", "independent_claims")}
         values["claim_types"] = request.form.getlist("claim_types")
@@ -6852,8 +7084,15 @@ def draft_start():
                 return redirect(url_for("draft_studio_page", project_id=project["id"], created="1"))
 
             uploads = _uploads_from_request()
-            #  A source document supersedes the pasted text: the user who uploads their own draft
-            #  and also leaves the textarea half-filled means the file.
+            #  A DOCUMENT THE PAGE ALREADY READ supersedes the box, and carries its drawings.
+            #  This is how a PDF or a patent link becomes a draft: the intake reader pulled out
+            #  the applicant's verbatim text and the sheets, and both go into the project. The
+            #  box is left as the fallback for somebody who typed or pasted instead.
+            intake = draft_intake.load(request.form.get("doc_token") or "")
+            if intake and (intake.get("text") or "").strip():
+                values["disclosure_text"] = intake["text"]
+                values["title"] = values["title"] or intake.get("title") or ""
+            #  The legacy file field, still honoured for a POST that did not go through the page.
             for storage in request.files.getlist("source_document") or []:
                 if storage and storage.filename:
                     data = storage.read(draft_studio_service.MAX_UPLOAD_BYTES + 1)
@@ -6861,15 +7100,22 @@ def draft_start():
                     if not extracted.get("ok"):
                         raise drafting.DraftingValidationError(extracted["error"])
                     values["disclosure_text"] = extracted["text"]
-                    values["input_kind"] = "existing_draft"
                     values["title"] = values["title"] or extracted.get("title") or ""
+                    intake = None
+            #  NOBODY IS ASKED WHAT THEY BROUGHT. An application announces itself: numbered
+            #  claims, the headings, reference numerals through the prose. The intake used to
+            #  open with a radio button for this and the answer is readable from the text.
+            found = draft_intake.recognise(values["disclosure_text"])
+            values["input_kind"] = found["kind"]
             project = _studio().create(
                 principal, title=values["title"], disclosure_text=values["disclosure_text"],
-                input_kind=values["input_kind"] or "description", search_slug=slug,
+                input_kind=values["input_kind"], search_slug=slug,
                 publication_numbers=selected, inventor_notes=_structured_drafting_notes(request.form),
                 applicant=values["applicant"], inventors=values["inventors"], uploads=uploads)
             _apply_filing_profile(project["id"], inventor_rows, values.get("applicant") or "")
             _apply_claim_target(principal, project["id"], values.get("independent_claims"))
+            if intake:
+                _attach_intake_drawings(principal, project, intake)
             return redirect(url_for("draft_studio_page", project_id=project["id"], created="1"))
         except drafting.DraftingError as exc:
             ctx = _draft_new_context(user, principal, slug, selected, values, str(exc))
@@ -6974,11 +7220,7 @@ def _draft_search_payload(rows):
     out = []
     for row in rows:
         slug = str(row.get("slug") or "")
-        with _JOB_LOCK:
-            job = dict(_JOBS.get(slug, {}))
-        event = _job_event(slug, job) if valid_slug(slug) else {
-            "status": "error", "msg": "Invalid search id.", "ready": False, "done": False,
-            "detail": {}}
+        event = _search_event(slug)
         status = "complete" if event.get("done") and event.get("ready") else \
             ("error" if event.get("status") == "error" else "running")
         out.append({"slug": slug, "status": status, "ready": bool(event.get("ready")),
@@ -7178,107 +7420,231 @@ def draft_studio_section(project_id):
         return _studio_error(exc)
 
 
+#  ── research ──────────────────────────────────────────────────────────
+#
+#  ONE CONTROL. This route replaced three: a quick prior-art pass, a re-search round and "search
+#  the current draft", which sat next to each other offering what read as the same thing, reported
+#  in three vocabularies, and could run simultaneously against one draft with neither able to see
+#  the other's results.
+#
+#  What is left is the front page's own search, started from the draft, with the effort setting
+#  exposed. Every level goes through `ensure_report` exactly as /run does, so a research run is an
+#  ordinary search in every respect that matters: it has a slug, it is in the user's history, it
+#  opens as a full report, and the studio renders it through the same cards. There is no second
+#  retrieval implementation here to drift from the first.
 @app.route("/drafts/<int:project_id>/studio/research", methods=["POST"])
 def draft_studio_research(project_id):
-    """Re-search: search from the draft as it stands, measure the art, then draft away from it.
-
-    The search launch has to happen here because the pipeline, the report store and the account
-    ledger are this module's wiring. Everything after it is `draft_research`, which is handed the
-    four things it needs as callables so it can be exercised without any of that.
-    """
+    """Search the corpus from this draft, at the level asked for."""
     auth.require_csrf()
     try:
         user, principal = _draft_identity()
         studio = _studio()
-        if draft_research.is_running(project_id):
-            return jsonify({"ok": False,
-                            "error": "A re-search round is already running on this draft."}), 409
+        body = request.get_json(silent=True) or {}
+        try:
+            item = research_levels.level(str(body.get("level") or research_levels.DEFAULT))
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
         state_now = studio.state(principal, project_id)
-        active = state_now.get("active_turn")
-        if active:
-            return jsonify({"ok": False, "error": "The drafting agent is still working. A round "
-                                                  "must search a draft that is standing still."}), 409
-        version_no = int((state_now.get("project") or {}).get("latest_version_no") or 0)
-        material = studio.search_material(principal, project_id)
+        version = state_now.get("version") or {}
+        sections = dict(version.get("sections") or {})
+        title = str((state_now.get("project") or {}).get("title") or "")
+        try:
+            material = research_levels.material_for(item["id"], sections, title)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
         query = material["query"]
-        mode, focus, wide = "novelty", "all_text", True
-        chosen = _studio().settings(principal, project_id)["values"]
-        slug = search_slug(query, mode, wide=wide, search_focus=focus)
+        mode, focus = "novelty", "all_text"
+        depth, wide = item["depth"], bool(item["wide"])
+        slug = search_slug(query, mode, wide=wide, search_focus=focus, depth=depth)
         state, detail = ensure_report(
-            slug, query=query, mode=mode, wide=wide, search_focus=focus,
+            slug, query=query, mode=mode, wide=wide, search_focus=focus, depth=depth,
             owner_user_id=(user or {}).get("id"))
         if state == "busy":
             return jsonify({"ok": False, "error": f"The search server is busy: {detail}"}), 429
+        #  The meta file is what the report page reads back to redisplay the search it ran, and
+        #  `draft_project_id` is how a report knows it came from a draft.
         (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
             {"query": query, "mode": mode, "subject": None, "wide": wide,
-             "ood": None, "doc_token": None, "search_focus": focus,
+             "ood": None, "doc_token": None, "search_focus": focus, "depth": depth,
              "draft_project_id": int(project_id)}))
+        #  IN THE USER'S OWN HISTORY, like any other search. This is the line that makes a
+        #  research run findable a week later from /history rather than only from inside the
+        #  draft that started it.
         accounts.record_search(
             user["id"], slug, query, mode, focus, None, notify_email=False,
             status="complete" if state == "ready" else "running", saved=False)
-        studio.record_search(principal, project_id, slug=slug, query=query,
-                             status="complete" if state == "ready" else "running")
-        opened = draft_research.open_round(project_id, version_no=version_no, slug=slug)
-        history = [item for item in draft_research.rounds(project_id)
-                   if item["round_no"] < opened["round_no"]
-                   and item.get("closest_coverage") is not None]
-
-        def is_ready(item_slug):
-            with _JOB_LOCK:
-                job = dict(_JOBS.get(item_slug, {}))
-            event = _job_event(item_slug, job)
-            return bool(event.get("done") and event.get("ready"))
-
-        def load_view(item_slug):
-            return _draft_report_loader(principal, item_slug, principal.user_id)
-
-        def attach(item_slug, pubs):
-            keep = max(1, min(int(chosen.get("research_references") or 5), 10))
-            return studio.import_search(principal, project_id, item_slug, list(pubs)[:keep])
-
-        def enqueue(message):
-            turn = studio.repository.enqueue_turn_safely(
-                project_id, principal.user_id, kind="revise", user_message=message,
-                project_revision=int(state_now["project"]["revision"]),
-                idempotency_key=f"research-round-{opened['id']}")
-            draft_studio_service.kick()
-            return int(turn["id"])
-
-        draft_research.run_round_in_background(
-            project_id=int(project_id), user_id=int(principal.user_id),
-            round_id=int(opened["id"]), slug=slug, load_view=load_view, is_ready=is_ready,
-            attach=attach, enqueue=enqueue,
-            previous=(history[0] if history else None))
-        return jsonify({"ok": True, "round": _research_payload(opened), "slug": slug,
-                        "status": state})
+        row = studio.record_search(
+            principal, project_id, slug=slug, query=query,
+            status="complete" if state == "ready" else "running",
+            level=item["id"], query_note=material["note"])
+        return jsonify({"ok": True, "slug": slug, "status": state,
+                        "run": _research_run_payload(row)})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
-    except Exception as exc:                                  # search launch boundary
+    except Exception as exc:                                  # the search launch boundary
         traceback.print_exc()
         return jsonify({"ok": False,
-                        "error": f"Could not start the round: {str(exc)[:200]}"}), 502
+                        "error": f"Could not start the research: {str(exc)[:200]}"}), 502
 
 
-def _research_payload(row):
-    return {key: row.get(key) for key in
-            ("id", "round_no", "version_no", "slug", "status", "imported_count",
-             "closest_coverage", "mean_top3", "combination", "n_elements", "n_charted",
-             "closest_pub", "closest_title", "turn_id", "note")}
+def _search_event(slug):
+    """The live state of one search, resolved the way /status resolves it.
+
+    NOT `_job_event` ALONE, which is what this used to be and what made a perfectly healthy run
+    read as broken. Under DURABLE_SEARCH_RUNS the run lives in Postgres and this process holds no
+    in-memory job for it, so `_job_event` saw a partial report with no claim and reported "this
+    search was interrupted by a server restart and did not resume". Measured on a live scan: the
+    worker was holding a fresh lease, had found 4,356 families and had written a 124 KB partial,
+    and the panel told the user it was dead. The queue row it consults for the other half of that
+    branch is the LEGACY queue, which a durable run never appears in, so the wrong branch was the
+    only branch reachable.
+
+    Resolution order is the same as /status: the durable store when it can answer, the in-memory
+    job when there is no durable run, and an explicit "cannot tell" when neither can. That last
+    one matters: a run store we cannot reach is not a run that failed, and reporting it as one
+    would send somebody to re-run a search that is still going.
+    """
+    if not valid_slug(slug):
+        return {"status": "error", "msg": "Invalid search id.", "ready": False, "done": False,
+                "detail": {}}
+    if durable_runs_enabled():
+        state, row = _durable_lookup(slug)
+        if state == "unknown" and not _legacy_claim_live(slug):
+            return _durable_unavailable_event(slug)
+        run = _durable_select(slug, state, row)
+        if run is not None:
+            return _durable_event(slug, run)
+    with _JOB_LOCK:
+        job = dict(_JOBS.get(slug, {}))
+    return _job_event(slug, job)
+
+
+def _research_run_payload(row):
+    """One research run, with its live status resolved from the search pipeline's own job."""
+    slug = str(row.get("slug") or "")
+    event = _search_event(slug)
+    ready = bool(event.get("done") and event.get("ready"))
+    #  A PARTIAL RUN IS NOT A BROKEN ONE. The pipeline publishes renderable cards long before it
+    #  finishes, and the panel streams them, so the row says how far along it is rather than
+    #  waiting in silence for twenty minutes and then showing everything at once.
+    partial = bool(event.get("ready")) and not ready
+    level_id = str(row.get("level") or research_levels.DEFAULT)
+    item = research_levels.BY_ID.get(level_id) or {}
+    reading = row.get("reading")
+    if isinstance(reading, str):
+        try:
+            reading = json.loads(reading)
+        except json.JSONDecodeError:
+            reading = {}
+    return {
+        "slug": slug,
+        "level": level_id,
+        "label": item.get("label") or level_id,
+        "eta": item.get("eta") or "",
+        "charts": bool(item.get("charts")),
+        "reads": bool(item.get("reads")),
+        "query_note": row.get("query_note") or "",
+        "status": "complete" if ready else (
+            "error" if event.get("status") == "error" else "running"),
+        "ready": ready,
+        "partial": partial,
+        "msg": event.get("msg") or "",
+        "detail": event.get("detail") or {},
+        "imported_count": int(row.get("imported_count") or 0),
+        "redrafted_turn_id": row.get("redrafted_turn_id"),
+        "reading": reading or {},
+        "created_at": str(row.get("created_at") or ""),
+        #  NOT /report/<slug> and NOT /api/cards/<slug>: both of those belong to the search app
+        #  at the root of this domain, which keeps a different reports directory and cannot see a
+        #  report this app generated. A link there is a 404 dressed as a feature.
+        "cards_url": (f"{request.script_root}/api/drafts/{row.get('project_id')}/research/"
+                      f"{slug}/cards") if valid_slug(slug) else "",
+    }
 
 
 @app.route("/api/drafts/<int:project_id>/research")
 def api_draft_research(project_id):
+    """Every research run this draft has started, newest first, with live status."""
+    try:
+        _user, principal = _draft_identity()
+        studio = _studio()
+        studio._project(principal, project_id)
+        rows = studio.repository.searches(project_id, limit=25)
+        runs = [_research_run_payload(row) for row in rows]
+        return jsonify({"ok": True, "levels": research_levels.public(),
+                        "default": research_levels.DEFAULT,
+                        "running": any(run["status"] == "running" for run in runs),
+                        "runs": runs})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/research/<slug>/cards")
+def api_draft_research_cards(project_id, slug):
+    """This draft's research results, as the report's own cards.
+
+    Under /api/drafts/ because that is the prefix the proxy gives to THIS app; /api/cards belongs
+    to the search app at the root of the domain, which cannot see a report this one generated.
+    Same function underneath, same Jinja macro, so a reference in the studio is byte for byte the
+    reference on a report page.
+
+    Scoped to the project, and the slug must be one this draft actually started, so the route
+    cannot be used to read a report the caller has no claim on.
+    """
+    try:
+        _user, principal = _draft_identity()
+        if not valid_slug(slug):
+            return jsonify({"error": "invalid slug"}), 400
+        studio = _studio()
+        studio._project(principal, project_id)
+        if not studio.repository.search(project_id, slug):
+            return jsonify({"error": "That search was not started from this draft."}), 404
+        return _cards_response(
+            slug, refdraw_base=f"{request.script_root}/api/drafts/{int(project_id)}")
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/refdrawing/<pub>/<path:fname>")
+def api_draft_reference_drawing(project_id, pub, fname):
+    """A recovered drawing for a reference this draft's research found.
+
+    The same bytes `/refdrawing/` serves, at a path the proxy hands to this app. Scoped to the
+    project so it is reachable by someone who can already open the draft, which is the same
+    standard the cards themselves are held to.
+    """
     try:
         _user, principal = _draft_identity()
         _studio()._project(principal, project_id)
-        data = draft_research.series(project_id)
-        return jsonify({"ok": True, "running": draft_research.is_running(project_id),
-                        "measured": data.get("measured", 0),
-                        "delta": data.get("delta"),
-                        "improvement": data.get("improvement"),
-                        "rounds": [_research_payload(item) for item in data["rounds"]]})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
+    return _send_reference_drawing(pub, fname)
+
+
+@app.route("/drafts/<int:project_id>/studio/research/<slug>/redraft", methods=["POST"])
+def draft_studio_research_redraft(project_id, slug):
+    """Attach what a research run found and ask the drafting agent to draft around it."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        if not valid_slug(slug):
+            return jsonify({"ok": False, "error": "Invalid search id."}), 400
+        studio = _studio()
+        tracked = studio.repository.search(project_id, slug)
+        if not tracked:
+            return jsonify({"ok": False,
+                            "error": "That search was not started from this draft."}), 404
+        result = studio.redraft_from_search(
+            principal, project_id, slug, level=str(tracked.get("level") or "find"))
+        return jsonify({"ok": True, **result})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # noqa: BLE001
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"Could not hand it to the agent: {str(exc)[:200]}"}), 502
 
 
 @app.route("/api/drafts/<int:project_id>/settings")
@@ -7519,6 +7885,52 @@ def draft_studio_filing_profile(project_id):
         return jsonify({"ok": True, "profile": filing_profile.public(values)})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
+
+
+def _filing_inputs(principal, project_id):
+    """Everything a filing package is built from, gathered once.
+
+    THIS DID NOT EXIST. Both filing routes called it and neither could ever have run: "Prepare to
+    file" answered 500 with `NameError: name '_filing_inputs' is not defined`, and it has been
+    that way for as long as those two routes have been in the file. Nothing caught it because the
+    tests cover `filing_service.build` directly, with inputs a test assembles by hand, so the one
+    piece that was missing is the one piece no test supplied.
+
+    Every part of it already existed somewhere else, which is why this is a gathering rather than
+    new logic: `_readiness_for` for the project, the version and its references, the repository
+    for the parties, `draft_figures` for the sheets as PNG bytes, and `draft_uspto.citation_listing`
+    for the cited art in the shape 37 CFR 1.98 wants it.
+    """
+    project, version, _report, references = _readiness_for(principal, project_id)
+    numerals = version.get("numerals") or []
+    if isinstance(numerals, str):
+        numerals = json.loads(numerals or "[]")
+
+    #  The sheets as BYTES. `_figures_for` lists them; the package needs each one's active
+    #  version rendered, and a figure whose image cannot be read is skipped rather than sent as
+    #  an empty sheet, because an empty sheet is a drawing objection.
+    figures = []
+    for figure in _figures_for(project):
+        try:
+            _mime, png = draft_figures.png_bytes(
+                int(figure["id"]), project["user_id"], int(figure.get("active_version") or 0))
+        except Exception:                                      # noqa: BLE001 - one bad sheet
+            traceback.print_exc()
+            continue
+        if png:
+            figures.append({
+                "label": draft_figures.canonical_figure_label(figure.get("figure_label")),
+                "caption": str(figure.get("caption") or ""),
+                "png": png})
+
+    return {
+        "project": project,
+        "version": version,
+        "profile": draft_studio.StudioRepository().filing_profile(project_id),
+        "numerals": numerals,
+        "figures": figures,
+        "citations": draft_uspto.citation_listing(version, references),
+    }
 
 
 @app.route("/drafts/<int:project_id>/studio/filing/build", methods=["POST"])
@@ -7763,6 +8175,13 @@ def recover_interrupted_searches():
               f"{settled['failed']} marked failed, {settled['still_running']} still running in "
               f"the durable worker and left alone", flush=True)
     return settled
+
+
+# ---- the observation docket ------------------------------------------------------------------
+#  Registered before the auth gate, like every other blueprint here, so its endpoints exist when
+#  the gate enumerates them. Every row it serves is keyed by user id; see src/observations.py.
+import observations                                                              # noqa: E402
+observations.init_app(app)
 
 
 # ---- auth + rate limiting (registered LAST, after every route exists) ------------------------

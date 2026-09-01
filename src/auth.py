@@ -89,8 +89,12 @@ _peer_signer = None
 #  to a login box with no way to find out what the product was, what it indexes, or what it does
 #  with a document they would be uploading. The SEARCH itself is still gated: `index` renders a
 #  landing page for a signed-out visitor and the search form only for a signed-in one.
+#  Registration is open by default, so the public product is unchanged. Set ALLOW_REGISTRATION=0
+#  and the route 404s and drops out of the endpoints anonymous traffic may reach.
+REGISTRATION_OPEN = os.environ.get("ALLOW_REGISTRATION", "1").strip().lower() not in ("0", "false", "no")
+
 _OPEN_ENDPOINTS = {"healthz", "index", "about", "how_it_works",
-                   "auth.login", "auth.logout", "auth.register",
+                   "auth.login", "auth.logout",
                    "auth.forgot_password", "auth.reset_password", "static",
                    "shared_report", "shared_report_logo",
                    # A published report and its password gate. The link IS the access control and
@@ -109,6 +113,9 @@ _OPEN_ENDPOINTS = {"healthz", "index", "about", "how_it_works",
                    # relying on AUTH_TRUST_LOOPBACK, which is a knob somebody may reasonably turn
                    # off one day and would take every drafting agent's publish with it.
                    "api_draft_workspace_publish"}
+
+if REGISTRATION_OPEN:
+    _OPEN_ENDPOINTS.add("auth.register")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -784,6 +791,10 @@ def login():
 
 @bp.route("/register", methods=["GET", "POST"])
 def register():
+    #  SIGNUP IS OFF ON THE PERSONAL WORKBENCH. Not hidden, refused: a link can be guessed and an
+    #  open registration form on a tool holding an unfiled patent docket is the wrong default.
+    if not REGISTRATION_OPEN:
+        abort(404)
     if not accounts_enabled():
         return redirect(url_for("auth.login"))
     error = ""

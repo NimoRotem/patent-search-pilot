@@ -205,7 +205,11 @@ def test_intake_uses_profile_defaults_and_specific_drafting_choices(draft_client
     client, _service = draft_client
     body = client.get("/drafts/start").get_data(as_text=True)
     assert 'name="applicant"' in body and 'value="Example Labs"' in body
-    assert 'name="inventors"' in body and "Dana Drafter" in body
+    #  One card per inventor since the intake started taking what 37 CFR 1.76 asks for, and a
+    #  name on that paper is a GIVEN name and a family name, not one string. The profile's saved
+    #  inventor still fills the first card; it is now split across two fields to get there.
+    assert re.search(r'name="inventor_0_given_name"[^>]*value="Dana"', body)
+    assert re.search(r'name="inventor_0_family_name"[^>]*value="Drafter"', body)
     assert "Anything else the drafter should know" not in body
     assert 'name="priority_status"' in body
     assert 'name="claim_strategy"' in body
@@ -232,12 +236,18 @@ def test_selected_priority_or_government_support_requires_filing_details(values)
 
 
 def test_intake_uses_profile_name_when_no_inventor_default_exists(draft_client, monkeypatch):
+    """The inventors are CARDS now, one per inventor, not one textarea of names.
+
+    The defaulting is the thing worth pinning and it is unchanged: with no saved inventor, the
+    first card opens on the profile's own name, split into the given and family names the
+    application data sheet and the declaration are printed from.
+    """
     client, _service = draft_client
     user = {**USER, "default_inventors": ""}
     monkeypatch.setattr(accounts, "get_user", lambda uid: dict(user))
     body = client.get("/drafts/start").get_data(as_text=True)
-    assert '<textarea id="inventors" name="inventors"' in body
-    assert '>Dana Drafter</textarea>' in body
+    assert re.search(r'name="inventor_0_given_name"[^>]*value="Dana"', body)
+    assert re.search(r'name="inventor_0_family_name"[^>]*value="Drafter"', body)
 
 
 def test_intake_uses_profile_name_when_no_applicant_default_exists(draft_client, monkeypatch):
@@ -460,7 +470,21 @@ def test_the_studio_ui_has_a_terminal_and_no_way_to_draw():
         assert absent not in template, absent
         assert absent not in script, absent
 
-    assert "Search current draft" in script and "importsearch" in script
+    #  Searching from the draft is ONE control now, in the Research panel under the draft, with
+    #  an effort setting. It used to be three buttons in the Sources tab offering what read as
+    #  the same thing, so Sources holds what the draft already has and nothing about looking for
+    #  more.
+    assert "researchPanel" in template and "rsEffort" in script
+    assert "Use to redraft" in script
+    #  The results are the report's own cards, fetched already rendered. A second card design in
+    #  this bundle would be a second thing to keep in step with the report page. They come from
+    #  THIS app's route: /api/cards belongs to the search app at the root of the domain, which
+    #  keeps a different reports directory and cannot see a report the drafting app generated.
+    assert "/research/${encodeURIComponent(slug)}/cards" in script
+    assert "bindStreamedCards" in script
+    assert "refcard" not in template, "the studio must not grow its own card markup"
+    for absent in ("Search current draft", "importsearch", "quickartBody", "Run a quick pass"):
+        assert absent not in script, absent
     assert "hashchange" in script
     assert "cache: 'no-store'" in script
     assert "refreshSerial" in script

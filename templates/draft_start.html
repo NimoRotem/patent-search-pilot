@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Draft a patent application | IPtorch{% endblock %}
+{% block title %}Draft a patent application | {{ brand }}{% endblock %}
 {#  The drafting app's own stylesheet, which it alone serves. style.css comes from the app at the
     root of this hostname, a different process with its own copy, so a rule for this page cannot
     live there and be seen. #}
@@ -22,37 +22,50 @@
   <form method="post" enctype="multipart/form-data" class="startform" id="startform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="search_slug" value="{{ search_slug or '' }}">
-    <input type="hidden" name="input_kind" id="inputKind" value="{{ values.input_kind or 'description' }}">
+    {#  Set by the reader when a document or a link is brought in. It points at the extraction
+        held server-side: the applicant's verbatim text AND the drawings, which are what make it
+        possible to start from an existing patent and move it to a neighbouring invention. #}
+    <input type="hidden" name="doc_token" id="docToken" value="">
 
     <section class="panel startpanel">
-      <h2>1 · Where you are starting from</h2>
-      <div class="startchoice" role="tablist">
-        <button type="button" class="startopt on" data-kind="description" role="tab">
-          <b>An invention to describe</b>
-          <span>Write what it is and how it works, in your own words. The agent turns it into an
-            application.</span>
-        </button>
-        <button type="button" class="startopt" data-kind="existing_draft" role="tab">
-          <b>A draft I already have</b>
-          <span>Upload or paste it. The agent keeps your subject matter and improves the drafting
-            around it.</span>
-        </button>
+      <h2>1 · The invention</h2>
+      {#  ONE BOX. It used to open with a choice between "an invention to describe" and "a draft
+          I already have", which asked the reader to classify their own input before the page
+          would take it. A patent application announces itself: numbered claims, the headings,
+          reference numerals through the prose. So the page reads what it was given and says what
+          it found, and the search page's own box reached the same conclusion first. #}
+      <label for="disclosure" id="disclosureLabel">Describe the invention, or bring one you have</label>
+      <p class="small muted" id="disclosureHelp">Write what it is and how it works in your own
+        words, or drop a patent PDF here, or paste a patent link or number. Everything the draft
+        claims has to trace back to what you supply, so detail is worth more than polish.</p>
+      <div class="startdrop" id="startDrop">
+        <textarea id="disclosure" name="disclosure_text" rows="14" maxlength="240000"
+          required placeholder="A handheld vacuum lifting tool for moving glass panels. A battery-powered pump draws air through a channel in the handle…&#10;&#10;…or drop a patent PDF here, or paste a patent link or number.">{{ values.disclosure_text or '' }}</textarea>
+        <div class="startdrophint" id="startDropHint" aria-hidden="true">Drop it anywhere on this box</div>
       </div>
+      <p class="small muted qhint">
+        <label for="sourceDoc" class="vh">Upload a patent PDF, text or Word document</label>
+        <input type="file" id="sourceDoc" class="vh" accept=".pdf,.docx,.txt">
+        Drop a file on the box, <button type="button" class="linklike" id="startBrowse">browse to
+        upload</button>, or paste a patent link or number. PDF, Word or plain text, up to 30&nbsp;MB.
+      </p>
 
-      <label for="disclosure" id="disclosureLabel">Describe the invention</label>
-      <p class="small muted" id="disclosureHelp">Everything the draft claims has to come from here
-        or from what you tell the agent later. Cover what it is, what problem it solves, how it
-        works, the parts and how they relate, and any variants that matter. Detail is worth more
-        than polish.</p>
-      <textarea id="disclosure" name="disclosure_text" rows="14" maxlength="240000"
-        required placeholder="A handheld vacuum lifting tool for moving glass panels. A battery-powered pump draws air through a channel in the handle…">{{ values.disclosure_text or '' }}</textarea>
-
-      <div class="startupload" id="sourceUpload" hidden>
-        <label for="sourceDoc">…or upload the draft as a file</label>
-        <input type="file" id="sourceDoc" name="source_document" accept=".pdf,.docx,.txt">
-        <span class="small muted">PDF, Word or plain text. A file replaces whatever is in the box
-          above.</span>
+      {#  Real phases, not a spinner: reading a 64-page grant is the better part of a minute and
+          most of it is model time. #}
+      <div class="exprog" id="intakeProgress" hidden>
+        <div class="exprogbar"><div class="exprogfill" id="intakeProgFill"></div></div>
+        <div class="exprogrow">
+          <span id="intakeProgMsg">Reading the document</span>
+          <span class="grow"></span>
+          <span id="intakeProgTime" class="muted">0s</span>
+        </div>
       </div>
+      <div class="small" id="intakeMsg" role="status" aria-live="polite"></div>
+
+      {#  WHAT THE PAGE DECIDED AND WHY. Not a control: the reader is told which signals it
+          found, so a wrong reading is visible rather than silent. #}
+      <div class="startread" id="startRead" hidden></div>
+      <div class="startfigs" id="startFigs" hidden></div>
     </section>
 
     {#  Two and three open on demand. Neither is needed to start drafting, and a page that asks
@@ -240,34 +253,144 @@
 {% block scripts %}
 <script>
 (function(){
-  const kind = document.getElementById('inputKind');
-  const label = document.getElementById('disclosureLabel');
-  const help = document.getElementById('disclosureHelp');
-  const upload = document.getElementById('sourceUpload');
+  const BASE = {{ request.script_root|tojson }};
+  const CSRF = {{ csrf_token()|tojson }};
   const area = document.getElementById('disclosure');
-  const COPY = {
-    description: ['Describe the invention',
-      'Everything the draft claims has to come from here or from what you tell the agent later. ' +
-      'Cover what it is, what problem it solves, how it works, the parts and how they relate, and ' +
-      'any variants that matter. Detail is worth more than polish.',
-      'A handheld vacuum lifting tool for moving glass panels. A battery-powered pump draws air ' +
-      'through a channel in the handle…'],
-    existing_draft: ['Paste your draft',
-      'Paste the whole document: title, background, summary, detailed description and claims. ' +
-      'It is split on its headings to start with, and the agent fixes anything that lands in the ' +
-      'wrong place.',
-      'TITLE OF THE INVENTION\n\nVacuum Lifting Tool\n\nBACKGROUND\n…']
-  };
-  document.querySelectorAll('.startopt').forEach(button => button.addEventListener('click', () => {
-    document.querySelectorAll('.startopt').forEach(b => b.classList.toggle('on', b === button));
-    const which = button.dataset.kind;
-    kind.value = which;
-    const [labelText, helpText, placeholder] = COPY[which];
-    label.textContent = labelText;
-    help.textContent = helpText;
-    area.placeholder = placeholder;
-    upload.hidden = which !== 'existing_draft';
-  }));
+  const token = document.getElementById('docToken');
+  const esc = (value) => String(value == null ? '' : value)
+    .replace(/[&<>"]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+  //  ── reading a document or a link ──────────────────────────────────────────────────────────
+  //  The same reader the search page uses, under this app's own prefix. It returns the verbatim
+  //  text and the drawings; the drawings are the half that matters for starting from an existing
+  //  patent, and they are attached to the project on submit.
+  const drop = document.getElementById('startDrop');
+  const hint = document.getElementById('startDropHint');
+  const picker2 = document.getElementById('sourceDoc');
+  const browse = document.getElementById('startBrowse');
+  const message = document.getElementById('intakeMsg');
+  const readOut = document.getElementById('startRead');
+  const figsOut = document.getElementById('startFigs');
+  const progress = document.getElementById('intakeProgress');
+  const progFill = document.getElementById('intakeProgFill');
+  const progMsg = document.getElementById('intakeProgMsg');
+  const progTime = document.getElementById('intakeProgTime');
+  let reading = false;
+  let ticker = null;
+
+  const PATENT_RE = /(patents\.google\.com|worldwide\.espacenet\.com|patentscope|\bpatents?\/)|^\s*[A-Z]{2}\s?\d[\d,\s.\/-]{4,}[A-Z]?\d?\s*$/i;
+
+  function say(text, tone) {
+    message.textContent = text || '';
+    message.className = 'small ' + (tone || 'muted');
+  }
+
+  function showProgress(on) {
+    progress.hidden = !on;
+    if (!on) { if (ticker) { clearInterval(ticker); ticker = null; } return; }
+    const started = Date.now();
+    progFill.style.width = '3%';
+    ticker = setInterval(() => {
+      progTime.textContent = Math.round((Date.now() - started) / 1000) + 's';
+    }, 500);
+  }
+
+  async function read(file, url) {
+    if (reading) return;
+    reading = true;
+    say('', 'muted');
+    showProgress(true);
+    progMsg.textContent = file ? 'Reading ' + file.name : 'Fetching the publication';
+    const body = new FormData();
+    if (file) body.append('file', file); else body.append('url', url);
+    try {
+      const start = await fetch(`${BASE}/drafts/start/extract`, {
+        method: 'POST', credentials: 'same-origin', body,
+        headers: {'X-CSRF-Token': CSRF},
+      });
+      const started = await start.json().catch(() => ({}));
+      if (!started.ok) throw new Error(started.error || 'That document could not be read.');
+      let result = null;
+      for (let n = 0; n < 300 && !result; n += 1) {
+        await new Promise((r) => setTimeout(r, 1200));
+        const poll = await fetch(`${BASE}/drafts/start/extract/status/${started.job}`,
+                                 {credentials: 'same-origin', cache: 'no-store'});
+        const state = await poll.json().catch(() => ({}));
+        if (state.pct) progFill.style.width = Math.min(99, state.pct) + '%';
+        if (state.msg) progMsg.textContent = state.msg;
+        if (state.state === 'error') throw new Error(state.error || 'That document could not be read.');
+        if (state.state === 'done') result = state.result;
+      }
+      if (!result) throw new Error('The reader did not finish. Try again.');
+      progFill.style.width = '100%';
+      apply(result);
+    } catch (error) {
+      say(error.message, 'bad');
+    } finally {
+      showProgress(false);
+      reading = false;
+    }
+  }
+
+  function apply(result) {
+    token.value = result.token || '';
+    if (result.text) area.value = result.text;
+    const titleField = document.getElementById('title');
+    if (titleField && !titleField.value && result.title) titleField.value = result.title;
+    const bits = [];
+    //  For a link the label IS the publication number; printing both reads as a stutter.
+    if (result.publication_number && result.publication_number !== result.label)
+      bits.push(esc(result.publication_number));
+    if (result.n_claims) bits.push(result.n_claims + ' claim' + (result.n_claims === 1 ? '' : 's'));
+    if (result.n_figures) bits.push(result.n_figures + ' drawing' + (result.n_figures === 1 ? '' : 's'));
+    bits.push(Number(result.chars || 0).toLocaleString() + ' characters');
+    readOut.hidden = false;
+    readOut.innerHTML = `<b>${esc(result.label || result.publication_number || 'Document')}</b>
+      <span class="small muted">${bits.join(' · ')}</span>
+      <div class="small">${esc(result.recognised || '')}</div>
+      ${result.verified ? '' : `<div class="small bad">This document had no text layer and was
+        read by vision, so nothing could be checked against extracted text. Read the text below
+        before you start.</div>`}`;
+    if (result.figures && result.figures.length) {
+      figsOut.hidden = false;
+      figsOut.innerHTML = `<span class="small muted">Drawings, attached to the draft when you
+        start${result.drawings_source ? ' · from ' + esc(result.drawings_source) : ''}</span>
+        <div class="startfigrow">${result.figures.map((src, n) =>
+          `<img src="${esc(src)}" alt="Figure ${n + 1}" loading="lazy">`).join('')}</div>`;
+    } else {
+      figsOut.hidden = true;
+      figsOut.innerHTML = '';
+    }
+    say('Read. Check the text below, then start the draft.', 'good');
+  }
+
+  if (browse) browse.addEventListener('click', () => picker2.click());
+  if (picker2) picker2.addEventListener('change', () => {
+    if (picker2.files && picker2.files[0]) read(picker2.files[0], null);
+  });
+  if (drop) {
+    ['dragenter', 'dragover'].forEach((type) => drop.addEventListener(type, (event) => {
+      event.preventDefault(); drop.classList.add('over'); hint.classList.add('on');
+    }));
+    ['dragleave', 'drop'].forEach((type) => drop.addEventListener(type, (event) => {
+      event.preventDefault(); drop.classList.remove('over'); hint.classList.remove('on');
+    }));
+    drop.addEventListener('drop', (event) => {
+      const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+      if (file) read(file, null);
+    });
+  }
+  //  A patent link or number pasted into the box is a document, not a description of one.
+  if (area) area.addEventListener('paste', (event) => {
+    const text = (event.clipboardData || window.clipboardData || {}).getData
+      ? (event.clipboardData || window.clipboardData).getData('text') : '';
+    const trimmed = String(text || '').trim();
+    if (!trimmed || trimmed.length > 200 || !PATENT_RE.test(trimmed)) return;
+    event.preventDefault();
+    area.value = trimmed;
+    read(null, trimmed);
+  });
+
   const picker = document.getElementById('slugpick');
   if (picker) picker.addEventListener('change', () => {
     const url = new URL(window.location.href);

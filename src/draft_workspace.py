@@ -676,6 +676,13 @@ def _reference_body(reference: Mapping[str, Any], snapshot: Mapping[str, Any],
     publication = _clean(reference.get("publication_number"), 64)
     provenance = {
         "report": "Ranked and read by the prior-art search for this project.",
+        #  Says what was and was not done, because the agent is told to weigh a reference by how
+        #  it got here. A quick pass reads the document and judges it against the claims; it does
+        #  not chart it, so a finding here is a reading and not a measurement.
+        "quick": ("Found by the quick prior-art pass: retrieved from the corpus by semantic "
+                  "search, chosen as worth citing, and read in full against the independent "
+                  "claims. It was NOT charted by the full search pipeline, so treat the reading "
+                  "below as a reading and check it against the text before relying on it."),
         "manual": "Added by the user as a publication number and resolved against the corpus.",
         "agent": "Found by the drafting agent during an earlier turn.",
         "upload": "Uploaded by the user.",

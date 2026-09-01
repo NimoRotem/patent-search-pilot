@@ -857,15 +857,83 @@ class StudioService:
                               "Draft prior-art search")[:240]), "query": query}
 
     def record_search(self, principal: drafting.Principal, project_id: int, *, slug: str,
-                      query: str, status: str) -> dict[str, Any]:
+                      query: str, status: str, level: str = "find",
+                      query_note: str = "") -> dict[str, Any]:
         self._project(principal, project_id)
+        import research_levels
         row = self.repository.add_search(
-            project_id, principal.user_id, slug, query, status=status)
+            project_id, principal.user_id, slug, query, status=status, level=level,
+            query_note=query_note)
+        item = research_levels.BY_ID.get(level) or {}
         self.repository.add_message(
             project_id, "system",
-            "A prior-art search based on the current draft has started in the background. "
-            "It will appear under Sources when results are ready.")
+            f"Research started on the current draft at the {item.get('label', level)} level "
+            f"({item.get('eta', 'no estimate')}). The results appear in the Research panel under "
+            "the draft, and they are saved to your search history as search "
+            f"{slug}.")
         return row
+
+    def redraft_from_search(self, principal: drafting.Principal, project_id: int, slug: str, *,
+                            level: str = "find", top: int = 8) -> dict[str, Any]:
+        """Hand a finished research run to the drafting agent and ask it to draft around it.
+
+        A search that finishes and sits on the page changes nothing, and an application filed
+        against art the search already found is the expensive failure this button exists to stop.
+        So it does the two things a person would otherwise do by hand and forget half of:
+        ATTACHES the references, so the agent can read the documents rather than a summary, and
+        then raises ONE turn that says what the search established and, crucially, what it did
+        not.
+        """
+        import draft_novelty
+        import research_levels
+        project = self._project(principal, project_id)
+        tracked = self.repository.search(project_id, slug)
+        if not tracked:
+            raise drafting.DraftingNotFound("That search was not started from this draft.")
+        #  ONE LOAD. `report_loader` is the same trusted path every other reference selection
+        #  goes through, and it hands back the whole view: the cards for what to attach, and the
+        #  claim chart for the measurement below. Loading it twice would be two chances for the
+        #  page and the message to disagree about what the search found.
+        view = self.drafting_service.report_loader(
+            principal, str(slug), int(project["user_id"])) or {}
+        cards = [card for card in (view.get("cards") or []) if isinstance(card, Mapping)]
+        publications = [str(card.get("pub") or "") for card in cards if card.get("pub")][:top]
+        if not publications:
+            raise drafting.DraftingValidationError(
+                "That search has no ranked references yet, so there is nothing to draft around.")
+        imported = self.import_search(principal, project_id, slug, publications)
+
+        #  ONLY THE TIER THAT CHARTS GETS A MEASUREMENT. `read_view` reads the report's own claim
+        #  chart; on a tier that built none it returns nothing, and passing that through as a zero
+        #  would tell the agent the art reached none of the claims when the truth is that nobody
+        #  looked.
+        reading = None
+        if (research_levels.BY_ID.get(level) or {}).get("charts"):
+            try:
+                reading = draft_novelty.read_view(view)
+            except Exception:                                  # noqa: BLE001 - never lose the turn
+                traceback.print_exc()
+                reading = None
+
+        references = [{"publication_number": str(card.get("pub") or ""),
+                       "title": card.get("title") or "",
+                       "publication_date": card.get("publication_date") or "",
+                       "relevance_summary": card.get("why") or card.get("relevance") or ""}
+                      for card in cards[:top]]
+        item = research_levels.BY_ID.get(level) or research_levels.BY_ID[research_levels.DEFAULT]
+        message = research_levels.redraft_request(
+            label=item["label"], level_id=item["id"], slug=slug,
+            note=str(tracked.get("query_note") or "searched on this draft"),
+            references=references, reading=reading)
+        turn = self.repository.enqueue_turn_safely(
+            project_id, principal.user_id, kind="revise", user_message=message,
+            project_revision=int(project.get("revision") or 1),
+            idempotency_key=f"redraft-{slug}")
+        self.repository.update_search(project_id, slug, status="complete",
+                                      redrafted_turn_id=int(turn["id"]))
+        kick()
+        return {"turn_id": int(turn["id"]), "imported": int(imported),
+                "references": len(references)}
 
     def import_search(self, principal: drafting.Principal, project_id: int, slug: str,
                       publication_numbers: Sequence[str]) -> int:

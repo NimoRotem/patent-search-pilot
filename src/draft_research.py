@@ -1,5 +1,12 @@
 """Re-search: search from the draft, measure how close the art is, then draft away from it.
 
+NOT WIRED TO A BUTTON SINCE 2026-08-31. The studio grew three ways to search from a draft and
+this was one of them; they were consolidated into a single Research control with an effort
+setting, whose deepest level runs the same search this loop ran and whose "Use to redraft" does
+what `run_round`'s tail did. What is kept here and still very much in use is `draft_novelty`,
+which this module reads its measurement through; the round loop itself is dormant. Delete it
+rather than reviving it in parallel if the series of rounds is not brought back.
+
 THE LOOP, AND THE CLAIM IT MAKES
     current draft -> prior-art search -> read the claim chart -> attach what it found
                   -> a drafting turn that is TOLD the measurement and told to move

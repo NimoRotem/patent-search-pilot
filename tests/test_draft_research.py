@@ -38,13 +38,18 @@ PUBS = ["US-1111111-A", "US-2222222-B2", "US-3333333-B1"]
 
 
 def test_studio_schema_bootstrap_includes_research_rounds():
+    """The worker must never start against a database missing a column it writes on turn one.
+
+    This used to pin the exact last two entries, which made every later migration a failing test
+    rather than a passing one, and it was red for that reason rather than for a real one. What
+    actually matters is that the tables this feature needs are applied at boot and that they are
+    applied in numeric order, so a file that alters what an earlier file created cannot run first.
+    """
     names = [path.name for path in draft_studio._MIGRATIONS]
     assert "020_draft_research_rounds.sql" in names
     assert "021_draft_project_settings.sql" in names
-    assert names[-2:] == [
-        "022_draft_turn_spend.sql",
-        "023_draft_source_review_cache.sql",
-    ]
+    numbered = [name for name in names if name[:3].isdigit()]
+    assert numbered == sorted(numbered), numbered
 
 
 # =============================================================================================

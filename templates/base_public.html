@@ -19,7 +19,7 @@
     control; a search engine holding a copy is not.  #}
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="referrer" content="no-referrer">
-<title>{% block title %}Prior-art report — IPtorch{% endblock %}</title>
+<title>{% block title %}Prior-art report — {{ brand }}{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23175cd3'/><path d='M9 8h10l4 4v12H9zM19 8v5h5M12 18h8M12 22h6' fill='none' stroke='white' stroke-width='1.8'/></svg>">
 <script>
@@ -38,13 +38,13 @@ window.PUBLIC_REPORT = true;
 <a class="skip" href="#main">Skip to main content</a>
 <header class="top">
   <div class="wrap navshell">
-    <span class="brand" aria-label="IPtorch">
+    <span class="brand" aria-label="{{ brand }}">
       <svg class="brandmark" viewBox="0 0 36 36" aria-hidden="true">
         <rect x="1" y="1" width="34" height="34" rx="8"></rect>
         <path d="M10.5 8.5h10l5 5v14h-15z"></path>
         <path d="M20.5 8.5v5h5M14 19h8M14 23h6"></path>
       </svg>
-      <span class="brandname">IPtorch</span>
+      <span class="brandname">{{ brand }}</span>
     </span>
     <span class="small muted publicbadge">Shared prior-art report</span>
   </div>
@@ -53,7 +53,7 @@ window.PUBLIC_REPORT = true;
 <footer>
   <div class="wrap footergrid">
     <div class="footerbrand">
-      <strong>IPtorch</strong>
+      <strong>{{ brand }}</strong>
       <span>Evidence-backed patent search. Not legal advice.</span>
     </div>
   </div>

@@ -44,6 +44,7 @@ SOURCES = (
     ("turn", "Headless drafting and review"),
     ("review", "Consistency review"),
     ("research", "Re-search"),
+    ("quick_art", "Quick prior-art pass"),
     ("figures", "Drawing inspection"),
     ("filing_qa", "Filing review"),
 )

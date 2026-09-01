@@ -51,7 +51,14 @@ const esp = pub => { const p = padPub(pub) || (pub || '').replace(/-/g, '');
     /figures/<pub>/<file> reached the compiler and came back as a 302 to its login. A redirected
     <img> renders as a broken one, which is why every drawing on every report looked missing while
     the files were on disk all along. See webapp.REFDRAW_PREFIX. */
-const figUrl = (pub, file) => B + '/refdrawing/' + encodeURIComponent(pub) + '/' + encodeURIComponent(file);
+/*  `window.REFDRAW_BASE` lets a page that is served by ANOTHER app on this domain point these at
+    itself. Two apps run behind nimo.iptorch.com and each keeps its own recovered-drawing
+    directory, so a bare /refdrawing/ is answered by whichever one nginx owns the path, which is
+    not always the one whose report this card came from. Unset everywhere else, so the report page
+    is unchanged. */
+const figUrl = (pub, file) =>
+  (window.REFDRAW_BASE == null ? B : window.REFDRAW_BASE)
+  + '/refdrawing/' + encodeURIComponent(pub) + '/' + encodeURIComponent(file);
 /* A figure entry is EITHER a locally-recovered file (served from /refdrawing/<pub>/<file>) OR a
    lemad-Mongo remote entry ({file:null, thumbnail, full} Google-CDN URLs). One accessor each for
    the list/thumbnail size and the full-resolution size, so every render site handles both shapes. */
@@ -2200,29 +2207,44 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'ArrowRight') lbNav(1);
     });
   }
-  if (!document.getElementById('cards')) return;
+  /*  THE DOCUMENT VIEWER BELONGS TO ANY PAGE THAT SHOWS A REFERENCE, not to the report page.
+      All of this used to sit below the `#cards` guard, and the guard means "this is the report".
+      Those were the same thing until the drafting studio started rendering these cards in a panel
+      of its own: openDetail() is reachable from the card's inline onclick, so the slide-over
+      OPENED, and nothing had bound its close button, its back button, its backdrop or Escape. A
+      reader could open a document and had no way out of it. Wired off the viewer's own markup
+      instead, which is the thing these handlers actually need. */
+  if (document.getElementById('soOverlay')) {
+    document.getElementById('soClose').addEventListener('click', closeDetail);
+    document.getElementById('soBack').addEventListener('click', () => {
+      detailStack.pop();
+      const prev = detailStack[detailStack.length - 1];
+      if (prev) openDetail(prev.replace(/ · similar$/, ''), false); else closeDetail();
+    });
+    overlay().addEventListener('click', e => { if (e.target === overlay()) closeDetail(); });
+    document.addEventListener('keydown', e => {
+      const lightbox = document.getElementById('lb');
+      if (e.key === 'Escape' && overlay().classList.contains('open')
+          && !(lightbox && lightbox.classList.contains('open')))
+        closeDetail();
+    });
+    // Capture phase: the trap has to see Tab before anything inside the panel consumes it.
+    document.addEventListener('keydown', soTrapTab, true);
+    document.getElementById('soLink').addEventListener('click', () => {
+      const pn = (detailStack[detailStack.length - 1] || '').replace(/ · similar$/, '');
+      if (!pn) return;
+      //  A deep link into a report only exists where there IS a report. On a page showing these
+      //  cards outside one, copy the document itself rather than a URL that resolves to nothing.
+      const url = window.SLUG
+        ? location.origin + B + '/report/' + window.SLUG + '#patent=' + encodeURIComponent(pn)
+        : gp(pn);
+      const btn = document.getElementById('soLink'), t = btn.textContent;
+      const ok = () => { btn.textContent = '✓ Copied'; setTimeout(() => (btn.textContent = t), 1400); };
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, ok); else prompt('Copy link:', url);
+    });
+  }
 
-  document.getElementById('soClose').addEventListener('click', closeDetail);
-  document.getElementById('soBack').addEventListener('click', () => {
-    detailStack.pop();
-    const prev = detailStack[detailStack.length - 1];
-    if (prev) openDetail(prev.replace(/ · similar$/, ''), false); else closeDetail();
-  });
-  overlay().addEventListener('click', e => { if (e.target === overlay()) closeDetail(); });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && overlay().classList.contains('open') && !document.getElementById('lb').classList.contains('open'))
-      closeDetail();
-  });
-  // Capture phase: the trap has to see Tab before anything inside the panel consumes it.
-  document.addEventListener('keydown', soTrapTab, true);
-  document.getElementById('soLink').addEventListener('click', () => {
-    const pn = (detailStack[detailStack.length - 1] || '').replace(/ · similar$/, '');
-    if (!pn) return;
-    const url = location.origin + B + '/report/' + window.SLUG + '#patent=' + encodeURIComponent(pn);
-    const btn = document.getElementById('soLink'), t = btn.textContent;
-    const ok = () => { btn.textContent = '✓ Copied'; setTimeout(() => (btn.textContent = t), 1400); };
-    if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, ok); else prompt('Copy link:', url);
-  });
+  if (!document.getElementById('cards')) return;
 
   document.querySelectorAll('.fp').forEach(b =>
     b.addEventListener('click', e => { e.stopPropagation(); setFlag(b); }));

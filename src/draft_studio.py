@@ -72,7 +72,9 @@ _MIGRATIONS = (_MIGRATION, _SQL_DIR / "018_draft_studio_editing.sql",
                _SQL_DIR / "021_draft_project_settings.sql",
                _SQL_DIR / "022_draft_turn_spend.sql",
                _SQL_DIR / "023_draft_source_review_cache.sql",
-               _SQL_DIR / "024_draft_usage.sql")
+               _SQL_DIR / "024_draft_usage.sql",
+               _SQL_DIR / "025_draft_quick_art.sql",
+               _SQL_DIR / "026_draft_research_level.sql")
 
 
 class StudioError(drafting.DraftingError):
@@ -1411,6 +1413,45 @@ def _json(value: Any, fallback: Any) -> Any:
 def _dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
+def _search_update_sets(*, status: str, imported_count: int | None, n_results: int | None,
+                        reading: Mapping[str, Any] | None,
+                        redrafted_turn_id: int | None) -> tuple[list[str], list[Any]]:
+    """The SET clauses for one search row, and only for the fields actually supplied.
+
+    A COLUMN NOT BEING CHANGED IS ABSENT FROM THE STATEMENT, rather than present with a NULL that
+    means "leave it alone". This used to write
+
+        reading = CASE WHEN %s IS NULL THEN reading ELSE %s::jsonb END
+
+    and bind None to that first placeholder, which Postgres cannot type: there is nothing in
+    `%s IS NULL` to infer from, so it refused the whole statement with "could not determine data
+    type of parameter $5". Every call that did not carry a reading failed, which is every call
+    except the deepest research level, and the one people actually press is "Use to redraft".
+    `coalesce(%s, column)` survived only because coalesce can infer from its other argument.
+
+    Reported live on draft 21. Built as a list so the shape is testable without a database, which
+    is what was missing when this shipped.
+    """
+    sets = ["status=%s",
+            "completed_at=CASE WHEN %s='complete' THEN coalesce(completed_at,now()) "
+            "ELSE completed_at END"]
+    args: list[Any] = [status, status]
+    if imported_count is not None:
+        sets.append("imported_count=%s")
+        args.append(int(imported_count))
+    if n_results is not None:
+        sets.append("n_results=%s")
+        args.append(int(n_results))
+    if reading is not None:
+        sets.append("reading=%s::jsonb")
+        args.append(_dumps(dict(reading)))
+    if redrafted_turn_id is not None:
+        sets.append("redrafted_turn_id=%s")
+        args.append(int(redrafted_turn_id))
+    return sets, args
+
+
+
 
 class StudioRepository:
     """Postgres boundary for the conversation. Ownership is enforced by the drafting repository."""
@@ -1506,18 +1547,28 @@ class StudioRepository:
 
     # -- searches launched without leaving the studio ----------------------------------------
     def add_search(self, project_id: int, user_id: int, slug: str, query: str,
-                   status: str = "running") -> dict[str, Any]:
+                   status: str = "running", level: str = "find",
+                   query_note: str = "") -> dict[str, Any]:
+        """Record a search this draft started. `level` is which stop on the research slider.
+
+        A re-run of the SAME level on the same draft lands on the same slug, because the slug is
+        the pipeline's cache identity and two identical searches are one search. The level and the
+        note are refreshed on conflict so a row can never claim a level it was not run at.
+        """
         self._ready()
         if status not in ("running", "complete", "error"):
             status = "running"
         with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO app_draft_searches "
-                "(project_id,requested_by_user_id,slug,query,status,completed_at) "
-                "VALUES (%s,%s,%s,%s,%s,CASE WHEN %s='complete' THEN now() ELSE NULL END) "
+                "(project_id,requested_by_user_id,slug,query,status,level,query_note,"
+                "completed_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,CASE WHEN %s='complete' THEN now() ELSE NULL END) "
                 "ON CONFLICT (project_id,slug) DO UPDATE SET status=EXCLUDED.status,"
-                "query=EXCLUDED.query,completed_at=EXCLUDED.completed_at RETURNING *",
-                (int(project_id), int(user_id), str(slug)[:64], str(query)[:60_000], status, status))
+                "query=EXCLUDED.query,level=EXCLUDED.level,query_note=EXCLUDED.query_note,"
+                "completed_at=EXCLUDED.completed_at RETURNING *",
+                (int(project_id), int(user_id), str(slug)[:64], str(query)[:60_000], status,
+                 str(level)[:24], str(query_note)[:300], status))
             return dict(cur.fetchone())
 
     def searches(self, project_id: int, limit: int = 20) -> list[dict[str, Any]]:
@@ -1536,17 +1587,19 @@ class StudioRepository:
         return dict(row) if row else None
 
     def update_search(self, project_id: int, slug: str, *, status: str,
-                      imported_count: int | None = None) -> None:
+                      imported_count: int | None = None, n_results: int | None = None,
+                      reading: Mapping[str, Any] | None = None,
+                      redrafted_turn_id: int | None = None) -> None:
         self._ready()
         if status not in ("running", "complete", "error"):
             raise drafting.DraftingValidationError("Unknown search status.")
+        sets, args = _search_update_sets(
+            status=status, imported_count=imported_count, n_results=n_results,
+            reading=reading, redrafted_turn_id=redrafted_turn_id)
+        args += [int(project_id), str(slug)]
         with self._cursor() as cur:
-            cur.execute(
-                "UPDATE app_draft_searches SET status=%s,"
-                "completed_at=CASE WHEN %s='complete' THEN coalesce(completed_at,now()) "
-                "ELSE completed_at END, imported_count=coalesce(%s,imported_count) "
-                "WHERE project_id=%s AND slug=%s",
-                (status, status, imported_count, int(project_id), str(slug)))
+            cur.execute(f"UPDATE app_draft_searches SET {', '.join(sets)} "
+                        f"WHERE project_id=%s AND slug=%s", args)
 
     # -- references (prior art added outside a search report) ---------------------------------
     def add_reference(self, project_id: int, *, publication_number: str, title: str,

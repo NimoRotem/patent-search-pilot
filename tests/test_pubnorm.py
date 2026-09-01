@@ -143,3 +143,55 @@ def test_zero_ladder_does_not_touch_grants():
     for pub in ("US11413727B2", "US2966138A", "US10625955B2"):
         assert pubnorm.mongo_candidates(pub)[0] == pub.replace("-", "")
         assert not any(len(c) > len(pub) + 2 for c in pubnorm.mongo_candidates(pub))
+
+
+# =============================================================================================
+# Letter-prefixed serials
+# =============================================================================================
+def test_a_serial_that_starts_with_letters_is_a_publication_number():
+    """217,231 publications in this corpus carry one, and the expression returned None for every
+    one of them. None means "not a publication number" to everything downstream.
+
+    Measured end to end on 2026-09-01: a research run attached JP-H09257155-A as prior art,
+    prior_art/INDEX.md told the drafting agent to cite it as [REF:JP-H09257155-A], the agent did
+    exactly that, and `validate_sections` rejected the entire draft with "cites an unusable
+    publication number". The turn retried until it burned its ceiling of 14 agent runs and
+    $17.78, and published nothing. Any draft whose search returned a pre-2000 Japanese patent
+    would have done the same.
+    """
+    for pub in ("JP-H09257155-A",        # Japan, Heisei year 9
+                "AT-A1000273-A",         # Austria, series letter
+                "JP-WO2010095719-A1",    # PCT national phase keeps its own prefix
+                "AU-PP779198-A0",
+                "BR-PI0913464-A2"):
+        assert pubnorm.canonical(pub) == pub, pub
+
+
+def test_the_spelling_without_separators_normalises_to_the_corpus_key():
+    assert pubnorm.canonical("JPH09257155A") == "JP-H09257155-A"
+    assert pubnorm.canonical("ATA1000273A") == "AT-A1000273-A"
+
+
+def test_widening_the_serial_did_not_move_an_ordinary_number():
+    """The kind code still binds last, which is how the corpus stores it."""
+    for pub in ("US-6824038-B2", "US-2014008929-A1", "CN-210615670-U", "EP-3707092-B1",
+                "US-3925854-A", "WO-2024259471-A1", "DE-102015012345-A1"):
+        assert pubnorm.canonical(pub) == pub, pub
+    assert pubnorm.parse("US-6824038-B2") == ("US", "6824038", "B2")
+
+
+def test_prose_is_still_refused():
+    """The widening must not turn an English phrase into a publication number: `draft_cite` uses
+    exactly this to tell a real citation from a fabricated one."""
+    for junk in ("", "the Smith patent", "US", "ABCDEF", "12345", "AB", "ABCD1"):
+        assert pubnorm.canonical(junk) is None, junk
+
+
+def test_a_citation_the_agent_is_told_to_write_can_always_be_normalised():
+    """The loop that broke: prior_art/INDEX.md offers the key, the agent writes [REF:key], and
+    validate_sections normalises it back. Those three must agree for every attachable number."""
+    import draft_cite
+    for pub in ("JP-H09257155-A", "US-6824038-B2", "CN-210615670-U", "AT-A1000273-A"):
+        found = draft_cite.citations_in(f"as taught by [REF:{pub}].")
+        assert found == [pub], pub
+        assert draft_cite.normalize(found[0]) == pub, pub

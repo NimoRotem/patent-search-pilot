@@ -37,7 +37,19 @@ import re
 from typing import List, Optional, Tuple
 
 # CC + digits + optional kind (letter then up to two digits, e.g. A, A1, B2, C0, U1, T3).
-_PUB_RE = re.compile(r"^([A-Z]{2})([0-9]{2,})([A-Z][0-9]{0,2})?$")
+#  THE SERIAL MAY START WITH ONE OR TWO LETTERS, and 217,231 publications in this corpus do.
+#  Japan's pre-2000 numbers carry the era on the serial (JP-H09257155-A, Heisei year 9), Austria
+#  carries a series letter (AT-A1000273-A), and the national phase of a PCT keeps its own prefix
+#  (JP-WO2010095719-A1, AU-PP779198-A0, BR-PI0913464-A2). Without the optional letter this expression returned
+#  None for every one of them, and None means "not a publication number" to everything
+#  downstream: `draft_cite.normalize` refused the citation, so a drafting turn that had been
+#  handed one of these as prior art could not publish AT ALL. Measured on 2026-09-01: the agent
+#  cited JP-H09257155-A exactly as prior_art/INDEX.md told it to, validate_sections rejected the
+#  whole draft, and the turn retried until it burned its ceiling of 14 runs and $17.78.
+#
+#  The kind code still binds last, which is how the corpus stores it, so US-6824038-B2 and
+#  US-2014008929-A1 parse exactly as before.
+_PUB_RE = re.compile(r"^([A-Z]{2})([A-Z]{0,2}[0-9]{2,})([A-Z][0-9]{0,2})?$")
 
 # US pre-grant application publications are  US + 4-digit year + 7-digit serial.
 # The first were published in 2001; keep the window wide so we never mis-classify a real one.

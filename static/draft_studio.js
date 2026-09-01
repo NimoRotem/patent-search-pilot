@@ -16,7 +16,6 @@
   const PID = root.dataset.project;
   let S = JSON.parse(document.getElementById('studioState').textContent || '{}');
   let polling = null;
-  let searchPolling = null;
   let reviewing = false;
   let refreshSerial = Promise.resolve();
 
@@ -1927,132 +1926,296 @@
     }
   }
 
-  // ── sources ────────────────────────────────────────────────────────────────
-  // ── re-search ──────────────────────────────────────────────────────────────
-  /* The rounds are the evidence this feature works, so they are shown as a series rather than as
-     a log: what the nearest single reference disclosed of the independent claims, round by round.
-     A number that does not fall is left visible and labelled as such; hiding it would make the
-     panel an advertisement rather than a measurement. */
-  let R = null;
-  let researchPolling = null;
+  // ── research ───────────────────────────────────────────────────────────────
+  /* ONE CONTROL WITH AN EFFORT SETTING, and results drawn as the search results they are.
+
+     Three separate buttons used to live in the Sources tab and they read as three names for one
+     thing. Two of them could be running at once on the same draft with neither able to see the
+     other, both reported in their own vocabulary, and when a result did land nothing on the page
+     said what to do with it. This is the product's own search started from the draft: the run has
+     a slug, it is in the user's history, it opens as a full report, and the cards below are the
+     report's own cards, fetched already rendered from this app's own cards route, so a
+     reference in the studio is byte for byte the reference on a report page.
+
+     The one thing this panel must never do is imply a level measured something it did not. Only
+     the deepest level charts the claims; the rest rank text. Each run says which it was. */
+  /*  WHERE THIS PAGE'S REFERENCE DRAWINGS COME FROM. app.js builds /refdrawing/<pub>/<file>
+      off the app base, and on this domain that path belongs to the search app at the root, which
+      keeps a different figure directory: every drawing on a studio card was a 404 from an app
+      that had never seen the file. This points app.js at the route this app serves. */
+  window.REFDRAW_BASE = `${BASE}/api/drafts/${PID}`;
+
+  let RS = null;                 // the /api/drafts/<id>/research payload
+  let researchPoll = null;
+  let openRun = null;            // the slug whose results are on screen
+  let cardPoll = null;
+  const RESEARCH_LEVEL_KEY = 'iptorch.researchlevel';
+
+  function researchLevels() { return (RS && RS.levels) || []; }
+
+  function chosenLevel() {
+    const levels = researchLevels();
+    if (!levels.length) return null;
+    const slider = document.getElementById('rsEffort');
+    if (slider) return levels[Math.min(levels.length - 1, Math.max(0, +slider.value))];
+    let remembered = (RS && RS.default) || '';
+    try { remembered = window.localStorage.getItem(RESEARCH_LEVEL_KEY) || remembered; }
+    catch (error) { /* private mode */ }
+    return levels.find((item) => item.id === remembered) || levels[0];
+  }
 
   async function loadResearch(force) {
-    if (R !== null && !force) return;
+    if (RS !== null && !force) return;
     try {
-      R = await api(`/api/drafts/${PID}/research`);
-    } catch (error) { R = { rounds: [], running: false }; }
-    renderResearch();
-  }
-
-  function pct(value) {
-    return value == null ? '-' : Math.round(Number(value) * 100) + '%';
-  }
-
-  function roundRow(item, index, all) {
-    const previous = all[index + 1];
-    let move = '';
-    if (item.closest_coverage != null && previous && previous.closest_coverage != null) {
-      const delta = Number(item.closest_coverage) - Number(previous.closest_coverage);
-      const tone = delta < -0.001 ? 'good' : delta > 0.001 ? 'bad' : 'muted';
-      const sign = delta > 0 ? '+' : '';
-      move = `<span class="rsdelta ${tone}">${sign}${Math.round(delta * 100)} pts</span>`;
+      RS = await api(`/api/drafts/${PID}/research`);
+    } catch (error) {
+      RS = { levels: [], runs: [], running: false, default: 'find' };
     }
-    const width = item.closest_coverage == null ? 0 : Math.round(item.closest_coverage * 100);
-    const busy = !['complete', 'failed'].includes(item.status);
-    return `<div class="rsround">
-      <div class="rsno">Round ${item.round_no}</div>
-      <div class="rsbar" title="${esc(pct(item.closest_coverage))} of the independent claims'
-        elements disclosed by the nearest single reference">
-        <span style="width:${width}%"></span></div>
-      <div class="rsscore">${pct(item.closest_coverage)} ${move}</div>
-      <div class="rsmeta small muted">${busy ? esc(item.status) + '…'
-        : item.closest_pub
-          ? `nearest <b>${esc(item.closest_pub)}</b>${item.n_elements
-            ? ` · ${Math.round(item.closest_coverage * item.n_elements)}/${item.n_elements} elements`
-            : ''} · ${item.imported_count} attached`
-          : 'no reference charted against the claims'}
-        ${item.note ? '· ' + esc(item.note) : ''}</div>
-    </div>`;
+    renderResearch();
+    if (RS.running) startResearchPoll();
+  }
+
+  function runRow(run) {
+    const busy = run.status === 'running';
+    const on = openRun === run.slug;
+    return `<button type="button" class="rsrun${on ? ' on' : ''}${busy ? ' busy' : ''}"
+        data-slug="${esc(run.slug)}" aria-pressed="${on}">
+      <span class="rslvl">${esc(run.label)}</span>
+      <span class="statuspill status-${esc(run.status)}">${esc(run.status)}</span>
+      <span class="small muted rsmsg">${esc(
+        busy ? (run.msg || 'searching…') : (run.query_note || ''))}</span>
+      <span class="grow"></span>
+      ${run.imported_count ? `<span class="small good">${run.imported_count} attached</span>` : ''}
+      ${run.redrafted_turn_id ? '<span class="small good">handed to the agent</span>' : ''}
+      <span class="small faint">${esc(String(run.created_at).slice(0, 16).replace('T', ' '))}</span>
+      <code class="rsid" title="This search's id, saved with your account">${esc(run.slug)}</code>
+    </button>`;
   }
 
   function renderResearch() {
-    const box = document.getElementById('researchBody');
+    const box = document.getElementById('researchPanel');
     if (!box) return;
-    const list = (R && R.rounds) || [];
-    const running = !!(R && R.running);
-    const verdict = R && R.improvement;
-    box.innerHTML = `<div class="rshead">
-        <div><b>Re-search</b>
-          <div class="small muted">Searches the draft as it stands, attaches the closest art, and
-            has the drafting agent write away from it. Run it again after each round: if the
-            drafting is working, the nearest reference should reach less of the claims each time.</div></div>
-        <button type="button" class="btn sm" id="rsRun" ${running ? 'disabled' : ''}>${
-          running ? 'Round running…' : 'Run a round'}</button>
-        <span class="small" id="rsMsg" role="status"></span>
+    const levels = researchLevels();
+    const runs = (RS && RS.runs) || [];
+    const current = chosenLevel();
+    const index = current ? levels.findIndex((item) => item.id === current.id) : 0;
+    const busy = runs.some((run) => run.status === 'running');
+    if (!levels.length) {
+      box.innerHTML = '<div class="small muted">Research is not available on this server.</div>';
+      return;
+    }
+    box.innerHTML = `
+      <div class="rshead">
+        <div class="rstitle">
+          <b>Research</b>
+          <div class="small muted">Searches the corpus from this draft. Every level is the same
+            search the front page runs and each one is saved to your account with its own id,
+            listed below newest first.</div>
+        </div>
+        <div class="rseffort">
+          <label class="small muted" for="rsEffort">Effort</label>
+          <input type="range" id="rsEffort" min="0" max="${levels.length - 1}" step="1"
+                 value="${Math.max(0, index)}" list="rsTicks"
+                 aria-label="How hard to look">
+          <datalist id="rsTicks">${levels.map((item, n) =>
+            `<option value="${n}" label="${esc(item.label)}"></option>`).join('')}</datalist>
+          <div class="rsticks">${levels.map((item, n) =>
+            `<span class="${n === index ? 'on' : ''}">${esc(item.label)}</span>`).join('')}</div>
+        </div>
+        <button type="button" class="btn" id="rsRun" ${busy ? 'disabled' : ''}>${
+          busy ? 'Searching…' : 'Research'}</button>
       </div>
-      ${list.length ? `<div class="rsrounds">${list.map(roundRow).join('')}</div>` : ''}
-      ${verdict && verdict.comparable ? `<div class="rsverdict ${
-        verdict.delta < 0 ? 'good' : verdict.delta > 0 ? 'bad' : 'muted'}">
-        ${esc(verdict.verdict)} Across ${R.measured} measured round(s) the nearest reference moved
-        ${R.delta > 0 ? '+' : ''}${Math.round(R.delta * 100)} points.</div>` : ''}
-      ${list.length ? '' : `<p class="small muted">No rounds yet. The first one takes as long as a
-        prior-art search, and you can keep working on the text while it runs.</p>`}`;
+      <p class="rswhat small" id="rsWhat"><b>${esc(current.label)}</b>
+        <span class="muted">${esc(current.eta)}</span> ${esc(current.what)}</p>
+      <div class="small bad" id="rsMsg" role="status"></div>
+      ${runs.length ? `<div class="rsruns">${runs.map(runRow).join('')}</div>` : `
+        <p class="small muted">No research yet on this draft. Pick an effort and press Research;
+          you can keep working while it runs.</p>`}
+      <div class="rsresults" id="rsResults"></div>`;
+
+    const slider = document.getElementById('rsEffort');
+    if (slider) slider.addEventListener('input', () => {
+      const picked = levels[Math.min(levels.length - 1, Math.max(0, +slider.value))];
+      const what = document.getElementById('rsWhat');
+      if (what && picked) {
+        what.innerHTML = `<b>${esc(picked.label)}</b> <span class="muted">${esc(picked.eta)}</span>
+          ${esc(picked.what)}`;
+      }
+      document.querySelectorAll('.rsticks span').forEach((node, n) =>
+        node.classList.toggle('on', n === +slider.value));
+      try { window.localStorage.setItem(RESEARCH_LEVEL_KEY, picked.id); }
+      catch (error) { /* private mode */ }
+    });
     const run = document.getElementById('rsRun');
     if (run) run.addEventListener('click', startResearch);
-    if (running) startResearchPolling();
+    document.querySelectorAll('.rsrun').forEach((button) =>
+      button.addEventListener('click', () => showRun(button.dataset.slug)));
+
+    //  Open the newest run that has anything to show, so a finished search is never a row you
+    //  have to know to click. A running one is opened too: its partial cards stream in.
+    const target = openRun || (runs[0] && runs[0].slug);
+    if (target) showRun(target, true);
   }
 
   async function startResearch() {
     const button = document.getElementById('rsRun');
     const message = document.getElementById('rsMsg');
+    const picked = chosenLevel();
+    if (!picked) return;
     button.disabled = true;
-    message.className = 'small muted';
-    message.textContent = 'Searching from the current draft…';
+    button.textContent = 'Starting…';
+    message.textContent = '';
     try {
-      await api(`/drafts/${PID}/studio/research`, { method: 'POST', body: JSON.stringify({}) });
+      const data = await api(`/drafts/${PID}/studio/research`, {
+        method: 'POST', body: JSON.stringify({ level: picked.id }),
+      });
+      openRun = data.slug;
       await loadResearch(true);
-      startResearchPolling();
+      startResearchPoll();
     } catch (error) {
       message.textContent = error.message;
-      message.className = 'small bad';
       button.disabled = false;
+      button.textContent = 'Research';
     }
   }
 
-  function startResearchPolling() {
-    if (researchPolling) return;
-    researchPolling = setInterval(async () => {
-      await loadResearch(true);
-      if (!(R && R.running)) { clearInterval(researchPolling); researchPolling = null; refresh(); }
-    }, 15000);
+  function startResearchPoll() {
+    if (researchPoll) return;
+    researchPoll = setInterval(async () => {
+      try { RS = await api(`/api/drafts/${PID}/research`); } catch (error) { return; }
+      renderResearch();
+      if (!RS.running) { clearInterval(researchPoll); researchPoll = null; refresh(); }
+    }, 5000);
   }
 
+  /* THE RESULTS ARE THE REPORT'S OWN CARDS, rendered by the same Jinja macro the report page
+     uses, so figures, the drawing badge, the triage flags and the slide-over all work here
+     because they are literally the same markup and the same app.js.
+     `offset` means the server only ever sends what this panel does not already hold, which is
+     what makes a fifteen-minute search deliver its references as it finds them instead of all at
+     the end. */
+  async function showRun(slug, quiet) {
+    const runs = (RS && RS.runs) || [];
+    const run = runs.find((item) => item.slug === slug);
+    const host = document.getElementById('rsResults');
+    if (!run || !host) return;
+    const changed = openRun !== slug;
+    openRun = slug;
+    if (changed || !host.querySelector('.rscards')) {
+      host.innerHTML = `
+        <div class="rsresulthead">
+          <b>${esc(run.label)}</b>
+          <span class="small muted">${esc(run.query_note || '')}</span>
+          <span class="small ${run.charts ? 'good' : 'muted'}">${run.charts
+            ? 'read in full and charted against your claims'
+            : run.reads ? 'read in full, not charted'
+            : 'ranked by text, nothing read in full'}</span>
+          <span class="grow"></span>
+          <button type="button" class="btn sm" id="rsRedraft"
+            ${run.status === 'complete' ? '' : 'disabled'}>${
+            run.redrafted_turn_id ? 'Send again to redraft' : 'Use to redraft'}</button>
+        </div>
+        <div class="small" id="rsRedraftMsg" role="status"></div>
+        <div class="rscards" id="rsCards"></div>
+        <div class="small muted rscardnote" id="rsCardNote"></div>`;
+      const redraft = document.getElementById('rsRedraft');
+      if (redraft) redraft.addEventListener('click', () => useToRedraft(slug));
+    }
+    await loadCards(slug, changed);
+    if (run.status === 'running') startCardPoll(slug);
+  }
+
+  async function loadCards(slug, reset) {
+    const host = document.getElementById('rsCards');
+    const note = document.getElementById('rsCardNote');
+    if (!host) return;
+    const have = reset ? 0 : host.querySelectorAll('.refcard').length;
+    if (reset) host.innerHTML = '';
+    let data = null;
+    try {
+      //  This app's OWN cards route, not /api/cards. That one is served by the search app at
+      //  the root of the domain, which keeps a different reports directory and answers a report
+      //  this app generated with somebody else's 401.
+      const response = await fetch(
+        `${BASE}/api/drafts/${PID}/research/${encodeURIComponent(slug)}/cards?offset=${have}`,
+        { credentials: 'same-origin', cache: 'no-store' });
+      if (response.ok) data = await response.json();
+    } catch (error) { return; }
+    if (!data) return;
+    if (data.cards) {
+      const frag = document.createElement('div');
+      frag.innerHTML = data.cards;
+      const seen = new Set([...host.querySelectorAll('.refcard')].map((c) => c.dataset.pub));
+      [...frag.querySelectorAll('.refcard')].forEach((card) => {
+        if (seen.has(card.dataset.pub)) return;
+        seen.add(card.dataset.pub);
+        host.appendChild(card);
+        //  app.js owns the card's behaviour; these are its own entry points for a card that
+        //  arrived after first paint. Guarded because the studio must still render if the
+        //  search bundle ever stops being loaded on this page.
+        if (typeof window.bindStreamedCards === 'function') window.bindStreamedCards(card);
+      });
+      //  app.js runs these itself on the report page, behind a guard that means "this IS the
+      //  report". They are what settles a card's drawing: resolveThumbs asks for the ones the
+      //  server could not resolve at render time, and recoverBrokenInitialThumbs catches an
+      //  <img> that was rendered but does not load. Without them every card here kept its
+      //  loading spinner for ever.
+      if (typeof window.resolveThumbs === 'function') window.resolveThumbs();
+      if (typeof window.recoverBrokenInitialThumbs === 'function') window.recoverBrokenInitialThumbs();
+      if (typeof window.resolvePdfLinks === 'function') window.resolvePdfLinks();
+    }
+    const n = host.querySelectorAll('.refcard').length;
+    if (note) {
+      note.textContent = n
+        ? `${n} reference${n === 1 ? '' : 's'}${data.partial ? ', still searching' : ''}.`
+        : (data.partial ? 'Searching. References appear here as they are found.'
+                        : 'This search returned nothing from the corpus.');
+    }
+  }
+
+  function startCardPoll(slug) {
+    if (cardPoll) clearInterval(cardPoll);
+    cardPoll = setInterval(async () => {
+      if (openRun !== slug) { clearInterval(cardPoll); cardPoll = null; return; }
+      const run = ((RS && RS.runs) || []).find((item) => item.slug === slug);
+      await loadCards(slug, false);
+      if (!run || run.status !== 'running') { clearInterval(cardPoll); cardPoll = null; }
+    }, 6000);
+  }
+
+  async function useToRedraft(slug) {
+    const button = document.getElementById('rsRedraft');
+    const message = document.getElementById('rsRedraftMsg');
+    if (!button) return;
+    button.disabled = true;
+    button.textContent = 'Handing it over…';
+    message.className = 'small muted';
+    message.textContent = '';
+    try {
+      const data = await api(`/drafts/${PID}/studio/research/${slug}/redraft`,
+                             { method: 'POST', body: JSON.stringify({}) });
+      message.className = 'small good';
+      message.textContent = `${data.imported} reference(s) attached and the drafting agent has `
+        + 'been asked to work them into the text and the claims. Watch it in the terminal.';
+      button.textContent = 'Sent to the agent';
+      await loadResearch(true);
+      await refresh();
+    } catch (error) {
+      message.className = 'small bad';
+      message.textContent = error.message;
+      button.disabled = false;
+      button.textContent = 'Use to redraft';
+    }
+  }
+
+  // ── sources ────────────────────────────────────────────────────────────────
+  /* SOURCES IS ABOUT WHAT THIS DRAFT HOLDS, not about looking for more. The three ways to
+     search from a draft that used to live at the top of this tab are one control now, in the
+     Research panel under the draft, where the results have the width to be read. */
   function renderSources() {
     const references = S.references || [];
     const documents = S.documents || [];
-    const searches = S.searches || [];
-    const searchRunning = searches.some((item) => item.status === 'running');
     $('sourcesBody').innerHTML = `
-      <div class="research" id="researchBody"></div>
-      <div class="draftsearch">
-        <div><b>Search prior art from this draft</b>
-          <div class="small muted">Runs in the background from the current title, summary,
-            claims, and description. You stay here while it searches.</div></div>
-        <button type="button" class="btn sm" id="draftSearchBtn" ${searchRunning ? 'disabled' : ''}>${
-          searchRunning ? 'Search running…' : 'Search current draft'}</button>
-        <span class="small" id="draftSearchMsg" role="status"></span>
-        ${searches.length ? `<div class="draftsearches">${searches.map((item) => `
-          <div class="draftsearchrow" data-slug="${esc(item.slug)}">
-            <span class="statuspill status-${esc(item.status)}">${esc(item.status)}</span>
-            <span class="small searchmessage">${esc(item.msg || (item.ready ? 'Results ready.' : 'Searching…'))}</span>
-            <span class="grow"></span>
-            ${item.report_url ? `<a class="small" href="${esc(item.report_url)}"
-              target="_blank" rel="noopener">Open report</a>` : ''}
-            ${item.ready && !item.imported_count ? `<button type="button" class="chip importsearch"
-              data-slug="${esc(item.slug)}">Add top 5 references</button>` : ''}
-            ${item.imported_count ? `<span class="small good">${item.imported_count} added</span>` : ''}
-          </div>`).join('')}</div>` : ''}
-      </div>
       <div class="srcadd">
         <label for="srcPub">Add prior art by publication number</label>
         <div class="srcrow">
@@ -2085,7 +2248,8 @@
             data-pub="${esc(reference.publication_number)}">remove</button>
         </div>`).join('') :
         `<p class="muted small">No references. The draft is being written from your description
-         alone. Add art here or search the current draft above.</p>`}
+         alone. Add art below, or run Research under the draft and hand what it finds to the
+         agent.</p>`}
       <h4 class="rvsub">Uploaded documents <span class="small muted">${documents.length}</span></h4>
       ${documents.length ? documents.map((document_) => `
         <div class="srcitem">
@@ -2099,7 +2263,6 @@
 
     $('srcAdd').addEventListener('click', addReference);
     $('srcFiles').addEventListener('change', (event) => uploadDocuments(event.target));
-    $('draftSearchBtn').addEventListener('click', startDraftSearch);
     $('srcPub').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') { event.preventDefault(); addReference(); }
     });
@@ -2107,11 +2270,6 @@
       button.addEventListener('click', () => removeReference(button.dataset.pub)));
     document.querySelectorAll('.docdel').forEach((button) =>
       button.addEventListener('click', () => removeDocument(button.dataset.id)));
-    document.querySelectorAll('.importsearch').forEach((button) =>
-      button.addEventListener('click', () => importDraftSearch(button)));
-    if (searchRunning) startSearchPolling();
-    renderResearch();
-    loadResearch(false);
   }
 
   async function uploadDocuments(input) {
@@ -2139,49 +2297,6 @@
     }
   }
 
-  async function startDraftSearch() {
-    const button = $('draftSearchBtn'); const message = $('draftSearchMsg');
-    button.disabled = true; button.textContent = 'Starting…';
-    try {
-      const data = await api(`/drafts/${PID}/studio/search`, {
-        method: 'POST', body: JSON.stringify({}),
-      });
-      S.searches = [data.search].concat(S.searches || []);
-      renderSources(); startSearchPolling();
-    } catch (error) {
-      message.textContent = error.message; message.className = 'small bad';
-      button.disabled = false; button.textContent = 'Search current draft';
-    }
-  }
-
-  async function importDraftSearch(button) {
-    button.disabled = true; button.textContent = 'Adding…';
-    try {
-      const data = await api(`/drafts/${PID}/studio/search/${button.dataset.slug}/import`, {
-        method: 'POST', body: JSON.stringify({}),
-      });
-      button.textContent = `${data.imported} added`;
-      await refresh(); showPane('sources');
-    } catch (error) { button.textContent = error.message; }
-  }
-
-  function startSearchPolling() {
-    if (searchPolling) return;
-    searchPolling = setInterval(async () => {
-      const active = (S.searches || []).filter((item) => item.status === 'running');
-      if (!active.length) { clearInterval(searchPolling); searchPolling = null; return; }
-      let completed = false;
-      await Promise.all(active.map(async (item) => {
-        try {
-          const state = await api(`/status/${item.slug}`);
-          item.msg = state.msg || item.msg; item.ready = !!state.ready; item.done = !!state.done;
-          if (state.status === 'error') item.status = 'error';
-          if (state.done && state.ready) { item.status = 'complete'; completed = true; }
-        } catch (error) { /* another poll will retry; search continues server-side */ }
-      }));
-      if (completed) await refresh(); else renderSources();
-    }, 4000);
-  }
 
   async function addReference() {
     const input = $('srcPub');
@@ -2746,7 +2861,12 @@
   /* Folding the agent away gives the application the whole page, which is what you want the
      moment you are reading rather than instructing. Remembered, because a person who wants the
      page for the draft wants it for more than one reload. */
-  const CHAT_FOLD_KEY = 'iptorch.chatfold';
+  //  A NEW KEY, ON PURPOSE. Until today a collapsed panel was two pixels tall with the control
+  //  that reopens it clipped out of sight, so nobody who is in that state chose it knowing what
+  //  it did, and there was no way back from inside the page. Reading a different key discards
+  //  every remembered fold exactly once; from here the rail says what it is, so it can be kept.
+  const CHAT_FOLD_KEY = 'iptorch.chatfold2';
+  try { window.localStorage.removeItem('iptorch.chatfold'); } catch (error) { /* private mode */ }
   function foldChat(folded) {
     document.querySelector('.studio').classList.toggle('chathidden', !!folded);
     const button = $('chatFold');
@@ -2761,8 +2881,17 @@
   }
   const chatFold = $('chatFold');
   if (chatFold) {
-    chatFold.addEventListener('click', () =>
-      foldChat(!document.querySelector('.studio').classList.contains('chathidden')));
+    chatFold.addEventListener('click', (event) => {
+      event.stopPropagation();
+      foldChat(!document.querySelector('.studio').classList.contains('chathidden'));
+    });
+    //  While it is collapsed the whole spine opens it, not just the chevron on it. A 44px strip
+    //  is a hard target to find on purpose and an impossible one to find by accident, and the
+    //  fold outlives the session that set it.
+    const spine = document.querySelector('.studioterm');
+    if (spine) spine.addEventListener('click', () => {
+      if (document.querySelector('.studio').classList.contains('chathidden')) foldChat(false);
+    });
     let remembered = '0';
     try { remembered = window.localStorage.getItem(CHAT_FOLD_KEY) || '0'; } catch (error) { /* private mode */ }
     if (remembered === '1') foldChat(true);
@@ -2934,6 +3063,9 @@
   renderAll();
   routeFromHash();
   loadAgentState();
+  //  Research is its own record with its own poll: it survives a page the draft has not changed
+  //  on, and a search that runs for twenty minutes must not depend on the studio poll noticing.
+  loadResearch(false);
   startTermPolling();
   startPolling();
 })();

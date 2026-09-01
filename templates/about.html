@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}About IPtorch{% endblock %}
+{% block title %}About {{ brand }}{% endblock %}
 {% block body %}
 {#  ONE PAGE, PUBLIC. This was two: /about, a specification sheet naming the database version, the
     embedding model, the vector count and the machine size, and /how-it-works, the same pipeline
@@ -15,7 +15,7 @@
     <p class="eyebrow">Prior art search</p>
     <h1>Search that reads the patents</h1>
     <p class="lede">Most prior art tools rank documents by how similar they look and leave the
-      reading to you. IPtorch reads the strongest references in full and tells you, claim by
+      reading to you. {{ brand }} reads the strongest references in full and tells you, claim by
       claim, what each one actually discloses, with the passage it came from.</p>
   </div>
 </div>
