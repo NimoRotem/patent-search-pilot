@@ -767,7 +767,7 @@ class StudioService:
                     int(project_id), list(attach), repository=self.repository, reason=reason)
                 names = [item["pub"] for item in results if item.get("attached")]
                 if names:
-                    self._refresh_live_prior_art(int(project_id))
+                    self._sources_changed(int(project_id))
                     self.repository.add_message(
                         int(project_id), "system",
                         f"The drafting agent attached {len(names)} reference(s) it found in "
@@ -960,7 +960,7 @@ class StudioService:
         for upload in uploads:
             stored.append(self._store_upload(project_id, principal.user_id, upload))
         if stored:
-            self._refresh_live_prior_art(project_id)
+            self._sources_changed(project_id)
             names = ", ".join(d["filename"] for d in stored)
             self.repository.add_message(
                 project_id, "system",
@@ -1003,7 +1003,7 @@ class StudioService:
                       "assignee": record.get("assignee") or "",
                       "source_url": record.get("url") or ""},
             origin="manual")
-        self._refresh_live_prior_art(project_id)
+        self._sources_changed(project_id)
         self.repository.add_message(
             project_id, "system",
             f"{canonical} - {record.get('title') or 'untitled'} - added as prior art "
@@ -1015,13 +1015,13 @@ class StudioService:
                          publication: str) -> None:
         self._project(principal, project_id)
         self.repository.remove_reference(project_id, draft_cite.normalize(publication) or publication)
-        self._refresh_live_prior_art(project_id)
+        self._sources_changed(project_id)
 
     def remove_document(self, principal: drafting.Principal, project_id: int,
                         document_id: int) -> None:
         self._project(principal, project_id)
         self.repository.delete_document(project_id, document_id)
-        self._refresh_live_prior_art(project_id)
+        self._sources_changed(project_id)
 
     # -- reading -----------------------------------------------------------------------------------
     def state(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
@@ -1201,6 +1201,36 @@ class StudioService:
         return {"turn_id": int(turn["id"]), "imported": int(imported),
                 "references": len(references)}
 
+    def _recheck_latest(self, project_id: int) -> None:
+        """Re-run the mechanical checks on the published version after the sources changed.
+
+        The citation checks are decided against the references the project holds, and a report
+        written when it held none said "no prior art was supplied" and passed. Eight references
+        attached later left that report standing, so the Review tab showed CONSISTENT over a
+        draft that cited none of its art, and the filing gate would have read the same report.
+        The checks cost nothing; they run again whenever the list they judge against moves.
+        """
+        try:
+            loaded = _runner()._load(int(project_id))
+            if loaded["sections"] is None:
+                return
+            documents = self.repository.documents(int(project_id))
+            allowed = draft_studio.allowed_reference_keys(loaded["references"], documents)
+            report = _runner().mechanical_report(
+                int(project_id), sections=loaded["sections"], numerals=loaded["numerals"],
+                figures=loaded["figures"], allowed=allowed, scope="The prior art")
+            self.repository.save_qa(
+                int(project_id), turn_id=None,
+                version_no=int(loaded["project"].get("latest_version_no") or 0) or None,
+                report=report)
+        except Exception:                                       # noqa: BLE001 - never fail the caller
+            traceback.print_exc()
+
+    def _sources_changed(self, project_id: int) -> None:
+        """What every change to the reference list does: reach the agent, and re-judge the draft."""
+        self._refresh_live_prior_art(int(project_id))
+        self._recheck_latest(int(project_id))
+
     def _refresh_live_prior_art(self, project_id: int) -> bool:
         """Put the project's current references into a workspace an agent is working in.
 
@@ -1240,7 +1270,7 @@ class StudioService:
         self.repository.update_search(
             project_id, slug, status="complete", imported_count=len(selected))
         if selected:
-            self._refresh_live_prior_art(project_id)
+            self._sources_changed(project_id)
             self.repository.add_message(
                 project_id, "system",
                 f"{len(selected)} ranked reference(s) from search {slug} were added to the draft. "
