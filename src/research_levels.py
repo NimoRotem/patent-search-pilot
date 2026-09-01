@@ -265,17 +265,30 @@ def redraft_request(*, label: str, level_id: str, slug: str, note: str,
     lines += [
         "Do this, in this order:",
         "  1. Read prior_art/INDEX.md and then every file it lists.",
-        "  2. Amend each independent claim so it recites, in its own terms, at least one concrete "
+        "  2. Run `python3 tools/novelty_check.py`. It charts the current independent claims "
+        "element by element against every attached reference and names the nearest single "
+        "reference and the elements nothing was found to disclose. That is the measurement to "
+        "move, and it is the same one the page shows the inventor.",
+        "  3. Amend each independent claim so it recites, in its own terms, at least one concrete "
         "feature or relationship that NONE of these references discloses and that does real "
-        "technical work.",
-        "  3. Make the detailed description support that feature in the same words, and say what "
+        "technical work. Search again with tools/prior_art_search.py on the feature you choose "
+        "before you commit to it: the art nearest the amended wording is not the art nearest the "
+        "original.",
+        "  4. Make the detailed description support that feature in the same words, and say what "
         "technical problem it solves, because that explanation is what a later argument is built "
         "from.",
-        "  4. Address every reference above in the Background, accurately, and CITE IT THERE with "
+        "  5. Address every reference above in the Background, accurately, and CITE IT THERE with "
         "`[REF:KEY]` using exactly the key in prior_art/INDEX.md. A reference discussed without "
-        "its citation token is invisible to the citation check and to the IDS.",
-        "  5. Put each citation where the text actually relies on the reference, not in a list at "
-        "the end. If a sentence distinguishes an approach, the citation belongs in that sentence.",
+        "its citation token is invisible to the citation check and to the IDS. Put each citation "
+        "where the text actually relies on the reference, not in a list at the end.",
+        "  6. Run the novelty check again on the amended claims and put both figures, before and "
+        "after, in your reply. Then publish.",
+        "",
+        "IF THE DISCLOSURE SUPPORTS NO DISTINCTION from a reference that reaches most of a claim, "
+        "do not narrow: write what the inventor would have to add as a proposal in "
+        "review/proposals.md (one `## heading` per proposal: the feature, why it clears which "
+        "reference, what the inventor must confirm). It appears on the page for the inventor to "
+        "adopt, and adopted text becomes part of the disclosure.",
         "",
         "DO NOT buy distance from the art with scope. Narrowing claim 1 until nothing reads on it "
         "is always available and is almost always the wrong trade: add the distinguishing feature "

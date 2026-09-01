@@ -7213,6 +7213,10 @@ def _studio_payload(state):
         "figures": state.get("figures") or [],
         "searches": _draft_search_payload(state.get("searches") or []),
         "agent": state["agent"],
+        #  The agent's proposals for the inventor and its last novelty reading. Both come from
+        #  the record, so a reload shows what the agent measured rather than what it said.
+        "proposals": state.get("proposals") or [],
+        "novelty": state.get("novelty"),
     }
 
 
@@ -8022,6 +8026,77 @@ def api_draft_workspace_figures(project_id):
         traceback.print_exc()
         return jsonify({"ok": False,
                         "error": f"{type(exc).__name__}: {str(exc)[:300]}"}), 500
+
+
+@app.route("/api/drafts/<int:project_id>/workspace/search", methods=["POST"])
+def api_draft_workspace_search(project_id):
+    """The drafting agent searching the corpus, or attaching what it found. NOT a browser route.
+
+    Same capability as publish: loopback plus the per-project token in the agent's private home.
+    """
+    if not auth.is_loopback():
+        return jsonify({"ok": False, "error": "This endpoint is loopback-only."}), 403
+    token = request.headers.get("X-Draft-Agent-Token") or ""
+    body = request.get_json(silent=True) or {}
+    attach = body.get("attach") or []
+    if isinstance(attach, str):
+        attach = [attach]
+    try:
+        return jsonify(_studio().agent_search(
+            project_id, token, query=str(body.get("query") or ""),
+            top=int(body.get("top") or 10), claims=bool(body.get("claims")),
+            attach=[str(item) for item in attach][:10],
+            reason=str(body.get("reason") or "")))
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # noqa: BLE001 - the agent reads this
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"{type(exc).__name__}: {str(exc)[:300]}"}), 500
+
+
+@app.route("/api/drafts/<int:project_id>/workspace/novelty", methods=["GET", "POST"])
+def api_draft_workspace_novelty(project_id):
+    """The drafting agent charting its current claims against the attached art. NOT a browser route.
+
+    POST starts the chart and returns a job id; GET ?job= reports it. In two calls because a
+    chart is a minute or two of model calls and the agent's shell tool does not wait that long.
+    """
+    if not auth.is_loopback():
+        return jsonify({"ok": False, "error": "This endpoint is loopback-only."}), 403
+    token = request.headers.get("X-Draft-Agent-Token") or ""
+    try:
+        if request.method == "GET":
+            return jsonify(_studio().agent_novelty_job(
+                project_id, token, str(request.args.get("job") or "")))
+        body = request.get_json(silent=True) or {}
+        refs = body.get("refs") or []
+        if isinstance(refs, str):
+            refs = [refs]
+        return jsonify(_studio().agent_novelty_start(
+            project_id, token, publications=[str(item) for item in refs][:20]))
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # noqa: BLE001 - the agent reads this
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"{type(exc).__name__}: {str(exc)[:300]}"}), 500
+
+
+@app.route("/drafts/<int:project_id>/studio/proposals/<int:no>/<decision>", methods=["POST"])
+def draft_studio_proposal(project_id, no, decision):
+    """The inventor adopting or dismissing a feature the agent proposed."""
+    auth.require_csrf()
+    if decision not in ("adopt", "dismiss"):
+        return jsonify({"ok": False, "error": "Unknown decision."}), 400
+    try:
+        _user, principal = _draft_identity()
+        studio = _studio()
+        result = (studio.adopt_proposal(principal, project_id, no) if decision == "adopt"
+                  else studio.dismiss_proposal(principal, project_id, no))
+        return jsonify({"ok": True, **result})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
 
 
 @app.route("/drafts/<int:project_id>/download/filing.<fmt>")

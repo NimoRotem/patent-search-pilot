@@ -396,7 +396,8 @@ the files - fix it and run it again rather than working around it.
 | `draft/numerals.md` | The reference-numeral table. One row per part. |
 | `figures/` | One Markdown file per sheet: what it shows and which numerals appear on it. Sheets the user has uploaded sit beside them as `rendered-*.png`, and you can open those. |
 | `review/previous-qa.md` | What the reviewer found last time. Fix all of it. |
-| `tools/` | `publish.py` (above), `figure_check.py` and `patent_lookup.py` (below). |
+| `review/proposals.md` | Features you propose that the disclosure does NOT contain, for the inventor to adopt or dismiss on the page. Never in `draft/`. |
+| `tools/` | `publish.py` (above), `prior_art_search.py`, `novelty_check.py`, `patent_lookup.py` and `figure_check.py` (below). |
 
 Write the section files as **body text only**. `draft/09-claims.md` holds the numbered claims and
 nothing else. Do not create files in `draft/` other than the ten sections and `numerals.md`:
@@ -448,16 +449,146 @@ If the application needs a view the user has not supplied, describe what is need
 plainly in your reply that the sheet is still missing. Never write a description of a view that
 does not exist.
 
+**As few sheets as the invention needs, usually three to eight.** A sheet carries as many
+numerals as it takes to read it; a real drawing sheet often carries twenty. Never split a view to
+bring a numeral count down, and never add a sheet the inventor would then have to draw for no
+reason a reader would notice. The count the review reports is advice, not a rule.
+
+## Prior art: search first, draft around it, measure
+
+You have the corpus the search product runs on: about five million publications with their
+claims and description text. Use it yourself, while you draft; do not wait to be handed art.
+
+```
+python3 tools/prior_art_search.py "one sentence describing a mechanism"    # nearest publications, with the passage that matched
+python3 tools/prior_art_search.py --claims                                  # one search per independent claim in draft/09-claims.md
+python3 tools/prior_art_search.py --attach US-1234567-B2 EP-1234567-A1 -m "why"   # into prior_art/, citable as [REF:...]
+python3 tools/novelty_check.py                    # chart the CURRENT claims against every attached reference
+python3 tools/novelty_check.py --refs US-1234567-B2                          # ...against some of them
+python3 tools/patent_lookup.py US-9108319-B2 --claims                         # what one publication actually says
+python3 tools/patent_lookup.py --check US-1111111-A1 EP-2222222-A1            # do these exist
+```
+
+When to run what:
+
+1. **Before the first claims.** If `prior_art/INDEX.md` is empty or thin, search from the
+   disclosure: two or three queries, each a plain description of ONE mechanism in the inventor's
+   words, never the whole disclosure pasted in. Attach the five to eight nearest that concern the
+   same problem. A draft written against nothing is the expensive failure this product exists to
+   prevent, and it is how most drafts on this server were written before you.
+2. **After every claim set, before you publish it.** Run the novelty check. It charts each
+   independent claim element by element against every attached reference, with quotes that had
+   to be found in the reference's own text and that survived a second pass arguing the other
+   side. It names the nearest single reference and the elements nothing was found to disclose.
+   Put its headline in your reply: which reference, how many elements of how many.
+3. **Before you amend a claim on account of a reference**, read the reference file, and look up
+   its claims if the file quotes only fragments. A ranking is not a reading; the reading wins.
+4. **When a reference reaches most of a claim**, search again on the feature you are about to
+   rely on. The art nearest your amended wording is not the art nearest the original.
+5. **When the inventor names a competitor or a product**, search for it by description. Attach
+   what you find; do not describe art you have not attached.
+
+The searches and the checks cost cents and seconds. A first draft that the first real search
+would have anticipated costs the inventor the filing.
+
+## How the claims are built around the art
+
+**Inventory first.** Before writing a claim, list for yourself every structure, relationship,
+operation, material, range and alternative the disclosure states, and mark which of them the
+inventor called the point of novelty. That list is the only pool a claim may draw on.
+
+**Chart the art against the inventory**, not only against the claims. For each attached
+reference decide what it actually discloses of that list, from its own text. The novelty check
+does this for the claims; the inventory is yours to do.
+
+**Choose the point of novelty** as the feature or relationship that (a) no single reference
+discloses, (b) does real technical work on the problem the disclosure states, and (c) the
+disclosure supports at more than one level of generality. Prefer one the references neither
+teach nor give a reason to reach for, so that a combination argument has nothing to stand on.
+Say in the specification what technical problem that feature solves and what it gives up
+without it: that paragraph is what every later argument is built from, and it must exist before
+it is needed.
+
+**Each independent claim** recites the point of novelty at the broadest level of generality the
+disclosure supports (the genus the inventor described, not only the species they built) plus the
+elements it needs to make technical sense, and nothing else. Every other word in an independent
+claim is scope given away for nothing; every word in it that a reference also shows is a word
+that reference can be cited against. Use the slots the brief gives you for different statutory
+classes (apparatus, method of use, method of making, system, kit) where the disclosure supports
+them, because different parties infringe them, and for a genuinely different point of novelty
+where the disclosure has more than one. Never restate one independent claim in other words.
+
+**The dependent ladder** is the set of positions to retreat to. Each dependent claim adds ONE
+real distinguishing feature the disclosure supports (the species, the second mechanism, the
+specific relationship, the range, the material), ordered from the fallback you would take first
+to the one you would take last, so that if the independent claim falls there is still a claim
+worth having that the product still practises. Cover every commercially distinct embodiment and
+every safeguard the disclosure describes. A dependent claim that adds something trivial,
+aesthetic, or already implied is a wasted claim.
+
+**Terms.** Choose claim terms that are accurate for this invention and are not a reference's own
+word for a different thing. Define every term of art in the description, give the alternatives
+and equivalents the inventor disclosed, and use the same words in the claims, the description and
+the numeral table. Breadth lives in the description: a genus claimed without the alternatives
+described is a genus the examiner will read down to the one example.
+
+**Never buy distance from the art with scope.** Narrowing claim 1 until nothing reads on it is
+always available and is almost always the wrong trade. Move the claim onto a disclosed feature
+the art lacks. If the disclosure supports no distinction from a close reference, say exactly that
+in your reply, name what the inventor would have to add, write it as a proposal (below), and
+leave the claim alone.
+
+**Never invent support.** Introduce no structure, relationship, definition, range, value or
+result the disclosure does not state. What you may do is recite a disclosed element more
+precisely, in the disclosure's own words, or claim a relationship the disclosure already states.
+The reviewer traces every claim limitation to a passage of `input/disclosure.md` and fails the
+draft on the first one it cannot find.
+
 ## Citing prior art
 
-Cite only what is in `prior_art/INDEX.md`, only with its key, and only in the form `[REF:US-1234567-B2]`.
-Never invent a citation and never describe a reference beyond what its own file says. To check what
-a publication actually contains before you write a limitation around it:
+Cite only what is in `prior_art/INDEX.md`, only with its key, and only in the form
+`[REF:US-1234567-B2]`. Attach a publication before you cite it; a citation the index does not
+carry is refused at publish. Never describe a reference beyond what its own file says: if the
+file does not support the sentence you want, write a weaker sentence or look the publication up.
+
+Every attached reference is addressed in the Background, in one or two accurate sentences, with
+its citation in the sentence that relies on it, not in a list at the end. Say what each reference
+shows and what it does not, and state the gap plainly. **No admissions:** never call any feature
+of this invention conventional, well known, standard or prior art; never say the invention
+combines known elements; never say what a skilled person would do or find obvious. Never state
+a legal conclusion anywhere in the application: nothing is novel, non-obvious, patentable or
+infringing in your text. Citations belong in the Background, and in the Detailed Description
+only to incorporate a document by reference; never in the title, summary, claims or abstract.
+
+## Proposing what the disclosure does not contain
+
+The application may contain only what the inventor disclosed. You will nonetheless see features
+that would strengthen it: a fallback the inventor did not mention, a relationship that would
+clear the nearest reference, an alternative that widens a genus. Put them in
+`review/proposals.md`, one `## heading` per proposal, one to five at a time:
 
 ```
-python3 tools/patent_lookup.py US-9108319-B2 --claims
-python3 tools/patent_lookup.py --check US-1111111-A1 EP-2222222-A1
+## 1. Index the shoulder in discrete steps rather than continuously
+
+Feature: what would be added, in one concrete paragraph, specific enough to claim.
+Why: which attached reference(s) it distances the claims from, and the technical problem it solves.
+Confirm: what the inventor must confirm is true of their invention before it can go in.
 ```
+
+Publish reads the file and the proposals appear on the page beside the draft with Adopt and
+Dismiss. An adopted proposal is appended to `input/disclosure.md` and you are told to work it
+in. Until then it is not disclosure: never put it in `draft/`, never claim it, never let the
+description lean on it. Each proposal is a real technical feature, not a restatement of the
+draft and not a drafting choice you could simply make yourself.
+
+## Before you say you are done
+
+- `python3 tools/publish.py --check` passes.
+- The novelty check has been run on the claims as they stand, and your reply states its
+  headline: the nearest reference and how many elements of how many it reaches.
+- Every reference in `prior_art/INDEX.md` is cited in the Background.
+- Anything you wanted to add and could not is in `review/proposals.md`.
+- Your reply is three or four sentences.
 
 ## How the person reads your work
 
@@ -660,6 +791,223 @@ if __name__ == "__main__":
 '''
 
 
+_SEARCH_TOOL = '''#!/usr/bin/env python3
+"""Search the patent corpus from this workspace, and attach what you find.
+
+    python3 tools/prior_art_search.py "a plain description of one mechanism"   nearest publications
+    python3 tools/prior_art_search.py --claims                one search per independent claim
+    python3 tools/prior_art_search.py --top 15 "..."          more of them (max 25)
+    python3 tools/prior_art_search.py --attach PUB [PUB ...] [-m "why"]
+                                                              put them in prior_art/, citable as [REF:PUB]
+
+Dense semantic retrieval over about five million publications, with the passage that matched.
+It ranks; it does not read. Read a reference before you rely on it. Standard library only.
+"""
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CREDENTIALS = os.path.join(HERE, ".agent-home", "publish.json")
+
+
+def _post(body):
+    try:
+        with open(CREDENTIALS, "r", encoding="utf-8") as handle:
+            credentials = json.load(handle)
+    except (OSError, ValueError) as exc:
+        print("Cannot search: %s is unreadable (%s)." % (CREDENTIALS, exc))
+        return None
+    url = credentials["url"].replace("/workspace/publish", "/workspace/search")
+    request = urllib.request.Request(
+        url, data=json.dumps(body).encode("utf-8"), method="POST",
+        headers={"Content-Type": "application/json",
+                 "X-Draft-Agent-Token": credentials["token"]})
+    try:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            return json.loads(response.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(detail).get("error") or detail
+        except ValueError:
+            pass
+        print("REFUSED (%s): %s" % (exc.code, detail[:1500]))
+    except Exception as exc:                                    # noqa: BLE001
+        print("Cannot reach the drafting server: %s: %s" % (type(exc).__name__, exc))
+    return None
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 2
+    top, attach, reason, claims, words, want_json = 10, [], "", False, [], False
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--top":
+            index += 1
+            top = int(argv[index]) if index < len(argv) else top
+        elif arg == "--attach":
+            index += 1
+            while index < len(argv) and not argv[index].startswith("-"):
+                attach.append(argv[index])
+                index += 1
+            continue
+        elif arg in ("-m", "--message", "--why"):
+            index += 1
+            reason = argv[index] if index < len(argv) else ""
+        elif arg == "--claims":
+            claims = True
+        elif arg == "--json":
+            want_json = True
+        else:
+            words.append(arg)
+        index += 1
+    if attach:
+        payload = _post({"attach": attach, "reason": reason})
+    elif claims:
+        payload = _post({"claims": True, "top": top})
+    else:
+        query = " ".join(words).strip()
+        if not query:
+            print(__doc__)
+            return 2
+        payload = _post({"query": query, "top": top})
+    if payload is None:
+        return 1
+    if want_json:
+        print(json.dumps(payload, indent=1))
+        return 0
+    if not payload.get("ok"):
+        print("REFUSED: %s" % (payload.get("error") or "unknown"))
+        return 1
+    print(payload.get("text") or json.dumps(payload, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
+'''
+
+
+_NOVELTY_TOOL = '''#!/usr/bin/env python3
+"""Chart the claims as they stand in draft/09-claims.md against every attached reference.
+
+    python3 tools/novelty_check.py                       every independent claim, every reference
+    python3 tools/novelty_check.py --refs PUB [PUB ...]  only these references
+    python3 tools/novelty_check.py --json                the reading as JSON
+    python3 tools/novelty_check.py --job ID              collect a check that was still running
+
+Reads the WORKSPACE files, not the last published version, so run it before you publish. Forty
+model calls take a minute or two; this waits about 100 seconds and then prints a ticket you can
+come back for. Standard library only.
+"""
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CREDENTIALS = os.path.join(HERE, ".agent-home", "publish.json")
+
+
+def _call(url, token, body=None):
+    request = urllib.request.Request(
+        url, data=json.dumps(body).encode("utf-8") if body is not None else None,
+        method="POST" if body is not None else "GET",
+        headers={"Content-Type": "application/json", "X-Draft-Agent-Token": token})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        return json.loads(response.read().decode("utf-8", "replace"))
+
+
+def main(argv):
+    refs, want_json, job_id, wait = [], False, "", 100
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg in ("-h", "--help"):
+            print(__doc__)
+            return 0
+        if arg == "--refs":
+            index += 1
+            while index < len(argv) and not argv[index].startswith("-"):
+                refs.append(argv[index])
+                index += 1
+            continue
+        if arg == "--json":
+            want_json = True
+        elif arg == "--job":
+            index += 1
+            job_id = argv[index] if index < len(argv) else ""
+        elif arg == "--wait":
+            index += 1
+            wait = int(argv[index]) if index < len(argv) else wait
+        index += 1
+    try:
+        with open(CREDENTIALS, "r", encoding="utf-8") as handle:
+            credentials = json.load(handle)
+    except (OSError, ValueError) as exc:
+        print("Cannot run the check: %s is unreadable (%s)." % (CREDENTIALS, exc))
+        return 2
+    url = credentials["url"].replace("/workspace/publish", "/workspace/novelty")
+    token = credentials["token"]
+    try:
+        if not job_id:
+            started = _call(url, token, {"refs": refs})
+            if not started.get("ok"):
+                print("REFUSED: %s" % (started.get("error") or "unknown"))
+                return 1
+            job_id = started["job"]
+        deadline = time.time() + max(10, wait)
+        last = ""
+        while True:
+            state = _call(url + "?" + urllib.parse.urlencode({"job": job_id}), token)
+            if not state.get("ok"):
+                print("REFUSED: %s" % (state.get("error") or "unknown"))
+                return 1
+            status = state.get("status")
+            if status == "done":
+                result = state.get("result") or {}
+                print(json.dumps(result.get("reading"), indent=1) if want_json
+                      else (result.get("text") or json.dumps(result, indent=1)))
+                return 0
+            if status == "failed":
+                print("The check failed: %s" % (state.get("error") or "unknown"))
+                return 1
+            progress = state.get("progress") or ""
+            if progress != last:
+                print("  ... %s (%ss)" % (progress, state.get("seconds")))
+                last = progress
+            if time.time() > deadline:
+                print("Still running. Collect it with:  python3 tools/novelty_check.py --job %s"
+                      % job_id)
+                return 0
+            time.sleep(3)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(detail).get("error") or detail
+        except ValueError:
+            pass
+        print("REFUSED (%s): %s" % (exc.code, detail[:1500]))
+        return 1
+    except Exception as exc:                                    # noqa: BLE001
+        print("Cannot reach the drafting server: %s: %s" % (type(exc).__name__, exc))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
+'''
+
+
 def install(workspace: Path, project_id: int) -> dict[str, Any]:
     """Lay down everything the agent needs that is not the draft itself.
 
@@ -671,10 +1019,11 @@ def install(workspace: Path, project_id: int) -> dict[str, Any]:
     (workspace / "CLAUDE.md").write_text(_CLAUDE_MD, encoding="utf-8")
     tools = workspace / "tools"
     tools.mkdir(parents=True, exist_ok=True)
-    (tools / "publish.py").write_text(_PUBLISH_TOOL, encoding="utf-8")
-    (tools / "publish.py").chmod(0o755)
-    (tools / "figure_check.py").write_text(_FIGURE_CHECK_TOOL, encoding="utf-8")
-    (tools / "figure_check.py").chmod(0o755)
+    for name, source in (("publish.py", _PUBLISH_TOOL), ("figure_check.py", _FIGURE_CHECK_TOOL),
+                         ("prior_art_search.py", _SEARCH_TOOL),
+                         ("novelty_check.py", _NOVELTY_TOOL)):
+        (tools / name).write_text(source, encoding="utf-8")
+        (tools / name).chmod(0o755)
 
     home = agent_home(workspace)
     home.mkdir(parents=True, exist_ok=True)

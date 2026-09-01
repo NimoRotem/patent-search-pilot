@@ -328,7 +328,12 @@ def test_a_reference_numeral_printed_twice_is_caught():
     assert check["status"] == "fail" and check["items"] == ["FIG. 1: 10"]
 
 
-def test_an_overcrowded_drawing_sheet_is_a_filing_blocker():
+def test_an_overcrowded_drawing_sheet_is_advice_not_a_filing_blocker():
+    """The eight-numeral ceiling belonged to the image model that drew the sheets.
+
+    With the sheets drawn by a person, a count over eight is worth a look and nothing more:
+    failing the draft on it made the agent split one clamp into eighteen views.
+    """
     numerals = [
         {"numeral": str(value), "part": f"part {value}"}
         for value in range(10, 28, 2)
@@ -341,7 +346,8 @@ def test_an_overcrowded_drawing_sheet_is_a_filing_blocker():
     check = checks_for(numerals=numerals, figures=figures)[
         "Drawing sheets are not overcrowded"]
 
-    assert check["status"] == "fail" and "9 numerals" in check["items"][0]
+    assert check["status"] == "warn" and "9 numerals" in check["items"][0]
+    assert check["severity"] == "advisory"
 
 
 def test_an_overlong_drawing_brief_is_refused_before_image_generation():
@@ -3181,14 +3187,13 @@ def test_drafting_and_review_repairs_respect_standard_claim_count_limits():
     assert instruction in " ".join(draft_qa.REVIEW_SYSTEM.split())
 
 
-def test_review_fixes_respect_the_drawing_sheet_numeral_limit():
-    instruction = (
-        "Never propose an automatic fix that leaves more than eight reference numerals "
-        "on one drawing sheet"
-    )
+def test_review_fixes_do_not_split_views_to_bring_a_numeral_count_down():
+    """The eight-numeral rule was the image model's; a person's sheet carries what it needs."""
+    instruction = "do not propose splitting a view merely to bring a numeral count down"
 
     assert instruction in " ".join(draft_qa.SOURCE_REVIEW_SYSTEM.split())
     assert instruction in " ".join(draft_qa.REVIEW_SYSTEM.split())
+    assert "more than eight reference numerals" not in draft_qa.REVIEW_SYSTEM
 
 
 def test_drafting_prompt_removes_superseded_figure_briefs():

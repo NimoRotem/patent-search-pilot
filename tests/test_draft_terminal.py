@@ -744,3 +744,33 @@ def test_sending_the_review_goes_through_the_agent(monkeypatch):
     out = service.send_review_to_agent(None, 1)
     assert out["items"] == 3 and out["version_no"] == 3
     assert "Antecedent basis in the claims" in typed[0]
+
+
+# =============================================================================================
+# The corpus tools, and the instructions that name them
+# =============================================================================================
+def test_the_agent_is_given_a_search_and_a_novelty_check_and_told_when_to_use_them(workspace):
+    """A drafter who cannot search while drafting is drafting blind, and thirteen of the
+    twenty-two projects on the server were written against no art at all."""
+    draft_terminal.install(workspace, 15)
+    for name in ("prior_art_search.py", "novelty_check.py"):
+        path = workspace / "tools" / name
+        assert path.exists() and path.stat().st_mode & 0o111
+        ast.parse(path.read_text(encoding="utf-8"))              # standard-library python
+    claude_md = (workspace / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "python3 tools/prior_art_search.py" in claude_md
+    assert "python3 tools/novelty_check.py" in claude_md
+    assert "Before the first claims" in claude_md                # search before drafting
+    assert "review/proposals.md" in claude_md                    # where new ideas go
+    assert "No admissions" in claude_md
+    assert "Never buy distance from the art with scope" in claude_md
+
+
+def test_the_tools_post_to_their_own_endpoints_with_the_publish_token(workspace):
+    draft_terminal.install(workspace, 15)
+    search = (workspace / "tools" / "prior_art_search.py").read_text(encoding="utf-8")
+    novelty = (workspace / "tools" / "novelty_check.py").read_text(encoding="utf-8")
+    assert '"/workspace/publish", "/workspace/search"' in search
+    assert '"/workspace/publish", "/workspace/novelty"' in novelty
+    assert "X-Draft-Agent-Token" in search and "X-Draft-Agent-Token" in novelty
+    assert "--job" in novelty                                     # a slow chart can be collected later

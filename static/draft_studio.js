@@ -1672,15 +1672,19 @@
     const body = $('reviewBody');
     const qa = S.qa;
     if (!qa) {
-      body.innerHTML = `<div class="emptypane"><h3>Nothing reviewed yet</h3>
+      body.innerHTML = noveltyHtml() + `<div class="emptypane"><h3>Nothing reviewed yet</h3>
         <p>Every iteration is checked automatically: reference numerals against the text and the
         drawings, claim numbering and dependency, whether each citation resolves to a real
         publication, and whether the claims are supported by what was disclosed.</p></div>`;
+      wireNovelty(body);
       return;
     }
     const [tone, label] = VERDICT[(qa || {}).verdict] || VERDICT.unknown;
     const checks = (qa || {}).checks || [];
     const findings = (qa || {}).findings || [];
+    //  Advice is not a defect: a check the code itself calls advisory sits under the failures
+    //  and warnings and never colours the verdict.
+    checks.forEach((c) => { if (c.status === 'fail' && c.severity === 'advisory') c.status = 'warn'; });
     const order = { fail: 0, warn: 1, pass: 2 };
     checks.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
     const count = (status) => checks.filter((c) => c.status === status).length;
@@ -1738,6 +1742,145 @@
     }));
     body.querySelectorAll('.openfigrepair').forEach((button) =>
       button.addEventListener('click', () => showPane('figures')));
+    body.insertAdjacentHTML('afterbegin', noveltyHtml());
+    wireNovelty(body);
+  }
+
+  /* THE NOVELTY READING is the agent's own measurement, charted by the product's grounded claim
+     chart, stored on the record when the agent ran it. It sits above the review because it is
+     the number a drafter acts on: the nearest single reference to each independent claim, and
+     the elements nothing was found to disclose. It is a measurement of this reading, never an
+     opinion on patentability, and the block says so. */
+  function noveltyHtml() {
+    const reading = S.novelty;
+    if (!reading || !(reading.claims || []).length) {
+      return `<div class="novelty empty small muted">No novelty reading yet. The agent charts
+        the claims against the attached art with <code>tools/novelty_check.py</code>; ask it to
+        “run the novelty check” and the reading appears here.</div>`;
+    }
+    const stale = S.project.latest_version_no && reading.version_no &&
+      Number(reading.version_no) < Number(S.project.latest_version_no);
+    const when = String(reading.measured_at || '').slice(0, 16).replace('T', ' ');
+    const claims = reading.claims.map((claim) => {
+      const closest = claim.closest || {};
+      const pct = Math.round((closest.coverage || 0) * 100);
+      const tone = pct >= 80 ? 'bad' : (pct >= 50 ? 'warn' : 'good');
+      const refs = (claim.references || []).slice(0, 6).map((column) =>
+        `<span class="nvref" title="${esc(column.title || '')}">${esc(column.pub)}
+          <b>${column.disclosed}/${claim.n_elements}</b>${column.partial
+            ? `<span class="muted"> +${column.partial}</span>` : ''}</span>`).join('');
+      return `<div class="nvclaim">
+        <div class="nvhead"><b>Claim ${claim.number}</b>
+          <span class="small muted">${claim.n_elements} elements</span>
+          <span class="grow"></span>
+          ${closest.pub ? `<span class="nvclosest ${tone}">nearest ${esc(closest.pub)} reaches
+            <b>${closest.disclosed} of ${claim.n_elements}</b> (${pct}%)</span>` : ''}
+        </div>
+        ${(claim.uncovered || []).length ? `<div class="nvlist good"><span class="small">Nothing
+            found to disclose:</span><ul>${claim.uncovered.map((e) =>
+            `<li>${esc(e)}</li>`).join('')}</ul></div>`
+          : '<div class="small bad">Every element was found, at least partly, in some reference.</div>'}
+        ${(claim.weak || []).length ? `<div class="nvlist warn"><span class="small">Met only partly
+            or uncertainly:</span><ul>${claim.weak.map((e) =>
+            `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
+        <div class="nvrefs">${refs}</div>
+        <details class="nvcells"><summary class="small muted">element by element</summary>
+          ${(claim.references || []).map((column) => `<div class="nvcol"><b>${esc(column.pub)}</b>
+            ${(column.rows || []).filter((r) => r.verdict !== 'absent').map((r) =>
+              `<div class="nvrow ${esc(r.verdict)}"><span class="chip tiny">${esc(r.verdict)}</span>
+                ${esc(r.element)}${r.location ? `<span class="muted"> · ${esc(r.location)}</span>` : ''}
+                ${r.quote ? `<div class="small muted nvquote">“${esc(r.quote)}”</div>` : ''}
+              </div>`).join('') || '<div class="small muted">nothing disclosed</div>'}
+          </div>`).join('')}
+        </details>
+      </div>`;
+    }).join('');
+    return `<div class="novelty">
+      <div class="nvtitle"><b>Nearest art to the claims</b>
+        <span class="small muted">measured ${esc(when)} against ${reading.n_references}
+          reference(s)${stale ? ', on an earlier version of the claims' : ''}</span>
+        <span class="grow"></span>
+        <button type="button" class="btn ghost xs" id="nvAsk">Ask the agent to measure again</button>
+      </div>
+      ${claims}
+      <div class="small faint">A grounded claim chart: a cell counts as disclosed only when a quote
+        was found in the reference's own text and survived a second pass arguing the other side.
+        It measures what this reading found; it is not an opinion on patentability.</div>
+    </div>`;
+  }
+
+  function wireNovelty(body) {
+    const ask = body.querySelector('#nvAsk');
+    if (ask) ask.addEventListener('click', () => {
+      const input = $('termInput');
+      if (!input) return;
+      input.value = 'Run the novelty check on the current claims and tell me the nearest reference to each independent claim.';
+      sizeComposer();
+      input.focus();
+    });
+  }
+
+  // ── ideas: what the agent proposed and only the inventor may adopt ──────────
+  /* A PROPOSAL IS NOT DISCLOSURE. The agent may see a feature that would clear the nearest
+     reference; it may not put it in the application, because the application may contain only
+     what the inventor disclosed. So it writes it here, and the inventor decides. Adopt appends
+     the text to the disclosure and tells the agent to work it in; Dismiss tells the agent not
+     to raise it again. Nothing on this tab changes the draft on its own. */
+  function renderIdeas() {
+    const body = $('ideasBody');
+    if (!body) return;
+    const items = (S.proposals || []).slice().sort((a, b) => (b.no || 0) - (a.no || 0));
+    const open = items.filter((item) => item.status === 'open');
+    if (!items.length) {
+      body.innerHTML = `<div class="emptypane"><h3>No proposals yet</h3>
+        <p>When the agent sees a feature that would strengthen the claims but is not in your
+        disclosure, it writes it here instead of into the application. Adopt one and it becomes
+        part of the disclosure; the agent is then asked to work it in. Ask the agent to
+        “propose features that would clear the nearest reference” to get some.</p></div>`;
+      return;
+    }
+    body.innerHTML = `
+      <div class="rvhead"><div><b>${open.length} open proposal${open.length === 1 ? '' : 's'}</b>
+        <div class="small muted">Features the agent proposed that your disclosure does not contain.
+          Nothing here is in the application. Adopt one and it becomes part of your disclosure and
+          the agent works it in; dismiss one and it is not raised again.</div></div></div>
+      ${items.map((item) => `<article class="proposal ${esc(item.status || 'open')}">
+        <div class="prophead">
+          <span class="chip tiny">${item.no}</span>
+          <b>${esc(item.title || '')}</b>
+          <span class="grow"></span>
+          <span class="statuspill status-${esc(item.status || 'open')}">${esc(item.status || 'open')}</span>
+        </div>
+        <div class="propbody">${para(item.body || '')}</div>
+        <div class="propfoot small muted">
+          ${item.version_no ? `proposed with version ${item.version_no}` : ''}
+          ${item.decided_at ? ` · ${esc(item.status)} ${esc(item.decided_at)}` : ''}
+          <span class="grow"></span>
+          ${item.status === 'open' ? `
+            <button type="button" class="btn sm propadopt" data-no="${item.no}">Adopt: this is part of my invention</button>
+            <button type="button" class="btn ghost sm propdismiss" data-no="${item.no}">Dismiss</button>` : ''}
+        </div>
+        <div class="small propmsg" id="propMsg${item.no}" role="status"></div>
+      </article>`).join('')}`;
+    body.querySelectorAll('.propadopt').forEach((button) =>
+      button.addEventListener('click', () => decideProposal(button.dataset.no, 'adopt')));
+    body.querySelectorAll('.propdismiss').forEach((button) =>
+      button.addEventListener('click', () => decideProposal(button.dataset.no, 'dismiss')));
+  }
+
+  async function decideProposal(no, decision) {
+    const message = $('propMsg' + no);
+    const buttons = document.querySelectorAll(`.proposal button[data-no="${no}"]`);
+    buttons.forEach((b) => { b.disabled = true; });
+    if (message) { message.className = 'small muted propmsg'; message.textContent = decision === 'adopt' ? 'Adopting…' : 'Dismissing…'; }
+    try {
+      await api(`/drafts/${PID}/studio/proposals/${no}/${decision}`, { method: 'POST', body: '{}' });
+      if (decision === 'adopt') startTermPolling();
+      await refresh();
+    } catch (error) {
+      if (message) { message.className = 'small bad propmsg'; message.textContent = error.message; }
+      buttons.forEach((b) => { b.disabled = false; });
+    }
   }
 
   /*  Hand the whole review to the agent in one go. Built on the SERVER from the stored report
@@ -1986,7 +2129,8 @@
         busy ? (run.msg || 'searching…') : (run.query_note || ''))}</span>
       <span class="grow"></span>
       ${run.imported_count ? `<span class="small good">${run.imported_count} attached</span>` : ''}
-      ${run.redrafted_turn_id ? '<span class="small good">handed to the agent</span>' : ''}
+      ${(run.redrafted_turn_id || (run.reading && run.reading.handed_to))
+        ? '<span class="small good">handed to the agent</span>' : ''}
       <span class="small faint">${esc(String(run.created_at).slice(0, 16).replace('T', ' '))}</span>
       <code class="rsid" title="This search's id, saved with your account">${esc(run.slug)}</code>
     </button>`;
@@ -2215,6 +2359,15 @@
   function renderSources() {
     const references = S.references || [];
     const documents = S.documents || [];
+    //  Whether the published draft actually cites each reference. A reference attached and never
+    //  addressed is the commonest way a citation check fails, and it was invisible here.
+    const cited = new Set(((S.version && S.version.citations) || []).map((c) => String(c)));
+    const ORIGIN = { report: 'from a search', agent: 'found by the agent', manual: 'added by hand',
+                     quick: 'from a search', upload: 'uploaded' };
+    const citedChip = (pub) => S.version
+      ? (cited.has(pub) ? '<span class="chip tiny good">cited</span>'
+                        : '<span class="chip tiny warn" title="Attached but not cited in the published draft">not cited</span>')
+      : '';
     $('sourcesBody').innerHTML = `
       <div class="srcadd">
         <label for="srcPub">Add prior art by publication number</label>
@@ -2239,7 +2392,8 @@
       ${references.length ? references.map((reference) => `
         <div class="srcitem">
           <div><b>${esc(reference.publication_number)}</b>
-            <span class="chip tiny">${esc(reference.origin)}</span>
+            <span class="chip tiny">${esc(ORIGIN[reference.origin] || reference.origin)}</span>
+            ${citedChip(reference.publication_number)}
             <div class="small muted">${esc(reference.title || '')}</div></div>
           <span class="grow"></span>
           ${reference.url ? `<a class="small" href="${esc(reference.url)}" target="_blank"
@@ -2247,9 +2401,9 @@
           <button type="button" class="chip srcdel"
             data-pub="${esc(reference.publication_number)}">remove</button>
         </div>`).join('') :
-        `<p class="muted small">No references. The draft is being written from your description
-         alone. Add art below, or run Research under the draft and hand what it finds to the
-         agent.</p>`}
+        `<p class="muted small">No references yet. The agent searches the corpus itself before
+         it writes the claims and attaches what it finds here. Add art below, or run Research
+         under the draft and hand what it finds to the agent.</p>`}
       <h4 class="rvsub">Uploaded documents <span class="small muted">${documents.length}</span></h4>
       ${documents.length ? documents.map((document_) => `
         <div class="srcitem">
@@ -2946,7 +3100,7 @@
 
   function routeFromHash() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    const pane = ['draft', 'review', 'figures', 'sources', 'history', 'filing']
+    const pane = ['draft', 'review', 'figures', 'sources', 'ideas', 'history', 'filing']
       .includes(parts[0]) ? parts[0] : 'draft';
     showPane(pane, false);
   }
@@ -2989,6 +3143,12 @@
     $('tabReview').className = 'tabbadge' + (bad ? ' bad' : '');
     $('tabSources').textContent =
       (S.references || []).length + (S.documents || []).length || '';
+    const openIdeas = (S.proposals || []).filter((item) => item.status === 'open').length;
+    const ideas = $('tabIdeas');
+    if (ideas) {
+      ideas.textContent = openIdeas || '';
+      ideas.className = 'tabbadge' + (openIdeas ? ' good' : '');
+    }
     const missing = (S.figures || []).filter((figure) => !figure.uploaded).length;
     $('tabFigures').textContent = (S.figures || []).length || '';
     $('tabFigures').title = missing
@@ -3007,6 +3167,7 @@
     renderDraft();
     renderReview();
     renderSources();
+    renderIdeas();
     renderFigures();
     renderHistory();
     renderAgentChips();

@@ -23,9 +23,11 @@ import sys
 import threading
 import time
 import traceback
+from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 import draft_agent
+import draft_agent_tools
 import draft_cite
 import draft_qa
 import draft_settings
@@ -713,6 +715,13 @@ class StudioService:
             project_id, "agent",
             (str(note or "").strip() or "Published a new version of the draft.")[:2000],
             payload={"version_no": version["version_no"], "source": "terminal"})
+        #  What the agent wanted to add and was not allowed to: read out of its outbox and put
+        #  on the page for the inventor, never into the application.
+        try:
+            self._sync_proposals(int(project_id), workspace,
+                                 version_no=int(version["version_no"]))
+        except Exception:                                       # noqa: BLE001 - never fail a publish
+            traceback.print_exc()
         #  The mechanical half of the review, straight away. It costs nothing, it runs the same
         #  way every time, and it means the Review tab is never stale about a version that has
         #  just appeared under it.
@@ -726,6 +735,219 @@ class StudioService:
             traceback.print_exc()
         return {"ok": True, "version_no": int(version["version_no"]), "problems": []}
 
+    # -- what the agent asks the corpus ------------------------------------------------------------
+    def _agent_workspace(self, project_id: int, token: str) -> Path:
+        workspace = draft_workspace.for_project(int(project_id))
+        if not draft_terminal.verify_publish_token(workspace, token):
+            raise drafting.DraftingPermissionDenied("That is not this draft's agent token.")
+        return workspace
+
+    @staticmethod
+    def _workspace_claims(workspace: Path) -> str:
+        try:
+            return (Path(workspace) / "draft" / "09-claims.md").read_text(encoding="utf-8")
+        except OSError:
+            return ""
+
+    def agent_search(self, project_id: int, token: str, *, query: str = "", top: int = 10,
+                     claims: bool = False, attach: Sequence[str] = (),
+                     reason: str = "") -> dict[str, Any]:
+        """The agent searching the corpus, or attaching what it found. NO principal: see publish.
+
+        Search is the product's dense channel on one query; attach is what the Sources tab does
+        when a person types a publication number, with the agent's own reason recorded as the
+        reference's provenance so the workspace file says why it is there.
+        """
+        workspace = self._agent_workspace(project_id, token)
+        loaded = _runner()._load(int(project_id))
+        attached_keys = [str(r.get("publication_number") or "") for r in loaded["references"]]
+        try:
+            if attach:
+                results = draft_agent_tools.attach(
+                    int(project_id), list(attach), repository=self.repository, reason=reason)
+                names = [item["pub"] for item in results if item.get("attached")]
+                if names:
+                    self._refresh_live_prior_art(int(project_id))
+                    self.repository.add_message(
+                        int(project_id), "system",
+                        f"The drafting agent attached {len(names)} reference(s) it found in "
+                        f"the corpus: {', '.join(names)}.")
+                lines = [(f"ATTACHED {item['pub']}  {item.get('title') or ''}"
+                          if item.get("attached") else
+                          f"NOT ATTACHED {item['pub']}: {item.get('reason') or ''}")
+                         for item in results]
+                if names:
+                    lines.append("They are in prior_art/ now (INDEX.md lists the keys) and may "
+                                 "be cited as [REF:KEY]. Read each file before you rely on it.")
+                return {"ok": True, "attached": results, "text": "\n".join(lines)}
+            if claims:
+                items = draft_agent_tools.independent_claims(self._workspace_claims(workspace))
+                if not items:
+                    raise draft_agent_tools.ToolError(
+                        "No independent claim could be read from draft/09-claims.md yet.")
+                blocks = []
+                for claim in items:
+                    result = draft_agent_tools.search_corpus(
+                        claim["text"], top=top, attached=attached_keys)
+                    blocks.append(f"=== nearest to CLAIM {claim['number']} ===\n"
+                                  + draft_agent_tools.render_search(result))
+                return {"ok": True, "text": "\n\n".join(blocks)}
+            result = draft_agent_tools.search_corpus(query, top=top, attached=attached_keys)
+            return {"ok": True, "hits": result["hits"],
+                    "text": draft_agent_tools.render_search(result)}
+        except draft_agent_tools.ToolError as exc:
+            raise drafting.DraftingValidationError(str(exc)) from exc
+
+    def agent_novelty_start(self, project_id: int, token: str, *,
+                            publications: Sequence[str] = ()) -> dict[str, Any]:
+        """Chart the workspace claims against the attached art, in the background."""
+        workspace = self._agent_workspace(project_id, token)
+        claims_text = self._workspace_claims(workspace)
+        if not claims_text.strip():
+            raise drafting.DraftingValidationError(
+                "draft/09-claims.md is empty; write the claims before you measure them.")
+        loaded = _runner()._load(int(project_id))
+        documents = self.repository.documents(int(project_id))
+        try:
+            draft_agent_tools.check_budget(int(project_id))
+        except draft_agent_tools.ToolError as exc:
+            raise drafting.DraftingValidationError(str(exc)) from exc
+        except Exception as exc:                                # noqa: BLE001 - the fleet cap
+            raise drafting.DraftingConflict(
+                f"The drafting spend cap refused the check: {str(exc)[:200]}") from exc
+        import llm
+        before = llm.process_usage()
+        version_no = int(loaded["project"].get("latest_version_no") or 0)
+
+        def work(progress):
+            reading = draft_agent_tools.novelty(
+                claims_text=claims_text, references=loaded["references"], documents=documents,
+                publications=list(publications), progress=progress)
+            reading["usd"] = draft_agent_tools.record_spend(
+                int(project_id), before, llm.process_usage())
+            reading["version_no"] = version_no
+            return {"reading": draft_agent_tools.compact(reading),
+                    "text": draft_agent_tools.render_novelty(reading)}
+
+        def done(result):
+            reading = result["reading"]
+            self.repository.merge_settings(int(project_id), {"novelty": reading})
+            heads = []
+            for claim in reading.get("claims") or []:
+                closest = claim.get("closest") or {}
+                if closest:
+                    heads.append(f"claim {claim['number']}: nearest {closest['pub']} reaches "
+                                 f"{closest['disclosed']} of {claim['n_elements']} elements")
+            self.repository.add_message(
+                int(project_id), "system",
+                "The drafting agent charted the current claims against "
+                f"{reading.get('n_references')} reference(s). " + "; ".join(heads) + ".")
+
+        job = draft_agent_tools.start_job(int(project_id), work, done)
+        return {"ok": True, "job": job}
+
+    def agent_novelty_job(self, project_id: int, token: str, job_id: str) -> dict[str, Any]:
+        self._agent_workspace(project_id, token)
+        state = draft_agent_tools.job(str(job_id), int(project_id))
+        if not state:
+            raise drafting.DraftingNotFound("No such novelty check; start one without --job.")
+        return {"ok": True, **state}
+
+    # -- proposals: what the agent may suggest and only the inventor may adopt ----------------------
+    def _sync_proposals(self, project_id: int, workspace: Path, *, version_no: int) -> None:
+        parsed = draft_workspace.read_proposals(workspace)
+        if not parsed:
+            return
+        existing = [dict(item) for item in
+                    (self.repository.project_settings(project_id).get("proposals") or [])
+                    if isinstance(item, Mapping)]
+        merged = draft_agent_tools.merge_proposals(existing, parsed, version_no=version_no)
+        known = {int(item.get("no") or 0) for item in existing}
+        fresh = [item for item in merged if int(item.get("no") or 0) not in known]
+        if merged != existing:
+            self.repository.merge_settings(project_id, {"proposals": merged})
+        if fresh:
+            titles = "; ".join(str(item.get("title") or "")[:80] for item in fresh)
+            self.repository.add_message(
+                project_id, "system",
+                f"The agent proposed {len(fresh)} feature(s) the disclosure does not contain, "
+                f"for you to adopt or dismiss under Ideas: {titles}.")
+        draft_workspace.write_proposals(workspace, merged)
+
+    def proposals(self, principal: drafting.Principal, project_id: int) -> list[dict[str, Any]]:
+        return self._proposals_of(self._project(principal, project_id))
+
+    def _decide_proposal(self, principal: drafting.Principal, project_id: int, no: int,
+                         status: str) -> dict[str, Any]:
+        project = self._project(principal, project_id)
+        if project.get("status") == "archived":
+            raise drafting.DraftingConflict("Restore this project before changing it.")
+        items = self._proposals_of(project)
+        item = next((entry for entry in items if int(entry.get("no") or 0) == int(no)), None)
+        if item is None:
+            raise drafting.DraftingNotFound("No such proposal.")
+        if item.get("status") == status:
+            raise drafting.DraftingConflict(f"Proposal {no} is already {status}.")
+        stamp = time.strftime("%Y-%m-%d", time.gmtime())
+        item["status"] = status
+        item["decided_at"] = stamp
+        return {"project": project, "items": items, "item": item, "stamp": stamp}
+
+    def adopt_proposal(self, principal: drafting.Principal, project_id: int,
+                       no: int) -> dict[str, Any]:
+        """The inventor confirming a proposed feature is part of the invention.
+
+        The one act that may grow the disclosure. The text is appended to it, labelled with the
+        date and the proposal it came from, so the reviewer's source ledger finds it exactly
+        where it finds everything else. The agent is then told, in its terminal, to work it in.
+        """
+        decided = self._decide_proposal(principal, project_id, no, "adopted")
+        item = decided["item"]
+        addition = (f"\n\n## Addition confirmed by the inventor on {decided['stamp']} "
+                    f"(adopted proposal {int(no)}: {str(item.get('title') or '').strip()})\n\n"
+                    f"{str(item.get('body') or '').strip()}\n")
+        self.repository.append_disclosure(int(project_id), addition)
+        self.repository.merge_settings(int(project_id), {"proposals": decided["items"]})
+        self.repository.add_message(
+            int(project_id), "user",
+            f"Adopted proposal {int(no)}: {str(item.get('title') or '').strip()}. It is now "
+            "part of the disclosure.")
+        workspace = draft_workspace.for_project(int(project_id))
+        if workspace.is_dir():
+            fresh = self._project(principal, project_id)
+            draft_workspace.refresh_inputs(workspace, fresh)
+            draft_workspace.write_proposals(workspace, decided["items"])
+        if self._may_use_terminal(principal):
+            self.send_to_agent(
+                principal, project_id,
+                f"The inventor adopted proposal {int(no)} "
+                f"({str(item.get('title') or '').strip()}). It is now part of the disclosure: "
+                "read the new section at the end of input/disclosure.md, work it into the "
+                "detailed description, the numeral table, the drawing text and the claims "
+                "wherever it strengthens them, run the novelty check, and publish.")
+        return {"no": int(no), "status": "adopted"}
+
+    def dismiss_proposal(self, principal: drafting.Principal, project_id: int,
+                         no: int) -> dict[str, Any]:
+        decided = self._decide_proposal(principal, project_id, no, "dismissed")
+        item = decided["item"]
+        self.repository.merge_settings(int(project_id), {"proposals": decided["items"]})
+        self.repository.add_message(
+            int(project_id), "user",
+            f"Dismissed proposal {int(no)}: {str(item.get('title') or '').strip()}.")
+        workspace = draft_workspace.for_project(int(project_id))
+        if workspace.is_dir():
+            draft_workspace.write_proposals(workspace, decided["items"])
+        if self._may_use_terminal(principal) and draft_terminal.exists(int(project_id)):
+            try:
+                draft_terminal.send(
+                    int(project_id),
+                    f"The inventor dismissed proposal {int(no)} "
+                    f"({str(item.get('title') or '').strip()}). Do not raise it again.")
+            except draft_terminal.TerminalError:
+                pass
+        return {"no": int(no), "status": "dismissed"}
+
     # -- sources ---------------------------------------------------------------------------------
     def add_uploads(self, principal: drafting.Principal, project_id: int,
                     uploads: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -738,11 +960,12 @@ class StudioService:
         for upload in uploads:
             stored.append(self._store_upload(project_id, principal.user_id, upload))
         if stored:
+            self._refresh_live_prior_art(project_id)
             names = ", ".join(d["filename"] for d in stored)
             self.repository.add_message(
                 project_id, "system",
                 f"{len(stored)} document(s) added to this project's sources: {names}. They are "
-                "available to the drafting agent from the next message onward.")
+                "in the drafting agent's workspace now.")
         return stored
 
     def add_reference(self, principal: drafting.Principal, project_id: int,
@@ -780,22 +1003,25 @@ class StudioService:
                       "assignee": record.get("assignee") or "",
                       "source_url": record.get("url") or ""},
             origin="manual")
+        self._refresh_live_prior_art(project_id)
         self.repository.add_message(
             project_id, "system",
             f"{canonical} - {record.get('title') or 'untitled'} - added as prior art "
-            f"(found in {record.get('source')}). It reaches the drafting agent with your next "
-            "message; a turn already running was given the sources it started with.")
+            f"(found in {record.get('source')}). It is in the drafting agent's workspace now; "
+            "ask the agent to read it.")
         return record
 
     def remove_reference(self, principal: drafting.Principal, project_id: int,
                          publication: str) -> None:
         self._project(principal, project_id)
         self.repository.remove_reference(project_id, draft_cite.normalize(publication) or publication)
+        self._refresh_live_prior_art(project_id)
 
     def remove_document(self, principal: drafting.Principal, project_id: int,
                         document_id: int) -> None:
         self._project(principal, project_id)
         self.repository.delete_document(project_id, document_id)
+        self._refresh_live_prior_art(project_id)
 
     # -- reading -----------------------------------------------------------------------------------
     def state(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
@@ -833,7 +1059,23 @@ class StudioService:
             #  The drafting agent IS the terminal now, so what the page needs to know about it is
             #  whether one can run here and whether this draft's own session is up.
             "agent": self.terminal_state(principal, project_id),
+            #  The agent's proposals for the inventor, and the last novelty reading it measured.
+            #  Both ride on the project's settings blob; see StudioRepository.merge_settings.
+            "proposals": self._proposals_of(project),
+            "novelty": self._novelty_of(project),
         }
+
+    @staticmethod
+    def _settings_of(project: Mapping[str, Any]) -> dict[str, Any]:
+        return draft_studio._json((project or {}).get("settings"), {}) or {}
+
+    def _proposals_of(self, project: Mapping[str, Any]) -> list[dict[str, Any]]:
+        items = self._settings_of(project).get("proposals") or []
+        return [dict(item) for item in items if isinstance(item, Mapping)]
+
+    def _novelty_of(self, project: Mapping[str, Any]) -> dict[str, Any] | None:
+        reading = self._settings_of(project).get("novelty")
+        return dict(reading) if isinstance(reading, Mapping) and reading.get("claims") else None
 
     def search_material(self, principal: drafting.Principal, project_id: int) -> dict[str, str]:
         """Build a bounded prior-art query from the current draft without model rewriting."""
@@ -925,6 +1167,30 @@ class StudioService:
             label=item["label"], level_id=item["id"], slug=slug,
             note=str(tracked.get("query_note") or "searched on this draft"),
             references=references, reading=reading)
+        if self._may_use_terminal(principal):
+            #  ONE AGENT. Until 2026-09-01 this raised a headless turn for the queue worker, a
+            #  second drafter with a different prompt, its own repair loop and a Vertex fallback,
+            #  while the person's agent sat in the terminal beside the page knowing nothing. The
+            #  last five such turns each ran 12 to 14 agent runs, cost $18 to $26, and FAILED at
+            #  the run ceiling, and the panel said "handed to the agent" throughout. The message
+            #  now goes where every other message goes: into the terminal. The queue is kept for
+            #  an account that has no terminal.
+            self._refresh_live_prior_art(project_id)
+            self.send_to_agent(principal, project_id, message)
+            handed = dict(draft_studio._json(tracked.get("reading"), {}) or {})
+            if reading:
+                handed.update({key: value for key, value in dict(reading).items()
+                               if key != "per_reference"})
+            handed.update({"handed_to": "terminal",
+                           "handed_to_agent_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                               time.gmtime())})
+            self.repository.update_search(project_id, slug, status="complete", reading=handed)
+            self.repository.add_message(
+                project_id, "system",
+                f"{imported} reference(s) from search {slug} were attached and the drafting "
+                "agent was asked to draft around them. Watch it in the terminal.")
+            return {"turn_id": None, "sent": True, "imported": int(imported),
+                    "references": len(references)}
         turn = self.repository.enqueue_turn_safely(
             project_id, principal.user_id, kind="revise", user_message=message,
             project_revision=int(project.get("revision") or 1),
@@ -934,6 +1200,27 @@ class StudioService:
         kick()
         return {"turn_id": int(turn["id"]), "imported": int(imported),
                 "references": len(references)}
+
+    def _refresh_live_prior_art(self, project_id: int) -> bool:
+        """Put the project's current references into a workspace an agent is working in.
+
+        Without this a reference added from the Sources tab, attached by a search, or found by
+        the agent itself reached the workspace only when the agent was next RESTARTED, because
+        a running terminal is never rebuilt. The message under the Sources tab promised the art
+        "with your next message"; it was not true for a terminal agent. Rewrites prior_art/ only:
+        draft/ is the agent's own and stays exactly as it left it.
+        """
+        workspace = draft_workspace.for_project(int(project_id))
+        if not workspace.is_dir():
+            return False
+        try:
+            loaded = _runner()._load(int(project_id))
+            draft_workspace.refresh_prior_art(
+                workspace, loaded["references"], self.repository.documents(int(project_id)))
+            return True
+        except Exception:                                       # noqa: BLE001 - never fail the caller
+            traceback.print_exc()
+            return False
 
     def import_search(self, principal: drafting.Principal, project_id: int, slug: str,
                       publication_numbers: Sequence[str]) -> int:
@@ -953,10 +1240,11 @@ class StudioService:
         self.repository.update_search(
             project_id, slug, status="complete", imported_count=len(selected))
         if selected:
+            self._refresh_live_prior_art(project_id)
             self.repository.add_message(
                 project_id, "system",
                 f"{len(selected)} ranked reference(s) from search {slug} were added to the draft. "
-                "They are available to the drafting agent from the next message onward.")
+                "They are in the drafting agent's workspace now.")
         return len(selected)
 
     def figures(self, project: Mapping[str, Any],
@@ -1192,17 +1480,44 @@ class StudioService:
         return {"queued": True, "version_no": version_no}
 
     def _review_now(self, project_id: int, version: Mapping[str, Any]) -> None:
+        """Review the published version in a scratch copy, never in the agent's own workspace.
+
+        This used to call ``prepare`` on the project workspace, which rebuilds ``draft/`` from
+        the published version. With an interactive agent editing that same tree, "re-run the
+        review" silently threw away whatever it had not yet published. The scratch copy sits
+        beside the project directory (``review-p<id>``: it has to END in ``p<id>`` for the usage
+        ledger to charge the reviewer's transcript to this draft), and the finished report is
+        copied into the live workspace's ``review/`` so the agent sees it on its next command.
+        """
         try:
             runner = _runner()
-            context = runner.prepare({"project_id": project_id, "user_message": "",
-                                      "turn_no": 0, "kind": "revise"})
-            workspace = context["workspace"]
-            draft_workspace.write_sections(workspace, version["sections"])
+            loaded = runner._load(int(project_id))
+            documents = self.repository.documents(int(project_id))
+            history = [m for m in self.repository.messages(int(project_id), limit=400)
+                       if m["role"] in ("user", "agent")]
+            settings = self.repository.project_settings(int(project_id))
+            scratch = draft_workspace.root() / f"review-p{int(project_id)}"
+            workspace = draft_workspace.build(
+                project=loaded["project"], references=loaded["references"],
+                documents=documents, sections=version["sections"],
+                numerals=loaded["numerals"], figures=loaded["figures"],
+                conversation=history, request="",
+                qa_report=self.repository.latest_qa(int(project_id)),
+                workspace=scratch, proposals=list(settings.get("proposals") or []))
+            draft_terminal.sync_figure_images(
+                workspace, int(project_id), int(loaded["project"]["user_id"]))
             snapshot = draft_workspace.snapshot(workspace)
-            allowed = [r["publication_number"] for r in context["references"]]
-            runner.review(project_id, turn_id=None, version_no=int(version["version_no"]),
-                          workspace=workspace, allowed=allowed, sections=snapshot["sections"],
-                          numerals=snapshot["numerals"], figures=snapshot["figures"])
+            allowed = draft_studio.allowed_reference_keys(loaded["references"], documents)
+            saved = runner.review(
+                project_id, turn_id=None, version_no=int(version["version_no"]),
+                workspace=workspace, allowed=allowed, sections=snapshot["sections"],
+                numerals=snapshot["numerals"], figures=snapshot["figures"])
+            live = draft_workspace.for_project(int(project_id))
+            if live.is_dir():
+                try:
+                    draft_workspace._write_review(live, saved)
+                except Exception:                               # noqa: BLE001 - cosmetic only
+                    traceback.print_exc()
         except Exception:                                       # noqa: BLE001 - never kill the thread
             traceback.print_exc()
         finally:
@@ -1295,10 +1610,11 @@ def _opening_note(has_report_art: bool, slug: str, uploads: int) -> str:
     if uploads:
         parts.append(f"{uploads} uploaded document(s) are attached.")
     if not parts:
-        parts.append("No prior art is attached yet. The draft will be written from your "
-                     "description alone, and the agent will say so. Add references any time - "
-                     "by publication number, by uploading a document, or by running a search - "
-                     "and ask for a revision.")
+        parts.append("No prior art is attached yet. The agent searches the corpus itself from "
+                     "your description before it writes the claims, and attaches what it finds "
+                     "so you can read it under Sources. Add references any time - by "
+                     "publication number, by uploading a document, or by running Research - and "
+                     "ask for a revision.")
     parts.append("Drafting now. This takes a few minutes; you can leave the page.")
     return " ".join(parts)
 

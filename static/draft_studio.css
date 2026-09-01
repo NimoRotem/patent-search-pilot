@@ -1102,3 +1102,53 @@ label.fset input:focus, label.fset select:focus { outline: 1px solid var(--accen
     for a claim that points back, accent for one that stands alone. */
 .dsectext.claims .claim { border-left-color: var(--line2); }
 .dsectext.claims .claim.cind { border-left-color: var(--accent); }
+
+/* ── the novelty reading, above the review ─────────────────────────────────── */
+.novelty {
+  border: 1px solid var(--line); border-radius: var(--r); padding: var(--s2) var(--s3);
+  margin-bottom: var(--s3); background: var(--bg, #fff);
+}
+.novelty.empty { border-style: dashed; }
+.novelty code { font-size: .85em; }
+.nvtitle { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s2); }
+.nvclaim { border-top: 1px solid var(--line2); padding: var(--s2) 0; }
+.nvhead { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.nvclosest { font-size: .92em; }
+.nvclosest.bad { color: var(--bad); }
+.nvclosest.warn { color: var(--warn, #d29922); }
+.nvclosest.good { color: var(--good); }
+.nvlist ul { margin: 2px 0 6px 18px; padding: 0; font-size: .92em; }
+.nvlist.good > .small { color: var(--good); }
+.nvlist.warn > .small { color: var(--warn, #d29922); }
+.nvrefs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.nvref {
+  font-size: .82em; border: 1px solid var(--line); border-radius: var(--r-pill, 999px);
+  padding: 1px 8px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.nvref b { color: var(--ink); margin-left: 4px; }
+.nvcells { margin-top: 4px; }
+.nvcells summary { cursor: pointer; }
+.nvcol { padding: 4px 0 4px var(--s2); border-left: 2px solid var(--line2); margin: 4px 0; }
+.nvrow { font-size: .9em; margin: 3px 0; }
+.nvrow .chip { margin-right: 6px; }
+.nvrow.disclosed .chip { border-color: var(--bad); color: var(--bad); }
+.nvrow.partial .chip, .nvrow.uncertain .chip { border-color: var(--warn, #d29922); color: var(--warn, #d29922); }
+.nvquote { margin-left: 28px; }
+
+/* ── ideas: the agent's proposals ──────────────────────────────────────────── */
+.proposal {
+  border: 1px solid var(--line); border-radius: var(--r); padding: var(--s2) var(--s3);
+  margin: var(--s2) 0; background: var(--bg, #fff);
+}
+.proposal.adopted { border-color: var(--good); }
+.proposal.dismissed { opacity: .6; }
+.prophead { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.propbody { margin: var(--s1) 0; }
+.propbody p { margin: 4px 0; }
+.propfoot { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.statuspill.status-open { background: var(--accent-soft); color: var(--accent); }
+.statuspill.status-adopted { background: var(--good-soft, #e6f4ea); color: var(--good); }
+.statuspill.status-dismissed { background: var(--line2); color: var(--muted); }
+.tabbadge.good { background: var(--good); color: #fff; }
+.chip.tiny.good { border-color: var(--good); color: var(--good); }
+.chip.tiny.warn { border-color: var(--warn, #d29922); color: var(--warn, #d29922); }

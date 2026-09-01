@@ -20,8 +20,9 @@ LAYOUT
     prior_art/    one file per reference, plus an INDEX
     draft/        the application itself, one file per section, plus the numeral table
     figures/      one file per drawing: what it shows and which numerals appear on it
-    review/       the previous QA report, so the next iteration can fix what it found
-    tools/        the corpus lookup the agent is allowed to run
+    review/       the previous QA report, so the next iteration can fix what it found, and the
+                  agent's proposals for the inventor (features the disclosure does not contain)
+    tools/        the corpus tools the agent runs: publish, search, novelty chart, lookup
 """
 from __future__ import annotations
 
@@ -443,22 +444,30 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
           documents: Sequence[Mapping[str, Any]] = (), sections: Mapping[str, str] | None = None,
           numerals: Sequence[Mapping[str, Any]] = (), figures: Sequence[Mapping[str, Any]] = (),
           conversation: Sequence[Mapping[str, Any]] = (), request: str = "",
-          qa_report: Mapping[str, Any] | None = None, src_dir: str | Path | None = None) -> Path:
-    """Lay out (or refresh) the workspace for one turn and return its path."""
-    workspace = for_project(int(project["id"]))
+          qa_report: Mapping[str, Any] | None = None, src_dir: str | Path | None = None,
+          workspace: Path | None = None,
+          proposals: Sequence[Mapping[str, Any]] = ()) -> Path:
+    """Lay out (or refresh) the workspace for one turn and return its path.
+
+    ``workspace`` names a directory other than the project's own. A review that runs while an
+    interactive agent is editing must not rebuild the tree under it: ``draft/`` would be reset to
+    the last published version and the agent's unpublished work silently discarded. Such a
+    caller builds a scratch copy and reads that.
+    """
+    workspace = Path(workspace) if workspace else for_project(int(project["id"]))
     (workspace / "input").mkdir(parents=True, exist_ok=True)
     (workspace / "draft").mkdir(parents=True, exist_ok=True)
     (workspace / "prior_art").mkdir(parents=True, exist_ok=True)
     (workspace / "figures").mkdir(parents=True, exist_ok=True)
     (workspace / "review").mkdir(parents=True, exist_ok=True)
 
-    _write(workspace / "input" / "brief.md", _brief(project))
-    _write(workspace / "input" / "disclosure.md", _disclosure(project))
+    refresh_inputs(workspace, project)
     _write(workspace / "input" / "conversation.md", _conversation(conversation))
     _write(workspace / "input" / "request.md", _clean(request, 60_000) or "(no request text)")
     _write_materials(workspace, documents)
     _write_prior_art(workspace, references, documents)
     _write_review(workspace, qa_report)
+    write_proposals(workspace, proposals)
     install_tools(workspace, src_dir)
 
     _migrate_legacy_section_files(workspace)
@@ -477,6 +486,51 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
     #  figure deleted in the draft must not survive on disk and reappear in the next review.
     write_figures(workspace, figures)
     return workspace
+
+
+def refresh_inputs(workspace: Path, project: Mapping[str, Any]) -> None:
+    """Rewrite the brief and the disclosure from the record, and nothing else.
+
+    What an adopted proposal calls: the disclosure grew, the agent must see it, and the rest of a
+    live workspace is the agent's own and must not be touched.
+    """
+    workspace = Path(workspace)
+    (workspace / "input").mkdir(parents=True, exist_ok=True)
+    _write(workspace / "input" / "brief.md", _brief(project))
+    _write(workspace / "input" / "disclosure.md", _disclosure(project))
+
+
+def refresh_prior_art(workspace: Path, references: Sequence[Mapping[str, Any]],
+                      documents: Sequence[Mapping[str, Any]] = ()) -> int:
+    """Rewrite ``prior_art/`` from the record without rebuilding anything else.
+
+    What attaching a reference to a LIVE workspace calls, whether the Research panel or the agent's
+    own search did the attaching: the agent must be able to open the new file on its next command,
+    and ``draft/`` must stay exactly as the agent left it.
+    """
+    workspace = Path(workspace)
+    _write_prior_art(workspace, references, documents)
+    return len([r for r in references if _clean(r.get("publication_number"), 64)])
+
+
+PROPOSALS_FILE = "proposals.md"
+
+
+def write_proposals(workspace: Path, proposals: Sequence[Mapping[str, Any]]) -> None:
+    """The agent's outbox, written from the record so a rebuilt workspace knows what became of each."""
+    import draft_agent_tools
+    _write(Path(workspace) / "review" / PROPOSALS_FILE,
+           draft_agent_tools.render_proposals(list(proposals or ())))
+
+
+def read_proposals(workspace: Path) -> list[dict[str, Any]]:
+    """What the agent wrote in ``review/proposals.md``, or nothing."""
+    import draft_agent_tools
+    try:
+        raw = (Path(workspace) / "review" / PROPOSALS_FILE).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return draft_agent_tools.parse_proposals(raw)
 
 
 def _brief(project: Mapping[str, Any]) -> str:

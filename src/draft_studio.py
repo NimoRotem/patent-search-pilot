@@ -1781,6 +1781,43 @@ class StudioRepository:
             cur.execute("UPDATE app_drafting_projects SET settings=%s::jsonb,updated_at=now() "
                         "WHERE id=%s", (_dumps(dict(values)), int(project_id)))
 
+    def merge_settings(self, project_id: int, values: Mapping[str, Any]) -> None:
+        """Merge a few keys into the settings blob, leaving every other key alone.
+
+        For the records that ride on the project rather than in a table of their own: the agent's
+        proposals and the last novelty reading. Same jsonb concatenation as the filing profile,
+        for the same reason: the Settings panel writes the blob whole and must not be able to
+        delete these by saving a model choice.
+        """
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_drafting_projects "
+                "SET settings=coalesce(settings,'{}'::jsonb)||%s::jsonb,updated_at=now() "
+                "WHERE id=%s", (_dumps(dict(values)), int(project_id)))
+
+    def project_settings(self, project_id: int) -> dict[str, Any]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT settings FROM app_drafting_projects WHERE id=%s",
+                        (int(project_id),))
+            row = cur.fetchone()
+        return _json((row or {}).get("settings"), {}) or {}
+
+    def append_disclosure(self, project_id: int, text: str) -> None:
+        """Grow the inventor's disclosure by what the inventor has just confirmed.
+
+        The disclosure is the one authority for what the invention is, so nothing appends to it
+        but an inventor's own act: adopting a proposal on the page. The addition is labelled as
+        such in the text itself, so the reviewer and the agent can both see where it came from.
+        """
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_drafting_projects SET disclosure_text=coalesce(disclosure_text,'')||%s,"
+                "updated_at=now(),revision=coalesce(revision,1)+1 WHERE id=%s",
+                (str(text), int(project_id)))
+
     def save_filing_profile(self, project_id: int, profile: Mapping[str, Any]) -> None:
         """Store the parties, addresses and status the ADS and the declaration need.
 

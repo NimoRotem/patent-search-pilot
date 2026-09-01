@@ -549,16 +549,22 @@ def _numeral_checks(spec_text: str, claims_text: str,
             overcrowded.append(
                 f"{figure.get('label') or 'drawing'}: {len(values)} numerals "
                 f"(maximum {MAX_NUMERALS_PER_SHEET})")
+    #  ADVISORY, since the drawing generator went. The eight-numeral ceiling was a limit of the
+    #  image model that drew the sheets; a sheet a person draws carries as many numerals as it
+    #  needs, and a real one often carries twenty. Failing the draft on it made the agent split
+    #  one clamp into eighteen views the inventor then had to draw. The count is still worth a
+    #  look, so it is reported as advice rather than as a defect.
     if overcrowded:
         out.append(_check(
-            "Drawing sheets are not overcrowded", "fail",
-            "A sheet carrying this many labelled parts is hard to read at filing size and hard "
-            "to draw at all. Split the geometry across focused views and synchronize the drawing "
-            "descriptions.", items=overcrowded))
+            "Drawing sheets are not overcrowded", "warn",
+            "A sheet carrying this many labelled parts may be hard to read at filing size. Worth "
+            "a look; a sheet the inventor draws may carry as many numerals as it needs, so this "
+            "does not block anything.", severity="advisory", items=overcrowded))
     elif figures:
         out.append(_check(
             "Drawing sheets are not overcrowded", "pass",
-            f"Every drawing contains at most {MAX_NUMERALS_PER_SHEET} reference numerals."))
+            f"Every drawing contains at most {MAX_NUMERALS_PER_SHEET} reference numerals.",
+            severity="advisory"))
     unknown_on_figures = sorted((n for n in figure_numerals if n and n not in table),
                                 key=_numeral_sort)
     if unknown_on_figures:
@@ -1965,9 +1971,9 @@ WHAT TO CHECK, in this order of importance:
    verify the broken cutting-plane line, one matching section designation at each end, and both
    arrows pointing in the viewing direction stated by the brief. A section designation is not a
    reference numeral and must not have a numeral leader.
-   Never propose an automatic fix that leaves more than eight reference numerals on one drawing
-   sheet. If a missing part must be depicted on a full sheet, require a focused additional view
-   or redistribute labels among focused views and synchronize every drawing description.
+   A sheet the inventor draws may carry as many reference numerals as it needs to be read; do
+   not propose splitting a view merely to bring a numeral count down. When a missing part must
+   be depicted, prefer adding it to the view that already shows its neighbours.
 
    A patent drawing need not depict every claim limitation or an implementation detail that the
    inventor did not disclose. Report an omission only when the application says that the figure
@@ -2165,9 +2171,9 @@ the resulting view, source-view brief, and drawing description; and no drafting 
 open question, instruction,
 unresolved alternative, or internal comment may remain. Report every verified inconsistency.
 
-Never propose an automatic fix that leaves more than eight reference numerals on one drawing
-sheet. If a missing part must be depicted on a full sheet, require a focused additional view or
-redistribute labels among focused views and synchronize every drawing description.
+A sheet the inventor draws may carry as many reference numerals as it needs to be read; do not
+propose splitting a view merely to bring a numeral count down. When a missing part must be
+depicted, prefer adding it to the view that already shows its neighbours.
 
 Do not inspect or rely on rendered images in this preflight. A later independent review checks
 the final pixels and citations. Return an empty findings array when, and only when, the full ledger
