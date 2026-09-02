@@ -732,6 +732,30 @@ _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 </main>"""
 
 
+#  A SESSION COOKIE LEFT AT AN OLDER PATH SCOPE SHADOWS THE LIVE ONE FOR EVER. This cookie was
+#  once scoped to SESSION_COOKIE_PATH=/patents and is now scoped to "/". A browser that signed in
+#  during the old scope still holds a `patents_session` at /patents, and RFC 6265 has the browser
+#  send the more specific path FIRST, so Werkzeug reads the stale value and bounces every page
+#  back to this form. It looks exactly like a wrong password: POST /login answers 302, the next
+#  request is anonymous again, for ever, and no amount of retyping fixes it. So expire the old
+#  scopes on the way through: a successful sign-in, or a sign-out, must leave exactly one.
+_SHADOW_COOKIE_PATHS = ("/patents", "/patents/")
+
+
+def _clear_shadow_session_cookies(resp):
+    name = current_app.config.get("SESSION_COOKIE_NAME") or "session"
+    live = (current_app.config.get("SESSION_COOKIE_PATH") or "/").rstrip("/")
+    for path in _SHADOW_COOKIE_PATHS:
+        if path.rstrip("/") == live:
+            continue  # never expire the scope we are about to set
+        resp.delete_cookie(
+            name, path=path,
+            secure=bool(current_app.config.get("SESSION_COOKIE_SECURE", True)),
+            httponly=True,
+            samesite=current_app.config.get("SESSION_COOKIE_SAMESITE"))
+    return resp
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     error = ""
@@ -766,12 +790,14 @@ def login():
                 session.permanent = True
                 _LIMITERS["auth.login"].mark_known_good(client_ip())
                 if inline:
-                    return jsonify({"ok": True, "csrf_token": session["csrf_token"],
-                                    "email": user["email"]})
+                    return _clear_shadow_session_cookies(
+                        jsonify({"ok": True, "csrf_token": session["csrf_token"],
+                                 "email": user["email"]}))
                 nxt = _safe_next(request.form.get("next") or request.args.get("next"))
                 if nxt:
-                    return redirect(_after_login_target(nxt))
-                return redirect(url_for("index"))
+                    return _clear_shadow_session_cookies(
+                        redirect(_after_login_target(nxt)))
+                return _clear_shadow_session_cookies(redirect(url_for("index")))
             if not error:
                 error = "Email or password is incorrect."
             time.sleep(0.5)
@@ -1113,7 +1139,7 @@ def admin_searches():
 @bp.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("auth.login"))
+    return _clear_shadow_session_cookies(redirect(url_for("auth.login")))
 
 
 def init_app(app, state_path=None):
