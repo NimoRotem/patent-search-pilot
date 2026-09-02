@@ -756,6 +756,24 @@ def _clear_shadow_session_cookies(resp):
     return resp
 
 
+def _expire_shadow_if_duplicated(resp):
+    """Fires on every response, does nothing unless the browser really is shadowed.
+
+    Clearing the old scope only at sign-in still costs the user one more sign-in, and they
+    have no way to know that is what is being asked of them: the app looks like it is
+    rejecting a correct password. Two cookies of the same name in one request is proof of
+    the fault on its own, so expire the stale scope the first time we see it. The next
+    request then carries a single cookie, and if that one is still valid the session simply
+    resumes with nothing typed."""
+    try:
+        name = current_app.config.get("SESSION_COOKIE_NAME") or "session"
+        if len(request.cookies.getlist(name)) > 1:
+            _clear_shadow_session_cookies(resp)
+    except Exception:
+        pass
+    return resp
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     error = ""
@@ -1146,6 +1164,7 @@ def init_app(app, state_path=None):
     """Install the gate. Call AFTER all routes are registered."""
     import datetime
     app.register_blueprint(bp)
+    app.after_request(_expire_shadow_if_duplicated)
     app.permanent_session_lifetime = datetime.timedelta(seconds=int(SESSION_HOURS * 3600))
     init_run_gate(state_path)
 
