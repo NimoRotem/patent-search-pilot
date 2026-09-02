@@ -51,7 +51,7 @@ SEARCH_QUERY_MAX_CHARS = 6000
 SEARCH_POOL = 300                      # chunks pulled per pool before grouping by publication
 ATTACH_MAX = 10
 
-NOVELTY_MAX_REFERENCES = 10
+NOVELTY_MAX_REFERENCES = 16
 NOVELTY_MAX_CLAIMS = 4
 NOVELTY_ELEMENT_BATCH = 12            # claim_chart.MAX_ELEMENTS: more than this is silently cut
 NOVELTY_WORKERS = 6
@@ -447,6 +447,9 @@ def novelty(*, claims_text: str, references: Sequence[Mapping[str, Any]],
     if not targets:
         raise ToolError("No prior art is attached to this draft, so there is nothing to chart "
                         "against. Run tools/prior_art_search.py --attach first.")
+    #  Said out loud when the list is cut: a run that charted ten of twelve references and
+    #  reported "ten charted" read as complete to the agent that ran it.
+    skipped = [target["pub"] for target in targets[NOVELTY_MAX_REFERENCES:]]
     targets = targets[:NOVELTY_MAX_REFERENCES]
 
     started = time.time()
@@ -527,6 +530,7 @@ def novelty(*, claims_text: str, references: Sequence[Mapping[str, Any]],
                         "source": loaded[t["pub"]].get("source") or "",
                         "has_text": bool(loaded[t["pub"]].get("passages"))} for t in targets],
         "closest_coverage": round(float(headline), 4),
+        "skipped": skipped,
         "errors": errors[:10],
         "seconds": round(time.time() - started, 1),
         "measured_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -587,6 +591,9 @@ def render_novelty(reading: Mapping[str, Any]) -> str:
                     lines.append(f"      [{row.get('verdict')}] {row['element'][:90]}"
                                  f"{('  <- ' + row['location']) if row.get('location') else ''}")
         lines.append("")
+    if reading.get("skipped"):
+        lines.append(f"NOT CHARTED, over the {NOVELTY_MAX_REFERENCES}-reference ceiling: "
+                     + ", ".join(reading["skipped"]) + ". Run again with --refs to chart them.")
     if reading.get("errors"):
         lines.append("Some pairs could not be charted: " + "; ".join(reading["errors"]))
     lines.append("Remember: a lower figure bought by narrowing is not progress. Move the claim "
