@@ -578,21 +578,30 @@ class StudioService:
         if not body:
             raise drafting.DraftingValidationError("Say what you would like changed.")
         body = frame_section_request(body, section_key)
+        started_here = False
         if not draft_terminal.exists(project_id):
             self.start_terminal(principal, project_id)
-            #  The CLI needs a moment to reach its composer. Typing into the shell that is still
-            #  loading it delivers the message to bash, which answers "command not found" and
-            #  loses what the person wrote.
-            for _ in range(40):
-                time.sleep(0.5)
-                if draft_terminal.activity(project_id).get("status") in ("idle", "busy") and \
-                        "❯" in draft_terminal.capture_recent(project_id, 20):
-                    break
+            started_here = True
+        #  The CLI needs a moment to reach its composer, and a moment more for the effort switch
+        #  this module types into it on start. A message typed before either is lost without a
+        #  trace: into the shell, which answers "command not found", or into a composer the
+        #  effort switch then clears. Project 28's first draft never started for that reason.
+        if not draft_terminal.wait_ready(project_id, timeout=90 if started_here else 20):
+            if started_here:
+                raise drafting.DraftingConflict(
+                    "The drafting agent did not reach its prompt in time. Press Restart and "
+                    "send the message again.")
+        text = body[:draft_studio.MAX_MESSAGE_CHARS]
         try:
-            draft_terminal.send(project_id, body[:draft_studio.MAX_MESSAGE_CHARS])
+            for attempt in range(2):
+                draft_terminal.send(project_id, text)
+                if draft_terminal.delivered(project_id, text):
+                    return {"sent": True, "attempts": attempt + 1}
         except draft_terminal.TerminalError as exc:
             raise drafting.DraftingConflict(str(exc)) from exc
-        return {"sent": True}
+        raise drafting.DraftingConflict(
+            "The message was typed twice and the agent did not take it. Look at the terminal; "
+            "it may be waiting on a prompt of its own.")
 
     def send_review_to_agent(self, principal: drafting.Principal,
                              project_id: int) -> dict[str, Any]:
@@ -724,16 +733,35 @@ class StudioService:
             traceback.print_exc()
         #  The mechanical half of the review, straight away. It costs nothing, it runs the same
         #  way every time, and it means the Review tab is never stale about a version that has
-        #  just appeared under it.
+        #  just appeared under it. The agent is TOLD the result in the publish reply and in
+        #  review/previous-qa.md: before, a version that failed three mechanical checks was
+        #  published, the page showed the failures, and the agent, which had no way to see
+        #  them, called the work done.
+        review: dict[str, Any] = {}
         try:
             report = _runner().mechanical_report(
                 int(project_id), sections=snapshot["sections"], numerals=snapshot["numerals"],
                 figures=snapshot["figures"], allowed=allowed, scope="The drafting agent")
-            self.repository.save_qa(int(project_id), turn_id=None,
-                                    version_no=int(version["version_no"]), report=report)
+            saved = self.repository.save_qa(int(project_id), turn_id=None,
+                                            version_no=int(version["version_no"]), report=report)
+            failed = [item for item in (report.get("checks") or [])
+                      if item.get("status") == "fail"]
+            warned = [item for item in (report.get("checks") or [])
+                      if item.get("status") == "warn"]
+            review = {
+                "verdict": report.get("verdict"),
+                "failed": [{"name": item.get("name"), "detail": item.get("detail"),
+                            "items": list(item.get("items") or [])[:6]} for item in failed],
+                "warned": [str(item.get("name") or "") for item in warned],
+            }
+            try:
+                draft_workspace._write_review(workspace, saved or report)
+            except Exception:                                   # noqa: BLE001 - cosmetic only
+                traceback.print_exc()
         except Exception:                                       # noqa: BLE001 - never fail a publish
             traceback.print_exc()
-        return {"ok": True, "version_no": int(version["version_no"]), "problems": []}
+        return {"ok": True, "version_no": int(version["version_no"]), "problems": [],
+                "review": review}
 
     # -- what the agent asks the corpus ------------------------------------------------------------
     def _agent_workspace(self, project_id: int, token: str) -> Path:
@@ -831,7 +859,16 @@ class StudioService:
 
         def done(result):
             reading = result["reading"]
-            self.repository.merge_settings(int(project_id), {"novelty": reading})
+            #  The page shows the last reading that covered the WHOLE reference list. A check
+            #  the agent narrowed to two references is a useful answer to its own question and
+            #  a misleading headline for the inventor, so it is kept apart and never overwrites
+            #  a full one. Measured: the agent's final targeted run replaced a twelve-reference
+            #  reading with a two-reference one on the Review tab.
+            attached = len(loaded["references"]) + sum(
+                1 for d in documents if str(d.get("kind")) == "prior_art")
+            full = not publications or int(reading.get("n_references") or 0) >= attached
+            self.repository.merge_settings(
+                int(project_id), {"novelty" if full else "novelty_partial": reading})
             heads = []
             for claim in reading.get("claims") or []:
                 closest = claim.get("closest") or {}

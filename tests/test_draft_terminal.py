@@ -663,6 +663,8 @@ def test_the_section_framing_actually_reaches_the_agent(monkeypatch):
     monkeypatch.setattr(draft_studio_service.StudioService, "_require_terminal",
                         lambda self, principal, pid: {"status": "ready"}, raising=False)
     monkeypatch.setattr(draft_terminal, "exists", lambda pid: True)
+    monkeypatch.setattr(draft_terminal, "wait_ready", lambda pid, timeout=0: True)
+    monkeypatch.setattr(draft_terminal, "delivered", lambda pid, text, timeout=0: True)
     monkeypatch.setattr(draft_terminal, "send",
                         lambda pid, text: typed.append(text) or True)
 
@@ -774,3 +776,49 @@ def test_the_tools_post_to_their_own_endpoints_with_the_publish_token(workspace)
     assert '"/workspace/publish", "/workspace/novelty"' in novelty
     assert "X-Draft-Agent-Token" in search and "X-Draft-Agent-Token" in novelty
     assert "--job" in novelty                                     # a slow chart can be collected later
+
+
+# =============================================================================================
+# A message is not sent until the CLI has taken it
+# =============================================================================================
+def test_a_first_message_waits_for_the_effort_switch_that_would_have_cleared_it(monkeypatch):
+    """The effort switch types C-u first. A message typed before it ran was wiped by it, and
+    project 28's opening instruction went that way: the agent sat idle at an empty prompt."""
+    import time as _time
+    fake = FakeTmux(screen="Done.\n\n❯ \n", scrollback="Done.\n\n❯ \n")
+    monkeypatch.setattr(draft_terminal, "_tmux", fake)
+    monkeypatch.setattr(draft_terminal, "_EFFORT_PENDING", {"draft-p15": _time.time()})
+    assert draft_terminal.wait_ready(15, timeout=1.2) is False
+    draft_terminal._EFFORT_PENDING.clear()
+    assert draft_terminal.wait_ready(15, timeout=1.2) is True
+
+
+def test_text_still_sitting_in_the_composer_is_not_delivered(monkeypatch):
+    """The activity reader calls a pane with a non-empty prompt "busy", which is exactly the
+    state of a message that was typed and never submitted. Delivery looks at the composer first."""
+    screen = "Done.\n\n❯ Write the first draft of this application. Everything you need\n"
+    monkeypatch.setattr(draft_terminal, "_tmux", FakeTmux(screen=screen, scrollback=screen))
+    assert draft_terminal.delivered(
+        15, "Write the first draft of this application. Everything you need is in input/",
+        timeout=1.2) is False
+
+
+def test_a_submitted_message_counts_as_delivered_once_it_is_echoed_above_a_fresh_prompt(monkeypatch):
+    screen = ("❯ Write the first draft of this application. Everything you need\n\n"
+              "● Reading input/disclosure.md\n\n❯ \n")
+    monkeypatch.setattr(draft_terminal, "_tmux", FakeTmux(screen=screen, scrollback=screen))
+    assert draft_terminal.delivered(
+        15, "Write the first draft of this application. Everything you need is in input/",
+        timeout=1.2) is True
+
+
+def test_publish_tells_the_agent_which_mechanical_checks_its_version_failed(workspace):
+    """A version that failed three checks was published and the agent called the work done,
+    because nothing it could see carried the result."""
+    draft_terminal.install(workspace, 15)
+    source = (workspace / "tools" / "publish.py").read_text(encoding="utf-8")
+    assert "MECHANICAL REVIEW OF THIS VERSION FAILED" in source
+    assert 'payload.get("review")' in source
+    claude_md = (workspace / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Twenty claims in total and three independent claims" in claude_md
+    assert "2,800 characters" in claude_md

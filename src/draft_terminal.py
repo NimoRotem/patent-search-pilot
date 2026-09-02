@@ -365,7 +365,8 @@ and say so. Do not stop half way to check in.
 **Keep your replies short.** Three or four sentences: what you changed, anything you decided on
 the person's behalf, anything genuinely blocked. No summaries of the application back at them, no
 bulleted rundowns of your own reasoning, no restating what they asked for. They can read the
-draft; the Draft tab is right beside this terminal.
+draft; the Draft tab is right beside this terminal. Never use an em dash, in the application or
+in a reply: a comma, a colon or a full stop.
 
 ## The one rule that matters
 
@@ -381,7 +382,15 @@ python3 tools/publish.py --check                # validate without publishing
 ```
 
 It prints the new version number, or the exact reason it refused. A refusal is a real defect in
-the files - fix it and run it again rather than working around it.
+the files - fix it and run it again rather than working around it. After a publish it also
+prints the mechanical review of that version: every check that failed, with the offending
+items. A published version that failed a check is on the page and is not filing-clean; fix the
+failures and publish again before you stop. The same report is in `review/previous-qa.md`.
+
+**Limits the checks enforce.** Twenty claims in total and three independent claims are included
+in the basic filing fee; stay inside both unless `input/brief.md` asks for more, and consolidate
+rather than add when you need room. Each figure brief stays under 2,800 characters. The abstract
+is one paragraph of at most 150 words.
 
 ## The layout
 
@@ -682,6 +691,21 @@ def main(argv):
         return 1
     print("Published version %s. The page will show it within a few seconds."
           % payload.get("version_no"))
+    review = payload.get("review") or {}
+    failed = review.get("failed") or []
+    if failed:
+        print("")
+        print("THE MECHANICAL REVIEW OF THIS VERSION FAILED %d CHECK(S). It is published, and "
+              "it is not filing-clean until these are fixed. Fix them and publish again:"
+              % len(failed))
+        for item in failed:
+            print("  - %s: %s" % (item.get("name"), item.get("detail")))
+            for line in item.get("items") or []:
+                print("      %s" % line)
+    elif review.get("verdict"):
+        print("Mechanical review: %s." % review.get("verdict"))
+    if review.get("warned"):
+        print("Advisory: %s." % "; ".join(review["warned"]))
     return 0
 
 
@@ -1172,9 +1196,75 @@ def ensure(project_id: int, workspace: Path, *, model: str = "",
     if created or not _claude_running(project_id):
         _launch(project_id, workspace, model=normalize_model(model) or DEFAULT_MODEL)
         if normalize_effort(effort):
-            threading.Timer(12.0, lambda: _quiet(set_effort, project_id,
-                                                 normalize_effort(effort))).start()
+            #  Recorded so that `wait_ready` holds a caller's first message back until this has
+            #  run: `_slash` clears the composer before it types, and a message typed into the
+            #  composer during the CLI's first seconds sits there unsubmitted until this wiped
+            #  it. Project 28's opening instruction went that way and its agent sat idle.
+            _EFFORT_PENDING[session_name(project_id)] = time.time()
+
+            def _apply() -> None:
+                try:
+                    set_effort(project_id, normalize_effort(effort))
+                except Exception:                              # noqa: BLE001 - best effort only
+                    pass
+                finally:
+                    _EFFORT_PENDING.pop(session_name(project_id), None)
+
+            threading.Timer(12.0, _apply).start()
     return state(project_id, workspace)
+
+
+_EFFORT_PENDING: dict[str, float] = {}
+
+
+def wait_ready(project_id: int, *, timeout: float = 90.0) -> bool:
+    """Block until the agent can take a message: the CLI is up, at its composer, and nothing
+    this module still has to type into it is pending. False if that never happens."""
+    deadline = time.time() + max(1.0, float(timeout))
+    while time.time() < deadline:
+        if exists(project_id) and _claude_running(project_id):
+            pending = _EFFORT_PENDING.get(session_name(project_id))
+            #  A pending effort switch that never fired (the timer thread died) must not hold
+            #  a message for ever: thirty seconds after launch it is treated as done.
+            if pending and time.time() - pending > 30:
+                _EFFORT_PENDING.pop(session_name(project_id), None)
+                pending = None
+            if not pending and activity(project_id).get("status") in ("idle", "busy") and \
+                    "❯" in capture_recent(project_id, 20):
+                return True
+        time.sleep(0.5)
+    return False
+
+
+def delivered(project_id: int, text: str, *, timeout: float = 12.0) -> bool:
+    """Did the message the caller just typed actually get submitted?
+
+    A message can be typed and still not sent: the CLI ignores Enter for a moment while it
+    starts, and a composer holding text is cleared by the next slash command. So the caller
+    checks. Submitted means the agent went busy, or the message's opening words are on screen as
+    a sent line rather than sitting in the composer.
+    """
+    head = " ".join(str(text or "").split())[:36]
+    probe = head[:20]
+    deadline = time.time() + max(1.0, float(timeout))
+    while time.time() < deadline:
+        if not exists(project_id):
+            return False
+        recent = capture_recent(project_id, 30)
+        lines = [line for line in recent.splitlines() if line.strip()]
+        #  The composer is the LAST "❯" line. Text there is typed and not sent, and the activity
+        #  reader calls such a pane "busy" because its prompt is not empty, so the composer is
+        #  checked BEFORE busy is believed. A sent message is echoed above a fresh, empty prompt.
+        composer = next((line for line in reversed(lines) if line.lstrip().startswith("❯")), "")
+        if probe and probe in " ".join(composer.lstrip("❯ ").split()):
+            time.sleep(0.5)
+            continue
+        if activity(project_id).get("status") == "busy":
+            return True
+        if head and head in " ".join(recent.split()):
+            return True
+        time.sleep(0.5)
+    return False
 
 
 def _quiet(fn, *args: Any) -> None:
