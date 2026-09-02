@@ -6645,6 +6645,15 @@ def drafts_list():
         #  where anybody watches a number move, and a scan per project would read every
         #  transcript on the box to draw a page nobody is spending on.
         usage = draft_usage.totals_for(project["id"] for project in projects)
+        #  The figures shown are what the ledger holds now; the scans that bring them up to date
+        #  run off the request thread, so the NEXT load is right. Without this the list showed
+        #  $0.50 for a draft the studio, which does scan, showed at $86, and stayed that way
+        #  until somebody opened the studio.
+        for project in projects:
+            try:
+                draft_usage.scan(int(project["id"]))
+            except Exception:                                 # noqa: BLE001 - a counter never breaks a page
+                pass
         return render_template("drafts.html", projects=projects, include_all=include_all,
                                user=user, usage=usage, tokens=draft_usage.compact)
     except drafting.DraftingError as exc:
