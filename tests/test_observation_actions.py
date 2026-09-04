@@ -314,3 +314,32 @@ def test_a_dead_case_has_no_headline_at_all():
 def test_plus_months_lands_on_the_month_end_rather_than_overflowing():
     assert acts.plus_months(datetime.date(2026, 5, 31), 9) == datetime.date(2027, 2, 28)
     assert acts.plus_months(datetime.date(2023, 5, 31), 9) == datetime.date(2024, 2, 29)
+
+
+# ---------------------------------------------------------------------------------------------
+# the table with nothing evaluated, for a reader who wants it whole
+# ---------------------------------------------------------------------------------------------
+
+def test_the_reference_table_is_the_owner_s_table():
+    rows = {r["stage"]: r for r in acts.reference_matrix(TODAY)}
+    assert list(rows) == [s for s, _ in acts.STAGES]
+    cells = {(s, o): rows[s]["cells"][o] for s in rows for o, _ in acts.REFERENCE_OFFICES}
+    #  The three cells the owner's table leaves blank, and only those three.
+    blank = {k for k, v in cells.items() if not v["available"]}
+    assert blank == {("force_exam", "EPO"), ("force_exam", "USPTO"),
+                     ("post_grant_passive", "DPMA")}
+    assert cells[("post_grant_now", "EPO")]["fee"] == "€880"
+    assert cells[("post_grant_now", "DPMA")]["fee"] == "€200"
+    assert cells[("post_grant_now", "USPTO")]["fee"] == "$25,000 + $34,375"
+    assert cells[("post_grant_later", "USPTO")]["fee"] == "$23,750 + $28,125"
+    assert cells[("force_exam", "DPMA")]["fee"].startswith("€350")
+    assert cells[("pre_grant_passive", "USPTO")]["fee"] == "$0 / $195 / $78"
+
+
+def test_the_reference_table_is_built_from_the_same_strings_as_a_real_case():
+    """Two tables saying different fees for the same instrument is worse than one table."""
+    matrix = {r["stage"]: r["cells"] for r in acts.reference_matrix(TODAY)}
+    live = stages(acts.actions_for({"office": "DPMA", "posture": "pending"}, TODAY))
+    for stage in ("pre_grant_passive", "post_grant_now"):
+        assert matrix[stage]["DPMA"]["instrument"] == live[stage]["instrument"]
+        assert matrix[stage]["DPMA"]["fee"] == live[stage]["fee"]

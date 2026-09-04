@@ -632,3 +632,66 @@ def headline(row, today=None):
     return {"label": a["instrument"], "statute": a["statute"], "fee": a["fee"],
             "status": a["status"], "deadline": a["deadline"], "days_left": a["days_left"],
             "count": len(live)}
+
+
+# ---------------------------------------------------------------------------------------------
+# the table itself, with nothing evaluated
+# ---------------------------------------------------------------------------------------------
+
+#  A READER WHO WANTS THE WHOLE TABLE should not have to open a case to see it. `actions_for`
+#  answers "what about THIS one", which is the question ninety-nine times in a hundred; this
+#  answers "what is there at all", which is the question the first time. Built by evaluating the
+#  three offices against a case that has only just published, so the instruments, the statutes
+#  and the fees are the same strings the per-case table uses and the two cannot drift.
+_REFERENCE_ROW = {
+    "EPO": {"office": "EPO", "posture": "pending"},
+    "DPMA": {"office": "DPMA", "posture": "pending", "filing_date": None},
+    "USPTO": {"office": "USPTO", "posture": "pending"},
+}
+REFERENCE_OFFICES = (("EPO", "Europe / EPO"), ("DPMA", "Germany national"),
+                     ("USPTO", "United States"))
+#  Stated once per cell, because a window is a property of the instrument and not of a case.
+_WINDOWS = {
+    ("EPO", "pre_grant_passive"): "while examination is pending",
+    ("EPO", "pre_grant_protest"): "while examination is pending",
+    ("EPO", "force_exam"): "",
+    ("EPO", "post_grant_passive"): "only with a proceeding pending",
+    ("EPO", "post_grant_now"): "9 months from the mention of grant",
+    ("EPO", "post_grant_later"): "3 months from service, opposition pending",
+    ("DPMA", "pre_grant_passive"): "while examination is pending",
+    ("DPMA", "pre_grant_protest"): "while examination is pending",
+    ("DPMA", "force_exam"): "7 years from filing, if not yet requested",
+    ("DPMA", "post_grant_passive"): "",
+    ("DPMA", "post_grant_now"): "9 months from the Patentschrift",
+    ("DPMA", "post_grant_later"): "3 months from service, opposition pending",
+    ("USPTO", "pre_grant_passive"): "to the later of 6 months from publication "
+                                    "and the first rejection",
+    ("USPTO", "pre_grant_protest"): "before publication or allowance",
+    ("USPTO", "force_exam"): "",
+    ("USPTO", "post_grant_passive"): "any time the patent is enforceable",
+    ("USPTO", "post_grant_now"): "9 months from issue, AIA patents",
+    ("USPTO", "post_grant_later"): "after the PGR window, 1 year from service of a complaint",
+}
+
+
+def reference_matrix(today=None):
+    """The six stages by three offices, as data. -> [{stage, stage_label, cells: {office: cell}}]"""
+    today = today or datetime.date.today()
+    per_office = {}
+    for office, row in _REFERENCE_ROW.items():
+        per_office[office] = {a["stage"]: a for a in actions_for(dict(row), today)}
+    out = []
+    for stage, label in STAGES:
+        cells = {}
+        for office, _ in REFERENCE_OFFICES:
+            entry = per_office[office].get(stage) or {}
+            available = entry.get("status") != "na"
+            cells[office] = {
+                "instrument": entry.get("instrument", "") if available else "",
+                "statute": entry.get("statute", "") if available else "",
+                "fee": entry.get("fee", "") if available else "",
+                "window": _WINDOWS.get((office, stage), "") if available else "",
+                "available": available,
+            }
+        out.append({"stage": stage, "stage_label": label, "cells": cells})
+    return out

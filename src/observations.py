@@ -471,10 +471,22 @@ def observations_page():
     #  list again would double a 108-row page for the sake of fields only one row shows at a time,
     #  so only the fields the dialog actually renders are serialised.
     detail = {c["publication"]: {k: c.get(k) for k in DETAIL_FIELDS} for c in cases}
+    #  HOW OLD THE REGISTER FACTS ARE, said out loud. The countdowns are computed and cannot go
+    #  stale, but the deadlines they count to can: a patent that granted last week opens a nine
+    #  month opposition window this page knows nothing about until somebody presses the button.
+    #  A refresh is a deliberate act here rather than a nightly job, so the page has to be the
+    #  thing that says when it is due.
+    stale_days = None
+    pulled = observation_actions._date(str(meta.get("refreshed_at") or "")[:10])
+    if pulled:
+        stale_days = (datetime.date.today() - pulled).days
     return render_template("observations.html", cases=cases, filings=filings,
                            decisions=decisions, meta=meta, counts=counts, act=act,
                            detail=detail, states=USER_STATES,
                            stages=observation_actions.STAGES,
+                           matrix=observation_actions.reference_matrix(),
+                           matrix_offices=observation_actions.REFERENCE_OFFICES,
+                           stale_days=stale_days,
                            today=datetime.date.today().isoformat())
 
 

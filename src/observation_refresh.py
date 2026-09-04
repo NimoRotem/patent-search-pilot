@@ -47,10 +47,21 @@ from concurrent.futures import ThreadPoolExecutor
 import db
 import observation_actions as acts
 
-#  Who the docket is about. Two names because Schmalz bought Soft Robotics and the USPTO still
-#  files half the portfolio under the acquired company's name.
-APPLICANT_QUERIES = ('pa="j. schmalz"', 'pa="schmalz flexible gripping"')
-APPLICANT_PATTERN = re.compile(r"schmalz|soft robotics", re.I)
+#  WHO A DOCKET IS ABOUT IS A PROPERTY OF THE DOCKET, NOT OF THIS MODULE. It was a pair of
+#  constants naming Schmalz, which is correct for the one docket that ships and wrong for every
+#  other: this app takes signups, each account keeps its own private docket, and a hard-coded
+#  competitor would have seeded somebody else's list of targets into a stranger's account the
+#  first time they pressed the button. The applicants are read off the rows the person already
+#  has, so an empty docket discovers nothing and a docket about somebody else discovers them.
+MAX_APPLICANT_QUERIES = 4
+#  A name has to appear on this many rows before it is worth a search: one row is as likely to be
+#  a co-applicant or a typo as a target.
+MIN_ROWS_PER_APPLICANT = 2
+#  Corporate furniture, stripped before searching. OPS matches on the words, and "GmbH" alone
+#  would return every German company there is.
+_APPLICANT_NOISE = re.compile(
+    r"\b(gmbh|mbh|ag|kg|co|kgaa|se|ltd|limited|llc|inc|corp|corporation|company|holding|"
+    r"holdings|group|und|and|the|of)\b\.?", re.I)
 
 #  Offices this docket can actually act against. A Chinese family member or a Polish translation of
 #  a European patent is not a window we can file into, and adding them would bury the ones we can.
@@ -668,12 +679,67 @@ def us_submissions(app, events=None):
 # discovery: what this company has filed since the last sweep
 # ---------------------------------------------------------------------------------------------
 
-def discover_ops(since):
-    """Publications by the applicant in a date window, from OPS. -> [publication numbers]"""
+def normalise_applicant(raw):
+    """One applicant string as a name an office will match on, or "".
+
+    The registers do not agree on what an applicant name is. The USPTO gives "J. Schmalz GmbH";
+    the EP register gives the name with its full postal address appended, and where there is a
+    co-applicant it gives BOTH names and both addresses in one string. Searching any of that
+    verbatim returns either nothing or, in the case of "technische universitat munchen", a
+    hundred and fifty unrelated applications. So: drop the corporate furniture, cut at the first
+    token carrying a digit, which is always the start of an address, and keep at most the first
+    three words, which is where a company's distinctive part lives.
+    """
+    name = _APPLICANT_NOISE.sub(" ", raw or "")
+    name = re.sub(r"[^\w\s-]", " ", name, flags=re.UNICODE).lower()
+    words = []
+    for word in name.split():
+        if any(ch.isdigit() for ch in word):
+            break
+        words.append(word)
+        if len(words) >= 3:
+            break
+    name = " ".join(words).strip()
+    return name if len(name) >= 3 else ""
+
+
+def query_word(name):
+    """The one token an office index is worth searching on: the first substantive word.
+
+    A phrase search misses "J.Schmalz GmbH" for want of a space, and the LONGEST word of
+    "schmalz flexible gripping" is "gripping", which is the trade and not the company.
+    """
+    for word in (name or "").split():
+        if len(word) >= 3:
+            return word
+    return ""
+
+
+def applicants_of(rows):
+    """The names this docket is actually about. Most common first, at most four."""
+    counts = {}
+    for row in rows:
+        #  Normalise before counting, or "J. SCHMALZ GMBH", "J. Schmalz GmbH" and
+        #  "J.Schmalz GmbH" are three applicants with one row each and none of them clears
+        #  the threshold.
+        name = normalise_applicant(row.get("applicant") or "")
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [name for name, n in ranked[:MAX_APPLICANT_QUERIES] if n >= MIN_ROWS_PER_APPLICANT]
+
+
+def discover_ops(since, applicants):
+    """Publications by these applicants in a date window, from OPS. -> [publication numbers]"""
     found = []
     window = '%s %s' % (since.strftime("%Y%m%d"), datetime.date.today().strftime("%Y%m%d"))
-    for base in APPLICANT_QUERIES:
-        q = '%s and pd within "%s"' % (base, window)
+    #  The distinctive WORD, not the whole name, and for the same reason the ODP half uses it:
+    #  a subsidiary filing under its own name ("Schmalz Flexible Gripping") appears on too few
+    #  rows to become a search term of its own, and the parent's full name will not find it.
+    #  Measured over the last year on the live docket: `pa="j schmalz"` returns 27 publications,
+    #  `pa="schmalz"` returns 28 and every one of the 27.
+    for word in sorted({query_word(name) for name in applicants} - {""}):
+        q = 'pa="%s" and pd within "%s"' % (word, window)
         st, payload = _ops_json("published-data/search?q=%s&Range=1-100"
                                 % urllib.parse.quote(q))
         if st != 200:
@@ -691,18 +757,35 @@ def discover_ops(since):
     return found
 
 
-def discover_odp():
-    """Schmalz applications the USPTO knows about. -> [{application, publication, ...}]"""
+def discover_odp(applicants):
+    """US applications by these applicants. -> [{application, publication, ...}]"""
     out = []
-    payload = _odp("patent/applications/search",
-                   {"q": 'applicationMetaData.firstApplicantName:"Schmalz"',
-                    "pagination": {"offset": 0, "limit": 100}})
+    if not applicants:
+        return out
+    words = sorted({query_word(name) for name in applicants} - {""})
+    if not words:
+        return out
+    keep = re.compile("|".join(re.escape(w) for w in words), re.I)
+    seen = set()
+    for word in words:
+        payload = _odp("patent/applications/search",
+                       {"q": 'applicationMetaData.firstApplicantName:"%s"' % word,
+                        "pagination": {"offset": 0, "limit": 100}})
+        out.extend(_odp_rows(payload, keep, seen))
+    return out
+
+
+def _odp_rows(payload, keep, seen):
+    out = []
     for w in (payload or {}).get("patentFileWrapperDataBag") or []:
         md = w.get("applicationMetaData") or {}
         names = " ".join([md.get("firstApplicantName") or ""] +
                          [a.get("applicantNameText") or "" for a in (md.get("applicantBag") or [])])
-        if not APPLICANT_PATTERN.search(names):
+        if not keep.search(names):
             continue
+        if (w.get("applicationNumberText") or "") in seen:
+            continue
+        seen.add(w.get("applicationNumberText") or "")
         out.append({
             "application": re.sub(r"\D", "", str(w.get("applicationNumberText") or "")),
             "publication": md.get("earliestPublicationNumber") or "",
@@ -823,6 +906,11 @@ def sweep(rows, progress=None, workers=6, discover=True):
             patches[pub] = patch
 
     new = []
+    applicants = applicants_of(rows)
+    if discover and not applicants:
+        #  Nothing to search for. An empty docket, or one whose rows carry no applicant, must not
+        #  fall back to a name this module happens to know.
+        discover = False
     if discover:
         known = {(r.get("publication") or "").upper() for r in rows}
         known |= {re.sub(r"\D", "", str(r.get("application") or "")) for r in rows if r.get("application")}
@@ -830,7 +918,7 @@ def sweep(rows, progress=None, workers=6, discover=True):
         try:
             since = today.replace(year=today.year - 1) if today.month != 2 or today.day != 29 \
                 else datetime.date(today.year - 1, 3, 1)
-            for pub in discover_ops(since):
+            for pub in discover_ops(since, applicants):
                 if pub.upper() in known or _kind(pub) in SKIP_KINDS:
                     continue
                 office = _office_of(pub)
@@ -846,7 +934,7 @@ def sweep(rows, progress=None, workers=6, discover=True):
             errors.append("OPS discovery: %s" % str(exc)[:140])
         tick("new EP and DE publications")
         try:
-            for hit in discover_odp():
+            for hit in discover_odp(applicants):
                 if not hit["publication"] or hit["publication"].upper() in known:
                     continue
                 if hit["application"] and hit["application"] in known:
@@ -882,7 +970,7 @@ def sweep(rows, progress=None, workers=6, discover=True):
                           row.get("register_status") or "status unread"))
 
     return {"patches": patches, "new": new, "errors": errors, "changes": changes,
-            "as_of": today.isoformat(),
+            "as_of": today.isoformat(), "applicants": applicants,
             "sources": {"USPTO": "Open Data Portal", "EPO": "OPS European Patent Register",
                         "DPMA": "OPS INPADOC legal status"}}
 

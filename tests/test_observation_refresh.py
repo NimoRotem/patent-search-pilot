@@ -438,3 +438,71 @@ def test_a_missing_application_number_is_healed_even_once_the_title_is_right(mon
     patch = refresh.sweep([row], discover=False)["patches"]["EP4792992A2"]
     assert patch["application"] == "EP26158614"
     assert "title" not in patch
+
+
+# ---------------------------------------------------------------------------------------------
+# whose docket it is
+# ---------------------------------------------------------------------------------------------
+
+def test_the_applicants_come_off_the_docket_not_out_of_this_module():
+    rows = [{"applicant": "J. Schmalz GmbH"}, {"applicant": "J.Schmalz GMBH"},
+            {"applicant": "J. SCHMALZ GmbH"}, {"applicant": "Schmalz Flexible Gripping Inc"},
+            {"applicant": "Schmalz Flexible Gripping, Inc."}, {"applicant": "Somebody Else Ltd"}]
+    got = refresh.applicants_of(rows)
+    #  Case, punctuation and the corporate suffix must not split one name into three, and a name
+    #  that appears once is as likely to be a co-applicant as a target.
+    assert got == ["j schmalz", "schmalz flexible gripping"]
+
+
+@pytest.mark.parametrize("raw,expect", [
+    ("J. Schmalz GmbH", "j schmalz"),
+    #  The EP register appends the postal address, and a co-applicant's whole entry after it.
+    ("J. Schmalz GmbH 72293 Glatten DE", "j schmalz"),
+    ("J. Schmalz GmbH 72293 Glatten DE Technische Universitat Munchen 80333 Munchen DE",
+     "j schmalz"),
+    ("Schmalz Flexible Gripping, Inc.", "schmalz flexible gripping"),
+    ("Festo SE & Co. KG", "festo"),
+    ("GmbH", ""),
+])
+def test_an_applicant_name_is_cut_back_to_what_an_office_will_match(raw, expect):
+    assert refresh.normalise_applicant(raw) == expect
+
+
+def test_the_word_searched_is_the_company_not_the_trade():
+    #  "gripping" is the longest word in the second name and it is the industry, not the firm.
+    assert refresh.query_word("schmalz flexible gripping") == "schmalz"
+    assert refresh.query_word("j schmalz") == "schmalz"
+
+
+def test_an_empty_docket_discovers_nothing(monkeypatch):
+    """A hard-coded competitor would have seeded one person's list of targets into any other
+    account that pressed the button. This app takes signups and a docket is private."""
+    called = []
+    monkeypatch.setattr(refresh, "discover_ops", lambda *a: called.append("ops") or [])
+    monkeypatch.setattr(refresh, "discover_odp", lambda *a: called.append("odp") or [])
+    out = refresh.sweep([], discover=True)
+    assert out["new"] == [] and called == []
+    assert out["applicants"] == []
+
+
+def test_a_docket_about_somebody_else_searches_for_somebody_else(monkeypatch):
+    asked = []
+    monkeypatch.setattr(refresh, "discover_ops", lambda since, names: asked.append(names) or [])
+    monkeypatch.setattr(refresh, "discover_odp", lambda names: [])
+    monkeypatch.setattr(refresh, "_ops_json", _ops(EP_INTENDED))
+    rows = [{"publication": "EP1A1", "office": "EPO", "applicant": "Festo SE & Co. KG"},
+            {"publication": "EP2A1", "office": "EPO", "applicant": "FESTO SE & Co KG"}]
+    refresh.sweep(rows, discover=True)
+    assert asked == [["festo"]]
+
+
+def test_discovery_searches_the_distinctive_word_at_both_offices(monkeypatch):
+    """A subsidiary filing under its own name appears on too few rows to become a search term,
+    and the parent's full name will not find it. Both halves search the one word instead."""
+    seen = []
+    monkeypatch.setattr(refresh, "_ops_json",
+                        lambda path: seen.append(path) or (200, {}))
+    import datetime as _dt
+    refresh.discover_ops(_dt.date(2025, 9, 4), ["j schmalz", "schmalz flexible gripping"])
+    assert len(seen) == 1                      # one word, therefore one search, not two
+    assert "schmalz" in seen[0] and "flexible" not in seen[0]
