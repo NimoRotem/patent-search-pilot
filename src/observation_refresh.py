@@ -83,6 +83,8 @@ MERGE_FIELDS = (
     "first_rejection", "allowance", "quayle", "grant_date", "patent_number", "filing_date",
     "priority_date", "granted_as", "our_submissions", "file_events", "refreshed_at",
     "refresh_source",
+    #  Only ever written by the self-heal below, which fills them in on a row that has none.
+    "title", "title_full", "applicant", "family_id",
 )
 
 #  AND THESE ARE CLEARED WHEN THE SWEEP NO LONGER FINDS THEM. `payload.update(patch)` only ever
@@ -782,6 +784,17 @@ def sweep(rows, progress=None, workers=6, discover=True):
 
     def one(row):
         patch = refresh_case(row)
+        #  SELF-HEAL A ROW WITH NO NAME. The first discovery sweep added a case carrying its own
+        #  publication number as its title, and nothing would ever have replaced it, because a
+        #  title is not a register fact and the merge quite rightly refuses to overwrite one.
+        #  Filling in an ABSENT title is a different thing from overwriting a curated one.
+        if not row.get("title") or row.get("title") == row.get("publication"):
+            try:
+                for key, value in biblio_for(row.get("publication") or "").items():
+                    if not row.get(key) or row.get(key) == row.get("publication"):
+                        patch.setdefault(key, value)
+            except Exception:
+                pass
         tick(row.get("publication") or "")
         return row, patch
 

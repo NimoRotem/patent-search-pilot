@@ -404,3 +404,23 @@ def test_a_newly_found_case_gets_a_name_a_person_can_read(monkeypatch):
     assert got["title"] == "HANDLING SYSTEM WITH SUPPORT STRUCTURE"
     assert got["applicant"] == "J. Schmalz GmbH"          # the original form, not the DOCDB one
     assert got["application"] == "EP26158614"
+
+
+def test_a_row_with_no_name_heals_itself_but_a_curated_title_is_left_alone(monkeypatch):
+    calls = []
+
+    def fake(path):
+        calls.append(path)
+        return (200, BIBLIO) if "published-data" in path else (200, EP_INTENDED)
+
+    monkeypatch.setattr(refresh, "_ops_json", fake)
+    nameless = {"publication": "EP4792992A2", "office": "EPO", "title": "EP4792992A2"}
+    patch = refresh.sweep([nameless], discover=False)["patches"]["EP4792992A2"]
+    assert patch["title"] == "HANDLING SYSTEM WITH SUPPORT STRUCTURE"
+
+    calls.clear()
+    named = {"publication": "EP4792992A2", "office": "EPO",
+             "title": "Handling system with support structure", "title_full": "..."}
+    patch = refresh.sweep([named], discover=False)["patches"]["EP4792992A2"]
+    assert "title" not in patch
+    assert not any("published-data" in c for c in calls)      # and it did not even ask
