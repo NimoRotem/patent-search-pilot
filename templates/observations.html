@@ -289,10 +289,10 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
               {% else %}<span class="pill neutral">{{ f.status }}</span>{% endif %}</td>
           <td class="pub" title="{{ f.target }}{% if f.application %} · {{ f.application }}{% endif %}">{{ f.target }}{% if f.application %}<br><span class="dldate">{{ f.application }}</span>{% endif %}</td>
           <td class="ttl" title="{{ f.title }}">{{ f.title }}<br><span class="office">{{ f.target_owner }}</span></td>
-          <td class="dl">{{ f.filed_on or '—' }}</td>
-          <td>{{ f.references if f.references else '—' }}</td>
-          <td class="small">{% if f.official_fee_usd is not none %}${{ f.official_fee_usd }}{% if f.counsel_fee_usd %} + {{ '{:,}'.format(f.counsel_fee_usd) }}{% endif %}{% else %}—{% endif %}</td>
-          <td class="tdact">{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/observations/package/{{ f.package }}" download onclick="event.stopPropagation()">Download</a>{% else %}<span class="office">—</span>{% endif %}</td>
+          <td class="dl">{{ f.filed_on or '&ndash;' }}</td>
+          <td>{{ f.references if f.references else '&ndash;' }}</td>
+          <td class="small">{% if f.official_fee_usd is not none %}${{ f.official_fee_usd }}{% if f.counsel_fee_usd %} + {{ '{:,}'.format(f.counsel_fee_usd) }}{% endif %}{% else %}&ndash;{% endif %}</td>
+          <td class="tdact">{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/observations/package/{{ f.package }}" download onclick="event.stopPropagation()">Download</a>{% else %}<span class="office">&ndash;</span>{% endif %}</td>
           <td class="tdact"><button class="detailbtn" type="button" aria-label="Full detail for {{ f.target }}">Details</button></td>
         </tr>
         {% endfor %}
@@ -301,8 +301,8 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
           <td><span class="pill neutral">Lapsed</span></td>
           <td class="pub" title="{{ m.target }}{% if m.application %} · {{ m.application }}{% endif %}">{{ m.target }}{% if m.application %}<br><span class="dldate">{{ m.application }}</span>{% endif %}</td>
           <td class="ttl" title="{{ m.title }}">{{ m.title }}<br><span class="office">window closed {{ m.window_closed }}</span></td>
-          <td class="dl">—</td><td>—</td><td class="small">—</td>
-          <td class="tdact"><span class="office">—</span></td>
+          <td class="dl">&ndash;</td><td>&ndash;</td><td class="small">&ndash;</td>
+          <td class="tdact"><span class="office">&ndash;</span></td>
           <td class="tdact"><button class="detailbtn" type="button" aria-label="Full detail for {{ m.target }}">Details</button></td>
         </tr>
         {% endfor %}
@@ -339,7 +339,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
           <td><span class="pill {{ 'no' if d.status in ('open_and_dated', 'unanswered') else 'neutral' }}">{{ d.status | replace('_', ' ') }}</span></td>
           <td class="ttl" title="{{ d.question }}">{{ d.question }}</td>
           <td class="dl">{{ d.asked_on }}</td>
-          <td class="small">{{ d.asked_by or '—' }}</td>
+          <td class="small">{{ d.asked_by or '&ndash;' }}</td>
           <td class="tdact"><button class="detailbtn" type="button" aria-label="Full detail">Details</button></td>
         </tr>
         {% endfor %}

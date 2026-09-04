@@ -788,7 +788,13 @@ def sweep(rows, progress=None, workers=6, discover=True):
         #  publication number as its title, and nothing would ever have replaced it, because a
         #  title is not a register fact and the merge quite rightly refuses to overwrite one.
         #  Filling in an ABSENT title is a different thing from overwriting a curated one.
-        if not row.get("title") or row.get("title") == row.get("publication"):
+        #  Also when the APPLICATION number is missing, which the first version of this could
+        #  never fix: it only looked at the title, so healing the title stopped it looking again
+        #  and the number it had already fetched in the same call was dropped on the floor. A
+        #  handful of rows ask for this on every sweep and never get an answer; that is fifteen
+        #  cheap calls, against a page that otherwise cannot link a German patent to its file.
+        if (not row.get("title") or row.get("title") == row.get("publication")
+                or not row.get("application")):
             try:
                 for key, value in biblio_for(row.get("publication") or "").items():
                     if not row.get(key) or row.get(key) == row.get("publication"):

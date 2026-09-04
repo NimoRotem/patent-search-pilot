@@ -419,8 +419,22 @@ def test_a_row_with_no_name_heals_itself_but_a_curated_title_is_left_alone(monke
     assert patch["title"] == "HANDLING SYSTEM WITH SUPPORT STRUCTURE"
 
     calls.clear()
-    named = {"publication": "EP4792992A2", "office": "EPO",
+    named = {"publication": "EP4792992A2", "office": "EPO", "application": "EP26158614",
              "title": "Handling system with support structure", "title_full": "..."}
     patch = refresh.sweep([named], discover=False)["patches"]["EP4792992A2"]
     assert "title" not in patch
-    assert not any("published-data" in c for c in calls)      # and it did not even ask
+    #  A row that already has both a name and a number does not even ask.
+    assert not any("published-data" in c for c in calls)
+
+
+def test_a_missing_application_number_is_healed_even_once_the_title_is_right(monkeypatch):
+    """The first version only looked at the title, so healing the title stopped it looking again
+    and the application number fetched by the very same call was dropped."""
+    monkeypatch.setattr(refresh, "_ops_json",
+                        lambda path: (200, BIBLIO) if "published-data" in path
+                        else (200, EP_INTENDED))
+    row = {"publication": "EP4792992A2", "office": "EPO", "application": "",
+           "title": "Handling system with support structure"}
+    patch = refresh.sweep([row], discover=False)["patches"]["EP4792992A2"]
+    assert patch["application"] == "EP26158614"
+    assert "title" not in patch
