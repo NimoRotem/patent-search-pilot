@@ -552,7 +552,7 @@ def us_submissions(app, events=None):
             "date": when,
             "instrument": "Third-party submission, 37 CFR 1.290",
             "documents": n_rel,
-            "references_about": (n_rel + 1) // 2 if n_rel > 1 else n_rel,
+            "references_about": max(1, n_rel // 2) if n_rel > 1 else n_rel,
             "fee_paid": bool(codes.get("N417.PYMT")),
             "acknowledged": bool(codes.get("M327")),
             "evidence": ("USPTO file wrapper: "
