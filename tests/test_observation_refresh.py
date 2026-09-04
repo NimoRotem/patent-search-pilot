@@ -627,3 +627,13 @@ def test_a_real_404_is_still_an_answer(monkeypatch):
     monkeypatch.setattr(refresh.urllib.request, "urlopen",
                         lambda *a, **k: (_ for _ in ()).throw(_HttpError(404)))
     assert refresh._odp("patent/applications/1") == {}
+
+
+def test_no_record_of_a_job_is_a_third_state_not_a_success():
+    """A page polling through a restart was told {"running": false} with no result, which it
+    rendered as "Done. 0 cases re-read": a successful-looking answer to a job that was killed."""
+    st = refresh.state(31337)
+    assert st["running"] is False
+    assert st["known"] is False
+    refresh._set(31337, running=False, label="done", result={"cases": 3})
+    assert refresh.state(31337)["known"] is True

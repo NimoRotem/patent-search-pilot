@@ -1249,6 +1249,16 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
       say('The refresh failed: ' + esc(st.error), true);
       return;
     }
+    //  No record of the job at all. The server was restarted under it, so it did not finish and
+    //  it did not fail; saying "done" here would be a successful-looking answer to a job that
+    //  was killed, and the docket would look refreshed when it is not.
+    if (st.known === false){
+      bar.hidden = true;
+      say('The refresh stopped before it finished, because the server restarted under it. '
+          + 'Nothing was half-written: each case is saved as it is read. Press the button again.',
+          true);
+      return;
+    }
     var r = st.result || {};
     fill.style.width = '100%';
     //  An empty docket is not a failure, and it is not "0 cases re-read", which tells a new
