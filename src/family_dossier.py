@@ -47,6 +47,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -92,8 +93,35 @@ def _norm_pub(s) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(s or "").upper())
 
 
+#  ODP RATE-LIMITS, AND A RATE LIMIT IS NOT AN EMPTY FILE. Measured 2026-09-04: six concurrent
+#  callers drew HTTP 429 on sixteen of sixty requests. This function used to return {} for every
+#  answer below 500, so a 429 on /documents read as "this relative has no office actions", which
+#  is the one document the whole module exists to find. It is a silent hole in a drafted patent's
+#  evidence, not a fetch failure. Retry what is worth retrying, let only a real 404 mean absence,
+#  and when it truly cannot be asked, SAY SO rather than blending into a legitimately empty file.
+RETRY_CODES = (408, 425, 429, 500, 502, 503, 504)
+TRIES = int(os.environ.get("USPTO_ODP_TRIES", "4"))
+#  A dossier walks up to twelve relatives with two calls each, and several dossiers run at once
+#  under the search workers. Two in flight is comfortably inside the limit.
+_GATE = threading.Semaphore(int(os.environ.get("USPTO_ODP_CONCURRENCY", "2")))
+#  Paths this process gave up on, so a caller can tell "nothing there" from "never answered".
+UNAVAILABLE = []
+_UNAVAILABLE_LOCK = threading.Lock()
+
+
+def _note_unavailable(path, why):
+    with _UNAVAILABLE_LOCK:
+        UNAVAILABLE.append({"path": path, "why": why})
+        del UNAVAILABLE[:-200]
+
+
 def _call(path, body=None, log=print):
-    """GET or POST against ODP. -> dict, or {} on any failure. Never raises."""
+    """GET or POST against ODP. -> dict, or {} when there is genuinely nothing. Never raises.
+
+    An exhausted request is recorded in UNAVAILABLE as well as returning {}, because the callers
+    here are report builders that must not fail, and the honest thing is to run and then say
+    which parts of the file could not be read.
+    """
     if not ENABLED:
         return {}
     key = _key()
@@ -102,24 +130,38 @@ def _call(path, body=None, log=print):
         return {}
     url = f"{BASE}/{path.lstrip('/')}"
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, headers={
-        "X-API-KEY": key, "Accept": "application/json",
-        **({"Content-Type": "application/json"} if data else {})})
-    for attempt in range(2):
+    last = "no attempt made"
+    for attempt in range(TRIES):
+        req = urllib.request.Request(url, data=data, headers={
+            "X-API-KEY": key, "Accept": "application/json",
+            **({"Content-Type": "application/json"} if data else {})})
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as fh:
-                return json.loads(fh.read().decode() or "{}")
+            with _GATE:
+                with urllib.request.urlopen(req, timeout=TIMEOUT) as fh:
+                    return json.loads(fh.read().decode() or "{}")
         except urllib.error.HTTPError as e:
-            #  404 is a real answer — that application has no such record — and must not be retried.
+            last = f"HTTP {e.code}"
+            #  404 is a real answer: that application has no such record. Do not retry it.
             if e.code == 404:
                 return {}
-            log(f"[dossier] {path}: HTTP {e.code}")
-            if e.code < 500:
+            if e.code not in RETRY_CODES:
+                log(f"[dossier] {path}: {last}")
+                _note_unavailable(path, last)
                 return {}
+            wait = 0.0
+            try:
+                wait = float(e.headers.get("Retry-After") or 0)
+            except (TypeError, ValueError):
+                wait = 0.0
+            time.sleep(max(wait, 1.5 * (attempt + 1)))
+            continue
         except Exception as e:
-            log(f"[dossier] {path}: {str(e)[:120]}")
-        if attempt == 0:
-            time.sleep(1.5)
+            last = f"{type(e).__name__}: {str(e)[:80]}"
+            log(f"[dossier] {path}: {last}")
+        time.sleep(1.5 * (attempt + 1))
+    log(f"[dossier] {path}: UNAVAILABLE after {TRIES} attempts ({last}); "
+        f"treating as empty, which it may not be")
+    _note_unavailable(path, last)
     return {}
 
 
@@ -240,7 +282,9 @@ def dossier(publication="", application="", log=print, emit=None) -> dict:
     because this runs beside a search that already has an answer.
     """
     out = {"subject": {}, "family": [], "rejections": [], "citation_lists": [],
-           "siblings_granted": [], "n_documents": 0, "error": ""}
+           "siblings_granted": [], "n_documents": 0, "error": "", "unavailable": []}
+    with _UNAVAILABLE_LOCK:
+        before = len(UNAVAILABLE)
     if not ENABLED:
         out["error"] = "family dossier disabled"
         return out
@@ -286,6 +330,10 @@ def dossier(publication="", application="", log=print, emit=None) -> dict:
     out["rejections"].sort(key=lambda r: r["date"], reverse=True)
     out["citation_lists"].sort(key=lambda r: r["date"], reverse=True)
 
+    #  What could not be read. An empty file and an unread one look identical downstream unless
+    #  the difference is carried out of here explicitly.
+    with _UNAVAILABLE_LOCK:
+        out["unavailable"] = list(UNAVAILABLE[before:])
     abandoned = [f for f in family
                  if "abandon" in (f.get("status") or "").lower()]
     log(f"[dossier] {app}: {len(family)} relatives, {out['n_documents']} wrapper documents, "
@@ -293,7 +341,9 @@ def dossier(publication="", application="", log=print, emit=None) -> dict:
         f"citation lists"
         + (f", {len(abandoned)} relative(s) ABANDONED after an office action" if abandoned else "")
         + (f", granted siblings: {', '.join(f['patent'] for f in out['siblings_granted'])}"
-           if out["siblings_granted"] else ""))
+           if out["siblings_granted"] else "")
+        + (f", {len(out['unavailable'])} request(s) the office would not answer, so this file is "
+           f"INCOMPLETE" if out["unavailable"] else ""))
     if emit:
         emit("dossier", family=len(family), rejections=len(out["rejections"]),
              siblings=len(out["siblings_granted"]))
