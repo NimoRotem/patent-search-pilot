@@ -12,6 +12,9 @@ that cost the most to learn are pinned deliberately:
 """
 import datetime
 import json
+import urllib.request
+import urllib.error
+import email.message
 import time
 
 import pytest
@@ -559,3 +562,68 @@ def test_an_empty_docket_reports_why_rather_than_zero(monkeypatch):
     assert st["error"] == ""
     assert st["result"]["cases"] == 0
     assert applied["new"] == [] and applied["patches"] == {}
+
+
+# ---------------------------------------------------------------------------------------------
+# an empty answer and an unanswered question are not the same value
+# ---------------------------------------------------------------------------------------------
+
+class _HttpError(urllib.error.HTTPError):
+    def __init__(self, code, retry_after=None):
+        hdrs = {"Retry-After": str(retry_after)} if retry_after else {}
+        super().__init__("https://api.uspto.gov/x", code, "boom",
+                         email.message.Message(), None)
+        for k, v in hdrs.items():
+            self.headers[k] = v
+
+
+def test_a_rate_limit_is_retried_and_never_read_as_an_empty_file(monkeypatch):
+    """Six workers against the Open Data Portal drew 429 on sixteen of sixty calls. The old code
+    returned {} for anything under 500, so on the /documents call a rate limit said "nothing has
+    ever been filed on this application" and would have erased the record of our own submission."""
+    calls = []
+
+    def flaky(req, timeout=None):
+        calls.append(1)
+        if len(calls) < 3:
+            raise _HttpError(429)
+        class R:
+            status = 200
+            def read(self): return b'{"documentBag": []}'
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        return R()
+
+    monkeypatch.setattr(refresh.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(refresh.urllib.request, "urlopen", flaky)
+    monkeypatch.setenv("USPTO_ODP_KEY", "x")
+    assert refresh._odp("patent/applications/1/documents") == {"documentBag": []}
+    assert len(calls) == 3
+
+
+def test_an_unreachable_file_wrapper_writes_no_patch_at_all(monkeypatch):
+    monkeypatch.setattr(refresh.time, "sleep", lambda *_: None)
+    monkeypatch.setenv("USPTO_ODP_KEY", "x")
+
+    def meta_ok_documents_dead(path, body=None):
+        if path.endswith("/documents"):
+            raise refresh.OdpUnavailable("HTTP 429")
+        return _wrapper("Docketed New Case", "2025-09-10", "US20260109053A1", "2026-04-23", [])
+
+    monkeypatch.setattr(refresh, "_odp", meta_ok_documents_dead)
+    got = refresh.us_case("19315746")
+    assert "_error" in got
+    #  And therefore the sweep writes nothing: the row keeps its last good submission record.
+    row = {"publication": "US20260109053A1", "office": "USPTO", "application": "19315746",
+           "our_submissions": [{"date": "2026-08-02", "instrument": "1.290"}]}
+    out = refresh.sweep([row], discover=False)
+    assert out["patches"] == {}
+    assert any("unreachable" in e for e in out["errors"])
+
+
+def test_a_real_404_is_still_an_answer(monkeypatch):
+    monkeypatch.setattr(refresh.time, "sleep", lambda *_: None)
+    monkeypatch.setenv("USPTO_ODP_KEY", "x")
+    monkeypatch.setattr(refresh.urllib.request, "urlopen",
+                        lambda *a, **k: (_ for _ in ()).throw(_HttpError(404)))
+    assert refresh._odp("patent/applications/1") == {}
