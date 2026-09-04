@@ -613,25 +613,40 @@ def actions_for(row, today=None):
     return out
 
 
-def headline(row, today=None):
-    """The one line the docket row should carry: what can be filed TODAY, and by when.
+def _headline_of(entry, status, count):
+    return {"label": entry["instrument"], "statute": entry["statute"], "fee": entry["fee"],
+            "status": status, "deadline": entry["deadline"], "days_left": entry["days_left"],
+            "opens": entry.get("opens"), "count": count}
 
-    Returns {"label", "status", "deadline", "days_left", "count"} or None when nothing is open.
+
+def headline(row, today=None):
+    """The one line the docket row should carry, in three tiers.
+
+    What can be filed TODAY, first. Then, when nothing can, what has to be checked before
+    anything can. Then, when there is nothing to check either, the next window that will OPEN.
+
+    That third tier is the one that was missing, and it was making the page say less than it
+    knew. Five US applications whose 1.290 window had closed read "Nothing open", which is true
+    today and useless: they are still in examination, they will issue, and post-grant review
+    opens on the day they do and runs nine months. "Nothing open" and "nothing until it grants"
+    are different answers and only the second tells you to watch the case.
+
+    None means what it says: an abandoned or finally refused application, where no window will
+    ever open again.
     """
     acts = actions_for(row, today)
     live = [a for a in acts if a["status"] in ("open", "closing")]
-    if not live:
-        conditional = [a for a in acts if a["status"] == "conditional" and not a.get("weak")]
-        if conditional:
-            a = conditional[0]
-            return {"label": a["instrument"], "statute": a["statute"], "fee": a["fee"],
-                    "status": "conditional", "deadline": a["deadline"],
-                    "days_left": a["days_left"], "count": len(conditional)}
-        return None
-    a = live[0]
-    return {"label": a["instrument"], "statute": a["statute"], "fee": a["fee"],
-            "status": a["status"], "deadline": a["deadline"], "days_left": a["days_left"],
-            "count": len(live)}
+    if live:
+        return _headline_of(live[0], live[0]["status"], len(live))
+    conditional = [a for a in acts if a["status"] == "conditional" and not a.get("weak")]
+    if conditional:
+        return _headline_of(conditional[0], "conditional", len(conditional))
+    #  Soonest first: a dated opening beats an undated one, and an undated one beats nothing.
+    coming = sorted((a for a in acts if a["status"] == "not_yet"),
+                    key=lambda a: a["opens"] or "9999")
+    if coming:
+        return _headline_of(coming[0], "not_yet", len(coming))
+    return None
 
 
 # ---------------------------------------------------------------------------------------------

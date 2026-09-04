@@ -51,6 +51,7 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .instr{font-size:12px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   display:block}
 .instr.none{color:var(--faint)}
+.instr.soon{color:var(--muted)}
 .instrfee{font-size:10.5px;color:var(--faint);white-space:nowrap}
 .subdot{color:var(--good);font-weight:700}
 
@@ -441,13 +442,21 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
               its observation window and inside its opposition window on the same day, and the
               baseline label could only ever name one of the two. #}
           <td>
+            {#  A window that has not opened yet is shown greyed, with the event that opens it,
+                because "nothing today" and "nothing until it grants" are different answers and
+                only the second one tells you to keep watching the case. #}
             {% if head %}
-              <span class="instr" title="{{ head.label }}, {{ head.statute }}">{{ head.label }}</span>
-              <span class="instrfee">{{ head.statute }} &middot; {{ head.fee }}</span>
-              {% if head.status in ('open', 'closing') and head.count > 1 %}
-                <span class="instrfee">+{{ head.count - 1 }} more</span>{% endif %}
+              <span class="instr{{ ' soon' if head.status == 'not_yet' else '' }}"
+                    title="{{ head.label }}, {{ head.statute }}">{{ head.label }}</span>
+              {% if head.status == 'not_yet' %}
+                <span class="instrfee">{% if head.opens %}opens {{ head.opens }}{% else %}not until it grants{% endif %}</span>
+              {% else %}
+                <span class="instrfee">{{ head.statute }} &middot; {{ head.fee }}</span>
+                {% if head.status in ('open', 'closing') and head.count > 1 %}
+                  <span class="instrfee">+{{ head.count - 1 }} more</span>{% endif %}
+              {% endif %}
             {% else %}
-              <span class="instr none">Nothing open</span>
+              <span class="instr none">Nothing, ever again</span>
               <span class="instrfee">{{ c.office }}</span>
             {% endif %}
           </td>

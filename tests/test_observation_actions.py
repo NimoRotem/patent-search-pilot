@@ -296,7 +296,10 @@ def test_a_formally_available_instrument_nobody_would_use_is_not_the_headline():
            "six_months": "2024-10-04", "first_rejection": "2025-05-27"}
     protest = stages(acts.actions_for(row, TODAY))["pre_grant_protest"]
     assert protest["status"] == "conditional" and protest["weak"] is True
-    assert acts.headline(row, TODAY) is None
+    head = acts.headline(row, TODAY)
+    assert head["label"] != "Protest"
+    #  Whatever it does say, it must not read as something to do today.
+    assert head["status"] not in ("open", "closing", "conditional")
 
 
 def test_post_grant_observations_with_nothing_pending_are_not_the_headline():
@@ -343,3 +346,30 @@ def test_the_reference_table_is_built_from_the_same_strings_as_a_real_case():
     for stage in ("pre_grant_passive", "post_grant_now"):
         assert matrix[stage]["DPMA"]["instrument"] == live[stage]["instrument"]
         assert matrix[stage]["DPMA"]["fee"] == live[stage]["fee"]
+
+
+def test_a_shut_window_still_says_what_opens_next():
+    """Five US applications past their 1.290 window read "Nothing open", which is true today and
+    useless: they are in examination, they will issue, and post-grant review opens on the day
+    they do. "Nothing open" and "nothing until it grants" are different answers."""
+    row = {"office": "USPTO", "posture": "pending", "pubDate": "2025-06-01",
+           "six_months": "2025-12-01", "first_rejection": "2026-07-27"}
+    head = acts.headline(row, TODAY)
+    assert head is not None
+    assert head["status"] == "not_yet"
+    assert head["label"] == "Citation of prior art in a patent file"
+
+
+def test_a_pending_european_case_names_the_opposition_it_is_heading_for():
+    row = {"office": "EPO", "posture": "pending", "closing_soon": True,
+           "register_status": "Grant of patent is intended",
+           "opposition_opens_est": "2026-12-22"}
+    #  Art. 115 is still conditional here, so that wins; the point is it does not read as dead.
+    assert acts.headline(row, TODAY)["status"] == "conditional"
+
+
+def test_only_a_case_that_can_never_be_touched_again_has_no_headline():
+    for row in ({"office": "USPTO", "posture": "lapsed", "register_status": "Abandoned"},
+                {"office": "DPMA", "posture": "lapsed"},
+                {"office": "EPO", "posture": "lapsed"}):
+        assert acts.headline(row, TODAY) is None
