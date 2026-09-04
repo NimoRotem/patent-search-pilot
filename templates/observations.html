@@ -260,7 +260,8 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
           until somebody presses the button. So the page says when it is due rather than
           pretending a number is fresh because it was arithmetic. #}
       {% if meta.refreshed_at %}Last pulled <b>{{ meta.refreshed_at | replace('T', ' ') }}</b>{% if stale_days is not none and stale_days >= 7 %},
-        <b>{{ stale_days }} days ago. A grant since then has opened a window this page cannot see.</b>{% else %}.{% endif %}
+        <b>{{ stale_days }} days ago.</b> A grant in that time would have opened a window this page
+        cannot see yet.{% else %}.{% endif %}
       {% else %}<b>Never pulled live.</b> The dates below come from the shipped {{ meta.as_of or 'baseline' }} sweep and a case may have granted, lapsed or been refused since.
       {% endif %}
       USPTO Open Data Portal for status, windows and our own submissions on the file wrapper;
