@@ -1164,9 +1164,21 @@ def apply_to_user(user_id, result):
 # ---------------------------------------------------------------------------------------------
 
 def state(user_id):
+    """What this person's refresh is doing. `known` is False when there is no record of one.
+
+    The job lives in this process's memory, which is right for a single-worker app and wrong
+    across a restart: a page polling through a `supervisorctl restart` used to be told
+    `{"running": False}` with no result, which it rendered as "Done. 0 cases re-read", a
+    successful-looking answer to a job that had been killed. The absence of a record is a third
+    state and has to be reported as one.
+    """
     with _JOBS_LOCK:
         job = _JOBS.get(user_id)
-        return dict(job) if job else {"running": False}
+        if not job:
+            return {"running": False, "known": False}
+        out = dict(job)
+        out["known"] = True
+        return out
 
 
 def _set(user_id, **kw):
