@@ -67,3 +67,12 @@ eval/benchmark_results/
 # artefacts at a stable path, never repository content. docs/niche_manifest_contract.md says where.
 data/niche_cache/
 data/manifests/
+
+#  THE OBSERVATION DOCKET IS PRIVATE AND THIS REPOSITORY IS PUBLIC.
+#  data/observations/ holds one named third party's filings annotated with what our counsel
+#  thinks, what was declined and what we have filed, plus the filing packages themselves,
+#  including one that has not been filed yet and whose window is still open. Publishing it would
+#  hand a competitor our whole position against them. It has never been committed; this is what
+#  keeps a single `git add -A` in a deployed tree from being the first time. 11,194 files under
+#  data/ ARE tracked, so that command is a normal thing to run here.
+data/observations/
