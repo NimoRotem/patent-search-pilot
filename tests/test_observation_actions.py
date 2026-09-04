@@ -395,3 +395,12 @@ def test_a_weak_option_never_outranks_a_real_one():
     row = {"office": "USPTO", "posture": "pending", "pubDate": "2024-04-04",
            "six_months": "2024-10-04", "first_rejection": "2025-05-27"}
     assert acts.headline(row, TODAY)["status"] == "not_yet"
+
+
+def test_the_german_route_says_it_leaves_no_trace():
+    """Surveyed across all 61 German cases on 2026-09-04, the INPADOC event stream carries ten
+    codes and not one of them is an observation. An empty "already on this file" on a German case
+    means "cannot see", and the instrument note has to say so or the silence reads as "nothing"."""
+    a = stages(acts.actions_for({"office": "DPMA", "posture": "pending"}, TODAY))
+    assert "no trace" in a["pre_grant_passive"]["note"]
+    assert "cannot see anyone else's" in a["pre_grant_passive"]["note"]
