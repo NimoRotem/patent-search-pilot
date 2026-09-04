@@ -91,3 +91,9 @@ def test_the_two_lists_are_merged_newest_first():
             "file_events": [{"date": "2026-08-01", "instrument": "b", "whose": "unknown"}]}
     observations.attribute_filings([case], [])
     assert [e["instrument"] for e in case["on_file"]] == ["b", "a"]
+
+
+def test_the_register_history_reaches_the_page():
+    """It was being fetched from INPADOC and stored on 61 German rows and shown to nobody, so
+    every German deadline on the page was an assertion with its evidence left in the database."""
+    assert "register_events" in observations.DETAIL_FIELDS
