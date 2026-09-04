@@ -26,9 +26,18 @@ WHAT THE ROUTES TRUST
 `auth.current_user()` and nothing else. The app-wide gate also honours a loopback exemption, which
 is right for a drafting agent publishing its own work but wrong here: this box has a second tenant
 on it, and "a process on the machine" is not "the person who owns this docket".
+
+A COUNTDOWN IS COMPUTED, NEVER STORED
+
+`days_left` used to be baked into the shipped file against the date the sweep ran, so on the day
+after a build every number on the page was one day wrong and nothing said so. It is derived here,
+on every read, from the deadline and today. The stored value is kept only as the fallback for a
+row that has a countdown and no date behind it. See [[observation_refresh]] for the other half:
+the deadlines themselves going stale, which is a button rather than an expression.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
@@ -40,6 +49,8 @@ from flask import (Blueprint, abort, jsonify, render_template, request,
 
 import auth
 import db
+import observation_actions
+import observation_refresh
 
 bp = Blueprint("observations", __name__)
 
@@ -63,6 +74,11 @@ DETAIL_FIELDS = (
     "pubDate", "priority_date", "six_months", "first_rejection", "deadline", "deadline_kind",
     "days_left", "verified", "counsel_required", "counsel_report", "next_action",
     "superseded_note", "why_new", "family", "priority", "user_state", "user_note",
+    #  Added with the live refresh: where the case now stands, what we have already put on its
+    #  file, and the instrument table for its office.
+    "posture", "grant_published", "opposition_deadline", "scheduled_grant", "decision_on",
+    "closing_note", "closing_soon", "allowance", "quayle", "exam_requested", "opposition_pending",
+    "our_submissions", "refreshed_at", "refresh_source", "actions",
 )
 #  The states a person moves a row through by hand. `open` is the absence of a decision, which is
 #  why it is the default and why it is not the same thing as `watch`: one has not been looked at,
@@ -146,12 +162,18 @@ def seed_owner(force: bool = False) -> int:
     they do, WITHOUT touching `user_state` or `user_note`: the file on disk is authoritative about
     what the register said, the person is authoritative about what they decided. `force=True`
     additionally resets those two, which is only for a test fixture.
+
+    A LIVE REFRESH OUTRANKS THE SHIPPED FILE. `init_app` seeds on every boot, so once the button
+    had pulled the registers a single `supervisorctl restart` put the August snapshot back over
+    the top of it and silently un-did the refresh. A row that carries `refreshed_at` is therefore
+    left alone unless the file on disk is itself newer than that pull.
     """
     ensure_schema()
     uid = _owner_id()
     if not uid:
         return 0
     seed = load_seed()
+    seed_as_of = str(seed.get("as_of") or "")
     n = 0
     with db.cursor(autocommit=True) as cur:
         for row in seed.get("rows", []):
@@ -171,8 +193,10 @@ def seed_owner(force: bool = False) -> int:
                     """INSERT INTO app_observation_cases (user_id, publication, payload)
                        VALUES (%s, %s, %s)
                        ON CONFLICT (user_id, publication) DO UPDATE
-                         SET payload = EXCLUDED.payload, updated_at = now()""",
-                    (uid, pub, json.dumps(row)))
+                         SET payload = EXCLUDED.payload, updated_at = now()
+                       WHERE COALESCE(app_observation_cases.payload->>'refreshed_at', '')
+                             <= %s""",
+                    (uid, pub, json.dumps(row), seed_as_of))
             n += 1
         for f in seed.get("filings", []):
             cur.execute(
@@ -189,6 +213,16 @@ def seed_owner(force: bool = False) -> int:
                      SET payload = EXCLUDED.payload, updated_at = now()""",
                 (uid, d["id"], json.dumps(d)))
         meta = {k: seed.get(k) for k in ("as_of", "generated", "source_note", "changes", "missed")}
+        #  `missed` and `changes` are hand-written and belong to the file; `as_of` and the refresh
+        #  record belong to whichever pull was last. Merge rather than replace, or a restart tells
+        #  the reader the docket was last checked in August when it was checked this morning.
+        cur.execute("SELECT payload FROM app_observation_meta WHERE user_id = %s", (uid,))
+        got = cur.fetchone()
+        if got and (dict(got["payload"]).get("refreshed_at") or ""):
+            merged = dict(got["payload"])
+            merged["missed"] = meta.get("missed")
+            merged["changes"] = meta.get("changes")
+            meta = merged
         cur.execute(
             """INSERT INTO app_observation_meta (user_id, payload) VALUES (%s, %s)
                ON CONFLICT (user_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()""",
@@ -200,8 +234,63 @@ def seed_owner(force: bool = False) -> int:
 # per-user reads
 # ---------------------------------------------------------------------------------------------
 
-def cases_for(user_id):
+def recount(row, today=None):
+    """Recompute the countdown and the urgency band, in place.
+
+    THE COUNTDOWN BELONGS TO THE INSTRUMENT THAT IS OPEN, not to whatever date the last sweep
+    happened to store. Those are the same thing on most rows and different on the ones that
+    matter: a US case under an Ex parte Quayle action carried 2026-08-26 as its deadline, so the
+    table printed "closed, 9 days ago" beside an instrument the very same page reported as still
+    open, because a Quayle action is not a rejection and 1.290 had not in fact shut. Whenever
+    something can still be filed, that instrument's window IS the row's window. Only when nothing
+    is open does the stored date stand, and then it is a record of when the door shut.
+
+    The bands are the ones the table colours by and the filter selects on, so they are defined
+    once here rather than three times over in Jinja, JavaScript and the sweep script.
+    """
+    today = today or datetime.date.today()
+    head = row.get("action_headline") or {}
+    if head.get("status") in ("open", "closing"):
+        row["deadline"] = head.get("deadline")
+        row["days_left"] = head.get("days_left")
+        #  NOT `closing_soon` here. An Art. 115 observation and a § 43(3) Einwendung are open
+        #  with no deadline for years at a stretch; flagging every one of them as urgent would
+        #  make the flag mean nothing. Only the sweep sets it, and only on a window that has run
+        #  out of dates rather than one that never had any.
+    deadline = observation_actions._date(row.get("deadline"))
+    if deadline:
+        row["days_left"] = (deadline - today).days
+    elif row.get("deadline"):
+        pass                      # a deadline we cannot parse: keep whatever count came with it
+    else:
+        row["days_left"] = None
+    n = row.get("days_left")
+    if row.get("filed"):
+        row["state"] = "filed"
+    elif row.get("missed") or (n is not None and n < 0):
+        row["state"] = "lapsed"
+    elif n is None:
+        row["state"] = "closing" if row.get("closing_soon") else "open"
+    elif n <= 14:
+        row["state"] = "urgent"
+    elif n <= 30:
+        row["state"] = "closing"
+    elif n <= 90:
+        row["state"] = "soon"
+    else:
+        row["state"] = "open"
+    #  A WINDOW WITH NO DATE LEFT TO COUNT TO IS NOT THE LEAST URGENT ROW ON THE PAGE. A 1.290
+    #  window past its six-month date with no rejection, and an EP application under a Rule 71(3)
+    #  intention to grant, both shut the next time the examiner touches the file. Sorting them
+    #  with the undated majority buried them ninety rows down. `1` puts them immediately after
+    #  anything that closes today and ahead of everything with a date in the future.
+    row["sort_key"] = n if n is not None else (1 if row.get("closing_soon") else 9999)
+    return row
+
+
+def cases_for(user_id, today=None):
     ensure_schema()
+    today = today or datetime.date.today()
     with db.cursor(autocommit=True) as cur:
         cur.execute(
             """SELECT publication, payload, user_state, user_note
@@ -212,6 +301,12 @@ def cases_for(user_id):
         row = dict(r["payload"])
         row["user_state"] = r["user_state"]
         row["user_note"] = r["user_note"]
+        #  What can still be filed against this one, evaluated for today. Cheap enough to do on
+        #  every read, and the alternative is a stored answer that rots exactly like the count did.
+        #  BEFORE `recount`, which now takes the row's countdown from whichever of these is open.
+        row["actions"] = observation_actions.actions_for(row, today)
+        row["action_headline"] = observation_actions.headline(row, today)
+        recount(row, today)
         out.append(row)
     #  Soonest deadline first, undated cases last. `sort_key` is already the day count.
     out.sort(key=lambda r: (r.get("sort_key") if r.get("sort_key") is not None else 99999,
@@ -302,9 +397,21 @@ def observations_page():
     have = set(os.listdir(PACKAGE_DIR)) if os.path.isdir(PACKAGE_DIR) else set()
     for f in filings:
         f["package_available"] = bool(f.get("package")) and f["package"] in have
+    #  THE CHIPS AND THE FILTER MUST AGREE. The urgency select offers "14 days or less" and "90
+    #  days or less", which are nested bands; the chips used to be counted from the mutually
+    #  exclusive `state` buckets and so reported a smaller number than the filter then showed.
+    #  Count the bands the reader is actually offered.
     counts = {"total": len(cases)}
     for c in cases:
         counts[c.get("state", "open")] = counts.get(c.get("state", "open"), 0) + 1
+    live = [c["days_left"] for c in cases if c.get("days_left") is not None and c["days_left"] >= 0]
+    counts["within_14"] = sum(1 for n in live if n <= 14)
+    counts["within_90"] = sum(1 for n in live if n <= 90)
+    counts["submitted"] = sum(1 for c in cases if c.get("our_submissions") or c.get("filed"))
+    #  Every case where something can be filed TODAY, whatever the office calls it.
+    counts["actionable"] = sum(
+        1 for c in cases
+        if (c.get("action_headline") or {}).get("status") in ("open", "closing"))
     #  The act-now band, computed here rather than in the template: Jinja's one-argument
     #  `selectattr('days_left')` is a truthiness test, so it silently drops the case that closes
     #  TODAY, which is the one row nobody can afford to lose.
@@ -326,7 +433,9 @@ def observations_page():
     detail = {c["publication"]: {k: c.get(k) for k in DETAIL_FIELDS} for c in cases}
     return render_template("observations.html", cases=cases, filings=filings,
                            decisions=decisions, meta=meta, counts=counts, act=act,
-                           detail=detail, states=USER_STATES)
+                           detail=detail, states=USER_STATES,
+                           stages=observation_actions.STAGES,
+                           today=datetime.date.today().isoformat())
 
 
 @bp.route("/api/observations/case", methods=["POST"])
@@ -347,6 +456,35 @@ def api_observation_case():
     if not ok:
         return jsonify({"ok": False, "error": "not on your docket"}), 404
     return jsonify({"ok": True})
+
+
+@bp.route("/api/observations/refresh", methods=["POST"])
+def api_observation_refresh():
+    """Go and ask the offices again. One job per person, running in the background.
+
+    The work is a hundred-odd HTTP calls to three registers and it takes the best part of a
+    minute, which is too long to hold a request open and far too long to hold a browser on a
+    spinner with nothing to read. So the button starts a job and the page polls this route's GET
+    twin for the count and the case it is on.
+    """
+    user = _user()
+    auth.require_csrf()
+    try:
+        rows = cases_for(user["id"])
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(exc)[:160]}), 500
+    started = observation_refresh.start(user["id"], rows)
+    st = observation_refresh.state(user["id"])
+    if not started:
+        return jsonify({"ok": True, "already_running": True, "state": st})
+    return jsonify({"ok": True, "already_running": False, "state": st})
+
+
+@bp.route("/api/observations/refresh", methods=["GET"])
+def api_observation_refresh_state():
+    user = _user()
+    return jsonify({"ok": True, "state": observation_refresh.state(user["id"])})
 
 
 @bp.route("/observations/package/<path:name>")
