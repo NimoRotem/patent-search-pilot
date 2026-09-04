@@ -62,6 +62,10 @@ OPPOSITION_MONTHS = 9
 #  the EPO; only whether anyone reads it changes.
 EPC_115 = "Art. 115 EPC, Rule 114 EPC"
 
+#  An abandoned, withdrawn or finally refused application has no post-grant life at
+#  all. Saying "not yet" about it is a promise of a window that will never open.
+NEVER_GRANTED = "The application never granted, so there is no patent to challenge."
+
 
 def _date(value):
     """Anything the docket stores as a date -> date, or None. Accepts YYYY-MM-DD and YYYYMMDD."""
@@ -188,9 +192,11 @@ def _epo(row, today):
 
     out.append(_entry(
         "post_grant_passive", "Third-party observations", EPC_115, "€0",
-        status=("open" if (granted and opp_pending) else "conditional" if granted else "not_yet"),
+        status=("na" if dead else "open" if (granted and opp_pending)
+                else "conditional" if granted else "not_yet"),
         weak=bool(granted and not opp_pending),
-        note=("Worth filing only while an opposition, a limitation or a revocation request is "
+        note=(NEVER_GRANTED if dead else
+              "Worth filing only while an opposition, a limitation or a revocation request is "
               "already pending, because that is the only proceeding left for the observations to "
               "enter. On a granted patent with nothing pending they are filed and not read.")))
 
@@ -225,9 +231,11 @@ def _epo(row, today):
 
     out.append(_entry(
         "post_grant_later", "Intervention of the assumed infringer", "Art. 105 EPC, Rule 89 EPC", "€880",
-        status="open" if (granted and opp_pending) else "conditional" if granted else "not_yet",
+        status=("na" if dead else "open" if (granted and opp_pending)
+                else "conditional" if granted else "not_yet"),
         weak=bool(granted and not opp_pending),
-        note=("Only available while somebody else's opposition is still pending, and only to a "
+        note=(NEVER_GRANTED if dead else
+              "Only available while somebody else's opposition is still pending, and only to a "
               "party against whom the proprietor has started infringement proceedings, or who has "
               "started a declaration of non-infringement action. Three months from the date those "
               "proceedings were instituted. It is the way back in after the nine months, and it "
@@ -364,10 +372,11 @@ def _dpma(row, today):
 
     out.append(_entry(
         "post_grant_later", "Beitritt to a pending opposition", "§ 59(2) PatG", "€200",
-        status="open" if (granted and row.get("opposition_pending")) else
-               "conditional" if granted else "not_yet",
+        status=("na" if dead else "open" if (granted and row.get("opposition_pending"))
+                else "conditional" if granted else "not_yet"),
         weak=bool(granted and not row.get("opposition_pending")),
-        note=("Only while somebody else's opposition is still pending, and only for a party sued "
+        note=(NEVER_GRANTED if dead else
+              "Only while somebody else's opposition is still pending, and only for a party sued "
               "for infringement or who has been asked to stop. Three months from service. It is "
               "the German mirror of Art. 105 and it depends on a fact the register does not show "
               "on this page.")))
@@ -496,20 +505,24 @@ def _uspto(row, today):
                             "US equivalent of § 44(2) PatG.")))
 
     out.append(_entry(
-        "post_grant_passive", "Citation of prior art in a patent file", "35 U.S.C. 301, 37 CFR 1.501",
-        "$0", status="open" if granted else "not_yet",
-        note=("Free, any time the patent is enforceable, and it can be filed anonymously. The art "
+        "post_grant_passive", "Citation of prior art in a patent file",
+        "35 U.S.C. 301, 37 CFR 1.501",
+        "$0", status="na" if dead else "open" if granted else "not_yet",
+        note=(NEVER_GRANTED if dead else
+              "Free, any time the patent is enforceable, and it can be filed anonymously. The art "
               "goes into the patent's own file and is in front of the examiner in any later "
               "reexamination or reissue. It institutes nothing on its own, which is exactly why "
               "it costs nothing.")))
 
     if not granted:
-        out.append(_entry("post_grant_now", "Post-grant review", "35 U.S.C. 321, 37 CFR 42.200", "$25,000 + $34,375",
-                          status="not_yet",
-                          note="Opens on issue and runs nine months from it."))
+        out.append(_entry("post_grant_now", "Post-grant review", "35 U.S.C. 321, 37 CFR 42.200",
+                          "$25,000 + $34,375", status="na" if dead else "not_yet",
+                          note=(NEVER_GRANTED if dead
+                                else "Opens on issue and runs nine months from it.")))
         out.append(_entry("post_grant_later", "Inter partes review", "35 U.S.C. 311, 37 CFR 42.100",
-                          "$23,750 + $28,125", status="not_yet",
-                          note="Opens nine months after issue, or when a PGR ends."))
+                          "$23,750 + $28,125", status="na" if dead else "not_yet",
+                          note=(NEVER_GRANTED if dead
+                                else "Opens nine months after issue, or when a PGR ends.")))
     else:
         pgr_close = plus_months(grant_date, OPPOSITION_MONTHS) if grant_date else None
         aia = (priority >= AIA_FIRST_TO_FILE) if priority else None

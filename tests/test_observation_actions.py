@@ -126,6 +126,20 @@ def test_a_pre_aia_patent_is_not_eligible_for_post_grant_review():
     assert got["post_grant_later"]["status"] == "open"
 
 
+@pytest.mark.parametrize("office,row", [
+    ("USPTO", {"posture": "lapsed", "register_status": "Abandoned  --  Failure to Respond"}),
+    ("EPO", {"posture": "lapsed"}),
+    ("DPMA", {"posture": "lapsed"}),
+])
+def test_a_dead_application_is_never_promised_a_future_window(office, row):
+    """"Not yet" on an abandoned or finally refused application promises a window that will never
+    open. Nothing about a case that never granted is pending."""
+    got = stages(acts.actions_for(dict(row, office=office), TODAY))
+    for stage in ("post_grant_passive", "post_grant_now", "post_grant_later"):
+        assert got[stage]["status"] in ("na", "closed"), (office, stage, got[stage]["status"])
+    assert acts.headline(dict(row, office=office), TODAY) is None
+
+
 def test_the_us_has_no_way_to_force_examination():
     got = stages(acts.actions_for({"office": "USPTO", "posture": "pending"}, TODAY))
     assert got["force_exam"]["status"] == "na"
