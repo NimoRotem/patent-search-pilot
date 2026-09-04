@@ -339,18 +339,20 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
   <section class="obsec">
     <h2>Decisions counsel is waiting on</h2>
     <p class="lede">Each of these blocks a filing. A question that goes unanswered past its date is
-      not neutral: it spends the window.</p>
+      not neutral: it spends the window. The case each one is holding open is named beside it,
+      with what is left of that window, and the soonest of those sorts to the top.</p>
     <div class="obtablewrap">
     <table class="obtable" id="dectable">
       <caption class="vh">Open decisions. Choose a row to open the full question.</caption>
       <colgroup>
-        <col style="width:150px"><col><col style="width:110px">
-        <col style="width:150px"><col style="width:78px">
+        <col style="width:150px"><col><col style="width:170px"><col style="width:110px">
+        <col style="width:130px"><col style="width:78px">
       </colgroup>
       <thead>
         <tr>
           <th class="nosort" scope="col">Status</th>
           <th class="nosort" scope="col">Question</th>
+          <th class="nosort" scope="col">What it is holding open</th>
           <th class="nosort" scope="col">Asked</th>
           <th class="nosort" scope="col">Asked by</th>
           <th class="nosort" scope="col"><span class="vh">Detail</span></th>
@@ -361,6 +363,18 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
         <tr data-kind="decision" data-idx="{{ loop.index0 }}" tabindex="0">
           <td><span class="pill {{ 'no' if d.status in ('open_and_dated', 'unanswered') else 'neutral' }}">{{ d.status | replace('_', ' ') }}</span></td>
           <td class="ttl" title="{{ d.question }}">{{ d.question }}</td>
+          {#  The cost of not answering, which the table used not to show at all. #}
+          <td class="dl">
+            {% if d.blocks %}
+              {% for b in d.blocks %}
+                <span class="pub">{{ b.publication }}</span>
+                {% if b.days_left is not none and b.days_left >= 0 %}
+                  <span class="days {{ 'urgent' if b.days_left <= 14 else ('closing' if b.days_left <= 30 else '') }}">{{ b.days_left }}d</span>
+                {% elif b.days_left is not none %}<span class="days lapsed">closed</span>
+                {% else %}<span class="dldate">no deadline</span>{% endif %}<br>
+              {% endfor %}
+            {% else %}<span class="office">no case named</span>{% endif %}
+          </td>
           <td class="dl">{{ d.asked_on }}</td>
           <td class="small">{{ d.asked_by or '&ndash;' }}</td>
           <td class="tdact"><button class="detailbtn" type="button" aria-label="Full detail">Details</button></td>
@@ -1170,6 +1184,13 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
       field('Asked', d.asked_on);
       field('Asked by', d.asked_by);
       field('Answered', d.answered_on);
+      if (d.blocks && d.blocks.length){
+        field('Holding open', d.blocks.map(function(b){
+          return b.publication + (b.deadline ? ', closes ' + b.deadline : '')
+               + (b.days_left !== null && b.days_left !== undefined
+                  ? ' (' + (b.days_left < 0 ? 'closed' : b.days_left + ' days left') + ')' : '');
+        }).join('  ·  '));
+      }
       block('Why it matters', d.why_it_matters);
       block('Answer', d.answer);
     }

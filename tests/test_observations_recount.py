@@ -97,3 +97,55 @@ def test_the_register_history_reaches_the_page():
     """It was being fetched from INPADOC and stored on 61 German rows and shown to nobody, so
     every German deadline on the page was an assertion with its evidence left in the database."""
     assert "register_events" in observations.DETAIL_FIELDS
+
+
+# ---------------------------------------------------------------------------------------------
+# a decision is a window being held open by silence
+# ---------------------------------------------------------------------------------------------
+
+CASES = [
+    {"publication": "US20260070232A1", "title": "Magnetic gripper", "deadline": "2026-09-12",
+     "days_left": 8},
+    {"publication": "EP3995267A1", "granted_as": "EP3995267B1", "title": "Gripping device",
+     "deadline": "2026-09-03", "days_left": -1},
+    {"publication": "DE102020129586B4", "title": "Verschleisserkennung",
+     "deadline": "2026-09-04", "days_left": 0},
+]
+
+
+def test_a_decision_is_linked_to_the_case_it_holds_open():
+    """The question names the case in prose, in the office's own spacing, and that is the only
+    link there is: "US 2026/0070232", "DE 10 2020 129 586 B4"."""
+    dec = [{"id": "a", "status": "open_and_dated", "asked_on": "2026-08-25",
+            "question": "Authorise filing the US 2026/0070232 preissuance submission."}]
+    observations.link_decisions(dec, CASES, TODAY)
+    assert [b["publication"] for b in dec[0]["blocks"]] == ["US20260070232A1"]
+    assert dec[0]["soonest"] == 8
+
+
+def test_a_question_naming_several_cases_takes_the_soonest_of_them():
+    dec = [{"id": "b", "status": "unanswered", "asked_on": "2026-07-30",
+            "question": "Whether to oppose EP 3 995 267 B1 (closes 3 Sep) and "
+                        "DE 10 2020 129 586 B4 (4 Sep)."}]
+    observations.link_decisions(dec, CASES, TODAY)
+    assert {b["publication"] for b in dec[0]["blocks"]} == {"EP3995267B1", "DE102020129586B4"}
+    #  The lapsed one does not count; the one closing today does.
+    assert dec[0]["soonest"] == 0
+
+
+def test_an_unanswered_question_that_is_spending_a_window_sorts_above_an_older_one():
+    """The table listed these by the date they were asked, which says nothing about what it costs
+    to keep not answering."""
+    dec = [{"id": "old", "status": "unanswered", "asked_on": "2026-07-18",
+            "question": "Whether to pursue the four EU design registrations."},
+           {"id": "urgent", "status": "unanswered", "asked_on": "2026-08-25",
+            "question": "Authorise filing the US 2026/0070232 preissuance submission."}]
+    observations.link_decisions(dec, CASES, TODAY)
+    assert [d["id"] for d in dec] == ["urgent", "old"]
+
+
+def test_a_question_naming_no_case_is_not_invented_one():
+    dec = [{"id": "c", "status": "unanswered", "asked_on": "2026-07-30",
+            "question": "Which European counsel should run any oppositions."}]
+    observations.link_decisions(dec, CASES, TODAY)
+    assert dec[0]["blocks"] == [] and dec[0]["soonest"] is None

@@ -330,6 +330,60 @@ def attribute_filings(cases, filings):
     return cases
 
 
+#  A publication number as a person writes it in a sentence: "US 2026/0070232",
+#  "DE 10 2020 129 586 B4", "EP 3 995 267 B1". Two letters, then digits with any amount of
+#  grouping, then an optional kind code.
+_PUB_IN_PROSE = re.compile(r"\b([A-Z]{2})[\s]?((?:\d[\s/,.]?){6,20})([AB]\d?)?\b")
+
+
+def _pub_key(text):
+    """A publication number reduced to what two spellings of it have in common: no punctuation,
+    no kind code. `DE 10 2020 129 586 B4` and `DE102020129586B4` are the same patent."""
+    key = re.sub(r"[^A-Z0-9]", "", str(text or "").upper())
+    return re.sub(r"[AB]\d?$", "", key)
+
+
+def link_decisions(decisions, cases, today=None):
+    """Attach the cases each open question blocks, and the soonest window it is spending.
+
+    A decision here is not an administrative item, it is a window being held open by silence.
+    The table listed them by the date they were asked, which says nothing about what it costs to
+    keep not answering: the question about US 2026/0070232 was asked on 25 August and the window
+    it blocks closes on 12 September, and the page showed the first date and not the second.
+
+    The link is made from the question's own text, because that is where the case numbers are.
+    """
+    today = today or datetime.date.today()
+    by_key = {}
+    for c in cases:
+        for field in ("publication", "granted_as"):
+            key = _pub_key(c.get(field))
+            if key:
+                by_key.setdefault(key, c)
+    for d in decisions:
+        blocks, seen = [], set()
+        for cc, digits, kind in _PUB_IN_PROSE.findall(str(d.get("question") or "")
+                                                      + " " + str(d.get("why_it_matters") or "")):
+            case = by_key.get(_pub_key(cc + digits + (kind or "")))
+            if not case or case["publication"] in seen:
+                continue
+            seen.add(case["publication"])
+            blocks.append({"publication": case.get("granted_as") or case["publication"],
+                           "title": case.get("title"),
+                           "deadline": case.get("deadline"),
+                           "days_left": case.get("days_left")})
+        d["blocks"] = blocks
+        live = [b["days_left"] for b in blocks if b["days_left"] is not None and b["days_left"] >= 0]
+        d["soonest"] = min(live) if live else None
+    #  An unanswered question that is spending a window outranks an older one that is not.
+    rank = {"open_and_dated": 0, "unanswered": 1, "declined": 2, "answered_in_principle": 3,
+            "moot_for_now": 4}
+    decisions.sort(key=lambda d: (rank.get(d.get("status"), 9),
+                                  d["soonest"] if d.get("soonest") is not None else 10 ** 6,
+                                  d.get("asked_on") or ""))
+    return decisions
+
+
 def cases_for(user_id, today=None):
     ensure_schema()
     today = today or datetime.date.today()
@@ -439,6 +493,7 @@ def observations_page():
     #  Which of the papers on each office file we can prove are ours. Needs both lists, so it
     #  happens here rather than in `cases_for`, which only ever sees one of them.
     attribute_filings(cases, filings)
+    link_decisions(decisions, cases)
     have = set(os.listdir(PACKAGE_DIR)) if os.path.isdir(PACKAGE_DIR) else set()
     for f in filings:
         f["package_available"] = bool(f.get("package")) and f["package"] in have
