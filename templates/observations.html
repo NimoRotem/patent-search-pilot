@@ -1214,6 +1214,15 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     }
     var r = st.result || {};
     fill.style.width = '100%';
+    //  An empty docket is not a failure, and it is not "0 cases re-read", which tells a new
+    //  account nothing at all about why the button appeared to do nothing.
+    if (r.cases === 0){
+      bar.hidden = true;
+      say('<b>Nothing to refresh.</b> This docket has no cases on it yet, so there was no '
+          + 'applicant to search for and no register to ask. Add a case and the button will '
+          + 'follow it from then on.');
+      return;
+    }
     var parts = ['<b>Done.</b> ' + (r.updated || 0) + ' case'
                  + ((r.updated === 1) ? '' : 's') + ' re-read'
                  + (r.new ? ', ' + r.new + ' new on the docket' : '')

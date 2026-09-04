@@ -1148,7 +1148,8 @@ def start(user_id, rows):
                 user_id, done=d, total=t, label=label))
             counts = apply_to_user(user_id, res)
             _set(user_id, running=False, label="done", done=len(rows) + 2,
-                 result={"updated": counts["updated"], "new": counts["new"],
+                 result={"cases": len(rows),
+                         "updated": counts["updated"], "new": counts["new"],
                          "errors": res["errors"][:20], "changes": res["changes"][:60],
                          "as_of": res["as_of"]})
         except Exception as exc:

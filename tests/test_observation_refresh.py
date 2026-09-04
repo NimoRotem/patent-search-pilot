@@ -12,6 +12,7 @@ that cost the most to learn are pinned deliberately:
 """
 import datetime
 import json
+import time
 
 import pytest
 
@@ -542,3 +543,19 @@ def test_a_pct_publication_gets_its_28_month_window(monkeypatch):
     assert got["deadline"] == "2026-10-20"
     assert got["deadline_kind"] == "hard"
     assert got["posture"] == "pending"
+
+
+def test_an_empty_docket_reports_why_rather_than_zero(monkeypatch):
+    """"0 cases re-read" tells a new account nothing about why the button did nothing."""
+    applied = {}
+    monkeypatch.setattr(refresh, "apply_to_user",
+                        lambda uid, res: applied.update(res) or {"updated": 0, "new": 0})
+    assert refresh.start(4242, []) is True
+    for _ in range(50):
+        if not refresh.state(4242).get("running"):
+            break
+        time.sleep(0.05)
+    st = refresh.state(4242)
+    assert st["error"] == ""
+    assert st["result"]["cases"] == 0
+    assert applied["new"] == [] and applied["patches"] == {}
