@@ -646,6 +646,15 @@ def headline(row, today=None):
                     key=lambda a: a["opens"] or "9999")
     if coming:
         return _headline_of(coming[0], "not_yet", len(coming))
+    #  LAST, the ones nobody would reach for, because on one kind of case they are all there is.
+    #  A European patent whose opposition window shut yesterday is not finished with: an Art. 105
+    #  intervention is still open to anyone the proprietor sues, and national revocation runs on.
+    #  Reporting "nothing, ever again" about a patent in force is the worst thing this page could
+    #  say, and it said it. Weak entries lose to every other tier, so they cannot crowd out a real
+    #  answer, but they beat silence.
+    weak = [a for a in acts if a["status"] == "conditional"]
+    if weak:
+        return _headline_of(weak[0], "conditional", len(weak))
     return None
 
 

@@ -302,9 +302,11 @@ def test_a_formally_available_instrument_nobody_would_use_is_not_the_headline():
     assert head["status"] not in ("open", "closing", "conditional")
 
 
-def test_post_grant_observations_with_nothing_pending_are_not_the_headline():
+def test_post_grant_observations_with_nothing_pending_are_not_offered_as_open():
+    """They stay in the table and can still be the last thing a granted patent has to say, but
+    "check first" and "open" are different words and only one of them means go."""
     row = {"office": "EPO", "posture": "granted", "grant_published": "2024-01-01"}
-    assert acts.headline(row, TODAY) is None
+    assert acts.headline(row, TODAY)["status"] == "conditional"
     row["opposition_pending"] = True
     assert acts.headline(row, TODAY)["status"] == "open"
 
@@ -373,3 +375,23 @@ def test_only_a_case_that_can_never_be_touched_again_has_no_headline():
                 {"office": "DPMA", "posture": "lapsed"},
                 {"office": "EPO", "posture": "lapsed"}):
         assert acts.headline(row, TODAY) is None
+
+
+def test_a_patent_in_force_is_never_told_it_is_finished():
+    """EP 3 995 267 B1: granted, and its opposition window closed yesterday. The page read
+    "Nothing, ever again" about a patent that is in force, an Art. 105 intervention away from
+    being attackable and still open to national revocation. Nothing at all is reserved for a case
+    that never granted."""
+    alive = {"office": "EPO", "posture": "granted", "grant_published": "2025-12-03"}
+    head = acts.headline(alive, TODAY)
+    assert head is not None
+    assert head["status"] == "conditional"
+    assert acts.headline({"office": "EPO", "posture": "lapsed"}, TODAY) is None
+
+
+def test_a_weak_option_never_outranks_a_real_one():
+    """The whole reason weak exists. Four dead US applications carried "Protest"; the tier that
+    now answers them is Sec. 301 opening on grant, and the weak protest must stay below it."""
+    row = {"office": "USPTO", "posture": "pending", "pubDate": "2024-04-04",
+           "six_months": "2024-10-04", "first_rejection": "2025-05-27"}
+    assert acts.headline(row, TODAY)["status"] == "not_yet"
