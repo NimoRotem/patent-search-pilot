@@ -98,8 +98,16 @@ def days_until(when, today):
 
 
 def _entry(stage, instrument, statute, fee, *, status, deadline=None, today=None,
-           opens=None, note="", url=""):
-    """One cell of the table, ready to render."""
+           opens=None, note="", url="", weak=False):
+    """One cell of the table, ready to render.
+
+    `weak` marks an instrument that formally exists and that nobody would actually use here: a
+    1.291 protest on an application that has already published needs the applicant's written
+    consent, and post-grant Art. 115 observations with no proceeding pending are filed and never
+    read. They belong in the table, because the table is the answer to "is there anything at
+    all". They must never be the one line the docket row carries, which was reporting "Protest"
+    beside four dead US applications as though something could be done about them.
+    """
     left = days_until(deadline, today) if (deadline and today) else None
     if status == "open" and left is not None and 0 <= left <= 30:
         status = "closing"
@@ -115,6 +123,7 @@ def _entry(stage, instrument, statute, fee, *, status, deadline=None, today=None
         "days_left": left,
         "note": note,
         "url": url,
+        "weak": bool(weak),
     }
 
 
@@ -180,6 +189,7 @@ def _epo(row, today):
     out.append(_entry(
         "post_grant_passive", "Third-party observations", EPC_115, "€0",
         status=("open" if (granted and opp_pending) else "conditional" if granted else "not_yet"),
+        weak=bool(granted and not opp_pending),
         note=("Worth filing only while an opposition, a limitation or a revocation request is "
               "already pending, because that is the only proceeding left for the observations to "
               "enter. On a granted patent with nothing pending they are filed and not read.")))
@@ -216,6 +226,7 @@ def _epo(row, today):
     out.append(_entry(
         "post_grant_later", "Intervention of the assumed infringer", "Art. 105 EPC, Rule 89 EPC", "€880",
         status="open" if (granted and opp_pending) else "conditional" if granted else "not_yet",
+        weak=bool(granted and not opp_pending),
         note=("Only available while somebody else's opposition is still pending, and only to a "
               "party against whom the proprietor has started infringement proceedings, or who has "
               "started a declaration of non-infringement action. Three months from the date those "
@@ -288,6 +299,9 @@ def _dpma(row, today):
         limit = datetime.date(filing.year + DE_EXAM_REQUEST_YEARS, filing.month,
                               filing.day) if filing else None
         if exam_requested is True:
+            #  No deadline on this branch. A seven-year limit printed beside "closed" reads as a
+            #  contradiction, and it is: the seven years have nothing to do with why this is spent.
+            limit = None
             status, note = "closed", (
                 "A request for examination is already on the register, so there is nothing to "
                 "force. The case is in examination and § 43(3) is the route.")
@@ -352,6 +366,7 @@ def _dpma(row, today):
         "post_grant_later", "Beitritt to a pending opposition", "§ 59(2) PatG", "€200",
         status="open" if (granted and row.get("opposition_pending")) else
                "conditional" if granted else "not_yet",
+        weak=bool(granted and not row.get("opposition_pending")),
         note=("Only while somebody else's opposition is still pending, and only for a party sued "
               "for infringement or who has been asked to stop. Three months from service. It is "
               "the German mirror of Art. 105 and it depends on a fact the register does not show "
@@ -420,9 +435,10 @@ def _uspto(row, today):
                         % six.isoformat())
             else:
                 note = ("No rejection has issued yet. Because the rule closes on the LATER of the "
-                        "six-month date and the first rejection, this stays open past %s, but a "
-                        "notice of allowance would shut it the day it is mailed and without "
-                        "warning. Treat the date shown as the working deadline, not a guarantee."
+                        "six-month date and the first rejection, it will stay open past %s until "
+                        "a rejection issues. A notice of allowance would shut it the day it is "
+                        "mailed, without warning. Treat the date shown as the working deadline, "
+                        "not a guarantee."
                         % (six.isoformat() if six else "the six-month date"))
             if quayle:
                 note = ("An Ex parte Quayle action issued on %s: prosecution on the merits is "
@@ -443,10 +459,9 @@ def _uspto(row, today):
         out.append(_entry(
             "pre_grant_passive", "Preissuance submission", "35 U.S.C. 122(e), 37 CFR 1.290",
             "$0 / $195 / $78", status=status, deadline=tps_close, today=today,
-            note=(note + " Fee: nil for a first submission of three documents or fewer by the same "
-                         "party, otherwise $195 per ten documents, $78 at the small-entity rate. "
-                         "Each document needs a concise description of relevance or the whole "
-                         "submission is non-compliant and is simply discarded.")))
+            note=(note + " Every document needs a concise description of relevance, and that "
+                         "description may not argue patentability; without it the whole "
+                         "submission is non-compliant and is discarded rather than returned.")))
 
     #  1.291 is the older, wider instrument and it closes EARLIER than 1.290, which is the part
     #  that surprises people: after publication it needs the applicant's written consent, so in
@@ -474,7 +489,7 @@ def _uspto(row, today):
         out.append(_entry(
             "pre_grant_protest", "Protest", "37 CFR 1.291", "$0 first protest",
             status="open" if (pub and not published) else "conditional",
-            deadline=protest_close, today=today, note=note))
+            weak=published, deadline=protest_close, today=today, note=note))
 
     out.append(_entry("force_exam", "No third-party instrument", "-", "-", status="na",
                       note=("Every US application is examined. There is nothing to force, and no "
@@ -593,7 +608,7 @@ def headline(row, today=None):
     acts = actions_for(row, today)
     live = [a for a in acts if a["status"] in ("open", "closing")]
     if not live:
-        conditional = [a for a in acts if a["status"] == "conditional"]
+        conditional = [a for a in acts if a["status"] == "conditional" and not a.get("weak")]
         if conditional:
             a = conditional[0]
             return {"label": a["instrument"], "statute": a["statute"], "fee": a["fee"],

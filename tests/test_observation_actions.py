@@ -194,6 +194,7 @@ def test_post_grant_art_115_is_only_worth_it_with_a_proceeding_pending():
     row = {"office": "EPO", "posture": "granted", "grant_published": "2024-01-01"}
     a = stages(acts.actions_for(row, TODAY))["post_grant_passive"]
     assert a["status"] == "conditional"
+    assert a["weak"] is True
     assert "opposition" in a["note"]
 
 
@@ -263,9 +264,32 @@ def test_the_headline_is_the_soonest_thing_that_can_be_filed_today():
 
 
 def test_a_case_with_nothing_open_falls_back_to_what_needs_checking():
-    row = {"office": "EPO", "posture": "granted", "grant_published": "2024-01-01"}
+    """Grant is already scheduled, so the free filing is probably too late, and examination has
+    been requested, so there is nothing to force. Nothing is open and the honest answer is the
+    thing that has to be checked, not silence."""
+    row = {"office": "DPMA", "posture": "pending", "scheduled_grant": "2026-10-01",
+           "exam_requested": True, "filing_date": "2023-06-01"}
     head = acts.headline(row, TODAY)
     assert head["status"] == "conditional"
+    assert head["label"] == "Einwendungen Dritter"
+
+
+def test_a_formally_available_instrument_nobody_would_use_is_not_the_headline():
+    """Four US applications past their 1.290 window carried "Protest" as their one-line answer.
+    A 1.291 protest after publication needs the applicant's written consent, so offering it as
+    the thing to do is worse than saying nothing."""
+    row = {"office": "USPTO", "posture": "pending", "pubDate": "2024-04-04",
+           "six_months": "2024-10-04", "first_rejection": "2025-05-27"}
+    protest = stages(acts.actions_for(row, TODAY))["pre_grant_protest"]
+    assert protest["status"] == "conditional" and protest["weak"] is True
+    assert acts.headline(row, TODAY) is None
+
+
+def test_post_grant_observations_with_nothing_pending_are_not_the_headline():
+    row = {"office": "EPO", "posture": "granted", "grant_published": "2024-01-01"}
+    assert acts.headline(row, TODAY) is None
+    row["opposition_pending"] = True
+    assert acts.headline(row, TODAY)["status"] == "open"
 
 
 def test_a_dead_case_has_no_headline_at_all():

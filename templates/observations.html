@@ -470,6 +470,14 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     </div>
     <div class="obmbody">
       <div class="obmwhen" id="obmWhen"></div>
+      {#  WHAT WE HAVE ALREADY DONE COMES FIRST, on the rows that have any. "Did we already file
+          on this one" has to be answered before "what could we file", or the second question is
+          being asked in ignorance. It is `hidden` on almost every row, so the instrument table
+          is the first thing on the page in the ordinary case. #}
+      <div class="obmact" id="obmSubWrap" hidden>
+        <h4>What we have already put on this file</h4>
+        <ul class="obsubs" id="obmSubs"></ul>
+      </div>
       {#  THE INSTRUMENT TABLE. Six stages, evaluated for this office and this posture today. It
           sits above the bibliographic grid because it is the reason anybody opened the row. #}
       <div class="obmact" id="obmOptWrap" hidden>
@@ -479,10 +487,6 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
             <th scope="col">Window</th><th scope="col">Why</th></tr></thead>
           <tbody></tbody>
         </table>
-      </div>
-      <div class="obmact" id="obmSubWrap" hidden>
-        <h4>What we have already put on this file</h4>
-        <ul class="obsubs" id="obmSubs"></ul>
       </div>
       <dl class="obmgrid" id="obmGrid"></dl>
       <div class="obmact" id="obmActWrap" hidden>
@@ -704,6 +708,10 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
 
   var ACT_WORD = {open: 'Open', closing: 'Closing', conditional: 'Check first',
                   not_yet: 'Not yet', closed: 'Closed', na: 'Not available'};
+  //  `deadline_kind` is a token the sweep uses to decide things, not a phrase. It was being
+  //  printed at a reader as "open_ended".
+  var KIND = {hard: 'a hard date', practical: 'an estimate, not a register date',
+              open_ended: 'no fixed close until the examiner acts', closed: 'already shut'};
 
   //  The window column says the same thing three ways depending on what is known: a date with a
   //  countdown, a date it opens on, or nothing at all. Deciding that here keeps the table cells
@@ -806,7 +814,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
       : n < 0 ? ('Closed ' + d.deadline + ', ' + (-n) + ' days ago.')
       : n === 0 ? ('Closes today, ' + d.deadline + '.')
       : (n + ' day' + (n === 1 ? '' : 's') + ' left  ·  ' + d.deadline
-         + (d.deadline_kind ? '  ·  ' + d.deadline_kind : ''));
+         + (KIND[d.deadline_kind] ? '  ·  ' + KIND[d.deadline_kind] : ''));
 
     paintOptions(d);
     paintSubmissions(d);
