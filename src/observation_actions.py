@@ -272,8 +272,9 @@ def _dpma(row, today):
     else:
         soon = scheduled or decision
         note = ("No deadline and no fee. The objections go on the file and the examining section "
-                "must take them into account, but a third party acquires no party status and is "
-                "not told what happened.")
+                "must take them into account, but a third party acquires no party status, is not "
+                "told what happened, and leaves no entry on the register: the DPMA publishes no "
+                "trace of an Einwendung, so you cannot see anyone else's either.")
         if soon:
             note = ("Grant is already %s for %s, so the examining section has finished. An "
                     "Einwendung filed now would very likely never be read. %s"

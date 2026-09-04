@@ -864,10 +864,32 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     });
   }
 
+  //  WHAT EACH OFFICE WILL AND WILL NOT SHOW YOU. The USPTO publishes a third-party submission
+  //  in the file wrapper and the EPO records observations as a procedural step, so an empty list
+  //  there is a real "nothing". DPMAregister publishes neither: a Sec. 43(3) Einwendung confers
+  //  no party status and never appears, so an empty list on a German case means "cannot see",
+  //  and leaving the section hidden would let a reader read it as "nothing has been filed".
+  var BLIND = {
+    'DPMA': 'The German register does not publish third-party observations at all, ours or '
+          + 'anyone else\'s. An Einwendung under § 43(3) confers no party status and leaves no '
+          + 'entry, so nothing can be shown here and nothing should be read into that.',
+    'WIPO (PCT)': 'Observations filed through ePCT appear on PATENTSCOPE rather than in any '
+          + 'register this page reads, so nothing can be shown here.'
+  };
+
   function paintSubmissions(d){
     mSubs.textContent = '';
     var subs = d.on_file || d.our_submissions || [];
-    mSubWrap.hidden = !subs.length;
+    var blind = BLIND[d.office];
+    mSubWrap.hidden = !subs.length && !blind;
+    if (!subs.length && blind){
+      var li = document.createElement('li');
+      var note = document.createElement('span');
+      note.className = 'ev'; note.textContent = blind;
+      li.appendChild(note);
+      mSubs.appendChild(li);
+      return;
+    }
     subs.forEach(function(s){
       var li = document.createElement('li');
       var head = document.createElement('div');
