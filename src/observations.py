@@ -79,6 +79,11 @@ DETAIL_FIELDS = (
     "posture", "grant_published", "opposition_deadline", "scheduled_grant", "decision_on",
     "closing_note", "closing_soon", "allowance", "quayle", "exam_requested", "opposition_pending",
     "our_submissions", "file_events", "on_file", "refreshed_at", "refresh_source", "actions",
+    #  The German register's own event list. It is the evidence behind every German posture and
+    #  deadline on this page, it was being fetched and stored on 61 rows, and none of it reached
+    #  a reader: "granted 2026-08-20" is an assertion until you can see the R018 and the B4 it
+    #  was read off.
+    "register_events",
 )
 #  The states a person moves a row through by hand. `open` is the absence of a decision, which is
 #  why it is the default and why it is not the same thing as `watch`: one has not been looked at,

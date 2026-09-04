@@ -79,6 +79,14 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .obsubs li{padding:6px 0;border-top:1px solid var(--line);line-height:1.55}
 .obsubs li:first-child{border-top:0}
 .obsubs .ev{color:var(--faint);font-size:11px;display:block}
+.obhist{list-style:none;margin:5px 0 0;padding:0;font-size:12.5px}
+.obhist li{display:flex;gap:12px;padding:4px 0;border-top:1px solid var(--line);
+  line-height:1.5}
+.obhist li:first-child{border-top:0}
+.obhist .when{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;
+  min-width:88px}
+.obhist .code{color:var(--faint);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:11px;min-width:44px}
 
 section.obsec{margin-top:34px}
 section.obsec>h2{font-size:17px;margin-bottom:4px}
@@ -516,6 +524,12 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
         <h4>Next action</h4>
         <div id="obmAct"></div>
       </div>
+      {#  Where the German dates came from. Last, because it is evidence rather than an answer,
+          but present, because the answer above is otherwise something to take on trust. #}
+      <div class="obmact" id="obmHistWrap" hidden>
+        <h4>What the register records</h4>
+        <ul class="obhist" id="obmHist"></ul>
+      </div>
     </div>
     <div class="obmfoot">
       <div class="fld">
@@ -764,7 +778,9 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
       mOptWrap = document.getElementById('obmOptWrap'),
       mOpts = document.getElementById('obmOpts').tBodies[0],
       mSubWrap = document.getElementById('obmSubWrap'),
-      mSubs = document.getElementById('obmSubs');
+      mSubs = document.getElementById('obmSubs'),
+      mHistWrap = document.getElementById('obmHistWrap'),
+      mHist = document.getElementById('obmHist');
 
   var ACT_WORD = {open: 'Open', closing: 'Closing', conditional: 'Check first',
                   not_yet: 'Not yet', closed: 'Closed', na: 'Not available'};
@@ -785,6 +801,26 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     if (a.opens) return 'opens ' + a.opens;
     if (a.status === 'open' || a.status === 'conditional') return 'no deadline';
     return 'n/a';
+  }
+
+  function paintHistory(d){
+    mHist.textContent = '';
+    //  Newest first, because the last event is the one that decided the posture.
+    var evs = (d.register_events || []).slice().reverse();
+    mHistWrap.hidden = !evs.length;
+    evs.forEach(function(e){
+      var li = document.createElement('li');
+      var when = document.createElement('span');
+      when.className = 'when'; when.textContent = e.date || 'undated';
+      var code = document.createElement('span');
+      code.className = 'code'; code.textContent = e.code || '';
+      var what = document.createElement('span');
+      what.textContent = (e.desc || '').toLowerCase().replace(/^./, function(c){
+        return c.toUpperCase();
+      });
+      li.appendChild(when); li.appendChild(code); li.appendChild(what);
+      mHist.appendChild(li);
+    });
   }
 
   function paintOptions(d){
@@ -890,6 +926,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
 
     paintOptions(d);
     paintSubmissions(d);
+    paintHistory(d);
 
     mGrid.textContent = '';
     addField('Route', d.baseline_route_label);
