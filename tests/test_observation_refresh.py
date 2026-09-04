@@ -11,6 +11,7 @@ that cost the most to learn are pinned deliberately:
     read off the legal family and never off a search.
 """
 import datetime
+import json
 
 import pytest
 
@@ -506,3 +507,38 @@ def test_discovery_searches_the_distinctive_word_at_both_offices(monkeypatch):
     refresh.discover_ops(_dt.date(2025, 9, 4), ["j schmalz", "schmalz flexible gripping"])
     assert len(seen) == 1                      # one word, therefore one search, not two
     assert "schmalz" in seen[0] and "flexible" not in seen[0]
+
+
+def test_a_publication_found_by_the_search_is_checked_before_it_is_added(monkeypatch):
+    """WO 2026/164863, "Centralized protection scheme for DC power distribution system", came
+    back from `pa="schmalz"` and belongs to a different Schmalz entirely. The search is a
+    shortlist; the bibliographic record decides."""
+    stranger = json.loads(json.dumps(BIBLIO))
+    stranger["ops:world-patent-data"]["exchange-documents"]["exchange-document"][
+        "bibliographic-data"]["parties"]["applicants"]["applicant"][1][
+        "applicant-name"]["name"]["$"] = "Some Other Company Inc"
+
+    monkeypatch.setattr(refresh, "discover_ops", lambda since, names: ["EP9999999A1"])
+    monkeypatch.setattr(refresh, "discover_odp", lambda names: [])
+    monkeypatch.setattr(refresh, "biblio_for", lambda pub: {"applicant": "Some Other Company Inc"})
+    monkeypatch.setattr(refresh, "_ops_json", _ops(EP_INTENDED))
+    rows = [{"publication": "EP1A1", "office": "EPO", "applicant": "J. Schmalz GmbH"},
+            {"publication": "EP2A1", "office": "EPO", "applicant": "J. Schmalz GmbH"}]
+    out = refresh.sweep(rows, discover=True)
+    assert out["new"] == []
+    assert any("does not match this docket" in c for c in out["changes"])
+
+
+def test_a_discovered_row_is_never_labelled_with_an_applicant_it_does_not_have():
+    row = refresh._new_row("EP9999999A1", "EPO")
+    assert row["applicant"] == ""
+
+
+def test_a_pct_publication_gets_its_28_month_window(monkeypatch):
+    monkeypatch.setattr(refresh, "biblio_for", lambda pub: {
+        "title": "A vacuum gripper", "applicant": "J. Schmalz GmbH",
+        "priority_date": "2024-06-20", "pubDate": "2025-12-24"})
+    got = refresh.pct_case({"publication": "WO2026041340A1", "office": "WIPO (PCT)"})
+    assert got["deadline"] == "2026-10-20"
+    assert got["deadline_kind"] == "hard"
+    assert got["posture"] == "pending"

@@ -343,6 +343,35 @@ def biblio_for(publication):
                                            _first(did, "doc-number") or "")
     if ex.get("@family-id"):
         out["family_id"] = ex["@family-id"]
+    for ref in _aslist(_first(bib, "publication-reference", "document-id")):
+        if isinstance(ref, dict) and ref.get("@document-id-type") == "docdb":
+            out["pubDate"] = _iso(_first(ref, "date")) or out.get("pubDate")
+    priorities = []
+    for claim in _aslist(_first(bib, "priority-claims", "priority-claim")):
+        for did in _aslist(claim.get("document-id") if isinstance(claim, dict) else None):
+            if isinstance(did, dict) and did.get("@document-id-type") == "docdb":
+                when = _iso(_first(did, "date"))
+                if when:
+                    priorities.append(when)
+    if priorities:
+        out["priority_date"] = min(priorities)
+    return out
+
+
+def pct_case(row):
+    """A PCT publication. There is no register to read, but the one window it has is arithmetic:
+    28 months from the earliest priority date, which the bibliographic record carries."""
+    facts = biblio_for(row.get("publication") or "")
+    out = {k: v for k, v in facts.items() if k in ("title", "title_full", "applicant",
+                                                   "application", "family_id", "pubDate",
+                                                   "priority_date")}
+    out["posture"] = "pending"
+    out["register_status"] = "Published PCT application"
+    priority = acts._date(out.get("priority_date"))
+    close = acts.plus_months(priority, PCT_OBSERVATION_MONTHS) if priority else None
+    out["deadline"] = close.isoformat() if close else None
+    out["deadline_kind"] = "hard" if close else "none"
+    out["refresh_source"] = "EPO OPS published data"
     return out
 
 
@@ -703,6 +732,14 @@ def normalise_applicant(raw):
     return name if len(name) >= 3 else ""
 
 
+def _applicant_filter(applicants):
+    """A test for "is this publication really theirs", from the docket's own names."""
+    words = sorted({query_word(n) for n in applicants} - {""})
+    if not words:
+        return re.compile(r"(?!)")            # matches nothing
+    return re.compile("|".join(re.escape(w) for w in words), re.I)
+
+
 def query_word(name):
     """The one token an office index is worth searching on: the first substantive word.
 
@@ -797,13 +834,20 @@ def _odp_rows(payload, keep, seen):
     return out
 
 
+#  PCT Rule 114: observations may be filed until 28 months from the priority date.
+PCT_OBSERVATION_MONTHS = 28
+
+
 def _new_row(publication, office, extra=None):
     row = {
         "publication": publication,
         "office": office,
         "title": (extra or {}).get("title") or publication,
         "title_full": (extra or {}).get("title") or "",
-        "applicant": (extra or {}).get("applicant") or "J. Schmalz GmbH",
+        #  NOT a default of the applicant this docket happens to be about. A discovered row wears
+        #  whatever name the register gives it, and if that is nobody's, it says nobody's: a row
+        #  labelled with a competitor it does not belong to is worse than an unlabelled one.
+        "applicant": (extra or {}).get("applicant") or "",
         "application": (extra or {}).get("application") or "",
         "baseline_route": {"EPO": "epo_obs", "DPMA": "dpma_obs", "USPTO": "us_tps",
                            "WIPO (PCT)": "pct_obs"}.get(office, ""),
@@ -844,6 +888,8 @@ def refresh_case(row):
             return ep_case(pub)
         if office == "DPMA":
             return de_case(pub)
+        if office.startswith("WIPO"):
+            return pct_case(row)
     except Exception as exc:
         return {"_error": "%s: %s" % (type(exc).__name__, str(exc)[:120])}
     return {"_skipped": "no live source for %s" % (office or "an unknown office")}
@@ -905,7 +951,7 @@ def sweep(rows, progress=None, workers=6, discover=True):
                 changes.append(line)
             patches[pub] = patch
 
-    new = []
+    new, rejected = [], []
     applicants = applicants_of(rows)
     if discover and not applicants:
         #  Nothing to search for. An empty docket, or one whose rows carry no applicant, must not
@@ -918,6 +964,7 @@ def sweep(rows, progress=None, workers=6, discover=True):
         try:
             since = today.replace(year=today.year - 1) if today.month != 2 or today.day != 29 \
                 else datetime.date(today.year - 1, 3, 1)
+            keep = _applicant_filter(applicants)
             for pub in discover_ops(since, applicants):
                 if pub.upper() in known or _kind(pub) in SKIP_KINDS:
                     continue
@@ -928,7 +975,21 @@ def sweep(rows, progress=None, workers=6, discover=True):
                 #  file wrapper answers to, so a US row found here could never be refreshed.
                 if not office or office == "USPTO":
                     continue
-                new.append(_new_row(pub, office))
+                #  CHECK WHOSE IT IS BEFORE ADDING IT. Searching the distinctive word is what
+                #  finds a subsidiary filing under its own name, and it is also what found
+                #  WO 2026/164863, "Centralized protection scheme for DC power distribution
+                #  system", which belongs to a different Schmalz entirely. The search is a
+                #  shortlist; the bibliographic record is the answer.
+                facts = {}
+                try:
+                    facts = biblio_for(pub)
+                except Exception:
+                    pass
+                owner = facts.get("applicant") or ""
+                if not keep.search(owner):
+                    rejected.append("%s (%s)" % (pub, owner or "no applicant on the record"))
+                    continue
+                new.append(_new_row(pub, office, facts))
                 known.add(pub.upper())
         except Exception as exc:
             errors.append("OPS discovery: %s" % str(exc)[:140])
@@ -946,6 +1007,11 @@ def sweep(rows, progress=None, workers=6, discover=True):
         except Exception as exc:
             errors.append("ODP discovery: %s" % str(exc)[:140])
         tick("new US applications")
+        if rejected:
+            #  Said out loud rather than dropped silently: a search term throwing away half its
+            #  hits is a search term that needs looking at.
+            changes.append("Found and set aside, the applicant does not match this docket: %s."
+                           % ", ".join(rejected[:6]))
 
     #  A newly found case is worth nothing until it has a posture and a window, so it goes round
     #  the same loop once before it is ever shown.
