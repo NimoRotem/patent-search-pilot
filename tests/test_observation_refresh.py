@@ -298,6 +298,20 @@ def test_a_sweep_only_writes_register_fields(monkeypatch):
     assert patch["refreshed_at"] == datetime.date.today().isoformat()
 
 
+def test_a_flag_that_has_stopped_being_true_is_cleared(monkeypatch):
+    """The sticky-field bug. A refusal became final, so the case is dead and nothing about it is
+    closing; the `closing_soon` an earlier sweep set while it was merely wobbling has to go, or
+    the docket keeps a dead case pinned to the top of the page."""
+    row = {"publication": "DE102024133318A1", "office": "DPMA", "posture": "pending",
+           "closing_soon": True, "decision_on": "2026-05-08", "deadline": "2026-08-08"}
+    monkeypatch.setattr(refresh, "_ops_json", _ops(DE_REFUSED_FINAL))
+    patch = refresh.sweep([row], discover=False)["patches"]["DE102024133318A1"]
+    assert patch["posture"] == "lapsed"
+    assert patch["closing_soon"] is None
+    assert patch["decision_on"] is None
+    assert patch["deadline"] is None
+
+
 def test_the_change_log_names_what_moved_and_stays_quiet_otherwise(monkeypatch):
     monkeypatch.setattr(refresh, "_ops_json", _ops(EP_GRANTED))
     moved = refresh.sweep([{"publication": "EP4446072B1", "office": "EPO",

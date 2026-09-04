@@ -84,6 +84,20 @@ MERGE_FIELDS = (
     "priority_date", "granted_as", "our_submissions", "refreshed_at", "refresh_source",
 )
 
+#  AND THESE ARE CLEARED WHEN THE SWEEP NO LONGER FINDS THEM. `payload.update(patch)` only ever
+#  writes the keys a patch carries, so a flag that was true and has stopped being true simply
+#  stays. Four German applications had been refused and were dead, and each of them kept the
+#  `closing_soon` the August sweep had set while they were merely wobbling, so the docket put
+#  four corpses at the top of the page under "any day". Every field derived purely from a
+#  register is set to None here unless this pull found it.
+SWEEP_OWNED = (
+    "posture", "register_status", "deadline", "deadline_kind", "closing_soon", "closing_note",
+    "grant_published", "opposition_deadline", "opposition_opens", "opposition_opens_est",
+    "opposition_pending", "scheduled_grant", "decision_on", "refused_on", "lapsed_on",
+    "exam_requested", "granted_as", "first_rejection", "allowance", "quayle", "grant_date",
+    "patent_number", "our_submissions",
+)
+
 _JOBS = {}
 _JOBS_LOCK = threading.Lock()
 
@@ -685,6 +699,8 @@ def sweep(rows, progress=None, workers=6, discover=True):
             if patch.get("_skipped"):
                 continue
             patch = {k: v for k, v in patch.items() if k in MERGE_FIELDS or k == "register_events"}
+            for key in SWEEP_OWNED:
+                patch.setdefault(key, None)
             patch["refreshed_at"] = today.isoformat()
             for line in _describe(row, patch):
                 changes.append(line)
