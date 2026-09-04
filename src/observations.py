@@ -267,6 +267,12 @@ def recount(row, today=None):
     n = row.get("days_left")
     if row.get("filed"):
         row["state"] = "filed"
+    #  A REFUSED OR WITHDRAWN CASE IS LAPSED EVEN THOUGH NOTHING EXPIRED. Four German
+    #  applications were refused with the refusal final: no deadline ever passed on them, so the
+    #  date arithmetic put them in the same band as a live application nobody has examined yet.
+    #  The register's own posture outranks the calendar here.
+    elif (row.get("posture") or "").lower() == "lapsed":
+        row["state"] = "lapsed"
     elif row.get("missed") or (n is not None and n < 0):
         row["state"] = "lapsed"
     elif n is None:
@@ -284,7 +290,8 @@ def recount(row, today=None):
     #  intention to grant, both shut the next time the examiner touches the file. Sorting them
     #  with the undated majority buried them ninety rows down. `1` puts them immediately after
     #  anything that closes today and ahead of everything with a date in the future.
-    row["sort_key"] = n if n is not None else (1 if row.get("closing_soon") else 9999)
+    row["sort_key"] = n if n is not None else (
+        1 if (row.get("closing_soon") and row["state"] != "lapsed") else 9999)
     return row
 
 
