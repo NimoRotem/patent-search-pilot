@@ -522,10 +522,27 @@ def _last_date(events, codes):
 
 ODP_BASE = os.environ.get("USPTO_ODP_BASE", "https://api.uspto.gov/api/v1").rstrip("/")
 ODP_TIMEOUT = float(os.environ.get("USPTO_ODP_TIMEOUT", "45"))
+ODP_TRIES = int(os.environ.get("USPTO_ODP_TRIES", "5"))
+#  THE OPEN DATA PORTAL RATE-LIMITS, HARD. Six workers against it returned 429 on sixteen of
+#  sixty calls, measured 2026-09-04. Two at a time is comfortably under it and costs nothing:
+#  there are ten US cases on this docket and the European half runs in parallel anyway.
+_ODP_GATE = threading.Semaphore(int(os.environ.get("USPTO_ODP_CONCURRENCY", "2")))
+#  Answers that mean "ask again", as opposed to "there is no such thing".
+ODP_RETRY_CODES = (408, 425, 429, 500, 502, 503, 504)
+
+
+class OdpUnavailable(RuntimeError):
+    """The office could not be asked. NOT the same as the office answering "nothing"."""
 
 
 def _odp(path, body=None):
-    """GET or POST against the Open Data Portal. -> dict, {} on any failure. Never raises.
+    """GET or POST against the Open Data Portal. -> dict for an answer, {} for a real 404.
+
+    Raises OdpUnavailable when it could not be asked, and that distinction is the whole point.
+    This used to return {} for every failure below 500, so a 429 rate-limit answer read as "this
+    application does not exist"; on the /documents call that means "nothing has been filed on
+    this file", which would have quietly erased the record of our own submission. An empty answer
+    and an unanswered question must never be the same value.
 
     Deliberately NOT `family_dossier._call`, which is otherwise the same request: that module is
     gated by FAMILY_DOSSIER_ENABLED, and a flag turned off for the drafting pipeline would take
@@ -534,23 +551,35 @@ def _odp(path, body=None):
     """
     key = os.environ.get("USPTO_ODP_KEY", "") or os.environ.get("ODP_API_KEY", "")
     if not key:
-        return {}
+        raise OdpUnavailable("no USPTO_ODP_KEY in the environment")
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        "%s/%s" % (ODP_BASE, path.lstrip("/")), data=data,
-        headers={"X-API-KEY": key, "Accept": "application/json",
-                 **({"Content-Type": "application/json"} if data else {})})
-    for attempt in range(3):
+    last = "no attempt made"
+    for attempt in range(ODP_TRIES):
+        req = urllib.request.Request(
+            "%s/%s" % (ODP_BASE, path.lstrip("/")), data=data,
+            headers={"X-API-KEY": key, "Accept": "application/json",
+                     **({"Content-Type": "application/json"} if data else {})})
         try:
-            with urllib.request.urlopen(req, timeout=ODP_TIMEOUT) as fh:
-                return json.loads(fh.read().decode() or "{}")
+            with _ODP_GATE:
+                with urllib.request.urlopen(req, timeout=ODP_TIMEOUT) as fh:
+                    return json.loads(fh.read().decode() or "{}")
         except urllib.error.HTTPError as exc:
-            if exc.code == 404 or exc.code < 500:
-                return {}
-        except Exception:
-            pass
+            last = "HTTP %s" % exc.code
+            if exc.code == 404:
+                return {}                     # a real answer: no such application
+            if exc.code not in ODP_RETRY_CODES:
+                raise OdpUnavailable(last)
+            wait = 0.0
+            try:
+                wait = float(exc.headers.get("Retry-After") or 0)
+            except (TypeError, ValueError):
+                wait = 0.0
+            time.sleep(max(wait, 1.5 * (attempt + 1)))
+            continue
+        except Exception as exc:
+            last = "%s: %s" % (type(exc).__name__, str(exc)[:60])
         time.sleep(1.5 * (attempt + 1))
-    return {}
+    raise OdpUnavailable(last)
 
 
 def us_case(application):
@@ -558,7 +587,11 @@ def us_case(application):
     app = re.sub(r"\D", "", str(application or ""))
     if not app:
         return {"_error": "no application number"}
-    payload = _odp("patent/applications/%s" % app)
+    try:
+        payload = _odp("patent/applications/%s" % app)
+    except OdpUnavailable as exc:
+        #  Reported, and no patch written, so the row keeps whatever the last good sweep said.
+        return {"_error": "USPTO ODP unreachable (%s)" % exc}
     bag = (payload or {}).get("patentFileWrapperDataBag") or []
     if not bag:
         return {"_error": "ODP has no wrapper for %s" % app}
@@ -645,7 +678,12 @@ def us_case(application):
                 "rejection under 1.290(b)(2)(ii), so the window is arguably open. Treat it as "
                 "expiring any day." % out["quayle"])
 
-    out["our_submissions"] = us_submissions(app, events)
+    try:
+        out["our_submissions"] = us_submissions(app, events)
+    except OdpUnavailable as exc:
+        #  The file wrapper is the ONLY evidence of what we have filed. If it cannot be read,
+        #  the honest patch is no patch: an empty list here would say "nothing was ever filed".
+        return {"_error": "USPTO file wrapper unreachable (%s)" % exc}
     return out
 
 
@@ -1004,6 +1042,11 @@ def sweep(rows, progress=None, workers=6, discover=True):
                     continue
                 new.append(_new_row(hit["publication"], "USPTO", hit))
                 known.add(hit["publication"].upper())
+        except OdpUnavailable as exc:
+            #  Said plainly. "No new US applications" and "the USPTO would not answer" look
+            #  identical on the page otherwise, and only one of them means you are up to date.
+            errors.append("USPTO discovery could not run (%s); no US case was added or ruled "
+                          "out this time." % exc)
         except Exception as exc:
             errors.append("ODP discovery: %s" % str(exc)[:140])
         tick("new US applications")
