@@ -15,9 +15,70 @@
 .stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .stat.urgent b{color:var(--bad)} .stat.closing b{color:var(--warn)}
 .stat.lapsedstat b{color:var(--faint)}
+.stat.good b{color:var(--good)}
 button.stat{font:inherit;text-align:center;cursor:pointer;color:inherit}
 button.stat:hover{background:var(--s2);border-color:var(--line2)}
 button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+
+/* ── refreshing the registers ─────────────────────────────────────────────── */
+.obrefresh{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-top:12px}
+.obrefresh button{font:inherit;font-size:13px;font-weight:650;padding:8px 15px;cursor:pointer;
+  border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink)}
+.obrefresh button:hover:not(:disabled){background:var(--s2);border-color:var(--accent)}
+.obrefresh button:disabled{opacity:.55;cursor:progress}
+.obrefreshnote{font-size:12px;color:var(--muted);line-height:1.5;max-width:62ch}
+.obrefreshnote b{color:var(--ink);font-weight:650}
+.obrefreshnote.stale{color:var(--bad)} .obrefreshnote.stale b{color:var(--bad)}
+.obbar{flex-basis:100%;height:4px;border-radius:2px;background:var(--s2);overflow:hidden}
+.obbar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s ease}
+.obrefreshlog{flex-basis:100%;margin:4px 0 0;padding:11px 13px;border:1px solid var(--line);
+  border-radius:var(--r-sm);background:var(--s3);font-size:12.5px;line-height:1.6;max-height:190px;
+  overflow:auto}
+.obrefreshlog ul{margin:5px 0 0;padding-left:18px} .obrefreshlog li{margin:2px 0}
+.obrefreshlog .bad{color:var(--bad)}
+
+/* ── what can be filed ────────────────────────────────────────────────────── */
+/*  One vocabulary for "can I act on this today", used by the row, the dialog and the legend, so
+    a green pill always means the same thing wherever it appears. */
+.act{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.05em;padding:2px 7px;border-radius:var(--r-pill);border:1px solid transparent;
+  white-space:nowrap}
+.act.open{background:var(--good-soft);color:var(--good);border-color:#bfe3ce}
+.act.closing{background:var(--bad-soft);color:var(--bad);border-color:#f0c2be}
+.act.conditional{background:var(--s2);color:var(--warn);border-color:var(--line2)}
+.act.not_yet{background:var(--s2);color:var(--muted);border-color:var(--line)}
+.act.closed,.act.na{background:transparent;color:var(--faint);border-color:var(--line)}
+.instr{font-size:12px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  display:block}
+.instr.none{color:var(--faint)}
+.instr.soon{color:var(--muted)}
+.instrfee{font-size:10.5px;color:var(--faint);white-space:nowrap}
+.subdot{color:var(--good);font-weight:700}
+
+.obacts{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+.obacts th,.obacts td{border-bottom:1px solid var(--line);padding:7px 9px;text-align:left;
+  vertical-align:top}
+.obacts th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);
+  font-weight:650;white-space:nowrap}
+.obacts td.stg{color:var(--muted);white-space:nowrap;width:158px}
+.obacts td.ins{width:210px}
+.obacts td.ins b{display:block;font-weight:650}
+.obacts td.ins span{font-size:11px;color:var(--faint)}
+.obacts td.win{white-space:nowrap;width:112px;font-variant-numeric:tabular-nums}
+.obacts td.why{color:var(--muted);line-height:1.55}
+.obacts tr.dim td{opacity:.6}
+/*  The reference table shares the dialog table's cell styling and needs three equal
+    instrument columns rather than one wide prose column. */
+.obmatrix{table-layout:fixed;min-width:820px}
+.obmatrix td.stg{width:180px;white-space:normal}
+.obmatrix td.ins{width:auto}
+.obmatrix td.ins .win{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.obmatrix td.dimcell{opacity:.5}
+.obmatrix td .none{font-size:12px;color:var(--faint)}
+.obsubs{list-style:none;margin:5px 0 0;padding:0;font-size:12.5px}
+.obsubs li{padding:6px 0;border-top:1px solid var(--line);line-height:1.55}
+.obsubs li:first-child{border-top:0}
+.obsubs .ev{color:var(--faint);font-size:11px;display:block}
 
 section.obsec{margin-top:34px}
 section.obsec>h2{font-size:17px;margin-bottom:4px}
@@ -160,8 +221,10 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     <div>
       <h1>Observation docket</h1>
       <p class="obsub">
-        Every J. Schmalz GmbH filing a third party can still act against, with the route that
-        reaches it and the date the door shuts. Register status verified case by case
+        Every J. Schmalz GmbH filing a third party can still act against, the instrument that
+        reaches it at that office and the date the door shuts. Countdowns are computed for
+        <strong>{{ today }}</strong>, not stored, so they are never one build out of date.
+        Register status read
         {% if meta.as_of %}as of <strong>{{ meta.as_of }}</strong>{% endif %}.
         {{ meta.source_note or "" }}
       </p>
@@ -170,10 +233,34 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
         sets the urgency filter on the table below rather than repeating its rows up here. #}
     <div class="obstats">
       <button type="button" class="stat" data-urgency=""><b>{{ counts.total }}</b><span>cases</span></button>
-      <button type="button" class="stat urgent" data-urgency="urgent"><b>{{ counts.get('urgent', 0) }}</b><span>&le; 14 days</span></button>
-      <button type="button" class="stat closing" data-urgency="soon"><b>{{ counts.get('closing', 0) + counts.get('soon', 0) }}</b><span>&le; 90 days</span></button>
+      <button type="button" class="stat good" data-urgency="actionable"><b>{{ counts.get('actionable', 0) }}</b><span>can file now</span></button>
+      <button type="button" class="stat urgent" data-urgency="urgent"><b>{{ counts.get('within_14', 0) }}</b><span>&le; 14 days</span></button>
+      <button type="button" class="stat closing" data-urgency="soon"><b>{{ counts.get('within_90', 0) }}</b><span>&le; 90 days</span></button>
       <button type="button" class="stat lapsedstat" data-urgency="lapsed"><b>{{ counts.get('lapsed', 0) }}</b><span>lapsed</span></button>
     </div>
+  </div>
+
+  {#  THE REFRESH. Everything above this line was a snapshot somebody built by hand on another
+      machine; this asks the three offices again, live. It is deliberately one button and not a
+      cron: a sweep costs API budget at the EPO and the person reading the page is the one who
+      knows whether today's numbers are worth spending it on. #}
+  <div class="obrefresh">
+    <button type="button" id="obrefreshbtn">Refresh from the registers</button>
+    <span class="obrefreshnote{{ ' stale' if (stale_days is not none and stale_days >= 7) or stale_days is none else '' }}" id="obrefreshnote">
+      {#  The countdowns are computed and cannot go stale. The deadlines they count TO can: a
+          patent that granted last week opened a nine-month window this page knows nothing about
+          until somebody presses the button. So the page says when it is due rather than
+          pretending a number is fresh because it was arithmetic. #}
+      {% if meta.refreshed_at %}Last pulled <b>{{ meta.refreshed_at | replace('T', ' ') }}</b>{% if stale_days is not none and stale_days >= 7 %},
+        <b>{{ stale_days }} days ago. A grant since then has opened a window this page cannot see.</b>{% else %}.{% endif %}
+      {% else %}<b>Never pulled live.</b> The dates below come from the shipped {{ meta.as_of or 'baseline' }} sweep and a case may have granted, lapsed or been refused since.
+      {% endif %}
+      USPTO Open Data Portal for status, windows and our own submissions on the file wrapper;
+      EPO Register for European status and the mention of grant; INPADOC legal status for the
+      German cases. About a minute.
+    </span>
+    <div class="obbar" id="obrefreshbar" hidden><i></i></div>
+    <div class="obrefreshlog" id="obrefreshlog" hidden></div>
   </div>
 
   {#  THE THREE CARD SECTIONS THAT WERE HERE ARE GONE. "Next 45 days" repeated the head of the
@@ -217,10 +304,10 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
               {% else %}<span class="pill neutral">{{ f.status }}</span>{% endif %}</td>
           <td class="pub" title="{{ f.target }}{% if f.application %} · {{ f.application }}{% endif %}">{{ f.target }}{% if f.application %}<br><span class="dldate">{{ f.application }}</span>{% endif %}</td>
           <td class="ttl" title="{{ f.title }}">{{ f.title }}<br><span class="office">{{ f.target_owner }}</span></td>
-          <td class="dl">{{ f.filed_on or '—' }}</td>
-          <td>{{ f.references if f.references else '—' }}</td>
-          <td class="small">{% if f.official_fee_usd is not none %}${{ f.official_fee_usd }}{% if f.counsel_fee_usd %} + {{ '{:,}'.format(f.counsel_fee_usd) }}{% endif %}{% else %}—{% endif %}</td>
-          <td class="tdact">{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/observations/package/{{ f.package }}" download onclick="event.stopPropagation()">Download</a>{% else %}<span class="office">—</span>{% endif %}</td>
+          <td class="dl">{{ f.filed_on or '&ndash;' }}</td>
+          <td>{{ f.references if f.references else '&ndash;' }}</td>
+          <td class="small">{% if f.official_fee_usd is not none %}${{ f.official_fee_usd }}{% if f.counsel_fee_usd %} + {{ '{:,}'.format(f.counsel_fee_usd) }}{% endif %}{% else %}&ndash;{% endif %}</td>
+          <td class="tdact">{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/observations/package/{{ f.package }}" download onclick="event.stopPropagation()">Download</a>{% else %}<span class="office">&ndash;</span>{% endif %}</td>
           <td class="tdact"><button class="detailbtn" type="button" aria-label="Full detail for {{ f.target }}">Details</button></td>
         </tr>
         {% endfor %}
@@ -229,8 +316,8 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
           <td><span class="pill neutral">Lapsed</span></td>
           <td class="pub" title="{{ m.target }}{% if m.application %} · {{ m.application }}{% endif %}">{{ m.target }}{% if m.application %}<br><span class="dldate">{{ m.application }}</span>{% endif %}</td>
           <td class="ttl" title="{{ m.title }}">{{ m.title }}<br><span class="office">window closed {{ m.window_closed }}</span></td>
-          <td class="dl">—</td><td>—</td><td class="small">—</td>
-          <td class="tdact"><span class="office">—</span></td>
+          <td class="dl">&ndash;</td><td>&ndash;</td><td class="small">&ndash;</td>
+          <td class="tdact"><span class="office">&ndash;</span></td>
           <td class="tdact"><button class="detailbtn" type="button" aria-label="Full detail for {{ m.target }}">Details</button></td>
         </tr>
         {% endfor %}
@@ -267,7 +354,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
           <td><span class="pill {{ 'no' if d.status in ('open_and_dated', 'unanswered') else 'neutral' }}">{{ d.status | replace('_', ' ') }}</span></td>
           <td class="ttl" title="{{ d.question }}">{{ d.question }}</td>
           <td class="dl">{{ d.asked_on }}</td>
-          <td class="small">{{ d.asked_by or '—' }}</td>
+          <td class="small">{{ d.asked_by or '&ndash;' }}</td>
           <td class="tdact"><button class="detailbtn" type="button" aria-label="Full detail">Details</button></td>
         </tr>
         {% endfor %}
@@ -287,15 +374,17 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     <div class="obtools">
       <input type="search" id="obq" placeholder="Search number, title or applicant" aria-label="Search the docket">
       <select id="oboffice" aria-label="Filter by office"><option value="">Every office</option></select>
-      <select id="obroute" aria-label="Filter by route"><option value="">Every route</option></select>
+      <select id="obroute" aria-label="Filter by instrument"><option value="">Every instrument</option></select>
       <select id="obstate" aria-label="Filter by urgency">
         <option value="">Any urgency</option>
+        <option value="actionable">Something can be filed today</option>
         <option value="dated">Dated only</option>
         <option value="urgent">14 days or less</option>
         <option value="closing">30 days or less</option>
         <option value="soon">90 days or less</option>
         <option value="none">No deadline</option>
         <option value="lapsed">Lapsed</option>
+        <option value="submitted">Something is already on the file</option>
       </select>
       <select id="obmine" aria-label="Filter by your own state">
         <option value="">Any status</option>
@@ -309,7 +398,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
       <caption class="vh">The observation docket. Choose a row to open its full detail.</caption>
       <colgroup>
         <col style="width:96px"><col style="width:152px"><col>
-        <col style="width:186px"><col style="width:88px">
+        <col style="width:210px"><col style="width:88px">
         <col style="width:112px"><col style="width:78px">
       </colgroup>
       <thead>
@@ -317,7 +406,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
           <th data-sort="deadline" aria-sort="ascending" scope="col">Deadline <span class="arw">&#9650;</span></th>
           <th data-sort="pub" scope="col">Publication</th>
           <th data-sort="title" scope="col">Title</th>
-          <th data-sort="route" scope="col">Route</th>
+          <th data-sort="route" scope="col">What you can file</th>
           <th data-sort="prio" scope="col">Priority</th>
           <th data-sort="mine" scope="col">Your status</th>
           <th class="nosort" scope="col"><span class="vh">Detail</span></th>
@@ -325,23 +414,52 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
       </thead>
       <tbody>
       {% for c in cases %}
+        {% set head = c.action_headline %}
         <tr data-pub="{{ c.publication }}" tabindex="0"
-            data-office="{{ c.office }}" data-route="{{ c.baseline_route_label }}"
+            data-office="{{ c.office }}" data-route="{{ head.label if head else 'Nothing open' }}"
             data-days="{{ c.days_left if c.days_left is not none else '' }}"
+            data-sortkey="{{ c.sort_key }}"
             data-mine="{{ c.user_state }}"
-            data-hay="{{ (c.publication ~ ' ' ~ (c.granted_as or '') ~ ' ' ~ c.title ~ ' ' ~ (c.applicant or '') ~ ' ' ~ (c.application or '')) | lower }}"
+            data-act="{{ head.status if head else '' }}"
+            data-sub="{{ '1' if (c.on_file or c.filed) else '' }}"
+            data-hay="{{ (c.publication ~ ' ' ~ (c.granted_as or '') ~ ' ' ~ c.title ~ ' ' ~ (c.applicant or '') ~ ' ' ~ (c.application or '') ~ ' ' ~ (head.label if head else '') ~ ' ' ~ (head.statute if head else '')) | lower }}"
             class="{{ 'lapsed' if c.state == 'lapsed' else '' }}">
           <td class="dl">
-            {% if c.days_left is none %}<span class="days none">no deadline</span>
+            {#  An undated window that is nonetheless about to shut gets its own rendering. Saying
+                "no deadline" here, which is literally true, reads as "no hurry", which is the
+                opposite of what the register is telling us. #}
+            {% if c.days_left is none and c.closing_soon %}<span class="days urgent">any day</span><br><span class="dldate">no fixed date</span>
+            {% elif c.days_left is none %}<span class="days none">no deadline</span>
             {% elif c.days_left < 0 %}<span class="days lapsed">closed</span><br><span class="dldate">{{ c.deadline }}</span>
             {% else %}
               <span class="days {{ 'urgent' if c.days_left <= 14 else ('closing' if c.days_left <= 30 else '') }}">{{ c.days_left }}d</span>
               <br><span class="dldate">{{ c.deadline }}</span>
             {% endif %}
           </td>
-          <td class="pub">{{ c.granted_as or c.publication }}</td>
+          <td class="pub">{% if c.on_file or c.filed %}<span class="subdot" title="A third-party paper is already on this file">&#9679;</span> {% endif %}{{ c.granted_as or c.publication }}</td>
           <td class="ttl" title="{{ c.title }}">{{ c.title }}</td>
-          <td><span class="route">{{ c.baseline_route_label.split(',')[0] }}</span><br><span class="office">{{ c.office }}</span></td>
+          {#  THE LIVE ANSWER, not the static route label the sweep shipped. One case can be past
+              its observation window and inside its opposition window on the same day, and the
+              baseline label could only ever name one of the two. #}
+          <td>
+            {#  A window that has not opened yet is shown greyed, with the event that opens it,
+                because "nothing today" and "nothing until it grants" are different answers and
+                only the second one tells you to keep watching the case. #}
+            {% if head %}
+              <span class="instr{{ ' soon' if head.status == 'not_yet' else '' }}"
+                    title="{{ head.label }}, {{ head.statute }}">{{ head.label }}</span>
+              {% if head.status == 'not_yet' %}
+                <span class="instrfee">{% if head.opens %}opens {{ head.opens }}{% else %}not until it grants{% endif %}</span>
+              {% else %}
+                <span class="instrfee">{{ head.statute }} &middot; {{ head.fee }}</span>
+                {% if head.status in ('open', 'closing') and head.count > 1 %}
+                  <span class="instrfee">+{{ head.count - 1 }} more</span>{% endif %}
+              {% endif %}
+            {% else %}
+              <span class="instr none">Nothing, ever again</span>
+              <span class="instrfee">{{ c.office }}</span>
+            {% endif %}
+          </td>
           <td><span class="prio {{ 'p1' if c.priority and '1' in c.priority else '' }}">{{ c.priority or '' }}</span></td>
           <td class="tdact">
             <select class="obstateset" data-pub="{{ c.publication }}" aria-label="Your status for {{ c.publication }}">
@@ -375,6 +493,24 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     </div>
     <div class="obmbody">
       <div class="obmwhen" id="obmWhen"></div>
+      {#  WHAT WE HAVE ALREADY DONE COMES FIRST, on the rows that have any. "Did we already file
+          on this one" has to be answered before "what could we file", or the second question is
+          being asked in ignorance. It is `hidden` on almost every row, so the instrument table
+          is the first thing on the page in the ordinary case. #}
+      <div class="obmact" id="obmSubWrap" hidden>
+        <h4>Already on this file</h4>
+        <ul class="obsubs" id="obmSubs"></ul>
+      </div>
+      {#  THE INSTRUMENT TABLE. Six stages, evaluated for this office and this posture today. It
+          sits above the bibliographic grid because it is the reason anybody opened the row. #}
+      <div class="obmact" id="obmOptWrap" hidden>
+        <h4>What you can file against this one</h4>
+        <table class="obacts" id="obmOpts">
+          <thead><tr><th scope="col">Stage</th><th scope="col">Instrument</th>
+            <th scope="col">Window</th><th scope="col">Why</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
       <dl class="obmgrid" id="obmGrid"></dl>
       <div class="obmact" id="obmActWrap" hidden>
         <h4>Next action</h4>
@@ -421,9 +557,61 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
   <script type="application/json" id="obdecisions">{{ decisions|tojson }}</script>
 
   {# ── 5. what changed ────────────────────────────────────────────────────── #}
+  {% if meta.refresh_changes %}
+  <section class="obsec">
+    <h2>Moved in the last live refresh</h2>
+    <p class="lede">Every register fact that changed when the offices were last asked
+      {% if meta.refreshed_at %}, {{ meta.refreshed_at | replace('T', ' ') }}{% endif %}. A row
+      that did not move is not listed.</p>
+    <ul class="changes">{% for ch in meta.refresh_changes %}<li>{{ ch }}</li>{% endfor %}</ul>
+    {% if meta.refresh_errors %}
+    <p class="lede">Could not be read, so these still carry whatever the last successful sweep
+      said:</p>
+    <ul class="changes">{% for e in meta.refresh_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# ── the table itself, for somebody who wants it whole ──────────────────── #}
+  <section class="obsec">
+    <h2>The instruments, by office</h2>
+    <p class="lede">Every route a third party has, whatever is on the docket. The column in each
+      row above picks whichever of these is open on that case today; this is the whole table, so
+      that what is missing from a case is as visible as what is there. Fees are what the office
+      charges and go stale: check one before you pay it.</p>
+    <div class="obtablewrap">
+    <table class="obacts obmatrix">
+      <caption class="vh">The six stages of a third-party challenge across three offices.</caption>
+      <thead>
+        <tr><th scope="col">Stage</th>
+          {% for key, label in matrix_offices %}<th scope="col">{{ label }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for r in matrix %}
+        <tr>
+          <td class="stg">{{ r.stage_label }}</td>
+          {% for key, label in matrix_offices %}
+            {% set cell = r.cells[key] %}
+            <td class="ins{{ ' dimcell' if not cell.available else '' }}">
+              {% if cell.available %}
+                <b>{{ cell.instrument }}</b>
+                <span>{{ cell.statute }}{% if cell.fee and cell.fee != '-' %} &middot; {{ cell.fee }}{% endif %}</span>
+                {% if cell.window %}<span class="win">{{ cell.window }}</span>{% endif %}
+              {% else %}
+                <span class="none">no such instrument</span>
+              {% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
   {% if meta.changes %}
   <section class="obsec">
-    <h2>Corrected in this sweep</h2>
+    <h2>Corrected in the baseline sweep</h2>
     <p class="lede">What the previous build of this list got wrong, and why.</p>
     <ul class="changes">{% for ch in meta.changes %}<li>{{ ch }}</li>{% endfor %}</ul>
   </section>
@@ -470,6 +658,10 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
   function urgencyOk(tr, want){
     var d = days(tr);
     if (!want) return true;
+    //  These two are about the instrument, not the calendar: a case with no deadline at all can
+    //  still be the one thing on the page you can act on today.
+    if (want === 'actionable') return tr.dataset.act === 'open' || tr.dataset.act === 'closing';
+    if (want === 'submitted')  return tr.dataset.sub === '1';
     if (want === 'none')   return d === null;
     if (want === 'dated')  return d !== null;
     if (want === 'lapsed') return d !== null && d < 0;
@@ -523,7 +715,13 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
   // ── sorting ───────────────────────────────────────────────────────────────────────────
   var sortKey = 'deadline', sortDir = 1;
   function keyOf(tr, key){
-    if (key === 'deadline'){ var d = days(tr); return d === null ? 999999 : d; }
+    //  The SERVER'S order, not a second one derived from the countdown. They disagree on the row
+    //  that has no date and is still about to shut, and a table that reshuffles into a different
+    //  order the first time you click its own default sort column is worse than no sorting.
+    if (key === 'deadline'){
+      var k = parseFloat(tr.dataset.sortkey);
+      return isNaN(k) ? 999999 : k;
+    }
     if (key === 'prio'){
       var t = tr.cells[4].textContent.trim();
       var m = t.match(/\d/);            // "1 - critical" sorts above "3"; words sort last
@@ -562,7 +760,85 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
       mAct = document.getElementById('obmAct'), mActWrap = document.getElementById('obmActWrap'),
       mState = document.getElementById('obmState'), mNote = document.getElementById('obmNote'),
       mSaved = document.getElementById('obmSaved'), mPos = document.getElementById('obmPos'),
-      mPrev = document.getElementById('obmPrev'), mNext = document.getElementById('obmNext');
+      mPrev = document.getElementById('obmPrev'), mNext = document.getElementById('obmNext'),
+      mOptWrap = document.getElementById('obmOptWrap'),
+      mOpts = document.getElementById('obmOpts').tBodies[0],
+      mSubWrap = document.getElementById('obmSubWrap'),
+      mSubs = document.getElementById('obmSubs');
+
+  var ACT_WORD = {open: 'Open', closing: 'Closing', conditional: 'Check first',
+                  not_yet: 'Not yet', closed: 'Closed', na: 'Not available'};
+  //  `deadline_kind` is a token the sweep uses to decide things, not a phrase. It was being
+  //  printed at a reader as "open_ended".
+  var KIND = {hard: 'a hard date', practical: 'an estimate, not a register date',
+              open_ended: 'no fixed close until the examiner acts', closed: 'already shut'};
+
+  //  The window column says the same thing three ways depending on what is known: a date with a
+  //  countdown, a date it opens on, or nothing at all. Deciding that here keeps the table cells
+  //  from each growing their own idea of an empty deadline.
+  function windowText(a){
+    if (a.deadline && a.days_left !== null && a.days_left !== undefined){
+      if (a.days_left < 0) return 'closed ' + a.deadline;
+      return a.days_left + 'd  ·  ' + a.deadline;
+    }
+    if (a.deadline) return a.deadline;
+    if (a.opens) return 'opens ' + a.opens;
+    if (a.status === 'open' || a.status === 'conditional') return 'no deadline';
+    return 'n/a';
+  }
+
+  function paintOptions(d){
+    mOpts.textContent = '';
+    var list = d.actions || [];
+    mOptWrap.hidden = !list.length;
+    list.forEach(function(a){
+      var tr = document.createElement('tr');
+      if (a.status === 'closed' || a.status === 'na') tr.className = 'dim';
+      var stg = document.createElement('td'); stg.className = 'stg';
+      stg.textContent = a.stage_label;
+      var ins = document.createElement('td'); ins.className = 'ins';
+      var b = document.createElement('b'); b.textContent = a.instrument;
+      var sm = document.createElement('span');
+      sm.textContent = a.statute + (a.fee && a.fee !== '-' ? '  ·  ' + a.fee : '');
+      var pill = document.createElement('span');
+      pill.className = 'act ' + a.status;
+      pill.textContent = ACT_WORD[a.status] || a.status;
+      ins.appendChild(b); ins.appendChild(sm); ins.appendChild(document.createElement('br'));
+      ins.appendChild(pill);
+      var win = document.createElement('td'); win.className = 'win';
+      win.textContent = windowText(a);
+      var why = document.createElement('td'); why.className = 'why'; why.textContent = a.note || '';
+      tr.appendChild(stg); tr.appendChild(ins); tr.appendChild(win); tr.appendChild(why);
+      mOpts.appendChild(tr);
+    });
+  }
+
+  function paintSubmissions(d){
+    mSubs.textContent = '';
+    var subs = d.on_file || d.our_submissions || [];
+    mSubWrap.hidden = !subs.length;
+    subs.forEach(function(s){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      //  Whose it is comes FIRST, because "somebody has already filed here" and "we have already
+      //  filed here" lead to opposite decisions and the office tells you neither.
+      var tag = document.createElement('span');
+      tag.className = 'act ' + (s.whose === 'ours' ? 'open' : 'conditional');
+      tag.textContent = s.whose === 'ours' ? 'Ours' : 'Filer not named';
+      head.appendChild(tag);
+      head.appendChild(document.createTextNode('  ' + (s.date || 'undated') + '  ·  '
+        + (s.instrument || '')
+        + (s.documents ? '  ·  ' + s.documents + ' document' + (s.documents === 1 ? '' : 's')
+             + (s.references_about && s.references_about !== s.documents
+                ? ', about ' + s.references_about + ' references' : '') : '')
+        + (s.fee_paid ? '  ·  fee paid' : '')
+        + (s.acknowledged ? '  ·  acknowledged by the office' : '')));
+      var ev = document.createElement('span');
+      ev.className = 'ev'; ev.textContent = s.evidence || '';
+      li.appendChild(head); li.appendChild(ev);
+      mSubs.appendChild(li);
+    });
+  }
   var current = null;                                    // the <tr> the dialog is showing
 
   function row(pub){ return rows.filter(function(tr){ return tr.dataset.pub === pub; })[0]; }
@@ -591,24 +867,37 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     var d = DETAIL[tr.dataset.pub];
     if (!d) return;
     current = tr;
+    //  Only when they differ. A granted EP whose docket key is already the B1 number was
+    //  printing "EP4446072B1 · published as EP4446072B1".
     mNum.textContent = (d.granted_as || d.publication)
-                     + (d.granted_as ? '  ·  published as ' + d.publication : '')
+                     + (d.granted_as && d.granted_as !== d.publication
+                        ? '  ·  published as ' + d.publication : '')
                      + (d.application ? '  ·  app. ' + d.application : '');
     mTitle.textContent = d.title_full || d.title || '';
 
     var n = d.days_left;
-    mWhen.className = 'obmwhen ' + (n === null || n === undefined ? 'none'
+    var undated = (n === null || n === undefined);
+    mWhen.className = 'obmwhen ' + (undated ? (d.closing_soon ? 'urgent' : 'none')
                     : n < 0 ? 'lapsed' : n <= 14 ? 'urgent' : n <= 30 ? 'closing' : '');
-    mWhen.textContent = (n === null || n === undefined)
-      ? 'No deadline. Open for as long as the application is pending.'
+    mWhen.textContent = undated
+      ? (d.closing_soon
+         ? 'No fixed date left, and about to shut. See what the register says, below.'
+         : 'No deadline. Open for as long as the application is pending.')
       : n < 0 ? ('Closed ' + d.deadline + ', ' + (-n) + ' days ago.')
       : n === 0 ? ('Closes today, ' + d.deadline + '.')
       : (n + ' day' + (n === 1 ? '' : 's') + ' left  ·  ' + d.deadline
-         + (d.deadline_kind ? '  ·  ' + d.deadline_kind : ''));
+         + (KIND[d.deadline_kind] ? '  ·  ' + KIND[d.deadline_kind] : ''));
+
+    paintOptions(d);
+    paintSubmissions(d);
 
     mGrid.textContent = '';
     addField('Route', d.baseline_route_label);
     addField('Office', d.office);
+    addField('Posture', d.posture);
+    addField('Grant published', d.grant_published);
+    addField('Register read', d.refreshed_at
+             ? (d.refreshed_at + (d.refresh_source ? '  ·  ' + d.refresh_source : '')) : null);
     addField('Applicant', d.applicant);
     addField('Priority', d.priority);
     addField('Published', d.pubDate ? (d.pubDate + (d.priority_date ? '  ·  priority ' + d.priority_date : '')) : null);
@@ -618,6 +907,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     addField('Counsel', d.counsel_required);
     addField('Report', d.counsel_report);
     addField('Superseded', d.superseded_note);
+    addField('What the register says', d.closing_note);
     addField('Note', d.why_new);
     addField('Family', (d.family && d.family.length) ? d.family.join(', ') : null);
     if (d.register_url) addField('Register', link(d.register_url, d.register_url), true);
@@ -868,6 +1158,116 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
   });
   document.getElementById('obm2Close').addEventListener('click', function(){ modal.close(); });
   modal.addEventListener('click', function(ev){ if (ev.target === modal) modal.close(); });
+})();
+</script>
+
+<script>
+/*  THE REFRESH BUTTON. It starts a job on the server and then polls, because the sweep is a
+    hundred-odd calls to three registers and holding the request open for a minute would be a
+    gateway timeout on a bad day and an unreadable spinner on a good one. The page reloads at the
+    end rather than patching rows in place: a refresh can ADD cases, change a posture and move a
+    deadline all at once, and re-rendering server-side is the only version of that which cannot
+    disagree with itself. */
+(function(){
+  var btn = document.getElementById('obrefreshbtn');
+  if (!btn) return;
+  var bar = document.getElementById('obrefreshbar'),
+      fill = bar.querySelector('i'),
+      log = document.getElementById('obrefreshlog'),
+      note = document.getElementById('obrefreshnote');
+  var timer = null, poll = null;
+
+  function say(html, bad){
+    log.hidden = false;
+    log.innerHTML = html;
+    log.classList.toggle('bad', !!bad);
+  }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+  function list(items, cap){
+    if (!items || !items.length) return '';
+    var shown = items.slice(0, cap);
+    return '<ul>' + shown.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('')
+         + (items.length > shown.length
+            ? '<li>and ' + (items.length - shown.length) + ' more.</li>' : '') + '</ul>';
+  }
+
+  function progress(st){
+    var total = st.total || 1, done = Math.min(st.done || 0, total);
+    bar.hidden = false;
+    fill.style.width = Math.round(done * 100 / total) + '%';
+    say('Asking the registers: <b>' + done + ' of ' + total + '</b>'
+        + (st.label ? '  ·  ' + esc(st.label) : '') + '.');
+  }
+
+  function finish(st){
+    clearInterval(poll); poll = null;
+    btn.disabled = false;
+    btn.textContent = 'Refresh from the registers';
+    if (st.error){
+      bar.hidden = true;
+      say('The refresh failed: ' + esc(st.error), true);
+      return;
+    }
+    var r = st.result || {};
+    fill.style.width = '100%';
+    var parts = ['<b>Done.</b> ' + (r.updated || 0) + ' case'
+                 + ((r.updated === 1) ? '' : 's') + ' re-read'
+                 + (r.new ? ', ' + r.new + ' new on the docket' : '')
+                 + (r.errors && r.errors.length ? ', ' + r.errors.length + ' could not be read' : '')
+                 + '. Reloading.'];
+    if (r.changes && r.changes.length) parts.push(list(r.changes, 12));
+    if (r.errors && r.errors.length) parts.push('<span class="bad">' + list(r.errors, 6) + '</span>');
+    say(parts.join(''));
+    //  Long enough to read the headline, short enough that nobody wonders if it worked.
+    setTimeout(function(){ window.location.reload(); }, 2200);
+  }
+
+  function watch(){
+    poll = setInterval(function(){
+      fetch(window.APP_BASE + '/api/observations/refresh', {credentials: 'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          var st = (j && j.state) || {};
+          if (st.running) progress(st); else finish(st);
+        })
+        .catch(function(){ /* one dropped poll is not a failed refresh */ });
+    }, 1500);
+  }
+
+  btn.addEventListener('click', function(){
+    btn.disabled = true;
+    btn.textContent = 'Refreshing…';
+    note.hidden = true;
+    say('Starting.');
+    fetch(window.APP_BASE + '/api/observations/refresh', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
+      body: '{}'
+    }).then(function(r){ return r.json(); }).then(function(j){
+      if (!j || !j.ok) throw new Error((j && j.error) || 'refused');
+      if (j.state) progress(j.state);
+      watch();
+    }).catch(function(e){
+      btn.disabled = false;
+      btn.textContent = 'Refresh from the registers';
+      say('Could not start the refresh: ' + esc(e.message || e), true);
+    });
+  });
+
+  //  A refresh started in another tab, or before a reload, is still running on the server. Say so
+  //  rather than offering a button that will answer "already running".
+  fetch(window.APP_BASE + '/api/observations/refresh', {credentials: 'same-origin'})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j && j.state && j.state.running){
+        btn.disabled = true; btn.textContent = 'Refreshing…'; note.hidden = true;
+        progress(j.state); watch();
+      }
+    }).catch(function(){});
 })();
 </script>
 {% endblock %}
