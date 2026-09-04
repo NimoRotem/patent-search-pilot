@@ -84,7 +84,7 @@ MERGE_FIELDS = (
     "priority_date", "granted_as", "our_submissions", "file_events", "refreshed_at",
     "refresh_source",
     #  Only ever written by the self-heal below, which fills them in on a row that has none.
-    "title", "title_full", "applicant", "family_id",
+    "title", "title_full", "applicant", "family_id", "application",
 )
 
 #  AND THESE ARE CLEARED WHEN THE SWEEP NO LONGER FINDS THEM. `payload.update(patch)` only ever
