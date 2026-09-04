@@ -369,7 +369,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
         <option value="soon">90 days or less</option>
         <option value="none">No deadline</option>
         <option value="lapsed">Lapsed</option>
-        <option value="submitted">We have already submitted</option>
+        <option value="submitted">Something is already on the file</option>
       </select>
       <select id="obmine" aria-label="Filter by your own state">
         <option value="">Any status</option>
@@ -406,7 +406,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
             data-sortkey="{{ c.sort_key }}"
             data-mine="{{ c.user_state }}"
             data-act="{{ head.status if head else '' }}"
-            data-sub="{{ '1' if (c.our_submissions or c.filed) else '' }}"
+            data-sub="{{ '1' if (c.on_file or c.filed) else '' }}"
             data-hay="{{ (c.publication ~ ' ' ~ (c.granted_as or '') ~ ' ' ~ c.title ~ ' ' ~ (c.applicant or '') ~ ' ' ~ (c.application or '') ~ ' ' ~ (head.label if head else '') ~ ' ' ~ (head.statute if head else '')) | lower }}"
             class="{{ 'lapsed' if c.state == 'lapsed' else '' }}">
           <td class="dl">
@@ -421,7 +421,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
               <br><span class="dldate">{{ c.deadline }}</span>
             {% endif %}
           </td>
-          <td class="pub">{% if c.our_submissions or c.filed %}<span class="subdot" title="We have already put something on this file">&#9679;</span> {% endif %}{{ c.granted_as or c.publication }}</td>
+          <td class="pub">{% if c.on_file or c.filed %}<span class="subdot" title="A third-party paper is already on this file">&#9679;</span> {% endif %}{{ c.granted_as or c.publication }}</td>
           <td class="ttl" title="{{ c.title }}">{{ c.title }}</td>
           {#  THE LIVE ANSWER, not the static route label the sweep shipped. One case can be past
               its observation window and inside its opposition window on the same day, and the
@@ -475,7 +475,7 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
           being asked in ignorance. It is `hidden` on almost every row, so the instrument table
           is the first thing on the page in the ordinary case. #}
       <div class="obmact" id="obmSubWrap" hidden>
-        <h4>What we have already put on this file</h4>
+        <h4>Already on this file</h4>
         <ul class="obsubs" id="obmSubs"></ul>
       </div>
       {#  THE INSTRUMENT TABLE. Six stages, evaluated for this office and this posture today. It
@@ -755,17 +755,24 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
 
   function paintSubmissions(d){
     mSubs.textContent = '';
-    var subs = d.our_submissions || [];
+    var subs = d.on_file || d.our_submissions || [];
     mSubWrap.hidden = !subs.length;
     subs.forEach(function(s){
       var li = document.createElement('li');
       var head = document.createElement('div');
-      head.textContent = s.date + '  ·  ' + (s.instrument || '')
+      //  Whose it is comes FIRST, because "somebody has already filed here" and "we have already
+      //  filed here" lead to opposite decisions and the office tells you neither.
+      var tag = document.createElement('span');
+      tag.className = 'act ' + (s.whose === 'ours' ? 'open' : 'conditional');
+      tag.textContent = s.whose === 'ours' ? 'Ours' : 'Filer not named';
+      head.appendChild(tag);
+      head.appendChild(document.createTextNode('  ' + (s.date || 'undated') + '  ·  '
+        + (s.instrument || '')
         + (s.documents ? '  ·  ' + s.documents + ' document' + (s.documents === 1 ? '' : 's')
              + (s.references_about && s.references_about !== s.documents
                 ? ', about ' + s.references_about + ' references' : '') : '')
         + (s.fee_paid ? '  ·  fee paid' : '')
-        + (s.acknowledged ? '  ·  acknowledged by the office' : '');
+        + (s.acknowledged ? '  ·  acknowledged by the office' : '')));
       var ev = document.createElement('span');
       ev.className = 'ev'; ev.textContent = s.evidence || '';
       li.appendChild(head); li.appendChild(ev);

@@ -64,3 +64,30 @@ def test_a_closed_window_keeps_the_date_it_closed_on():
     assert row["deadline"] == "2026-09-03"
     assert row["days_left"] == -1
     assert row["state"] == "lapsed"
+
+
+# ---------------------------------------------------------------------------------------------
+# whose paper is already on the file
+# ---------------------------------------------------------------------------------------------
+
+def test_a_submission_is_only_called_ours_when_our_own_record_names_the_target():
+    cases = [
+        {"publication": "US20260109053A1", "application": "19315746",
+         "our_submissions": [{"date": "2026-08-02", "instrument": "1.290"}]},
+        {"publication": "EP4054810A1",
+         "file_events": [{"date": "2026-07-01", "instrument": "Observations",
+                          "whose": "unknown"}]},
+    ]
+    observations.attribute_filings(cases, [{"target": "US20260109053A1",
+                                            "application": "19/315,746"}])
+    assert cases[0]["on_file"][0]["whose"] == "ours"
+    #  Nothing in our own record names this one, and Art. 115 observations may be anonymous.
+    assert cases[1]["on_file"][0]["whose"] == "unknown"
+
+
+def test_the_two_lists_are_merged_newest_first():
+    case = {"publication": "X",
+            "our_submissions": [{"date": "2026-01-01", "instrument": "a"}],
+            "file_events": [{"date": "2026-08-01", "instrument": "b", "whose": "unknown"}]}
+    observations.attribute_filings([case], [])
+    assert [e["instrument"] for e in case["on_file"]] == ["b", "a"]

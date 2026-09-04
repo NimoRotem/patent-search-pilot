@@ -81,7 +81,8 @@ MERGE_FIELDS = (
     "opposition_opens_est", "opposition_pending", "scheduled_grant", "decision_on", "refused_on",
     "lapsed_on", "exam_requested", "exam_request_deadline", "pubDate", "six_months",
     "first_rejection", "allowance", "quayle", "grant_date", "patent_number", "filing_date",
-    "priority_date", "granted_as", "our_submissions", "refreshed_at", "refresh_source",
+    "priority_date", "granted_as", "our_submissions", "file_events", "refreshed_at",
+    "refresh_source",
 )
 
 #  AND THESE ARE CLEARED WHEN THE SWEEP NO LONGER FINDS THEM. `payload.update(patch)` only ever
@@ -95,7 +96,7 @@ SWEEP_OWNED = (
     "grant_published", "opposition_deadline", "opposition_opens", "opposition_opens_est",
     "opposition_pending", "scheduled_grant", "decision_on", "refused_on", "lapsed_on",
     "exam_requested", "granted_as", "first_rejection", "allowance", "quayle", "grant_date",
-    "patent_number", "our_submissions",
+    "patent_number", "our_submissions", "file_events",
 )
 
 _JOBS = {}
@@ -242,6 +243,93 @@ def ep_case(publication):
     app = _first(bib, "reg:application-reference", "reg:document-id", "reg:doc-number")
     if app:
         out["register_url"] = "https://register.epo.org/application?number=EP%s" % app
+    #  A SECOND CALL, and it earns itself three times over: whether observations are already on
+    #  this file (ours or anybody's), whether an opposition is pending, which is what decides
+    #  three of the six cells in the instrument table, and it is the only place either shows up.
+    out.update(ep_procedural(publication))
+    return out
+
+
+#  Matched on the register's own DESCRIPTION rather than on a step code. The EPO's code for
+#  observations by third parties does not appear on any of our own 36 cases, because we have not
+#  filed any there yet, so there is nothing to read a code off; the description is served in
+#  English on every step and cannot be guessed wrong.
+EP_OBSERVATION_STEP = re.compile(r"third part(?:y|ies)|observation", re.I)
+EP_OPPOSITION_STEP = re.compile(r"opposition", re.I)
+
+
+def ep_procedural(publication):
+    """Procedural steps for one EP case: what has already been filed against it, by anyone."""
+    st, payload = _ops_json("register/publication/epodoc/%s/procedural-steps" % _epodoc(publication))
+    if st != 200:
+        return {}
+    doc = _register_document(payload)
+    if not doc:
+        return {}
+    out, events = {}, []
+    for step in _aslist(_first(doc, "reg:procedural-data", "reg:procedural-step")):
+        if not isinstance(step, dict):
+            continue
+        code = _first(step, "reg:procedural-step-code") or ""
+        desc = ""
+        for txt in _aslist(step.get("reg:procedural-step-text")):
+            if isinstance(txt, dict) and txt.get("@step-text-type") == "STEP_DESCRIPTION":
+                desc = txt.get("$") or ""
+        when = None
+        for dt in _aslist(step.get("reg:procedural-step-date")):
+            if isinstance(dt, dict):
+                when = _iso(_first(dt, "reg:date")) or when
+        if EP_OPPOSITION_STEP.search(desc):
+            out["opposition_pending"] = True
+        if EP_OBSERVATION_STEP.search(desc):
+            events.append({
+                "date": when or "",
+                "instrument": desc.strip() or "Observations by a third party, Art. 115 EPC",
+                "documents": 0,
+                "fee_paid": False,
+                "acknowledged": False,
+                #  NEVER "ours". Art. 115 observations may be filed anonymously and the register
+                #  does not say whose they are, so the page must not claim them.
+                "whose": "unknown",
+                "evidence": "European Patent Register, procedural step %s." % (code or desc),
+            })
+    if events:
+        out["file_events"] = sorted(events, key=lambda e: e["date"], reverse=True)
+    return out
+
+
+def biblio_for(publication):
+    """Title, applicant and application number for a publication the docket has never seen.
+
+    A newly discovered case arrived with its own number as its title, which makes it unreadable
+    in a list of a hundred. One published-data call fixes that for every office at once.
+    """
+    st, payload = _ops_json("published-data/publication/epodoc/%s/biblio" % _epodoc(publication))
+    if st != 200:
+        return {}
+    ex = _first(payload, "ops:world-patent-data", "exchange-documents", "exchange-document")
+    ex = (ex[0] if isinstance(ex, list) else ex) or {}
+    bib = ex.get("bibliographic-data") or {}
+    out = {}
+    #  The title comes in every procedural language. English if it is there, else whatever is.
+    titles = {t.get("@lang"): t.get("$") for t in _aslist(bib.get("invention-title"))
+              if isinstance(t, dict)}
+    title = titles.get("en") or next(iter(titles.values()), "")
+    if title:
+        out["title_full"] = title
+        out["title"] = title if len(title) < 96 else title[:93] + "..."
+    for a in _aslist(_first(bib, "parties", "applicants", "applicant")):
+        if isinstance(a, dict) and a.get("@data-format") == "original":
+            name = _first(a, "applicant-name", "name")
+            if name:
+                out["applicant"] = name
+                break
+    for did in _aslist(_first(bib, "application-reference", "document-id")):
+        if isinstance(did, dict) and did.get("@document-id-type") == "docdb":
+            out["application"] = "%s%s" % (_first(did, "country") or "",
+                                           _first(did, "doc-number") or "")
+    if ex.get("@family-id"):
+        out["family_id"] = ex["@family-id"]
     return out
 
 
@@ -759,6 +847,16 @@ def sweep(rows, progress=None, workers=6, discover=True):
         if not patch.get("_error") and not patch.get("_skipped"):
             row.update({k: v for k, v in patch.items()
                         if k in MERGE_FIELDS or k == "register_events"})
+        #  Only what the row does not already have. The ODP discovery hands over a title and an
+        #  application number; the OPS one hands over a publication number and nothing else, and
+        #  a docket row whose title is its own number cannot be read at all.
+        if not row.get("title_full") or row.get("title") == row["publication"]:
+            try:
+                for key, value in biblio_for(row["publication"]).items():
+                    if not row.get(key) or row.get(key) == row["publication"]:
+                        row[key] = value
+            except Exception as exc:
+                errors.append("%s biblio: %s" % (row["publication"], str(exc)[:100]))
         row["refreshed_at"] = today.isoformat()
         changes.append("New on the docket: %s (%s), %s."
                        % (row["publication"], row["office"],

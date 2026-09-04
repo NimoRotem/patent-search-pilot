@@ -346,3 +346,61 @@ def test_one_office_failing_does_not_lose_the_others(monkeypatch):
     ("EP4446072B1", "EP4446072"), ("EP4792992A2", "EP4792992"), ("EP4446072", "EP4446072")])
 def test_the_kind_code_is_stripped_because_ops_404s_on_it(pub, expect):
     assert refresh._epodoc(pub) == expect
+
+
+# ---------------------------------------------------------------------------------------------
+# the European file: what is already on it, and giving a new case a readable name
+# ---------------------------------------------------------------------------------------------
+
+def _steps(*steps):
+    return {"ops:world-patent-data": {"ops:register-search": {"reg:register-documents": {
+        "reg:register-document": {"reg:procedural-data": {"reg:procedural-step": [
+            {"reg:procedural-step-code": {"$": c},
+             "reg:procedural-step-text": [{"@step-text-type": "STEP_DESCRIPTION", "$": d}],
+             "reg:procedural-step-date": [{"@step-date-type": "DATE_OF_DISPATCH",
+                                           "reg:date": {"$": when}}]}
+            for c, d, when in steps]}}}}}}
+
+
+def test_observations_already_on_the_european_file_are_found_and_not_claimed(monkeypatch):
+    monkeypatch.setattr(refresh, "_ops_json", _ops(_steps(
+        ("OBSE", "Observations by third parties", "20260701"),
+        ("RFEE", "Renewal fee payment", "20260101"))))
+    got = refresh.ep_procedural("EP4054810A1")
+    assert len(got["file_events"]) == 1
+    ev = got["file_events"][0]
+    assert ev["date"] == "2026-07-01"
+    #  The register does not say whose they are, and Art. 115 permits anonymity, so the sweep
+    #  must never report them as ours.
+    assert ev["whose"] == "unknown"
+    assert "opposition_pending" not in got
+
+
+def test_a_pending_opposition_is_read_off_the_procedural_file(monkeypatch):
+    monkeypatch.setattr(refresh, "_ops_json", _ops(_steps(
+        ("OPPO", "Opposition filed", "20260601"))))
+    assert refresh.ep_procedural("EP3995267B1")["opposition_pending"] is True
+
+
+BIBLIO = {"ops:world-patent-data": {"exchange-documents": {"exchange-document": {
+    "@family-id": "98737667",
+    "bibliographic-data": {
+        "invention-title": [
+            {"@lang": "de", "$": "HANDHABUNGSANLAGE MIT TRÄGERSTRUKTUR"},
+            {"@lang": "en", "$": "HANDLING SYSTEM WITH SUPPORT STRUCTURE"}],
+        "parties": {"applicants": {"applicant": [
+            {"@data-format": "epodoc", "applicant-name": {"name": {"$": "SCHMALZ J GMBH [DE]"}}},
+            {"@data-format": "original", "applicant-name": {"name": {"$": "J. Schmalz GmbH"}}}]}},
+        "application-reference": {"document-id": [
+            {"@document-id-type": "docdb", "country": {"$": "EP"},
+             "doc-number": {"$": "26158614"}}]}}}}}}
+
+
+def test_a_newly_found_case_gets_a_name_a_person_can_read(monkeypatch):
+    """It arrived on the docket as "EP4792992A2", title and all, which is unreadable in a list of
+    a hundred rows."""
+    monkeypatch.setattr(refresh, "_ops_json", _ops(BIBLIO))
+    got = refresh.biblio_for("EP4792992A2")
+    assert got["title"] == "HANDLING SYSTEM WITH SUPPORT STRUCTURE"
+    assert got["applicant"] == "J. Schmalz GmbH"          # the original form, not the DOCDB one
+    assert got["application"] == "EP26158614"

@@ -78,7 +78,7 @@ DETAIL_FIELDS = (
     #  file, and the instrument table for its office.
     "posture", "grant_published", "opposition_deadline", "scheduled_grant", "decision_on",
     "closing_note", "closing_soon", "allowance", "quayle", "exam_requested", "opposition_pending",
-    "our_submissions", "refreshed_at", "refresh_source", "actions",
+    "our_submissions", "file_events", "on_file", "refreshed_at", "refresh_source", "actions",
 )
 #  The states a person moves a row through by hand. `open` is the absence of a decision, which is
 #  why it is the default and why it is not the same thing as `watch`: one has not been looked at,
@@ -295,6 +295,36 @@ def recount(row, today=None):
     return row
 
 
+def attribute_filings(cases, filings):
+    """Say which of the third-party papers already on a file are OURS, and which merely exist.
+
+    The office does not tell you. A 37 CFR 1.290 submission in a file wrapper is a third party's,
+    and an Art. 115 observation on the European Register may be anonymous; neither carries "filed
+    by GRABO". What we do have is our own record of what we filed and against what, so the two
+    are matched on the target and the page says which of the two it is rather than assuming.
+    A submission we cannot tie to our own record is still worth showing: somebody else has put
+    art in front of this examiner, and that changes what is worth adding.
+    """
+    ours = set()
+    for f in filings or []:
+        for key in ("target", "application"):
+            value = re.sub(r"[^A-Z0-9]", "", str(f.get(key) or "").upper())
+            if value:
+                ours.add(value)
+    for c in cases:
+        keys = {re.sub(r"[^A-Z0-9]", "", str(c.get(k) or "").upper())
+                for k in ("publication", "granted_as", "application")}
+        mine = bool(keys & ours)
+        on_file = []
+        for entry in list(c.get("our_submissions") or []) + list(c.get("file_events") or []):
+            entry = dict(entry)
+            entry["whose"] = "ours" if (mine and entry.get("whose") != "unknown") else "unknown"
+            on_file.append(entry)
+        on_file.sort(key=lambda e: e.get("date") or "", reverse=True)
+        c["on_file"] = on_file
+    return cases
+
+
 def cases_for(user_id, today=None):
     ensure_schema()
     today = today or datetime.date.today()
@@ -401,6 +431,9 @@ def observations_page():
         traceback.print_exc()
         cases, filings, decisions, meta = [], [], [], {}
     #  Which package files actually exist on disk, so the page never offers a dead download.
+    #  Which of the papers on each office file we can prove are ours. Needs both lists, so it
+    #  happens here rather than in `cases_for`, which only ever sees one of them.
+    attribute_filings(cases, filings)
     have = set(os.listdir(PACKAGE_DIR)) if os.path.isdir(PACKAGE_DIR) else set()
     for f in filings:
         f["package_available"] = bool(f.get("package")) and f["package"] in have
@@ -414,7 +447,7 @@ def observations_page():
     live = [c["days_left"] for c in cases if c.get("days_left") is not None and c["days_left"] >= 0]
     counts["within_14"] = sum(1 for n in live if n <= 14)
     counts["within_90"] = sum(1 for n in live if n <= 90)
-    counts["submitted"] = sum(1 for c in cases if c.get("our_submissions") or c.get("filed"))
+    counts["submitted"] = sum(1 for c in cases if c.get("on_file") or c.get("filed"))
     #  Every case where something can be filed TODAY, whatever the office calls it.
     counts["actionable"] = sum(
         1 for c in cases
