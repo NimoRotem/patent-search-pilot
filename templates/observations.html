@@ -761,7 +761,9 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
       var li = document.createElement('li');
       var head = document.createElement('div');
       head.textContent = s.date + '  ·  ' + (s.instrument || '')
-        + (s.documents ? '  ·  ' + s.documents + ' document' + (s.documents === 1 ? '' : 's') : '')
+        + (s.documents ? '  ·  ' + s.documents + ' document' + (s.documents === 1 ? '' : 's')
+             + (s.references_about && s.references_about !== s.documents
+                ? ', about ' + s.references_about + ' references' : '') : '')
         + (s.fee_paid ? '  ·  fee paid' : '')
         + (s.acknowledged ? '  ·  acknowledged by the office' : '');
       var ev = document.createElement('span');
@@ -798,8 +800,11 @@ dialog.obmodal::backdrop{background:rgba(23,33,43,.45)}
     var d = DETAIL[tr.dataset.pub];
     if (!d) return;
     current = tr;
+    //  Only when they differ. A granted EP whose docket key is already the B1 number was
+    //  printing "EP4446072B1 · published as EP4446072B1".
     mNum.textContent = (d.granted_as || d.publication)
-                     + (d.granted_as ? '  ·  published as ' + d.publication : '')
+                     + (d.granted_as && d.granted_as !== d.publication
+                        ? '  ·  published as ' + d.publication : '')
                      + (d.application ? '  ·  app. ' + d.application : '');
     mTitle.textContent = d.title_full || d.title || '';
 

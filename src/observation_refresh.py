@@ -543,14 +543,23 @@ def us_submissions(app, events=None):
         codes = by_day[when]["codes"]
         if "IDS.3P" not in codes and "3P.RELEVANCE" not in codes:
             continue          # a lone fee payment on some other day is not a submission
+        #  NOT A REFERENCE COUNT. The office files each concise description TWICE, once as filed
+        #  and once as its own scan, so a ten-reference submission shows up here as twenty-one
+        #  documents. Deduping properly means reading the "Document N:" number out of each PDF,
+        #  which is not worth doing on a page load, so the raw count is reported as what it is.
+        n_rel = codes.get("3P.RELEVANCE", 0)
         out.append({
             "date": when,
             "instrument": "Third-party submission, 37 CFR 1.290",
-            "documents": codes.get("3P.RELEVANCE", 0),
+            "documents": n_rel,
+            "references_about": (n_rel + 1) // 2 if n_rel > 1 else n_rel,
             "fee_paid": bool(codes.get("N417.PYMT")),
             "acknowledged": bool(codes.get("M327")),
-            "evidence": "USPTO file wrapper: " + ", ".join(
-                "%s x%d" % (c, n) for c, n in sorted(codes.items())),
+            "evidence": ("USPTO file wrapper: "
+                         + ", ".join("%s x%d" % (c, n) for c, n in sorted(codes.items()))
+                         + (". The office stores each concise description twice, as filed and as "
+                            "its own scan, so the reference count is about half of that."
+                            if n_rel > 1 else "")),
         })
     if out:
         return out

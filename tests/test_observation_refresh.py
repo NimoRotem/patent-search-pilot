@@ -246,8 +246,12 @@ def test_our_own_submission_is_read_out_of_the_file_wrapper(monkeypatch):
     assert len(subs) == 1
     assert subs[0]["date"] == "2026-08-02"
     assert subs[0]["documents"] == 10
+    #  The office files each concise description twice, as filed and as its own scan, so the
+    #  document count is roughly double the number of references actually cited.
+    assert subs[0]["references_about"] == 5
     assert subs[0]["fee_paid"] is True
     assert "IDS.3P" in subs[0]["evidence"]
+    assert "twice" in subs[0]["evidence"]
 
 
 def test_a_lone_office_letter_is_not_counted_as_a_submission(monkeypatch):
