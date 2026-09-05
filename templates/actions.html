@@ -531,8 +531,8 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
       <caption class="vh">The docket. Choose a row to open its full detail beneath it.</caption>
       <colgroup>
         <col style="width:78px"><col style="width:128px"><col>
-        <col style="width:140px"><col style="width:204px"><col style="width:84px">
-        <col style="width:176px">
+        <col style="width:134px"><col style="width:190px"><col style="width:84px">
+        <col style="width:196px">
         <col style="width:102px"><col style="width:60px"><col style="width:26px">
       </colgroup>
       <thead>
@@ -625,7 +625,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             {#  pk0['items'], never pk0.items: on a dict Jinja resolves .items to the METHOD. #}
             <div class="prepline"><span class="prepk">packet</span>
               {% if pk0 %}
-                <span class="act {{ 'filed' if pk0.state == 'filed' else ('handed' if pk0.state == 'handed off' else ('demo' if pk0.demo else 'built')) }}">{{ 'demo' if pk0.demo else pk0.state }}</span>
+                <span class="act {{ 'filed' if pk0.state == 'filed' else ('handed' if pk0.state == 'handed off' else ('demo' if pk0.demo else 'built')) }}">{{ 'demo' if pk0.demo else ('handed' if pk0.state == 'handed off' else pk0.state) }}</span>
                 <a href="{{ pk0.url }}" target="_blank" rel="noopener" title="{{ pk0.label }} {{ pk0.id }}, built {{ pk0.created }}">{{ pk0['items'] }} docs</a>
                 <span class="prepn">{% if pk0.filing_date %}filed {{ pk0.filing_date[5:10] }}{% elif pk0.created %}{{ pk0.created[5:10] }}{% endif %}{% if c.packages | length > 1 %} +{{ c.packages | length - 1 }}{% endif %}</span>
               {% else %}<span class="none">none</span>{% endif %}
