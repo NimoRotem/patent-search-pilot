@@ -16,6 +16,7 @@
 .stat.urgent b{color:var(--bad)} .stat.closing b{color:var(--warn)}
 .stat.lapsedstat b{color:var(--faint)}
 .stat.good b{color:var(--good)}
+.stat.prep b{color:var(--accent)}
 button.stat{font:inherit;text-align:center;cursor:pointer;color:inherit}
 button.stat:hover{background:var(--s2);border-color:var(--line2)}
 button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
@@ -95,6 +96,24 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .canline.dim .canins{color:var(--muted)}
 .canmore{font-size:10.5px;color:var(--faint)}
 .subdot{color:var(--good);font-weight:700}
+/*  What is already built for the row, from the filing app and from our own searches. One line
+    each, a pill for the state and the count beside it, a link where there is something to open. */
+.prepline{display:flex;gap:5px;align-items:baseline;white-space:nowrap;overflow:hidden;line-height:1.55}
+.prepline .prepk{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;width:38px;flex-shrink:0}
+.prepline a{font-size:11.5px;white-space:nowrap;flex-shrink:0}
+.prepline .prepn{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.prepline .none{color:var(--faint);font-size:11px}
+.act.built{background:var(--accent-soft);color:var(--accent);border-color:var(--line2)}
+.act.handed{background:var(--good-soft);color:var(--good);border-color:#bfe3ce}
+.act.filed{background:var(--good);color:#fff;border-color:var(--good)}
+.act.demo{background:transparent;color:var(--faint);border-color:var(--line)}
+.act.zip{background:var(--good-soft);color:var(--good);border-color:#bfe3ce}
+.act.done{background:var(--accent-soft);color:var(--accent);border-color:var(--line2)}
+.obprep{list-style:none;margin:5px 0 0;padding:0;font-size:12.5px}
+.obprep li{padding:6px 0;border-top:1px solid var(--line);line-height:1.55}
+.obprep li:first-child{border-top:0}
+.obprep .ev{color:var(--faint);font-size:11px;display:block}
+.obprep a.obmdl{margin:6px 8px 0 0;padding:5px 10px;font-size:12px}
 
 .obacts{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
 .obacts th,.obacts td{border-bottom:1px solid var(--line);padding:6px 9px;text-align:left;
@@ -157,6 +176,7 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
 .obtools select{padding-right:20px;width:104px;text-overflow:ellipsis}
 .obtools select#obcan{width:330px}
 .obtools select#obstate{width:150px}
+.obtools select#obprep{width:120px}
 .obcount{font-size:12px;color:var(--muted);margin-left:auto;white-space:nowrap}
 .obclear{font:inherit;font-size:11.5px;color:var(--accent);background:none;border:0;cursor:pointer;
   padding:0 4px}
@@ -172,7 +192,7 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
     and the two controls on the right scrolled off the screen: `max-width` on a cell does not bind
     in an auto-laid table. Fixed also makes the title's ellipsis behave. `min-width` keeps it
     honest on a narrow screen, where the wrapper is allowed to scroll instead. */
-.obtable{width:100%;min-width:1080px;table-layout:fixed;border-collapse:collapse;font-size:12.5px}
+.obtable{width:100%;min-width:1120px;table-layout:fixed;border-collapse:collapse;font-size:12.5px}
 .obtable th,.obtable td{padding:7px 9px;text-align:left;vertical-align:top;
   border-bottom:1px solid var(--line)}
 .obtable tbody tr:last-child td{border-bottom:0}
@@ -204,7 +224,8 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
 .obtable td.dts{white-space:nowrap;font-variant-numeric:tabular-nums}
 .obtable td.dts .dtl{display:block;font-size:11px;color:var(--muted)}
 .obtable td.dts .dtl b{color:var(--faint);font-weight:500;display:inline-block;width:30px}
-.obtable td.onf{white-space:nowrap}
+.obtable td.onf{white-space:nowrap;overflow:hidden}
+.obtable td.onf .dldate{display:block}
 .obtable td.chev{text-align:center;color:var(--faint);font-size:11px;padding-left:4px;padding-right:6px}
 .obtable tr.case[aria-expanded="true"] td.chev{color:var(--accent)}
 .posture{font-size:12px;font-weight:650}
@@ -296,6 +317,8 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
       <button type="button" class="stat urgent" data-urgency="urgent"><b>{{ counts.get('within_14', 0) }}</b><span>&le; 14 days</span></button>
       <button type="button" class="stat closing" data-urgency="soon"><b>{{ counts.get('within_90', 0) }}</b><span>&le; 90 days</span></button>
       <button type="button" class="stat lapsedstat" data-urgency="lapsed"><b>{{ counts.get('lapsed', 0) }}</b><span>lapsed</span></button>
+      <button type="button" class="stat prep" data-prep="packet"><b>{{ counts.get('packets', 0) }}</b><span>packets built</span></button>
+      <button type="button" class="stat prep" data-prep="zip"><b>{{ counts.get('zipped', 0) }}</b><span>zips ready</span></button>
     </div>
     {% endif %}
   </div>
@@ -488,6 +511,17 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
         <option value="lapsed">Lapsed</option>
         <option value="submitted">Something is already on the file</option>
       </select>
+      {#  What is already built for the row. "Packet" is the filing app's record for THIS
+          application; "zip" is a third-party-submission archive compiled from one of our own
+          searches. Either says somebody has started, and the last option says nobody has. #}
+      <select id="obprep" aria-label="Filter by what is prepared">
+        <option value="">Prepared</option>
+        <option value="packet">Packet built</option>
+        <option value="handed">Packet handed off or filed</option>
+        <option value="searched">Searched</option>
+        <option value="zip">Zip compiled</option>
+        <option value="nothing">Nothing prepared yet</option>
+      </select>
       <button type="button" class="obclear" id="obclear" hidden>clear</button>
       <span class="obcount" id="obcount"></span>
     </div>
@@ -496,9 +530,10 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
     <table class="obtable" id="obtable">
       <caption class="vh">The docket. Choose a row to open its full detail beneath it.</caption>
       <colgroup>
-        <col style="width:82px"><col style="width:138px"><col>
-        <col style="width:150px"><col style="width:236px"><col style="width:96px">
-        <col style="width:112px"><col style="width:66px"><col style="width:26px">
+        <col style="width:78px"><col style="width:128px"><col>
+        <col style="width:140px"><col style="width:204px"><col style="width:84px">
+        <col style="width:176px">
+        <col style="width:102px"><col style="width:60px"><col style="width:26px">
       </colgroup>
       <thead>
         <tr>
@@ -508,6 +543,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
           <th data-sort="posture" scope="col">Status</th>
           <th data-sort="route" scope="col">Can file now</th>
           <th data-sort="onfile" scope="col">On file</th>
+          <th data-sort="prep" scope="col">Prepared</th>
           <th data-sort="filed" scope="col">Dates</th>
           <th data-sort="prio" scope="col">Priority</th>
           <th class="nosort" scope="col"><span class="vh">Open</span></th>
@@ -526,6 +562,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             data-act="{{ head.status if head else '' }}"
             data-sub="{{ '1' if (c.on_file or c.filed) else '' }}"
             data-onfile="{{ 'a' if ours else ('b' if c.on_file else 'z') }}"
+            data-pkg="{{ c.package_state or 'none' }}" data-srch="{{ c.search_state or 'none' }}"
             data-filed="{{ c.filing_date or c.pubDate or '' }}"
             data-can="{{ c.can_keys | join(' ') }}"
             data-hay="{{ (c.publication ~ ' ' ~ (c.granted_as or '') ~ ' ' ~ c.title ~ ' ' ~ (c.applicant or '') ~ ' ' ~ (c.inventors | join(' ') if c.inventors else '') ~ ' ' ~ (c.application or '') ~ ' ' ~ (c.ipc or '') ~ ' ' ~ (c.register_status or '') ~ ' ' ~ (live | map(attribute='instrument') | join(' ')) ~ ' ' ~ (live | map(attribute='statute') | join(' '))) | lower }}">
@@ -578,6 +615,34 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             {% elif c.on_file %}<span class="act conditional">3rd party</span> <span class="dldate">{{ c.on_file[0].date }}</span>
             {% elif c.filed %}<span class="act open">filed</span>
             {% else %}<span class="office">&ndash;</span>{% endif %}
+          </td>
+          {#  WHAT IS ALREADY BUILT, from the two systems that hold it. The filing app's packet for
+              this application on the first line, our own search on the second, each a link into
+              the thing itself. Pinned by number, so a sibling's packet never shows here. #}
+          <td class="prep">
+            {% set pk = c.packages | rejectattr('demo') | list %}
+            {% set pk0 = pk[0] if pk else (c.packages[0] if c.packages else none) %}
+            {#  pk0['items'], never pk0.items: on a dict Jinja resolves .items to the METHOD. #}
+            <div class="prepline"><span class="prepk">packet</span>
+              {% if pk0 %}
+                <span class="act {{ 'filed' if pk0.state == 'filed' else ('handed' if pk0.state == 'handed off' else ('demo' if pk0.demo else 'built')) }}">{{ 'demo' if pk0.demo else pk0.state }}</span>
+                <a href="{{ pk0.url }}" target="_blank" rel="noopener" title="{{ pk0.label }} {{ pk0.id }}, built {{ pk0.created }}">{{ pk0['items'] }} docs</a>
+                <span class="prepn">{% if pk0.filing_date %}filed {{ pk0.filing_date[5:10] }}{% elif pk0.created %}{{ pk0.created[5:10] }}{% endif %}{% if c.packages | length > 1 %} +{{ c.packages | length - 1 }}{% endif %}</span>
+              {% else %}<span class="none">none</span>{% endif %}
+            </div>
+            <div class="prepline"><span class="prepk">search</span>
+              {% if c.searches %}
+                {% set s0 = c.searches[0] %}
+                {% set sz = c.searches | selectattr('concise') | list %}
+                {% if sz %}<span class="act zip">zip</span>
+                  <a href="{{ request.script_root }}/report/{{ sz[0].slug }}/concise.zip" title="third-party-submission-{{ sz[0].slug }}.zip">{{ sz[0].concise }} docs</a>
+                  <a href="{{ request.script_root }}/report/{{ sz[0].slug }}" class="prepn" title="{{ sz[0].query }}">{{ sz[0].when[5:10] }}{% if c.searches | length > 1 %} +{{ c.searches | length - 1 }}{% endif %}</a>
+                {% else %}<span class="act {{ 'done' if s0.status and s0.status.startswith('complete') else 'not_yet' }}">{{ 'done' if s0.status and s0.status.startswith('complete') else (s0.status or 'run') }}</span>
+                  <a href="{{ request.script_root }}/report/{{ s0.slug }}" title="{{ s0.query }}">{{ s0.when[5:10] }}</a>
+                  {% if c.searches | length > 1 %}<span class="prepn">+{{ c.searches | length - 1 }}</span>{% endif %}
+                {% endif %}
+              {% else %}<span class="none">none</span>{% endif %}
+            </div>
           </td>
           <td class="dts">
             {% if c.filing_date %}<span class="dtl"><b>filed</b>{{ c.filing_date }}</span>{% endif %}
@@ -732,7 +797,7 @@ function obLink(href, text){
   var DETAIL = {};
   try { DETAIL = JSON.parse(document.getElementById('obdetail').textContent) || {}; }
   catch (e) { DETAIL = {}; }
-  var COLS = 9;
+  var COLS = 10;
 
   // ── filters, populated from the data so they can never list a dead option ──────────────
   function fill(sel, values){
@@ -750,7 +815,7 @@ function obLink(href, text){
   var q = document.getElementById('obq'), fo = document.getElementById('oboffice'),
       fc = document.getElementById('obcan'), fs = document.getElementById('obstate'),
       fp = document.getElementById('obposture'), count = document.getElementById('obcount'),
-      clear = document.getElementById('obclear');
+      fr = document.getElementById('obprep'), clear = document.getElementById('obclear');
 
   function days(tr){ var d = tr.dataset.days; return d === '' ? null : parseInt(d, 10); }
 
@@ -774,6 +839,16 @@ function obLink(href, text){
     if (!want) return true;
     return (' ' + tr.dataset.can + ' ').indexOf(' ' + want + ' ') >= 0;
   }
+  function prepOk(tr, want){
+    var pk = tr.dataset.pkg || 'none', sr = tr.dataset.srch || 'none';
+    if (!want) return true;
+    if (want === 'packet')   return pk !== 'none' && pk !== 'demo';
+    if (want === 'handed')   return pk === 'handed off' || pk === 'filed';
+    if (want === 'searched') return sr === 'done' || sr === 'zip';
+    if (want === 'zip')      return sr === 'zip';
+    if (want === 'nothing')  return (pk === 'none' || pk === 'demo') && sr === 'none';
+    return true;
+  }
 
   var visible = [];
   function apply(){
@@ -784,19 +859,20 @@ function obLink(href, text){
             && (!fo.value || tr.dataset.office === fo.value)
             && (!fp.value || tr.dataset.posture === fp.value)
             && canOk(tr, fc.value)
+            && prepOk(tr, fr.value)
             && urgencyOk(tr, fs.value);
       tr.hidden = !ok;
       if (tr._x) tr._x.hidden = !ok || !tr._open;
       if (ok) visible.push(tr);
     });
     count.textContent = visible.length + ' of ' + rows.length + ' cases';
-    clear.hidden = !(needle || fo.value || fp.value || fc.value || fs.value);
+    clear.hidden = !(needle || fo.value || fp.value || fc.value || fs.value || fr.value);
   }
-  [q, fo, fp, fc, fs].forEach(function(el){
+  [q, fo, fp, fc, fs, fr].forEach(function(el){
     el.addEventListener('input', apply); el.addEventListener('change', apply);
   });
   clear.addEventListener('click', function(){
-    q.value = ''; fo.value = ''; fp.value = ''; fc.value = ''; fs.value = '';
+    q.value = ''; fo.value = ''; fp.value = ''; fc.value = ''; fs.value = ''; fr.value = '';
     apply(); paintChips();
   });
 
@@ -805,17 +881,24 @@ function obLink(href, text){
   var chips = Array.prototype.slice.call(document.querySelectorAll('button.stat'));
   function paintChips(){
     chips.forEach(function(c){
-      c.setAttribute('aria-pressed', String(c.dataset.urgency === fs.value));
+      var on = (c.dataset.prep !== undefined) ? (c.dataset.prep === fr.value)
+                                              : (c.dataset.urgency === fs.value);
+      c.setAttribute('aria-pressed', String(on));
     });
   }
   chips.forEach(function(c){
     c.addEventListener('click', function(){
-      fs.value = (fs.value === c.dataset.urgency) ? '' : c.dataset.urgency;
+      if (c.dataset.prep !== undefined){
+        fr.value = (fr.value === c.dataset.prep) ? '' : c.dataset.prep;
+      } else {
+        fs.value = (fs.value === c.dataset.urgency) ? '' : c.dataset.urgency;
+      }
       apply(); paintChips();
       table.scrollIntoView({block: 'start', behavior: 'smooth'});
     });
   });
   fs.addEventListener('change', paintChips);
+  fr.addEventListener('change', paintChips);
   paintChips();
 
   // ── sorting ───────────────────────────────────────────────────────────────────────────
@@ -829,12 +912,18 @@ function obLink(href, text){
       return isNaN(k) ? 999999 : k;
     }
     if (key === 'prio'){
-      var t = tr.cells[7].textContent.trim();
+      var t = tr.cells[8].textContent.trim();
       var m = t.match(/\d/);            // "1 - critical" sorts above "3"; words sort last
       return m ? parseInt(m[0], 10) : (t ? 50 : 99);
     }
     if (key === 'posture') return {pending: 0, granted: 1, lapsed: 2}[tr.dataset.posture] || 3;
     if (key === 'onfile')  return tr.dataset.onfile || 'z';
+    if (key === 'prep'){
+      var PK = {filed: 0, 'handed off': 1, built: 2, draft: 3, started: 4, demo: 6, none: 7};
+      var SR = {zip: 0, done: 1, running: 2, none: 3};
+      return (PK[tr.dataset.pkg] === undefined ? 5 : PK[tr.dataset.pkg]) * 10
+           + (SR[tr.dataset.srch] === undefined ? 3 : SR[tr.dataset.srch]);
+    }
     if (key === 'filed')   return tr.dataset.filed || '9999';
     var idx = {pub: 1, title: 2, route: 4}[key];
     return tr.cells[idx].textContent.trim().toLowerCase();
@@ -958,6 +1047,54 @@ function obLink(href, text){
     return wrap;
   }
 
+  //  WHAT IS ALREADY BUILT, in full: every packet the filing app holds for this application and
+  //  every search of ours that was run from this publication, each a link into the thing itself.
+  function prepared(d){
+    var pks = d.packages || [], srs = d.searches || [];
+    if (!pks.length && !srs.length) return null;
+    var wrap = obEl('div', 'obmact');
+    wrap.appendChild(obEl('h4', null, 'Already built for this one'));
+    var ul = obEl('ul', 'obprep');
+    pks.forEach(function(p){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      head.appendChild(obEl('span', 'act ' + (p.demo ? 'demo' : p.state === 'filed' ? 'filed'
+                            : p.state === 'handed off' ? 'handed' : 'built'),
+                            p.demo ? 'demo' : p.state));
+      head.appendChild(document.createTextNode('  ' + p.label + '  ·  ' + p.items + ' document'
+        + (p.items === 1 ? '' : 's')
+        + (p.concise ? ', ' + p.concise + ' concise descriptions' : '')
+        + (p.forms ? ', ' + p.forms + ' form' + (p.forms === 1 ? '' : 's') : '')
+        + (p.created ? '  ·  built ' + p.created : '')
+        + (p.filing_date ? '  ·  filed ' + p.filing_date : '')
+        + (p.session ? '  ·  session ' + p.session : '')
+        + (p.signer ? '  ·  signer ' + p.signer : '') + '  '));
+      head.appendChild(obLink(p.url, 'Open in the filing app'));
+      li.appendChild(head);
+      li.appendChild(obEl('span', 'ev', (p.title || '') + (p.application ? '  ·  app. ' + p.application : '')
+                          + (p.number ? '  ·  ' + p.number : '') + '  ·  ' + p.id));
+      ul.appendChild(li);
+    });
+    srs.forEach(function(s){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      head.appendChild(obEl('span', 'act ' + (s.concise ? 'zip' : (String(s.status || '').indexOf('complete') === 0 ? 'done' : 'not_yet')),
+                            s.concise ? 'zip' : (String(s.status || '').indexOf('complete') === 0 ? 'searched' : (s.status || 'run'))));
+      head.appendChild(document.createTextNode('  ' + (s.when || '') + '  ·  ' + (s.mode || 'novelty') + ' search'
+        + (s.concise ? '  ·  ' + s.concise + ' concise description' + (s.concise === 1 ? '' : 's') + ' built' : '') + '  '));
+      head.appendChild(obLink(window.APP_BASE + '/report/' + encodeURIComponent(s.slug), 'Report'));
+      if (s.concise){
+        head.appendChild(document.createTextNode('  '));
+        head.appendChild(obLink(window.APP_BASE + '/report/' + encodeURIComponent(s.slug) + '/concise.zip', 'Download the submission zip'));
+      }
+      li.appendChild(head);
+      li.appendChild(obEl('span', 'ev', (s.query || '') + (s.pub ? '  ·  run from ' + s.pub : '') + '  ·  ' + s.slug));
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+
   function history(d){
     //  Newest first, because the last event is the one that decided the posture.
     var evs = (d.register_events || []).slice().reverse();
@@ -1050,6 +1187,7 @@ function obLink(href, text){
     //  on this one" has to be answered before "what could we file", or the second question is
     //  being asked in ignorance.
     var s = submissions(d); if (s) root.appendChild(s);
+    var pr = prepared(d); if (pr) root.appendChild(pr);
     var o = optionsTable(d); if (o) root.appendChild(o);
 
     var cols = obEl('div', 'obxcols');

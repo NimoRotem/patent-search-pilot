@@ -63,6 +63,7 @@ from flask import (Blueprint, abort, jsonify, redirect, render_template, request
 import auth
 import db
 import observation_actions
+import observation_links
 import observation_refresh
 
 bp = Blueprint("observations", __name__)
@@ -113,6 +114,9 @@ DETAIL_FIELDS = (
     "decision_on", "closing_note", "closing_soon", "allowance", "quayle", "exam_requested",
     "opposition_pending", "our_submissions", "file_events", "on_file", "refreshed_at",
     "refresh_source", "actions",
+    #  What has already been built for the case elsewhere: the filing app's packets and this
+    #  app's own searches, pinned to the row by number. See observation_links.
+    "packages", "package_state", "searches", "search_state",
     #  The German register's own event list. It is the evidence behind every German posture and
     #  deadline on this page: "granted 2026-08-20" is an assertion until you can see the R018 and
     #  the B4 it was read off.
@@ -844,6 +848,10 @@ def actions_page():
     #  filings that belong on this docket, and only the shipped docket carries the hand-written
     #  list of windows that were missed.
     attribute_filings(cases, filings)
+    #  What the filing app has already built and what this app has already searched, per case.
+    #  Pinned by application and publication number, never by family: the packet for the US
+    #  member says nothing about the German one.
+    observation_links.attach(cases, uid)
     seeded = bool(target and target.get("seeded"))
     filings = filings_on(cases, filings, everything=seeded)
     missed = list(meta.get("missed") or []) if seeded else []
@@ -866,6 +874,7 @@ def actions_page():
     counts["actionable"] = sum(
         1 for c in cases
         if (c.get("action_headline") or {}).get("status") in ("open", "closing"))
+    counts.update(observation_links.summary(cases))
     can_file = can_file_options(cases)
     #  THE EXPANDED ROW'S DATA, TRIMMED. The table row carries what you scan by; everything else
     #  is built on demand from this map by publication number. Only the fields the panel
@@ -885,6 +894,7 @@ def actions_page():
                            targets=targets, target=target, offices=OFFICES,
                            lookbacks=LOOKBACKS, default_lookback=DEFAULT_LOOKBACK,
                            job=job, stages=observation_actions.STAGES,
+                           filing_url=observation_links.FILING_URL,
                            matrix=observation_actions.reference_matrix(),
                            matrix_offices=observation_actions.REFERENCE_OFFICES,
                            stale_days=stale_days,
