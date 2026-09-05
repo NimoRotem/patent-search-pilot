@@ -750,6 +750,7 @@ def euipo_design_row(d, target_name=""):
         "registration": num,
         "classes": list(detail.get("locarnoClasses") or d.get("locarnoClasses") or []),
         "status": status,
+        "register_status": status.replace("_", " ").lower(),
         "posture": _ds_posture(status),
         "filing_date": _iso(d.get("applicationDate")),
         "registration_date": _iso(d.get("registrationDate")),

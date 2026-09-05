@@ -1418,8 +1418,8 @@ def apply_to_user(user_id, result, target_id=None, kind="patent"):
         cur.execute("""UPDATE app_observation_targets
                           SET refresh = (CASE WHEN refresh ? 'changes' THEN jsonb_build_object('patent', refresh)
                                               ELSE COALESCE(refresh, '{}'::jsonb) END)
-                                        || jsonb_build_object(%s, %s::jsonb),
-                              refreshed_at = CASE WHEN %s = 'patent' THEN now() ELSE refreshed_at END,
+                                        || jsonb_build_object(%s::text, %s::jsonb),
+                              refreshed_at = CASE WHEN %s::text = 'patent' THEN now() ELSE refreshed_at END,
                               updated_at = now()
                         WHERE user_id = %s AND id = %s""",
                     (kind, json.dumps(record), kind, user_id, target_id))
