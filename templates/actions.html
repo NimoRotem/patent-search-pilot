@@ -1,0 +1,1436 @@
+{% extends "base.html" %}
+{% block title %}Actions - {{ brand }}{% endblock %}
+
+{% block body %}
+<style>
+/*  A docket is read in three passes: what closes soonest, what has already been filed, and then
+    the long tail. The page is laid out in that order and nothing below the fold is needed to act. */
+.obwrap{padding-top:22px;padding-bottom:20px}
+.obhead{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-end;justify-content:space-between;margin-bottom:6px}
+.obhead h1{font-size:26px}
+.obsub{color:var(--muted);font-size:13px;max-width:76ch;margin-top:6px;line-height:1.6}
+.obstats{display:flex;gap:8px;flex-wrap:wrap}
+.stat{background:var(--s1);border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 11px;min-width:70px}
+.stat b{display:block;font-size:18px;line-height:1.2}
+.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.stat.urgent b{color:var(--bad)} .stat.closing b{color:var(--warn)}
+.stat.lapsedstat b{color:var(--faint)}
+.stat.good b{color:var(--good)}
+button.stat{font:inherit;text-align:center;cursor:pointer;color:inherit}
+button.stat:hover{background:var(--s2);border-color:var(--line2)}
+button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+
+/* ── the target bar ───────────────────────────────────────────────────────── */
+/*  Which company this docket is about sits ABOVE everything, because every number on the page
+    is about exactly one of them and switching is the first thing a reader with two does. */
+.obtargets{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:14px 0 4px;
+  padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--s1)}
+.obtargets label{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+.obtargets select{font:inherit;font-size:14px;font-weight:650;padding:6px 30px 6px 10px;
+  border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink);
+  max-width:360px}
+.obtmeta{font-size:12px;color:var(--muted);line-height:1.5;flex:1;min-width:220px}
+.obtmeta b{color:var(--ink);font-weight:600}
+.obtbtn{font:inherit;font-size:12.5px;font-weight:650;padding:6px 12px;cursor:pointer;
+  border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink)}
+.obtbtn:hover{background:var(--s2);border-color:var(--accent)}
+.obtbtn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.obtbtn.primary:hover{filter:brightness(.94)}
+.obtbtn.danger{color:var(--bad);border-color:#f0c2be}
+.obtbtn:disabled{opacity:.55;cursor:progress}
+.obform{margin:8px 0 4px;padding:14px 16px;border:1px solid var(--line2);border-radius:var(--r);
+  background:var(--s3)}
+.obform h3{font-size:15px;margin:0 0 10px}
+.obformgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}
+.obform label.fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--faint);
+  text-transform:uppercase;letter-spacing:.04em}
+.obform input[type=text],.obform textarea,.obform select{font:inherit;font-size:13px;padding:6px 9px;
+  border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink);
+  text-transform:none;letter-spacing:0}
+.obform textarea{min-height:64px;resize:vertical}
+.obform fieldset{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:6px 14px;
+  font-size:13px;text-transform:none;letter-spacing:0;color:var(--ink)}
+.obform fieldset label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+.obformnote{font-size:12px;color:var(--muted);line-height:1.55;margin:10px 0 0;max-width:80ch}
+.obformbtns{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.obformerr{font-size:12.5px;color:var(--bad);margin-top:8px}
+.obempty{margin:22px 0;padding:18px;border:1px dashed var(--line2);border-radius:var(--r);
+  color:var(--muted);font-size:13.5px;line-height:1.6}
+
+/* ── refreshing the registers ─────────────────────────────────────────────── */
+.obrefresh{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:10px}
+.obrefresh button{font:inherit;font-size:12.5px;font-weight:650;padding:6px 13px;cursor:pointer;
+  border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink)}
+.obrefresh button:hover:not(:disabled){background:var(--s2);border-color:var(--accent)}
+.obrefresh button:disabled{opacity:.55;cursor:progress}
+.obrefreshnote{font-size:12px;color:var(--muted);line-height:1.5;max-width:70ch}
+.obrefreshnote b{color:var(--ink);font-weight:650}
+.obrefreshnote.stale{color:var(--bad)} .obrefreshnote.stale b{color:var(--bad)}
+.obbar{flex-basis:100%;height:4px;border-radius:2px;background:var(--s2);overflow:hidden}
+.obbar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s ease}
+.obrefreshlog{flex-basis:100%;margin:2px 0 0;padding:10px 13px;border:1px solid var(--line);
+  border-radius:var(--r-sm);background:var(--s3);font-size:12.5px;line-height:1.6;max-height:190px;
+  overflow:auto}
+.obrefreshlog ul{margin:5px 0 0;padding-left:18px} .obrefreshlog li{margin:2px 0}
+.obrefreshlog .bad{color:var(--bad)}
+
+/* ── what can be filed ────────────────────────────────────────────────────── */
+/*  One vocabulary for "can I act on this today", used by the row, the panel and the legend, so
+    a green pill always means the same thing wherever it appears. */
+.act{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.05em;padding:1px 6px;border-radius:var(--r-pill);border:1px solid transparent;
+  white-space:nowrap;vertical-align:middle}
+.act.open{background:var(--good-soft);color:var(--good);border-color:#bfe3ce}
+.act.closing{background:var(--bad-soft);color:var(--bad);border-color:#f0c2be}
+.act.conditional{background:var(--s2);color:var(--warn);border-color:var(--line2)}
+.act.not_yet{background:var(--s2);color:var(--muted);border-color:var(--line)}
+.act.closed,.act.na{background:transparent;color:var(--faint);border-color:var(--line)}
+.instr{font-size:12px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  display:block}
+.instr.none{color:var(--faint)}
+.canline{display:flex;gap:5px;align-items:baseline;white-space:nowrap;overflow:hidden;
+  line-height:1.5}
+.canline .canins{font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.canline .canfee{font-size:10.5px;color:var(--faint);flex-shrink:0}
+.canline.dim .canins{color:var(--muted)}
+.canmore{font-size:10.5px;color:var(--faint)}
+.subdot{color:var(--good);font-weight:700}
+
+.obacts{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+.obacts th,.obacts td{border-bottom:1px solid var(--line);padding:6px 9px;text-align:left;
+  vertical-align:top}
+.obacts th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);
+  font-weight:650;white-space:nowrap}
+.obacts td.stg{color:var(--muted);white-space:nowrap;width:158px}
+.obacts td.ins{width:210px}
+.obacts td.ins b{display:block;font-weight:650}
+.obacts td.ins span{font-size:11px;color:var(--faint)}
+.obacts td.win{white-space:nowrap;width:112px;font-variant-numeric:tabular-nums}
+.obacts td.why{color:var(--muted);line-height:1.55}
+.obacts tr.dim td{opacity:.6}
+.obacts tbody tr:last-child td{border-bottom:0}
+/*  The reference table shares the panel table's cell styling and needs three equal
+    instrument columns rather than one wide prose column. */
+.obmatrix{table-layout:fixed;min-width:820px}
+.obmatrix td.stg{width:180px;white-space:normal}
+.obmatrix td.ins{width:auto}
+.obmatrix td.ins .win{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.obmatrix td.dimcell{opacity:.5}
+.obmatrix td .none{font-size:12px;color:var(--faint)}
+.obsubs{list-style:none;margin:5px 0 0;padding:0;font-size:12.5px}
+.obsubs li{padding:6px 0;border-top:1px solid var(--line);line-height:1.55}
+.obsubs li:first-child{border-top:0}
+.obsubs .ev{color:var(--faint);font-size:11px;display:block}
+.obhist{list-style:none;margin:5px 0 0;padding:0;font-size:12.5px}
+.obhist li{display:flex;gap:12px;padding:3px 0;border-top:1px solid var(--line);
+  line-height:1.5}
+.obhist li:first-child{border-top:0}
+.obhist .when{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;
+  min-width:88px}
+.obhist .code{color:var(--faint);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:11px;min-width:44px}
+
+section.obsec{margin-top:30px}
+section.obsec>h2{font-size:17px;margin-bottom:4px}
+section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-width:80ch;line-height:1.6}
+
+.pill{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  padding:3px 9px;border-radius:var(--r-pill);border:1px solid transparent;white-space:nowrap}
+.pill.ok{background:var(--good-soft);color:var(--good);border-color:#bfe3ce}
+.pill.no{background:var(--bad-soft);color:var(--bad);border-color:#f0c2be}
+.pill.neutral{background:var(--s2);color:var(--muted);border-color:var(--line)}
+.refs{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.refs th,.refs td{border-bottom:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+.refs th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);font-weight:650}
+.refs td.n{width:34px;color:var(--faint)}
+
+/* ── the table ────────────────────────────────────────────────────────────── */
+/*  ONE ROW OF SMALL CONTROLS. The filters used to be five full-height inputs across the page,
+    which is the size of a form, for what is a set of narrowing knobs beside a count. */
+.obtools{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:8px}
+.obtools input[type=search],.obtools select{font:inherit;font-size:12px;height:26px;
+  padding:0 7px;border:1px solid var(--line2);border-radius:4px;background:var(--s1);
+  color:var(--ink)}
+.obtools input[type=search]{width:160px}
+/*  A select sizes itself to its LONGEST option, and the instrument names are sentences, so
+    every width here is explicit or the row is three lines deep. */
+.obtools select{padding-right:20px;width:104px;text-overflow:ellipsis}
+.obtools select#obcan{width:330px}
+.obtools select#obstate{width:150px}
+.obcount{font-size:12px;color:var(--muted);margin-left:auto;white-space:nowrap}
+.obclear{font:inherit;font-size:11.5px;color:var(--accent);background:none;border:0;cursor:pointer;
+  padding:0 4px}
+.obclear:hover{text-decoration:underline}
+/*  NO `overflow` HERE ON A WIDE SCREEN, deliberately. An overflow container becomes the
+    containing block for `position:sticky`, so the header below stopped sticking to the VIEWPORT
+    and started sticking 64px down inside this box, where it sat on top of the first two rows.
+    The table already has `min-width`, so the wrapper only needs to scroll on a narrow screen,
+    and that is the one case where a sticky header is dropped instead. */
+.obtablewrap{border:1px solid var(--line);border-radius:var(--r);background:var(--s1)}
+/*  FIXED LAYOUT, and every column but the title given a width. Under `auto` the browser sizes
+    each column to its widest content, so one long route label pushed the table past its container
+    and the two controls on the right scrolled off the screen: `max-width` on a cell does not bind
+    in an auto-laid table. Fixed also makes the title's ellipsis behave. `min-width` keeps it
+    honest on a narrow screen, where the wrapper is allowed to scroll instead. */
+.obtable{width:100%;min-width:1080px;table-layout:fixed;border-collapse:collapse;font-size:12.5px}
+.obtable th,.obtable td{padding:7px 9px;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--line)}
+.obtable tbody tr:last-child td{border-bottom:0}
+.obtable thead th{background:var(--s2);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);font-weight:650;white-space:nowrap;position:sticky;top:64px;z-index:3;
+  cursor:pointer;user-select:none}
+.obtable thead th.nosort{cursor:default}
+.obtable thead th[aria-sort]{color:var(--ink)}
+.obtable thead th .arw{color:var(--faint);font-size:9px;margin-left:3px}
+/*  THE WHOLE ROW OPENS ITS PANEL, so it gets the affordances of a control: a pointer, a hover
+    tint and a visible focus ring when tabbed to. */
+.obtable tbody tr.case{cursor:pointer}
+.obtable tbody tr.case:hover{background:var(--s3)}
+.obtable tbody tr.case:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.obtable tbody tr.case.lapsed td:not(.chev){opacity:.55}
+.obtable tbody tr.case[aria-expanded="true"]{background:var(--s3)}
+.obtable tbody tr.case[aria-expanded="true"] td{border-bottom-color:transparent}
+.obtable td.pub{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.obtable td.pub .office{font-family:inherit;display:block}
+.obtable td.ttl{overflow:hidden}
+.obtable td.ttl .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.obtable td.ttl .who{display:block;font-size:11px;color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.obtable td.dl{white-space:nowrap;font-variant-numeric:tabular-nums}
+.obtable td.st{overflow:hidden}
+.obtable td.st .regst{display:block;font-size:11px;color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.obtable td.dts{white-space:nowrap;font-variant-numeric:tabular-nums}
+.obtable td.dts .dtl{display:block;font-size:11px;color:var(--muted)}
+.obtable td.dts .dtl b{color:var(--faint);font-weight:500;display:inline-block;width:30px}
+.obtable td.onf{white-space:nowrap}
+.obtable td.chev{text-align:center;color:var(--faint);font-size:11px;padding-left:4px;padding-right:6px}
+.obtable tr.case[aria-expanded="true"] td.chev{color:var(--accent)}
+.posture{font-size:12px;font-weight:650}
+.posture.pending{color:var(--ink)} .posture.granted{color:var(--accent)}
+.posture.lapsed{color:var(--faint)} .posture.unknown{color:var(--faint);font-weight:500}
+.days{font-weight:700;font-size:12.5px}
+.days.urgent{color:var(--bad)} .days.closing{color:var(--warn)} .days.lapsed{color:var(--faint)}
+.days.none{color:var(--faint);font-weight:500}
+.dldate{font-size:11px;color:var(--faint)}
+.office{font-size:10.5px;color:var(--faint)}
+.prio{font-size:10.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.prio.p1{color:var(--bad)}
+.detailbtn{cursor:pointer;color:var(--accent);font-size:11.5px;background:none;border:0;
+  padding:4px 2px;font-weight:650}
+.detailbtn:hover{text-decoration:underline}
+
+/* ── the expanded row ─────────────────────────────────────────────────────── */
+/*  Not a dialog. The panel opens UNDER the row it belongs to, so the reader keeps the rows
+    above and below in view and can open two to compare them. Everything the dialog used to
+    hold is here, in the same order: what is already on the file, then the instrument table,
+    then the record, then the note. */
+.obtable tr.obx>td{padding:0 10px 14px 10px;background:var(--s3);cursor:default}
+.obxbody{border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);
+  padding:12px 16px 14px}
+.obxhead{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;margin-bottom:8px}
+.obmnum{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)}
+.obxhead h3{font-size:14.5px;margin:0;line-height:1.35;flex-basis:100%}
+.obxlinks{display:flex;gap:12px;font-size:12px;margin-left:auto}
+.obmwhen{font-size:12.5px;font-weight:700;margin-bottom:10px}
+.obmwhen.urgent{color:var(--bad)} .obmwhen.closing{color:var(--warn)}
+.obmwhen.lapsed{color:var(--faint)} .obmwhen.none{color:var(--muted);font-weight:600}
+.obmact{border-top:1px solid var(--line);margin-top:12px;padding-top:11px}
+.obmact h4{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;
+  margin-bottom:6px}
+.obxcols{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+.obmgrid{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0}
+.obmgrid dt{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;
+  white-space:nowrap;padding-top:2px}
+.obmgrid dd{margin:0;font-size:12.5px;line-height:1.55;min-width:0;overflow-wrap:anywhere}
+.obxnote{display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--line);
+  margin-top:12px;padding-top:11px}
+.obxnote label{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+.obxnote textarea{width:100%;font:inherit;font-size:13px;padding:7px 9px;min-height:48px;
+  border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink);
+  resize:vertical}
+.obmsaved{font-size:11.5px;color:var(--good);font-weight:650}
+.obmprose{margin-top:4px}
+.obmprose section{border-top:1px solid var(--line);margin-top:11px;padding-top:10px}
+.obmprose h4{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;
+  margin-bottom:5px}
+.obmprose p{margin:0;font-size:13px;line-height:1.6}
+.obmdl{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:650;
+  padding:7px 13px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);
+  margin-top:12px}
+.obmdl:hover{background:var(--s2);text-decoration:none}
+ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px}
+@media(max-width:1180px){
+  .obtablewrap{overflow-x:auto}
+  .obtable thead th{position:static}
+}
+@media(max-width:820px){
+  .obformgrid,.obxcols{grid-template-columns:1fr}
+}
+</style>
+
+<div class="wrap obwrap">
+
+  <div class="obhead">
+    <div>
+      <h1>Actions</h1>
+      <p class="obsub">
+        {% if target %}
+        Every {{ target.name }} filing a third party can still act against, every instrument that
+        reaches it at its office today and the date each door shuts. Countdowns are computed for
+        <strong>{{ today }}</strong>, not stored, so they are never one build out of date.
+        {% else %}
+        Pick a company, a person or several of either, and this page finds what they have
+        published, reads each office's register and lists every instrument a third party can
+        still file against each case, with the date it shuts.
+        {% endif %}
+      </p>
+    </div>
+    {% if target %}
+    {#  THE CHIPS ARE THE WAY INTO THE DOCKET: each one sets the urgency filter on the table below
+        rather than repeating its rows up here. #}
+    <div class="obstats">
+      <button type="button" class="stat" data-urgency=""><b>{{ counts.total }}</b><span>cases</span></button>
+      <button type="button" class="stat good" data-urgency="actionable"><b>{{ counts.get('actionable', 0) }}</b><span>can file now</span></button>
+      <button type="button" class="stat urgent" data-urgency="urgent"><b>{{ counts.get('within_14', 0) }}</b><span>&le; 14 days</span></button>
+      <button type="button" class="stat closing" data-urgency="soon"><b>{{ counts.get('within_90', 0) }}</b><span>&le; 90 days</span></button>
+      <button type="button" class="stat lapsedstat" data-urgency="lapsed"><b>{{ counts.get('lapsed', 0) }}</b><span>lapsed</span></button>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── the target ─────────────────────────────────────────────────────────── #}
+  <div class="obtargets">
+    <label for="obtarget">Target</label>
+    <select id="obtarget" aria-label="Which target to show"{% if not targets %} disabled{% endif %}>
+      {% for t in targets %}
+      <option value="{{ t.id }}"{% if target and t.id == target.id %} selected{% endif %}>{{ t.name }} ({{ t.cases }})</option>
+      {% else %}
+      <option value="">No targets yet</option>
+      {% endfor %}
+    </select>
+    <span class="obtmeta">
+      {% if target %}
+        {% if target.assignees %}Assignee{{ 's' if target.assignees|length > 1 else '' }} <b>{{ target.assignees | join(', ') }}</b>{% endif %}
+        {% if target.assignees and target.inventors %} &middot; {% endif %}
+        {% if target.inventors %}Inventor{{ 's' if target.inventors|length > 1 else '' }} <b>{{ target.inventors | join(', ') }}</b>{% endif %}
+        &middot; {{ target.offices | join(' ') }} &middot; publications of the last {{ target.lookback_months }} months
+      {% endif %}
+    </span>
+    {% if target %}<button type="button" class="obtbtn" id="obeditbtn">Edit</button>{% endif %}
+    <button type="button" class="obtbtn primary" id="obaddbtn">Add a target</button>
+  </div>
+
+  {#  THE FORM, for adding and for editing. A target is names, not a query: the page turns each
+      name into the searches the two offices understand and checks every hit against its own
+      bibliographic record before it is accepted, so a common surname does not pull strangers in. #}
+  <form class="obform" id="obform"{% if targets %} hidden{% endif %} autocomplete="off">
+    <h3 id="obformtitle">Add a target</h3>
+    <div class="obformgrid">
+      <label class="fld">Assignees, one per line
+        <textarea name="assignees" placeholder="Festo SE &amp; Co. KG&#10;Festo AG"></textarea></label>
+      <label class="fld">Inventors, one per line
+        <textarea name="inventors" placeholder="Stockburger, Ralf"></textarea></label>
+      <label class="fld">Name on this page (optional)
+        <input type="text" name="name" placeholder="Defaults to the first assignee or inventor"></label>
+      <div>
+        <label class="fld" for="oblookback">Publications of the last</label>
+        <select name="lookback_months" id="oblookback">
+          {% for n in lookbacks %}<option value="{{ n }}"{% if n == default_lookback %} selected{% endif %}>{{ n }} months</option>{% endfor %}
+        </select>
+        <fieldset style="margin-top:10px">
+          {% for code, label in offices %}
+          <label><input type="checkbox" name="offices" value="{{ code }}" checked> {{ label }}</label>
+          {% endfor %}
+        </fieldset>
+      </div>
+    </div>
+    <p class="obformnote">Adding a target searches the EPO's published data for EP, DE and WO
+      publications and the USPTO Open Data Portal for US applications by these names, then reads
+      the register for every case it accepts, so each arrives with its posture and its open
+      windows. A hundred cases take a few minutes. Editing a target changes what the next refresh
+      searches for; rows already found are kept.</p>
+    <div class="obformbtns">
+      <button type="submit" class="obtbtn primary" id="obformsubmit">Add and fetch</button>
+      <button type="button" class="obtbtn" id="obformcancel"{% if not targets %} hidden{% endif %}>Cancel</button>
+      <button type="button" class="obtbtn danger" id="obdelbtn" hidden>Remove this target and its cases</button>
+    </div>
+    <div class="obformerr" id="obformerr" hidden></div>
+  </form>
+
+  {% if target %}
+  {#  THE REFRESH. This asks the offices again, live, about this target only. It is deliberately
+      one button and not a cron: a sweep costs API budget at the EPO and the person reading the
+      page is the one who knows whether today's numbers are worth spending it on. #}
+  <div class="obrefresh">
+    <button type="button" id="obrefreshbtn">Refresh from the registers</button>
+    <span class="obrefreshnote{{ ' stale' if (stale_days is not none and stale_days >= 7) or stale_days is none else '' }}" id="obrefreshnote">
+      {% if target.refreshed_at %}Last pulled <b>{{ target.refreshed_at }}</b>{% if stale_days is not none and stale_days >= 7 %},
+        <b>{{ stale_days }} days ago.</b> A grant in that time would have opened a window this page
+        cannot see yet.{% else %}.{% endif %}
+      {% else %}<b>Never pulled live.</b>{% if target.seeded %} The dates below come from the shipped {{ meta.as_of or 'baseline' }} sweep and a case may have granted, lapsed or been refused since.{% endif %}
+      {% endif %}
+      USPTO Open Data Portal for status, windows and our own submissions on the file wrapper;
+      EPO Register for European status and the mention of grant; INPADOC legal status for the
+      German cases. New publications by the target's names are added.
+    </span>
+    <div class="obbar" id="obrefreshbar" hidden><i></i></div>
+    <div class="obrefreshlog" id="obrefreshlog" hidden></div>
+  </div>
+
+  {% if not cases %}
+  <div class="obempty" id="obempty">
+    {% if job.running %}Finding what {{ target.name }} has published and reading each case's
+    register. This page reloads when it is done.
+    {% else %}Nothing on this docket yet. Press <b>Refresh from the registers</b> to search for
+    {{ target.name }}'s publications, or edit the target if the names need work.{% endif %}
+  </div>
+  {% endif %}
+
+  {# ── 1. what we have filed ──────────────────────────────────────────────── #}
+  {% if filings or missed %}
+  <section class="obsec">
+    <h2>Observations we have filed</h2>
+    <p class="lede">Every entry is corroborated against the primary source named in its evidence
+      line, not only against correspondence. Where the two disagree the register wins. Open a
+      row for the filing memo, the references it carried and the package.</p>
+    <div class="obtablewrap">
+    <table class="obtable" id="filingtable" style="min-width:820px">
+      <caption class="vh">Observations filed. Choose a row to open its full detail.</caption>
+      <colgroup>
+        <col style="width:110px"><col style="width:152px"><col>
+        <col style="width:100px"><col style="width:60px"><col style="width:110px">
+        <col style="width:92px"><col style="width:28px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="nosort" scope="col">Status</th>
+          <th class="nosort" scope="col">Target</th>
+          <th class="nosort" scope="col">Title</th>
+          <th class="nosort" scope="col">Filed</th>
+          <th class="nosort" scope="col">Refs</th>
+          <th class="nosort" scope="col">Cost</th>
+          <th class="nosort" scope="col">Package</th>
+          <th class="nosort" scope="col"><span class="vh">Open</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in filings %}
+        <tr class="case" data-kind="filing" data-idx="{{ loop.index0 }}" tabindex="0" aria-expanded="false">
+          <td>{% if f.status == 'filed' %}<span class="pill ok">Filed</span>
+              {% elif f.status == 'prepared_not_filed' %}<span class="pill no">Not filed</span>
+              {% else %}<span class="pill neutral">{{ f.status }}</span>{% endif %}</td>
+          <td class="pub" title="{{ f.target }}{% if f.application %} · {{ f.application }}{% endif %}">{{ f.target }}{% if f.application %}<br><span class="dldate">{{ f.application }}</span>{% endif %}</td>
+          <td class="ttl" title="{{ f.title }}"><span class="t">{{ f.title }}</span><span class="who">{{ f.target_owner }}</span></td>
+          <td class="dl">{% if f.filed_on %}{{ f.filed_on }}{% else %}&ndash;{% endif %}</td>
+          <td>{% if f.references %}{{ f.references }}{% else %}&ndash;{% endif %}</td>
+          <td class="small">{% if f.official_fee_usd is not none %}${{ f.official_fee_usd }}{% if f.counsel_fee_usd %} + {{ '{:,}'.format(f.counsel_fee_usd) }}{% endif %}{% else %}&ndash;{% endif %}</td>
+          <td>{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/actions/package/{{ f.package }}" download onclick="event.stopPropagation()">Download</a>{% else %}<span class="office">&ndash;</span>{% endif %}</td>
+          <td class="chev">&#9662;</td>
+        </tr>
+        {% endfor %}
+        {% for m in missed %}
+        <tr class="case" data-kind="missed" data-idx="{{ loop.index0 }}" tabindex="0" aria-expanded="false">
+          <td><span class="pill neutral">Lapsed</span></td>
+          <td class="pub" title="{{ m.target }}{% if m.application %} · {{ m.application }}{% endif %}">{{ m.target }}{% if m.application %}<br><span class="dldate">{{ m.application }}</span>{% endif %}</td>
+          <td class="ttl" title="{{ m.title }}"><span class="t">{{ m.title }}</span><span class="who">window closed {{ m.window_closed }}</span></td>
+          <td class="dl">&ndash;</td><td>&ndash;</td><td class="small">&ndash;</td>
+          <td><span class="office">&ndash;</span></td>
+          <td class="chev">&#9662;</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ── 2. the docket ──────────────────────────────────────────────────────── #}
+  {% if cases %}
+  <section class="obsec">
+    <h2>The full docket</h2>
+    <p class="lede">Sorted by the soonest deadline. Cases with no deadline stay open for as long
+      as the application is pending, so they carry no countdown and sit at the end. Open a row
+      for the whole instrument table, the register's own record and a private note.</p>
+
+    <div class="obtools">
+      <input type="search" id="obq" placeholder="Search" aria-label="Search the docket">
+      <select id="oboffice" aria-label="Filter by office"><option value="">Office</option></select>
+      <select id="obposture" aria-label="Filter by posture">
+        <option value="">Posture</option>
+        <option value="pending">Pending</option>
+        <option value="granted">Granted</option>
+        <option value="lapsed">Lapsed</option>
+      </select>
+      {#  THE INSTRUMENT FILTER. Every route that is open on at least one row today, named the
+          way the instrument table names it, with the count; then the ones that need a fact
+          checked first. Choosing one shows exactly the rows it can be filed on. #}
+      <select id="obcan" aria-label="Filter by what can be filed">
+        <option value="">Can file: anything</option>
+        {% set open_opts = can_file | selectattr('group', 'equalto', 'open') | list %}
+        {% set check_opts = can_file | selectattr('group', 'equalto', 'check') | list %}
+        {% if open_opts %}<optgroup label="Can file today">
+          {% for o in open_opts %}<option value="{{ o.key }}">{{ o.stage_label }}: {{ o.instrument }} ({{ o.statute }}) &middot; {{ o.count }}</option>{% endfor %}
+        </optgroup>{% endif %}
+        {% if check_opts %}<optgroup label="Check a fact first">
+          {% for o in check_opts %}<option value="{{ o.key }}">{{ o.stage_label }}: {{ o.instrument }} ({{ o.statute }}) &middot; {{ o.count }}</option>{% endfor %}
+        </optgroup>{% endif %}
+      </select>
+      <select id="obstate" aria-label="Filter by urgency">
+        <option value="">Urgency</option>
+        <option value="actionable">Something can be filed today</option>
+        <option value="dated">Dated only</option>
+        <option value="urgent">14 days or less</option>
+        <option value="closing">30 days or less</option>
+        <option value="soon">90 days or less</option>
+        <option value="none">No deadline</option>
+        <option value="lapsed">Lapsed</option>
+        <option value="submitted">Something is already on the file</option>
+      </select>
+      <button type="button" class="obclear" id="obclear" hidden>clear</button>
+      <span class="obcount" id="obcount"></span>
+    </div>
+
+    <div class="obtablewrap">
+    <table class="obtable" id="obtable">
+      <caption class="vh">The docket. Choose a row to open its full detail beneath it.</caption>
+      <colgroup>
+        <col style="width:82px"><col style="width:138px"><col>
+        <col style="width:150px"><col style="width:236px"><col style="width:96px">
+        <col style="width:112px"><col style="width:66px"><col style="width:26px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th data-sort="deadline" aria-sort="ascending" scope="col">Deadline <span class="arw">&#9650;</span></th>
+          <th data-sort="pub" scope="col">Number</th>
+          <th data-sort="title" scope="col">Title</th>
+          <th data-sort="posture" scope="col">Status</th>
+          <th data-sort="route" scope="col">Can file now</th>
+          <th data-sort="onfile" scope="col">On file</th>
+          <th data-sort="filed" scope="col">Dates</th>
+          <th data-sort="prio" scope="col">Priority</th>
+          <th class="nosort" scope="col"><span class="vh">Open</span></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in cases %}
+        {% set head = c.action_headline %}
+        {% set live = c.actions | selectattr('status', 'in', ['open', 'closing']) | rejectattr('weak') | list %}
+        {% set ours = c.on_file | selectattr('whose', 'equalto', 'ours') | list %}
+        <tr class="case{{ ' lapsed' if c.state == 'lapsed' else '' }}" data-pub="{{ c.publication }}" tabindex="0" aria-expanded="false"
+            data-office="{{ c.office }}" data-route="{{ head.label if head else 'Nothing open' }}"
+            data-days="{{ c.days_left if c.days_left is not none else '' }}"
+            data-sortkey="{{ c.sort_key }}"
+            data-posture="{{ (c.posture or '') | lower }}"
+            data-act="{{ head.status if head else '' }}"
+            data-sub="{{ '1' if (c.on_file or c.filed) else '' }}"
+            data-onfile="{{ 'a' if ours else ('b' if c.on_file else 'z') }}"
+            data-filed="{{ c.filing_date or c.pubDate or '' }}"
+            data-can="{{ c.can_keys | join(' ') }}"
+            data-hay="{{ (c.publication ~ ' ' ~ (c.granted_as or '') ~ ' ' ~ c.title ~ ' ' ~ (c.applicant or '') ~ ' ' ~ (c.inventors | join(' ') if c.inventors else '') ~ ' ' ~ (c.application or '') ~ ' ' ~ (c.ipc or '') ~ ' ' ~ (c.register_status or '') ~ ' ' ~ (live | map(attribute='instrument') | join(' ')) ~ ' ' ~ (live | map(attribute='statute') | join(' '))) | lower }}">
+          <td class="dl">
+            {#  An undated window that is nonetheless about to shut gets its own rendering. Saying
+                "no deadline" here, which is literally true, reads as "no hurry", which is the
+                opposite of what the register is telling us. #}
+            {% if c.days_left is none and c.closing_soon %}<span class="days urgent">any day</span><br><span class="dldate">no fixed date</span>
+            {% elif c.days_left is none %}<span class="days none">no deadline</span>
+            {% elif c.days_left < 0 %}<span class="days lapsed">closed</span><br><span class="dldate">{{ c.deadline }}</span>
+            {% else %}
+              <span class="days {{ 'urgent' if c.days_left <= 14 else ('closing' if c.days_left <= 30 else '') }}">{{ c.days_left }}d</span>
+              <br><span class="dldate">{{ c.deadline }}</span>
+            {% endif %}
+          </td>
+          <td class="pub" title="{{ c.granted_as or c.publication }}{% if c.application %} · app. {{ c.application }}{% endif %}">{{ c.granted_as or c.publication }}<span class="office">{{ c.office }}{% if c.ipc %} &middot; {{ c.ipc }}{% endif %}</span></td>
+          <td class="ttl" title="{{ c.title_full or c.title }}"><span class="t">{{ c.title }}</span><span class="who" title="{{ c.applicant }}{% if c.inventors %} · {{ c.inventors | join(', ') }}{% endif %}">{{ c.applicant_short or '' }}{% if c.inventors %} &middot; {{ c.inventors | join(', ') }}{% endif %}</span></td>
+          <td class="st">
+            <span class="posture {{ (c.posture or 'unknown') | lower }}">{{ (c.posture or 'unread') | capitalize }}</span>
+            {% if c.grant_published %}<span class="dldate"> {{ c.grant_published }}</span>{% elif c.grant_date %}<span class="dldate"> {{ c.grant_date }}</span>{% endif %}
+            <span class="regst" title="{{ c.register_status }}{% if c.register_updated %} · read {{ c.register_updated }}{% endif %}">{{ c.register_status or 'register not read yet' }}</span>
+          </td>
+          {#  THE LIVE ANSWER, all of it. One case can be past its observation window and inside
+              its opposition window on the same day, and a single label could only ever name one
+              of the two. Up to three open instruments, each with its fee and its countdown; then,
+              when nothing is open, what to check or what opens next, greyed. #}
+          <td>
+            {% if live %}
+              {% for a in live[:3] %}
+              <div class="canline"><span class="act {{ a.status }}">{{ 'closing' if a.status == 'closing' else 'now' }}</span>
+                <span class="canins" title="{{ a.stage_label }}: {{ a.instrument }}, {{ a.statute }}">{{ a.instrument }}</span>
+                <span class="canfee">{{ a.fee }}{% if a.days_left is not none %} &middot; {{ a.days_left }}d{% endif %}</span></div>
+              {% endfor %}
+              {% if live | length > 3 %}<div class="canmore">+{{ live | length - 3 }} more, open the row</div>{% endif %}
+            {% elif head and head.status == 'conditional' %}
+              <div class="canline"><span class="act conditional">check</span>
+                <span class="canins" title="{{ head.label }}, {{ head.statute }}">{{ head.label }}</span>
+                <span class="canfee">{{ head.fee }}</span></div>
+              {% if head.count > 1 %}<div class="canmore">+{{ head.count - 1 }} more to check</div>{% endif %}
+            {% elif head and head.status == 'not_yet' %}
+              <div class="canline dim"><span class="act not_yet">later</span>
+                <span class="canins" title="{{ head.label }}, {{ head.statute }}">{{ head.label }}</span>
+                <span class="canfee">{% if head.opens %}opens {{ head.opens }}{% else %}after grant{% endif %}</span></div>
+            {% else %}
+              <span class="instr none">Nothing, ever again</span>
+            {% endif %}
+          </td>
+          <td class="onf">
+            {% if ours %}<span class="act open">ours</span> <span class="dldate">{{ ours[0].date }}</span>
+            {% elif c.on_file %}<span class="act conditional">3rd party</span> <span class="dldate">{{ c.on_file[0].date }}</span>
+            {% elif c.filed %}<span class="act open">filed</span>
+            {% else %}<span class="office">&ndash;</span>{% endif %}
+          </td>
+          <td class="dts">
+            {% if c.filing_date %}<span class="dtl"><b>filed</b>{{ c.filing_date }}</span>{% endif %}
+            {% if c.pubDate %}<span class="dtl"><b>pub</b>{{ c.pubDate }}</span>{% endif %}
+            {% if c.priority_date and c.priority_date != c.filing_date %}<span class="dtl"><b>prio</b>{{ c.priority_date }}</span>{% endif %}
+          </td>
+          <td><span class="prio {{ 'p1' if c.priority and '1' in c.priority else '' }}">{{ c.priority or '' }}</span></td>
+          <td class="chev">&#9662;</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% endif %}
+
+  {#  Only the fields each panel renders. `tojson` escapes < and &, so a title carrying markup
+      cannot close these script elements. #}
+  <script type="application/json" id="obdetail">{{ detail|tojson }}</script>
+  <script type="application/json" id="obfilings">{{ filings|tojson }}</script>
+  <script type="application/json" id="obmissed">{{ missed|tojson }}</script>
+  <script type="application/json" id="obtargets">{{ targets|tojson }}</script>
+  <script>window.OB_TARGET = {{ (target.id if target else None) | tojson }};</script>
+
+  {# ── 3. what changed ────────────────────────────────────────────────────── #}
+  {% if target and target.refresh and (target.refresh.changes or target.refresh.errors) %}
+  <section class="obsec">
+    <h2>Moved in the last live refresh</h2>
+    <p class="lede">Every register fact that changed when the offices were last asked
+      {% if target.refreshed_at %}, {{ target.refreshed_at }}{% endif %}. A row
+      that did not move is not listed.</p>
+    {% if target.refresh.changes %}<ul class="changes">{% for ch in target.refresh.changes %}<li>{{ ch }}</li>{% endfor %}</ul>{% endif %}
+    {% if target.refresh.errors %}
+    <p class="lede">Could not be read, so these still carry whatever the last successful sweep
+      said:</p>
+    <ul class="changes">{% for e in target.refresh.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# ── the table itself, for somebody who wants it whole ──────────────────── #}
+  <section class="obsec">
+    <h2>The instruments, by office</h2>
+    <p class="lede">Every route a third party has, whatever is on the docket. The column in each
+      row above picks whichever of these is open on that case today; this is the whole table, so
+      that what is missing from a case is as visible as what is there. Fees are what the office
+      charges and go stale: check one before you pay it.</p>
+    <div class="obtablewrap" style="overflow-x:auto">
+    <table class="obacts obmatrix">
+      <caption class="vh">The six stages of a third-party challenge across three offices.</caption>
+      <thead>
+        <tr><th scope="col">Stage</th>
+          {% for key, label in matrix_offices %}<th scope="col">{{ label }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for r in matrix %}
+        <tr>
+          <td class="stg">{{ r.stage_label }}</td>
+          {% for key, label in matrix_offices %}
+            {% set cell = r.cells[key] %}
+            <td class="ins{{ ' dimcell' if not cell.available else '' }}">
+              {% if cell.available %}
+                <b>{{ cell.instrument }}</b>
+                <span>{{ cell.statute }}{% if cell.fee and cell.fee != '-' %} &middot; {{ cell.fee }}{% endif %}</span>
+                {% if cell.window %}<span class="win">{{ cell.window }}</span>{% endif %}
+              {% else %}
+                <span class="none">no such instrument</span>
+              {% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  {% if target and target.seeded and meta.changes %}
+  <section class="obsec">
+    <h2>Corrected in the baseline sweep</h2>
+    <p class="lede">What the previous build of this list got wrong, and why.</p>
+    <ul class="changes">{% for ch in meta.changes %}<li>{{ ch }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/*  SHARED: an expandable row. The panel is a second <tr> created the first time its row is
+    opened and kept with it from then on: sorting re-appends the pair, filtering hides the pair.
+    That is the discipline the earlier two-row design lacked, and it is three lines. */
+window.obExpand = (function(){
+  function panelFor(tr, build, colspan){
+    if (tr._x) return tr._x;
+    var x = document.createElement('tr');
+    x.className = 'obx';
+    var td = document.createElement('td');
+    td.colSpan = colspan;
+    td.appendChild(build(tr));
+    x.appendChild(td);
+    tr._x = x;
+    tr.parentNode.insertBefore(x, tr.nextSibling);
+    return x;
+  }
+  function toggle(tr, build, colspan, force){
+    var open = force !== undefined ? force : tr.getAttribute('aria-expanded') !== 'true';
+    tr.setAttribute('aria-expanded', String(open));
+    var x = panelFor(tr, build, colspan);
+    x.hidden = !open;
+    tr._open = open;
+    return open;
+  }
+  function wire(tbody, build, colspan, guard){
+    tbody.addEventListener('click', function(ev){
+      if (ev.target.closest('tr.obx')) return;           // clicks inside a panel are the panel's
+      if (ev.target.closest('a, button, select, textarea, input')) return;
+      var tr = ev.target.closest('tr.case');
+      if (tr && (!guard || guard(tr))) toggle(tr, build, colspan);
+    });
+    tbody.addEventListener('keydown', function(ev){
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      var tr = ev.target.closest('tr.case');
+      if (tr && ev.target === tr && (!guard || guard(tr))){ ev.preventDefault(); toggle(tr, build, colspan); }
+    });
+  }
+  return {toggle: toggle, wire: wire};
+})();
+
+function obEl(tag, cls, text){
+  var el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (text !== undefined && text !== null) el.textContent = text;
+  return el;
+}
+function obLink(href, text){
+  var a = document.createElement('a');
+  a.href = href; a.textContent = text; a.target = '_blank'; a.rel = 'noopener';
+  return a;
+}
+</script>
+
+<script>
+(function(){
+  var table = document.getElementById('obtable');
+  if (!table) return;
+  var body = table.tBodies[0];
+  var rows = Array.prototype.slice.call(body.querySelectorAll('tr.case'));
+  var DETAIL = {};
+  try { DETAIL = JSON.parse(document.getElementById('obdetail').textContent) || {}; }
+  catch (e) { DETAIL = {}; }
+  var COLS = 9;
+
+  // ── filters, populated from the data so they can never list a dead option ──────────────
+  function fill(sel, values){
+    values.sort().forEach(function(v){
+      var o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o);
+    });
+  }
+  var offices = [];
+  rows.forEach(function(tr){
+    var o = tr.dataset.office;
+    if (o && offices.indexOf(o) < 0) offices.push(o);
+  });
+  fill(document.getElementById('oboffice'), offices);
+
+  var q = document.getElementById('obq'), fo = document.getElementById('oboffice'),
+      fc = document.getElementById('obcan'), fs = document.getElementById('obstate'),
+      fp = document.getElementById('obposture'), count = document.getElementById('obcount'),
+      clear = document.getElementById('obclear');
+
+  function days(tr){ var d = tr.dataset.days; return d === '' ? null : parseInt(d, 10); }
+
+  function urgencyOk(tr, want){
+    var d = days(tr);
+    if (!want) return true;
+    //  These two are about the instrument, not the calendar: a case with no deadline at all can
+    //  still be the one thing on the page you can act on today.
+    if (want === 'actionable') return tr.dataset.act === 'open' || tr.dataset.act === 'closing';
+    if (want === 'submitted')  return tr.dataset.sub === '1';
+    if (want === 'none')   return d === null;
+    if (want === 'dated')  return d !== null;
+    if (want === 'lapsed') return d !== null && d < 0;
+    if (d === null || d < 0) return false;
+    if (want === 'urgent')  return d <= 14;
+    if (want === 'closing') return d <= 30;
+    if (want === 'soon')    return d <= 90;
+    return true;
+  }
+  function canOk(tr, want){
+    if (!want) return true;
+    return (' ' + tr.dataset.can + ' ').indexOf(' ' + want + ' ') >= 0;
+  }
+
+  var visible = [];
+  function apply(){
+    var needle = q.value.trim().toLowerCase();
+    visible = [];
+    rows.forEach(function(tr){
+      var ok = (!needle || tr.dataset.hay.indexOf(needle) >= 0)
+            && (!fo.value || tr.dataset.office === fo.value)
+            && (!fp.value || tr.dataset.posture === fp.value)
+            && canOk(tr, fc.value)
+            && urgencyOk(tr, fs.value);
+      tr.hidden = !ok;
+      if (tr._x) tr._x.hidden = !ok || !tr._open;
+      if (ok) visible.push(tr);
+    });
+    count.textContent = visible.length + ' of ' + rows.length + ' cases';
+    clear.hidden = !(needle || fo.value || fp.value || fc.value || fs.value);
+  }
+  [q, fo, fp, fc, fs].forEach(function(el){
+    el.addEventListener('input', apply); el.addEventListener('change', apply);
+  });
+  clear.addEventListener('click', function(){
+    q.value = ''; fo.value = ''; fp.value = ''; fc.value = ''; fs.value = '';
+    apply(); paintChips();
+  });
+
+  //  The summary chips drive the same urgency filter the select does, so there is one filter and
+  //  two ways to reach it rather than two filters that can disagree.
+  var chips = Array.prototype.slice.call(document.querySelectorAll('button.stat'));
+  function paintChips(){
+    chips.forEach(function(c){
+      c.setAttribute('aria-pressed', String(c.dataset.urgency === fs.value));
+    });
+  }
+  chips.forEach(function(c){
+    c.addEventListener('click', function(){
+      fs.value = (fs.value === c.dataset.urgency) ? '' : c.dataset.urgency;
+      apply(); paintChips();
+      table.scrollIntoView({block: 'start', behavior: 'smooth'});
+    });
+  });
+  fs.addEventListener('change', paintChips);
+  paintChips();
+
+  // ── sorting ───────────────────────────────────────────────────────────────────────────
+  var sortKey = 'deadline', sortDir = 1;
+  function keyOf(tr, key){
+    //  The SERVER'S order, not a second one derived from the countdown. They disagree on the row
+    //  that has no date and is still about to shut, and a table that reshuffles into a different
+    //  order the first time you click its own default sort column is worse than no sorting.
+    if (key === 'deadline'){
+      var k = parseFloat(tr.dataset.sortkey);
+      return isNaN(k) ? 999999 : k;
+    }
+    if (key === 'prio'){
+      var t = tr.cells[7].textContent.trim();
+      var m = t.match(/\d/);            // "1 - critical" sorts above "3"; words sort last
+      return m ? parseInt(m[0], 10) : (t ? 50 : 99);
+    }
+    if (key === 'posture') return {pending: 0, granted: 1, lapsed: 2}[tr.dataset.posture] || 3;
+    if (key === 'onfile')  return tr.dataset.onfile || 'z';
+    if (key === 'filed')   return tr.dataset.filed || '9999';
+    var idx = {pub: 1, title: 2, route: 4}[key];
+    return tr.cells[idx].textContent.trim().toLowerCase();
+  }
+  table.tHead.addEventListener('click', function(ev){
+    var th = ev.target.closest('th[data-sort]');
+    if (!th) return;
+    var key = th.dataset.sort;
+    sortDir = (key === sortKey) ? -sortDir : 1;
+    sortKey = key;
+    rows.sort(function(a, b){
+      var ka = keyOf(a, key), kb = keyOf(b, key);
+      return ka < kb ? -sortDir : ka > kb ? sortDir : 0;
+    });
+    rows.forEach(function(tr){ body.appendChild(tr); if (tr._x) body.appendChild(tr._x); });
+    Array.prototype.forEach.call(table.tHead.querySelectorAll('th'), function(h){
+      h.removeAttribute('aria-sort');
+      var a = h.querySelector('.arw'); if (a) a.remove();
+    });
+    th.setAttribute('aria-sort', sortDir > 0 ? 'ascending' : 'descending');
+    var arrow = document.createElement('span');
+    arrow.className = 'arw';
+    arrow.innerHTML = sortDir > 0 ? '&#9650;' : '&#9660;';
+    th.appendChild(arrow);
+    apply();
+  });
+
+  // ── the panel under a row ─────────────────────────────────────────────────────────────
+  var ACT_WORD = {open: 'Open', closing: 'Closing', conditional: 'Check first',
+                  not_yet: 'Not yet', closed: 'Closed', na: 'Not available'};
+  //  `deadline_kind` is a token the sweep uses to decide things, not a phrase. It was being
+  //  printed at a reader as "open_ended".
+  var KIND = {hard: 'a hard date', practical: 'an estimate, not a register date',
+              open_ended: 'no fixed close until the examiner acts', closed: 'already shut'};
+
+  //  The window column says the same thing three ways depending on what is known: a date with a
+  //  countdown, a date it opens on, or nothing at all. Deciding that here keeps the table cells
+  //  from each growing their own idea of an empty deadline.
+  function windowText(a){
+    if (a.deadline && a.days_left !== null && a.days_left !== undefined){
+      if (a.days_left < 0) return 'closed ' + a.deadline;
+      return a.days_left + 'd  ·  ' + a.deadline;
+    }
+    if (a.deadline) return a.deadline;
+    if (a.opens) return 'opens ' + a.opens;
+    if (a.status === 'open' || a.status === 'conditional') return 'no deadline';
+    return 'n/a';
+  }
+
+  function optionsTable(d){
+    var list = d.actions || [];
+    if (!list.length) return null;
+    var wrap = obEl('div', 'obmact');
+    wrap.appendChild(obEl('h4', null, 'What you can file against this one'));
+    var t = obEl('table', 'obacts');
+    t.innerHTML = '<thead><tr><th scope="col">Stage</th><th scope="col">Instrument</th>'
+                + '<th scope="col">Window</th><th scope="col">Why</th></tr></thead>';
+    var tb = document.createElement('tbody');
+    list.forEach(function(a){
+      var tr = document.createElement('tr');
+      if (a.status === 'closed' || a.status === 'na') tr.className = 'dim';
+      var stg = obEl('td', 'stg', a.stage_label);
+      var ins = obEl('td', 'ins');
+      ins.appendChild(obEl('b', null, a.instrument));
+      ins.appendChild(obEl('span', null, a.statute + (a.fee && a.fee !== '-' ? '  ·  ' + a.fee : '')));
+      ins.appendChild(document.createElement('br'));
+      ins.appendChild(obEl('span', 'act ' + a.status, ACT_WORD[a.status] || a.status));
+      tr.appendChild(stg); tr.appendChild(ins);
+      tr.appendChild(obEl('td', 'win', windowText(a)));
+      tr.appendChild(obEl('td', 'why', a.note || ''));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); wrap.appendChild(t);
+    return wrap;
+  }
+
+  //  WHAT EACH OFFICE WILL AND WILL NOT SHOW YOU. The USPTO publishes a third-party submission
+  //  in the file wrapper and the EPO records observations as a procedural step, so an empty list
+  //  there is a real "nothing". DPMAregister publishes neither: a Sec. 43(3) Einwendung confers
+  //  no party status and never appears, so an empty list on a German case means "cannot see",
+  //  and leaving the section out would let a reader read it as "nothing has been filed".
+  var BLIND = {
+    'DPMA': 'The German register does not publish third-party observations at all, ours or '
+          + 'anyone else\'s. An Einwendung under § 43(3) confers no party status and leaves no '
+          + 'entry, so nothing can be shown here and nothing should be read into that.',
+    'WIPO (PCT)': 'Observations filed through ePCT appear on PATENTSCOPE rather than in any '
+          + 'register this page reads, so nothing can be shown here.'
+  };
+
+  function submissions(d){
+    var subs = d.on_file || d.our_submissions || [];
+    var blind = BLIND[d.office];
+    if (!subs.length && !blind) return null;
+    var wrap = obEl('div', 'obmact');
+    wrap.appendChild(obEl('h4', null, 'Already on this file'));
+    var ul = obEl('ul', 'obsubs');
+    if (!subs.length){
+      var li = document.createElement('li');
+      li.appendChild(obEl('span', 'ev', blind));
+      ul.appendChild(li);
+    }
+    subs.forEach(function(s){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      //  Whose it is comes FIRST, because "somebody has already filed here" and "we have already
+      //  filed here" lead to opposite decisions and the office tells you neither.
+      head.appendChild(obEl('span', 'act ' + (s.whose === 'ours' ? 'open' : 'conditional'),
+                            s.whose === 'ours' ? 'Ours' : 'Filer not named'));
+      head.appendChild(document.createTextNode('  ' + (s.date || 'undated') + '  ·  '
+        + (s.instrument || '')
+        + (s.documents ? '  ·  ' + s.documents + ' document' + (s.documents === 1 ? '' : 's')
+             + (s.references_about && s.references_about !== s.documents
+                ? ', about ' + s.references_about + ' references' : '') : '')
+        + (s.fee_paid ? '  ·  fee paid' : '')
+        + (s.acknowledged ? '  ·  acknowledged by the office' : '')));
+      li.appendChild(head);
+      li.appendChild(obEl('span', 'ev', s.evidence || ''));
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+
+  function history(d){
+    //  Newest first, because the last event is the one that decided the posture.
+    var evs = (d.register_events || []).slice().reverse();
+    if (!evs.length) return null;
+    var wrap = obEl('div', 'obmact');
+    wrap.appendChild(obEl('h4', null, 'What the register records'));
+    var ul = obEl('ul', 'obhist');
+    evs.forEach(function(e){
+      var li = document.createElement('li');
+      li.appendChild(obEl('span', 'when', e.date || 'undated'));
+      li.appendChild(obEl('span', 'code', e.code || ''));
+      li.appendChild(obEl('span', null, (e.desc || '').toLowerCase().replace(/^./, function(c){
+        return c.toUpperCase();
+      })));
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+
+  function grid(d){
+    var dl = obEl('dl', 'obmgrid');
+    function add(label, value, isNode){
+      if (value === null || value === undefined || value === '') return;
+      dl.appendChild(obEl('dt', null, label));
+      var dd = obEl('dd');
+      if (isNode) dd.appendChild(value); else dd.textContent = value;
+      dl.appendChild(dd);
+    }
+    add('Office', d.office);
+    add('Posture', d.posture);
+    add('Applicant', (d.applicants && d.applicants.length > 1) ? d.applicants.join('; ') : d.applicant);
+    add('Inventors', (d.inventors && d.inventors.length) ? d.inventors.join(', ') : null);
+    add('IPC', d.ipc);
+    add('Application', d.application);
+    add('Filed', d.filing_date);
+    add('Published', d.pubDate ? (d.pubDate + (d.priority_date ? '  ·  priority ' + d.priority_date : '')) : null);
+    add('Granted', d.grant_published ? (d.grant_published + (d.granted_as ? '  ·  ' + d.granted_as : ''))
+                 : (d.grant_date ? (d.grant_date + (d.patent_number ? '  ·  ' + d.patent_number : '')) : null));
+    add('Opposition until', d.opposition_deadline);
+    add('Six months', d.six_months ? (d.six_months + (d.first_rejection ? '  ·  first rejection ' + d.first_rejection : '')) : null);
+    add('Register status', d.register_status ? (d.register_status + (d.register_updated ? '  ·  read ' + d.register_updated : '')) : null);
+    add('Register read', d.refreshed_at
+             ? (d.refreshed_at + (d.refresh_source ? '  ·  ' + d.refresh_source : '')) : null);
+    add('Priority', d.priority);
+    add('Verified', d.verified);
+    add('Counsel', d.counsel_required);
+    add('Report', d.counsel_report);
+    add('Superseded', d.superseded_note);
+    add('What the register says', d.closing_note);
+    add('Note', d.why_new);
+    add('Found', d.found_by);
+    add('Family', (d.family && d.family.length) ? d.family.join(', ') : null);
+    add('Representative', d.representative);
+    return dl;
+  }
+
+  function build(tr){
+    var d = DETAIL[tr.dataset.pub] || {};
+    var root = obEl('div', 'obxbody');
+    var head = obEl('div', 'obxhead');
+    //  Only when they differ. A granted EP whose docket key is already the B1 number was
+    //  printing "EP4446072B1 · published as EP4446072B1".
+    head.appendChild(obEl('span', 'obmnum', (d.granted_as || d.publication)
+                     + (d.granted_as && d.granted_as !== d.publication
+                        ? '  ·  published as ' + d.publication : '')
+                     + (d.application ? '  ·  app. ' + d.application : '')));
+    var links = obEl('div', 'obxlinks');
+    if (d.register_url) links.appendChild(obLink(d.register_url, 'Register'));
+    if (d.google) links.appendChild(obLink(d.google, 'Google Patents'));
+    head.appendChild(links);
+    head.appendChild(obEl('h3', null, d.title_full || d.title || ''));
+    root.appendChild(head);
+
+    var n = d.days_left;
+    var undated = (n === null || n === undefined);
+    var when = obEl('div', 'obmwhen ' + (undated ? (d.closing_soon ? 'urgent' : 'none')
+                    : n < 0 ? 'lapsed' : n <= 14 ? 'urgent' : n <= 30 ? 'closing' : ''));
+    when.textContent = undated
+      ? (d.closing_soon
+         ? 'No fixed date left, and about to shut. See what the register says, below.'
+         : 'No deadline. Open for as long as the application is pending.')
+      : n < 0 ? ('Closed ' + d.deadline + ', ' + (-n) + ' days ago.')
+      : n === 0 ? ('Closes today, ' + d.deadline + '.')
+      : (n + ' day' + (n === 1 ? '' : 's') + ' left  ·  ' + d.deadline
+         + (KIND[d.deadline_kind] ? '  ·  ' + KIND[d.deadline_kind] : ''));
+    root.appendChild(when);
+
+    //  WHAT WE HAVE ALREADY DONE COMES FIRST, on the rows that have any. "Did we already file
+    //  on this one" has to be answered before "what could we file", or the second question is
+    //  being asked in ignorance.
+    var s = submissions(d); if (s) root.appendChild(s);
+    var o = optionsTable(d); if (o) root.appendChild(o);
+
+    var cols = obEl('div', 'obxcols');
+    var left = obEl('div', 'obmact');
+    left.appendChild(obEl('h4', null, 'The record'));
+    left.appendChild(grid(d));
+    if (d.next_action){
+      var na = obEl('div', 'obmact');
+      na.appendChild(obEl('h4', null, 'Next action'));
+      na.appendChild(obEl('div', null, d.next_action));
+      left.appendChild(na);
+    }
+    cols.appendChild(left);
+    //  Where the German dates came from. Last, because it is evidence rather than an answer,
+    //  but present, because the answer above is otherwise something to take on trust.
+    var h = history(d);
+    cols.appendChild(h || obEl('div'));
+    root.appendChild(cols);
+
+    var noteWrap = obEl('div', 'obxnote');
+    var label = obEl('label', null, 'Your note ');
+    var saved = obEl('span', 'obmsaved', 'Saved'); saved.hidden = true;
+    label.appendChild(saved);
+    var ta = document.createElement('textarea');
+    ta.placeholder = 'Private to your account.';
+    ta.value = d.user_note || '';
+    var timer = null;
+    ta.addEventListener('input', function(){
+      clearTimeout(timer);
+      var pub = tr.dataset.pub, val = ta.value;
+      timer = setTimeout(function(){ save(pub, val, saved); }, 700);
+    });
+    ta.addEventListener('blur', function(){
+      clearTimeout(timer);
+      if (DETAIL[tr.dataset.pub] && DETAIL[tr.dataset.pub].user_note !== ta.value) save(tr.dataset.pub, ta.value, saved);
+    });
+    noteWrap.appendChild(label); noteWrap.appendChild(ta);
+    root.appendChild(noteWrap);
+    return root;
+  }
+
+  function save(pub, note, flash){
+    return fetch(window.APP_BASE + '/api/actions/case', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
+      body: JSON.stringify({publication: pub, target_id: window.OB_TARGET, note: note})
+    }).then(function(r){ return r.json(); }).then(function(j){
+      if (j && j.ok){
+        if (DETAIL[pub]) DETAIL[pub].user_note = note;
+        if (flash){ flash.hidden = false; setTimeout(function(){ flash.hidden = true; }, 1600); }
+      }
+      return j;
+    }).catch(function(){ /* a failed save must not blank what the reader typed */ });
+  }
+
+  window.obExpand.wire(body, build, COLS, function(tr){ return !!tr.dataset.pub; });
+  apply();
+})();
+</script>
+
+<script>
+/*  THE FILINGS TABLE. Same pattern as the docket: the row carries what you scan by, the panel
+    under it carries the rest. */
+(function(){
+  var t = document.getElementById('filingtable');
+  if (!t) return;
+  function payload(id){
+    var el = document.getElementById(id);
+    try { return JSON.parse(el.textContent) || []; } catch (e) { return []; }
+  }
+  var DATA = {filing: payload('obfilings'), missed: payload('obmissed')};
+
+  function money(f){
+    if (f.official_fee_usd === null || f.official_fee_usd === undefined) return null;
+    return 'USD ' + f.official_fee_usd + ' official'
+         + (f.counsel_fee_usd ? ' + ' + f.counsel_fee_usd.toLocaleString() + ' counsel' : '');
+  }
+  function refsTable(list){
+    if (!list || !list.length) return null;
+    var sec = document.createElement('section');
+    sec.appendChild(obEl('h4', null, 'References filed (' + list.length + ')'));
+    var tbl = obEl('table', 'refs');
+    tbl.innerHTML = '<thead><tr><th class="n">#</th><th>Document</th><th>Kind</th>'
+                  + '<th>Date</th><th>First named inventor</th></tr></thead>';
+    var tb = document.createElement('tbody');
+    list.forEach(function(r, i){
+      var tr = document.createElement('tr');
+      var cells = [String(i + 1), null, r.kind || '', r.date || '', r.inventor || ''];
+      cells.forEach(function(v, k){
+        var td = document.createElement('td');
+        if (k === 0) td.className = 'n';
+        if (k === 1){
+          if (r.url) td.appendChild(obLink(r.url, r.number)); else td.textContent = r.number || '';
+        } else { td.textContent = v; }
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    tbl.appendChild(tb); sec.appendChild(tbl);
+    return sec;
+  }
+
+  function build(tr){
+    var kind = tr.dataset.kind, d = (DATA[kind] || [])[parseInt(tr.dataset.idx, 10)] || {};
+    var root = obEl('div', 'obxbody');
+    var head = obEl('div', 'obxhead');
+    head.appendChild(obEl('span', 'obmnum', d.target + (d.application ? '  ·  app. ' + d.application : '')
+                     + (d.target_owner ? '  ·  ' + d.target_owner : '')));
+    head.appendChild(obEl('h3', null, d.title || ''));
+    root.appendChild(head);
+    var dl = obEl('dl', 'obmgrid');
+    function field(label, value){
+      if (value === null || value === undefined || value === '') return;
+      dl.appendChild(obEl('dt', null, label)); dl.appendChild(obEl('dd', null, value));
+    }
+    var prose = obEl('div', 'obmprose');
+    function block(heading, text){
+      if (!text) return;
+      var sec = document.createElement('section');
+      sec.appendChild(obEl('h4', null, heading)); sec.appendChild(obEl('p', null, text));
+      prose.appendChild(sec);
+    }
+    if (kind === 'filing'){
+      field('Status', d.status === 'filed' ? 'Filed'
+                    : d.status === 'prepared_not_filed' ? 'Prepared, not filed' : d.status);
+      field('Route', d.route_label);
+      field('Filed', d.filed_on);
+      field('Entered', d.entered_on);
+      field('Acknowledged', d.acknowledged_on);
+      field('Window', d.window_was);
+      field('References', d.references);
+      field('Fees', money(d));
+      field('Counsel', d.counsel);
+      field('{{ brand }} report', d.report);
+      block('What was filed', d.detail);
+      block('Where it stands', d.outcome);
+      block('Evidence', d.evidence);
+      var refs = refsTable(d.references_list); if (refs) prose.appendChild(refs);
+    } else {
+      field('Status', 'Window lapsed');
+      field('Route', d.route_label);
+      field('Window closed', d.window_closed);
+      block('What happened', d.detail);
+      block('Still available', d.still_available);
+      block('Evidence', d.evidence);
+    }
+    root.appendChild(dl); root.appendChild(prose);
+    if (kind === 'filing' && d.package_available && d.package){
+      var a = obEl('a', 'obmdl', 'Download the full package (zip)');
+      a.href = window.APP_BASE + '/actions/package/' + encodeURIComponent(d.package);
+      a.setAttribute('download', '');
+      root.appendChild(a);
+    }
+    return root;
+  }
+  window.obExpand.wire(t.tBodies[0], build, 8);
+})();
+</script>
+
+<script>
+/*  THE TARGET BAR, THE FORM AND THE REFRESH. A refresh and a first fetch are the same job on
+    the server: it starts, the page polls, and the page reloads at the end rather than patching
+    rows in place, because a sweep can ADD cases, change a posture and move a deadline all at
+    once, and re-rendering server-side is the only version of that which cannot disagree with
+    itself. */
+(function(){
+  var TARGETS = [];
+  try { TARGETS = JSON.parse(document.getElementById('obtargets').textContent) || []; } catch (e) {}
+  var current = null;
+  TARGETS.forEach(function(t){ if (t.id === window.OB_TARGET) current = t; });
+
+  var sel = document.getElementById('obtarget');
+  sel.addEventListener('change', function(){
+    if (sel.value) window.location.href = window.APP_BASE + '/actions?target=' + encodeURIComponent(sel.value);
+  });
+
+  // ── the form ──────────────────────────────────────────────────────────────────────────
+  var form = document.getElementById('obform'), title = document.getElementById('obformtitle'),
+      submit = document.getElementById('obformsubmit'), cancel = document.getElementById('obformcancel'),
+      del = document.getElementById('obdelbtn'), err = document.getElementById('obformerr'),
+      addBtn = document.getElementById('obaddbtn'), editBtn = document.getElementById('obeditbtn');
+  var editing = null;
+  function fld(name){ return form.querySelector('[name="' + name + '"]'); }
+
+  function showForm(target){
+    editing = target || null;
+    err.hidden = true;
+    form.hidden = false;
+    title.textContent = target ? 'Edit ' + target.name : 'Add a target';
+    submit.textContent = target ? 'Save and refresh' : 'Add and fetch';
+    fld('name').value = target ? target.name : '';
+    fld('assignees').value = target ? target.assignees.join('\n') : '';
+    fld('inventors').value = target ? target.inventors.join('\n') : '';
+    fld('lookback_months').value = target ? String(target.lookback_months) : fld('lookback_months').value;
+    Array.prototype.forEach.call(form.querySelectorAll('input[name=offices]'), function(cb){
+      cb.checked = target ? target.offices.indexOf(cb.value) >= 0 : true;
+    });
+    del.hidden = !(target && !target.seeded);
+    cancel.hidden = false;
+    form.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    fld('assignees').focus();
+  }
+  addBtn.addEventListener('click', function(){ showForm(null); });
+  if (editBtn) editBtn.addEventListener('click', function(){ showForm(current); });
+  cancel.addEventListener('click', function(){ form.hidden = true; editing = null; });
+
+  function lines(text){
+    return text.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
+  }
+  function post(url, body){
+    return fetch(window.APP_BASE + url, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
+      body: JSON.stringify(body)
+    }).then(function(r){ return r.json(); });
+  }
+
+  form.addEventListener('submit', function(ev){
+    ev.preventDefault();
+    err.hidden = true;
+    var body = {
+      name: fld('name').value,
+      assignees: lines(fld('assignees').value),
+      inventors: lines(fld('inventors').value),
+      lookback_months: fld('lookback_months').value,
+      offices: Array.prototype.filter.call(form.querySelectorAll('input[name=offices]'), function(cb){
+        return cb.checked; }).map(function(cb){ return cb.value; })
+    };
+    if (!body.assignees.length && !body.inventors.length){
+      err.textContent = 'Name at least one assignee or one inventor.'; err.hidden = false; return;
+    }
+    submit.disabled = true;
+    var url = editing ? '/api/actions/targets/' + editing.id : '/api/actions/targets';
+    post(url, body).then(function(j){
+      if (!j || !j.ok) throw new Error((j && j.error) || 'refused');
+      var id = j.target.id;
+      if (editing){
+        //  Names changed, so the next sweep should search for them now rather than whenever
+        //  somebody remembers to press the button.
+        return post('/api/actions/refresh', {target_id: id}).then(function(){
+          window.location.href = window.APP_BASE + '/actions?target=' + id;
+        });
+      }
+      //  A new target: its first fetch is already running. Go and watch it.
+      window.location.href = window.APP_BASE + '/actions?target=' + id;
+    }).catch(function(e){
+      submit.disabled = false;
+      err.textContent = 'Could not save: ' + (e.message || e); err.hidden = false;
+    });
+  });
+
+  del.addEventListener('click', function(){
+    if (!editing) return;
+    if (!window.confirm('Remove ' + editing.name + ' and every case found for it? The cases can be found again by adding the target back.')) return;
+    del.disabled = true;
+    post('/api/actions/targets/' + editing.id + '/delete', {}).then(function(j){
+      if (!j || !j.ok) throw new Error((j && j.error) || 'refused');
+      window.location.href = window.APP_BASE + '/actions';
+    }).catch(function(e){
+      del.disabled = false;
+      err.textContent = 'Could not remove: ' + (e.message || e); err.hidden = false;
+    });
+  });
+
+  // ── the refresh ───────────────────────────────────────────────────────────────────────
+  var btn = document.getElementById('obrefreshbtn');
+  if (!btn || window.OB_TARGET === null) return;
+  var bar = document.getElementById('obrefreshbar'),
+      fill = bar.querySelector('i'),
+      log = document.getElementById('obrefreshlog'),
+      note = document.getElementById('obrefreshnote');
+  var poll = null;
+  var stateUrl = window.APP_BASE + '/api/actions/refresh?target=' + encodeURIComponent(window.OB_TARGET);
+
+  function say(html, bad){
+    log.hidden = false;
+    log.innerHTML = html;
+    log.classList.toggle('bad', !!bad);
+  }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+  function list(items, cap){
+    if (!items || !items.length) return '';
+    var shown = items.slice(0, cap);
+    return '<ul>' + shown.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('')
+         + (items.length > shown.length
+            ? '<li>and ' + (items.length - shown.length) + ' more.</li>' : '') + '</ul>';
+  }
+
+  function progress(st){
+    var total = st.total || 1, done = Math.min(st.done || 0, total);
+    bar.hidden = false;
+    fill.style.width = Math.round(done * 100 / total) + '%';
+    say('Asking the registers: <b>' + done + ' of ' + total + '</b>'
+        + (st.label ? '  ·  ' + esc(st.label) : '') + '.');
+  }
+
+  function finish(st){
+    clearInterval(poll); poll = null;
+    btn.disabled = false;
+    btn.textContent = 'Refresh from the registers';
+    if (st.error){
+      bar.hidden = true;
+      say('The refresh failed: ' + esc(st.error), true);
+      return;
+    }
+    //  No record of the job at all. The server was restarted under it, so it did not finish and
+    //  it did not fail; saying "done" here would be a successful-looking answer to a job that
+    //  was killed, and the docket would look refreshed when it is not.
+    if (st.known === false){
+      bar.hidden = true;
+      say('The refresh stopped before it finished, because the server restarted under it. '
+          + 'Nothing was half-written: each case is saved as it is read. Press the button again.',
+          true);
+      return;
+    }
+    var r = st.result || {};
+    fill.style.width = '100%';
+    if (r.cases === 0){
+      bar.hidden = true;
+      say('<b>Nothing found.</b> The searches for this target returned no publication in its '
+          + 'window at the offices it tracks'
+          + (r.errors && r.errors.length ? ', and some could not be asked' : '')
+          + '. Edit the target if a name is spelled differently on the register.'
+          + (r.errors && r.errors.length ? '<span class="bad">' + list(r.errors, 6) + '</span>' : ''));
+      return;
+    }
+    var parts = ['<b>Done.</b> ' + (r.updated || 0) + ' case'
+                 + ((r.updated === 1) ? '' : 's') + ' re-read'
+                 + (r.new ? ', ' + r.new + ' new on the docket' : '')
+                 + (r.errors && r.errors.length ? ', ' + r.errors.length + ' could not be read' : '')
+                 + '. Reloading.'];
+    if (r.changes && r.changes.length) parts.push(list(r.changes, 12));
+    if (r.errors && r.errors.length) parts.push('<span class="bad">' + list(r.errors, 6) + '</span>');
+    say(parts.join(''));
+    //  Long enough to read the headline, short enough that nobody wonders if it worked.
+    setTimeout(function(){ window.location.reload(); }, 2200);
+  }
+
+  function watch(){
+    poll = setInterval(function(){
+      fetch(stateUrl, {credentials: 'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          var st = (j && j.state) || {};
+          if (st.running) progress(st); else finish(st);
+        })
+        .catch(function(){ /* one dropped poll is not a failed refresh */ });
+    }, 1500);
+  }
+
+  btn.addEventListener('click', function(){
+    btn.disabled = true;
+    btn.textContent = 'Refreshing…';
+    note.hidden = true;
+    say('Starting.');
+    post('/api/actions/refresh', {target_id: window.OB_TARGET}).then(function(j){
+      if (!j || !j.ok) throw new Error((j && j.error) || 'refused');
+      if (j.state) progress(j.state);
+      watch();
+    }).catch(function(e){
+      btn.disabled = false;
+      btn.textContent = 'Refresh from the registers';
+      say('Could not start the refresh: ' + esc(e.message || e), true);
+    });
+  });
+
+  //  A refresh started in another tab, by adding the target, or before a reload, is still
+  //  running on the server. Say so rather than offering a button that will answer "already
+  //  running".
+  fetch(stateUrl, {credentials: 'same-origin'})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j && j.state && j.state.running){
+        btn.disabled = true; btn.textContent = 'Refreshing…'; note.hidden = true;
+        progress(j.state); watch();
+      }
+    }).catch(function(){});
+})();
+</script>
+{% endblock %}

@@ -106,6 +106,10 @@ _OPEN_ENDPOINTS = {"healthz", "index", "about", "how_it_works",
                    # An invitee has no account yet; a verification link may be opened from a mail
                    # client with no session. Both are single-use, expiring, hashed tokens.
                    "auth.accept_invitation", "auth.verify_email",
+                   #  The docket's old name is a 301 to its new one. Open, so that a signed-out
+                   #  reader is sent to sign in for /actions rather than for a URL that no
+                   #  longer exists.
+                   "observations.observations_redirect", "observations.observation_package_redirect",
                    # A drafting agent publishing its own work back into the studio. It runs on
                    # this box with no session and no cookie jar; its capability is the
                    # per-project token this server wrote into its workspace, and the view checks

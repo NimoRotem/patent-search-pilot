@@ -100,52 +100,92 @@ def test_the_register_history_reaches_the_page():
 
 
 # ---------------------------------------------------------------------------------------------
-# a decision is a window being held open by silence
+# the filter of what can be filed, and which filings belong on which docket
 # ---------------------------------------------------------------------------------------------
 
-CASES = [
-    {"publication": "US20260070232A1", "title": "Magnetic gripper", "deadline": "2026-09-12",
-     "days_left": 8},
-    {"publication": "EP3995267A1", "granted_as": "EP3995267B1", "title": "Gripping device",
-     "deadline": "2026-09-03", "days_left": -1},
-    {"publication": "DE102020129586B4", "title": "Verschleisserkennung",
-     "deadline": "2026-09-04", "days_left": 0},
-]
+def test_the_can_file_filter_lists_each_open_instrument_once_with_its_count():
+    """The filter names the instrument the way the row's own table does, "Immediate post-grant
+    challenge: Einspruch (§ 59(1), § 21 PatG)", and counts the rows it is open on."""
+    rows = [build(office="DPMA", posture="granted", grant_published="2026-08-20"),
+            build(office="DPMA", posture="granted", grant_published="2026-07-01"),
+            build(office="EPO", posture="pending")]
+    opts = observations.can_file_options(rows)
+    einspruch = [o for o in opts if o["instrument"] == "Einspruch"]
+    assert len(einspruch) == 1
+    assert einspruch[0]["group"] == "open"
+    assert einspruch[0]["count"] == 2
+    assert einspruch[0]["stage_label"] == "Immediate post-grant challenge"
+    assert einspruch[0]["statute"] == "§ 59(1), § 21 PatG"
+    #  Each row answers to the keys of the instruments open on it, and to nothing else.
+    assert einspruch[0]["key"] in rows[0]["can_keys"]
+    assert einspruch[0]["key"] not in rows[2]["can_keys"]
+    art115 = [o for o in opts if o["instrument"] == "Third-party observations"]
+    assert art115 and art115[0]["count"] == 1 and art115[0]["group"] == "open"
 
 
-def test_a_decision_is_linked_to_the_case_it_holds_open():
-    """The question names the case in prose, in the office's own spacing, and that is the only
-    link there is: "US 2026/0070232", "DE 10 2020 129 586 B4"."""
-    dec = [{"id": "a", "status": "open_and_dated", "asked_on": "2026-08-25",
-            "question": "Authorise filing the US 2026/0070232 preissuance submission."}]
-    observations.link_decisions(dec, CASES, TODAY)
-    assert [b["publication"] for b in dec[0]["blocks"]] == ["US20260070232A1"]
-    assert dec[0]["soonest"] == 8
+def test_a_weak_instrument_is_left_out_of_the_filter():
+    """Post-grant Art. 115 observations with nothing pending are filed and never read. They stay
+    on the row's own table and must not pad the filter."""
+    row = build(office="EPO", posture="granted", grant_published="2024-01-01")
+    opts = observations.can_file_options([row])
+    assert not any(o["stage"] == "post_grant_passive" for o in opts)
+    #  The Art. 105 intervention is conditional and weak on the same row: not offered either.
+    assert not any(o["stage"] == "post_grant_later" for o in opts)
 
 
-def test_a_question_naming_several_cases_takes_the_soonest_of_them():
-    dec = [{"id": "b", "status": "unanswered", "asked_on": "2026-07-30",
-            "question": "Whether to oppose EP 3 995 267 B1 (closes 3 Sep) and "
-                        "DE 10 2020 129 586 B4 (4 Sep)."}]
-    observations.link_decisions(dec, CASES, TODAY)
-    assert {b["publication"] for b in dec[0]["blocks"]} == {"EP3995267B1", "DE102020129586B4"}
-    #  The lapsed one does not count; the one closing today does.
-    assert dec[0]["soonest"] == 0
+def test_open_instruments_sort_before_the_ones_that_need_checking():
+    rows = [build(office="DPMA", posture="pending", filing_date="2020-01-01"),
+            build(office="DPMA", posture="granted", grant_published="2026-08-20")]
+    opts = observations.can_file_options(rows)
+    groups = [o["group"] for o in opts]
+    assert groups == sorted(groups, key=lambda g: {"open": 0, "check": 1}[g])
+    assert "check" in groups            # the § 44(2) request with exam_requested unknown
 
 
-def test_an_unanswered_question_that_is_spending_a_window_sorts_above_an_older_one():
-    """The table listed these by the date they were asked, which says nothing about what it costs
-    to keep not answering."""
-    dec = [{"id": "old", "status": "unanswered", "asked_on": "2026-07-18",
-            "question": "Whether to pursue the four EU design registrations."},
-           {"id": "urgent", "status": "unanswered", "asked_on": "2026-08-25",
-            "question": "Authorise filing the US 2026/0070232 preissuance submission."}]
-    observations.link_decisions(dec, CASES, TODAY)
-    assert [d["id"] for d in dec] == ["urgent", "old"]
+def test_only_the_filings_that_name_a_row_belong_on_another_target():
+    cases = [{"publication": "US20260109053A1", "application": "19315746"}]
+    filings = [{"target": "US20260109053A1", "application": "19/315,746"},
+               {"target": "US20250033224A1", "application": "18/915,337"}]
+    assert observations.filings_on(cases, filings) == filings[:1]
+    #  The shipped docket shows all of them: one names a parent application, not a row.
+    assert observations.filings_on(cases, filings, everything=True) == filings
 
 
-def test_a_question_naming_no_case_is_not_invented_one():
-    dec = [{"id": "c", "status": "unanswered", "asked_on": "2026-07-30",
-            "question": "Which European counsel should run any oppositions."}]
-    observations.link_decisions(dec, CASES, TODAY)
-    assert dec[0]["blocks"] == [] and dec[0]["soonest"] is None
+def test_names_are_cleaned_deduplicated_and_capped():
+    got = observations._clean_names("Festo SE & Co. KG\n  festo se & co. kg \n\nFesto AG\x00")
+    assert got == ["Festo SE & Co. KG", "Festo AG"]
+    assert observations._clean_names(["x"] * 50) == ["x"]
+    assert len(observations._clean_names(["n%d" % i for i in range(50)])) == observations.MAX_NAMES
+
+
+def test_offices_and_lookback_fall_back_to_the_defaults():
+    assert observations._clean_offices(["us", "nope", "EP"]) == ["EP", "US"]
+    assert observations._clean_offices([]) == list(observations.OFFICE_CODES)
+    assert observations._clean_lookback("24") == 24
+    assert observations._clean_lookback("7") == observations.DEFAULT_LOOKBACK
+    assert observations._clean_lookback(None) == observations.DEFAULT_LOOKBACK
+
+
+def test_dates_are_printed_in_one_spelling_whatever_office_they_came_from():
+    row = observations._tidy_dates({"filing_date": "20241119", "pubDate": "2026-05-20",
+                                    "grant_date": "not a date"})
+    assert row["filing_date"] == "2024-11-19"
+    assert row["pubDate"] == "2026-05-20"
+    assert row["grant_date"] == "not a date"
+
+
+def test_people_stored_as_prose_become_names_without_addresses():
+    """The shipped German rows carry inventors as one string, and joining a string joins its
+    letters: the table printed "S, t, o, c, k" under a title."""
+    got = observations._people("Stockburger, Ralf, 72293 Glatten, DE; Hofer, Frank, 72172 Sulz, DE")
+    assert got == ["Stockburger, Ralf", "Hofer, Frank"]
+    assert observations._people(["Valentin Stegmaier"]) == ["Valentin Stegmaier"]
+    assert observations._people("TRUMPF Werkzeugmaschinen SE + Co. KG | J. Schmalz GmbH") == [
+        "TRUMPF Werkzeugmaschinen SE + Co. KG", "J. Schmalz GmbH"]
+    assert observations._people(None) == []
+    row = observations._tidy_dates({"applicant": "J.Schmalz GmbH, 72293 Glatten, DE",
+                                    "inventors": "Stockburger, Ralf, 72293 Glatten, DE",
+                                    "ipc": "B25B 11/00 (2006.01)"})
+    assert row["applicant_short"] == "J.Schmalz GmbH"
+    assert row["inventors"] == ["Stockburger, Ralf"]
+    assert row["ipc"] == "B25B 11/00"

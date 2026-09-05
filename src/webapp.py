@@ -2637,7 +2637,7 @@ def api_chrome():
     #  with nothing marked current and reads as a header borrowed from somewhere else. Only a
     #  known name is honoured: it is a query parameter and it lands in a class attribute.
     known = {"index", "history", "patent_lookup", "tracking", "corpus_page", "about",
-             "observations.observations_page", "drafts"}
+             "observations.actions_page", "drafts"}
     active = (request.args.get("active") or "").strip()
     resp = jsonify({
         "html": render_template("_chrome.html", endpoint=active if active in known else ""),

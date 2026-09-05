@@ -552,7 +552,7 @@ def test_an_empty_docket_reports_why_rather_than_zero(monkeypatch):
     """"0 cases re-read" tells a new account nothing about why the button did nothing."""
     applied = {}
     monkeypatch.setattr(refresh, "apply_to_user",
-                        lambda uid, res: applied.update(res) or {"updated": 0, "new": 0})
+                        lambda uid, res, **kw: applied.update(res) or {"updated": 0, "new": 0})
     assert refresh.start(4242, []) is True
     for _ in range(50):
         if not refresh.state(4242).get("running"):
@@ -635,5 +635,171 @@ def test_no_record_of_a_job_is_a_third_state_not_a_success():
     st = refresh.state(31337)
     assert st["running"] is False
     assert st["known"] is False
-    refresh._set(31337, running=False, label="done", result={"cases": 3})
+    refresh._set(refresh._job_key(31337, None), running=False, label="done", result={"cases": 3})
     assert refresh.state(31337)["known"] is True
+
+
+# ---------------------------------------------------------------------------------------------
+# a target: assignees and inventors, searched by name and checked against the record
+# ---------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name, words", [
+    ("J. Schmalz GmbH", ["schmalz"]),
+    ("Stockburger, Ralf", ["stockburger", "ralf"]),
+    ("Vacuum Technologies Inc", ["vacuum", "technologies"]),
+    ("Festo SE & Co. KG", ["festo"]),
+    ("J.Schmalz GmbH, 72293 Glatten, DE", ["schmalz"]),
+])
+def test_a_name_becomes_the_words_an_office_index_will_match(name, words):
+    assert refresh.name_words(name) == words
+
+
+def test_every_word_of_a_name_has_to_be_on_the_record():
+    """"Vacuum" alone would match half of the docket's own trade."""
+    assert refresh.name_matches([["vacuum", "technologies"]], ["Vacuum Technologies, Inc."])
+    assert not refresh.name_matches([["vacuum", "technologies"]], ["Vacuum Gripper GmbH"])
+    assert refresh.name_matches([["schmalz"]], ["Some Co", "J.Schmalz GmbH, 72293 Glatten"])
+    assert refresh.name_matches([["stockburger", "ralf"]], ["Stockburger, Ralf"])
+    assert not refresh.name_matches([], ["anyone"])
+
+
+SEARCH = {"ops:world-patent-data": {"ops:biblio-search": {"@total-result-count": "3",
+    "ops:search-result": {"ops:publication-reference": [
+        {"document-id": {"country": {"$": "EP"}, "doc-number": {"$": "4446072"}, "kind": {"$": "B1"}}},
+        {"document-id": {"country": {"$": "EP"}, "doc-number": {"$": "4446072"}, "kind": {"$": "A1"}}},
+        {"document-id": {"country": {"$": "DE"}, "doc-number": {"$": "202024100001"}, "kind": {"$": "U1"}}},
+        {"document-id": {"country": {"$": "DE"}, "doc-number": {"$": "102025100002"}, "kind": {"$": "A1"}}},
+        {"document-id": {"country": {"$": "US"}, "doc-number": {"$": "2025332743"}, "kind": {"$": "A1"}}},
+    ]}}}}
+
+TARGET = {"id": 7, "name": "Schmalz", "assignees": ["J. Schmalz GmbH"],
+          "inventors": ["Stockburger, Ralf"], "offices": ["EP", "DE", "US", "WO"],
+          "lookback_months": 24}
+
+
+def test_a_target_search_folds_kinds_skips_utility_models_and_checks_the_record(monkeypatch):
+    asked = []
+
+    def ops(path):
+        asked.append(path)
+        if "published-data/search" in path:
+            return 200, SEARCH
+        return 200, {}
+    monkeypatch.setattr(refresh, "_ops_json", ops)
+    monkeypatch.setattr(refresh, "biblio_for", lambda pub: (
+        {"applicant": "J. Schmalz GmbH", "applicants": ["J. Schmalz GmbH"], "title": "T"}
+        if pub.startswith("EP") else
+        {"applicant": "Somebody Else AG", "applicants": ["Somebody Else AG"],
+         "inventors": ["Stockburger, Ralf"], "title": "T2"}))
+    since, today = datetime.date(2024, 9, 1), datetime.date(2026, 9, 5)
+    new, rejected = refresh.discover_target_ops(TARGET, set(), since, today)
+    pubs = [r["publication"] for r in new]
+    #  The A1 and the B1 are one case, keyed by the earlier kind; the U1 is a utility model and
+    #  is not an application to file against; the US one belongs to the ODP sweep.
+    assert pubs == ["EP4446072A1", "DE102025100002A1"]
+    assert rejected == []
+    #  The German one was accepted on its INVENTOR, not its applicant.
+    assert new[1]["applicant"] == "Somebody Else AG"
+    q = asked[0]
+    assert 'pa%3D%22schmalz%22' in q and 'in%3D%22stockburger%22' in q and 'in%3D%22ralf%22' in q
+    assert "pn%3DEP" in q and "pn%3DDE" in q and "pn%3DWO" in q and "pn%3DUS" not in q
+    assert "20240901%2020260905" in q
+
+
+def test_a_hit_whose_record_names_neither_the_assignee_nor_the_inventor_is_set_aside(monkeypatch):
+    monkeypatch.setattr(refresh, "_ops_json", lambda path: (200, SEARCH))
+    monkeypatch.setattr(refresh, "biblio_for", lambda pub: {"applicant": "Johannes Schmalzbauer",
+                                                            "applicants": ["Johannes Schmalzbauer"]})
+    target = {"assignees": ["Schmalz Flexible Gripping"], "inventors": [], "offices": ["EP", "DE"],
+              "lookback_months": 12}
+    new, rejected = refresh.discover_target_ops(target, set(), datetime.date(2025, 9, 1),
+                                                datetime.date(2026, 9, 5))
+    assert new == []
+    assert len(rejected) == 2 and rejected[0].startswith("EP4446072A1 (Johannes Schmalzbauer)")
+
+
+def test_a_case_already_on_the_docket_under_its_other_kind_is_not_added_again(monkeypatch):
+    monkeypatch.setattr(refresh, "_ops_json", lambda path: (200, SEARCH))
+    monkeypatch.setattr(refresh, "biblio_for", lambda pub: {"applicant": "J. Schmalz GmbH",
+                                                            "applicants": ["J. Schmalz GmbH"]})
+    known = {"EP4446072B1", "EP4446072"}
+    new, _ = refresh.discover_target_ops(TARGET, known, datetime.date(2025, 9, 1),
+                                         datetime.date(2026, 9, 5))
+    assert [r["publication"] for r in new] == ["DE102025100002A1"]
+
+
+ODP_SEARCH = {"count": 3, "patentFileWrapperDataBag": [
+    {"applicationNumberText": "19315746", "applicationMetaData": {
+        "firstApplicantName": "J.Schmalz GmbH", "inventionTitle": "Gripper",
+        "applicantBag": [{"applicantNameText": "J.Schmalz GmbH"}],
+        "inventorBag": [{"inventorNameText": "Valentin Stegmaier"}],
+        "applicationStatusDescriptionText": "Docketed New Case",
+        "earliestPublicationNumber": "US20260109053A1", "earliestPublicationDate": "2026-04-23",
+        "filingDate": "2025-06-16"}},
+    {"applicationNumberText": "18000001", "applicationMetaData": {
+        "firstApplicantName": "Johannes Schmalz", "inventionTitle": "Bicycle",
+        "applicantBag": [{"applicantNameText": "Johannes Schmalz"}],
+        "inventorBag": [{"inventorNameText": "Johannes Schmalz"}],
+        "applicationStatusDescriptionText": "Patented Case",
+        "earliestPublicationNumber": "US20250000001A1", "earliestPublicationDate": "2025-01-02",
+        "patentNumber": "12345678", "grantDate": "2026-03-03"}},
+    {"applicationNumberText": "18000002", "applicationMetaData": {
+        "firstApplicantName": "Schmalz Flexible Gripping Inc.", "inventionTitle": "Dead",
+        "applicantBag": [{"applicantNameText": "Schmalz Flexible Gripping Inc."}],
+        "applicationStatusDescriptionText": "Abandoned  --  Failure to Respond",
+        "earliestPublicationNumber": "US20250000002A1"}},
+]}
+
+
+def test_the_us_search_keeps_patented_cases_and_drops_abandoned_ones(monkeypatch):
+    calls = []
+
+    def odp(path, body=None):
+        calls.append(body)
+        return ODP_SEARCH
+    monkeypatch.setattr(refresh, "_odp", odp)
+    new, rejected = refresh.discover_target_odp(TARGET, set(), datetime.date(2024, 9, 1),
+                                                datetime.date(2026, 9, 5))
+    pubs = [r["publication"] for r in new]
+    #  "Johannes Schmalz" carries the word, which is all the search can check; the record check
+    #  is the same one and passes it too, exactly as the docket's own refresh always has.
+    assert pubs == ["US20260109053A1", "US20250000001A1"]
+    granted = new[1]
+    assert granted["patent_number"] == "12345678" and granted["grant_date"] == "2026-03-03"
+    assert new[0]["inventors"] == ["Valentin Stegmaier"]
+    #  One query per name, each AND-ing its words on the office's own field, in the window.
+    qs = [c["q"] for c in calls]
+    assert any("applicantBag.applicantNameText:schmalz" in q for q in qs)
+    assert any("inventorNameText:stockburger AND applicationMetaData.inventorBag.inventorNameText:ralf" in q for q in qs)
+    assert calls[0]["rangeFilters"][0]["valueFrom"] == "2024-09-01"
+
+
+def test_a_sweep_for_a_target_searches_its_names_and_reads_each_new_case(monkeypatch):
+    monkeypatch.setattr(refresh, "discover_target_ops",
+                        lambda t, known, since, today: ([refresh._new_row("EP4446072A1", "EPO")], []))
+    monkeypatch.setattr(refresh, "discover_target_odp",
+                        lambda t, known, since, today: ([], ["US1 (Nobody)"]))
+    monkeypatch.setattr(refresh, "_ops_json", _ops(EP_GRANTED))
+    monkeypatch.setattr(refresh, "biblio_for", lambda pub: {"title": "Gripping device",
+                                                            "title_full": "Gripping device"})
+    seen = []
+    out = refresh.sweep([], progress=lambda d, t, label: seen.append((d, t)), target=TARGET)
+    assert [r["publication"] for r in out["new"]] == ["EP4446072A1"]
+    assert out["new"][0]["posture"] == "granted"
+    assert out["new"][0]["title"] == "Gripping device"
+    assert any("set aside" in c for c in out["changes"])
+    #  The bar grows when discovery finds work: two discovery ticks, then one per new case.
+    assert seen[-1] == (3, 3)
+
+
+def test_the_lookback_window_starts_on_the_first_of_the_month():
+    assert refresh._months_ago(datetime.date(2026, 9, 5), 12) == datetime.date(2025, 9, 1)
+    assert refresh._months_ago(datetime.date(2026, 2, 28), 36) == datetime.date(2023, 2, 1)
+    assert refresh._months_ago(datetime.date(2026, 1, 15), 1) == datetime.date(2025, 12, 1)
+
+
+def test_a_job_is_keyed_by_target_so_two_targets_refresh_side_by_side():
+    refresh._set(refresh._job_key(99, 1), running=True)
+    assert refresh.state(99, 1)["running"] is True
+    assert refresh.state(99, 2)["known"] is False
+    refresh._set(refresh._job_key(99, 1), running=False)
