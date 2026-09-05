@@ -247,8 +247,9 @@ def test_a_challenge_page_from_tmview_is_reported_not_swallowed(monkeypatch):
 # ---------------------------------------------------------------------------------------------
 
 def test_designview_key_and_the_stored_file_name():
-    assert marks.design_st13("015132217-0001") == "EM700151322170001"
-    assert marks.design_st13("RCD005888591-0002") == "EM700058885910002"
+    assert marks.design_st13("015132217-0001") == "EM700000015132217-0001"
+    assert marks.design_st13("RCD005888591-0002") == "EM700000005888591-0002"
+    assert marks.design_st13("015132217") == "EM700000015132217-0001"
     assert marks.image_key("RCD015132217-0001") == "RCD015132217-0001"
     assert marks.image_key("US29996045") == "US29996045"
     assert marks._kind_of_bytes(b"\xff\xd8\xff\xe0JFIF") == "jpg"
@@ -276,7 +277,7 @@ def test_an_eu_view_is_fetched_through_scrapingbee_and_kept(tmp_path, monkeypatc
     row = {"kind": "design", "office": "EUIPO", "publication": "RCD015132217-0002", "registration": "015132217-0002"}
     p = marks.fetch_design_image(row)
     assert p.name == "RCD015132217-0002.jpg" and p.read_bytes().startswith(b"\xff\xd8")
-    assert seen["url"].endswith("/design/image/EM700151322170002-1")
+    assert seen["url"].endswith("/design/image/EM700000015132217-0002-001")
     assert marks.image_file("RCD015132217-0002") == p
 
 
@@ -287,3 +288,14 @@ def test_a_challenge_page_instead_of_a_view_is_an_error_not_a_file(tmp_path, mon
     got, errors = marks.fetch_images([row])
     assert got == 0 and errors and "RCD015132217-0003 image" in errors[0]
     assert marks.image_file("RCD015132217-0003") is None
+
+
+def test_the_placeholder_jpeg_is_not_kept_as_a_view(tmp_path, monkeypatch):
+    import hashlib
+    monkeypatch.setattr(marks, "IMAGE_DIR", tmp_path)
+    fake = b"\xff\xd8\xff\xe0placeholder"
+    monkeypatch.setattr(marks, "PLACEHOLDER_MD5", {hashlib.md5(fake).hexdigest()})
+    monkeypatch.setattr(marks, "scrapingbee_get", lambda url, headers=None, timeout=90: (200, "image/jpeg", fake))
+    row = {"kind": "design", "office": "EUIPO", "publication": "RCD015132217-0004", "registration": "015132217-0004"}
+    got, errors = marks.fetch_images([row])
+    assert got == 0 and "placeholder" in errors[0] and marks.image_file("RCD015132217-0004") is None
