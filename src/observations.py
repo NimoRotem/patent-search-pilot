@@ -887,6 +887,12 @@ def actions_page():
     seeded = bool(target and target.get("seeded"))
     filings = filings_on(cases, filings, everything=seeded)
     missed = list(meta.get("missed") or []) if seeded else []
+    #  A design's stored view becomes an image URL the row and the panel can show. A mark's
+    #  image, when TMview gave one, is an absolute URL already.
+    if kind == "design":
+        for c in cases:
+            if observation_marks.image_file(c.get("publication")):
+                c["image"] = url_for("observations.action_image", publication=c["publication"])
     #  Which package files actually exist on disk, so the page never offers a dead download.
     have = set(os.listdir(PACKAGE_DIR)) if os.path.isdir(PACKAGE_DIR) else set()
     for f in filings:
@@ -1093,6 +1099,25 @@ def api_action_refresh_state():
         return jsonify({"ok": False, "error": "target is required"}), 400
     kind = str(request.args.get("kind") or "patent").lower()
     return jsonify({"ok": True, "state": observation_refresh.state(user["id"], tid, kind)})
+
+
+@bp.route("/actions/image/<path:publication>")
+def action_image(publication):
+    """The stored first view of a design on the reader's docket. Served from disk, a day of
+    caching, and only for a publication that is on one of their own targets."""
+    user = _user()
+    if "/" in publication or "\\" in publication or publication.startswith("."):
+        abort(404)
+    with db.cursor(autocommit=True) as cur:
+        cur.execute("SELECT 1 FROM app_observation_cases WHERE user_id = %s AND publication = %s LIMIT 1",
+                    (user["id"], publication))
+        if not cur.fetchone():
+            abort(404)
+    path = observation_marks.image_file(publication)
+    if not path:
+        abort(404)
+    resp = send_from_directory(str(path.parent), path.name, max_age=86400)
+    return resp
 
 
 @bp.route("/actions/package/<path:name>")
