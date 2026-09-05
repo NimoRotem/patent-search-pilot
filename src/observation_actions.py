@@ -635,7 +635,12 @@ def headline(row, today=None):
     None means what it says: an abandoned or finally refused application, where no window will
     ever open again.
     """
-    acts = actions_for(row, today)
+    return headline_from(actions_for(row, today))
+
+
+def headline_from(acts):
+    """The three-tier pick, from an instrument list already evaluated. Shared with the design
+    and trademark tables, whose entries have the same shape."""
     live = [a for a in acts if a["status"] in ("open", "closing")]
     if live:
         return _headline_of(live[0], live[0]["status"], len(live))

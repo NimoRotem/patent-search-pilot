@@ -27,6 +27,17 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .obtargets{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:14px 0 4px;
   padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--s1)}
 .obtargets label{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+/*  One docket, three kinds of right. The switch sits beside the target because both answer
+    "what am I looking at", and every number on the page changes with either. */
+.obkinds{display:inline-flex;border:1px solid var(--line2);border-radius:var(--r-sm);overflow:hidden}
+.obkinds a{font-size:12.5px;font-weight:650;padding:6px 12px;color:var(--muted);text-decoration:none;
+  border-right:1px solid var(--line2);background:var(--s1)}
+.obkinds a:last-child{border-right:0}
+.obkinds a:hover{background:var(--s2);color:var(--ink)}
+.obkinds a.on{background:var(--accent);color:#fff}
+.obkinds a small{font-weight:500;opacity:.8;margin-left:4px}
+.obtable td.pub .cls{font-family:inherit;display:block;font-size:10.5px;color:var(--faint)}
+.obtable td.ttl img{height:22px;max-width:60px;vertical-align:middle;margin-right:6px;border:1px solid var(--line);background:#fff}
 .obtargets select{font:inherit;font-size:14px;font-weight:650;padding:6px 30px 6px 10px;
   border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink);
   max-width:360px}
@@ -238,6 +249,7 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
 .office{font-size:10.5px;color:var(--faint)}
 .prio{font-size:10.5px;font-weight:700;color:var(--muted);white-space:nowrap}
 .prio.p1{color:var(--bad)}
+.prio.was{color:var(--faint);font-weight:500;white-space:normal;font-size:10px;line-height:1.3}
 .detailbtn{cursor:pointer;color:var(--accent);font-size:11.5px;background:none;border:0;
   padding:4px 2px;font-weight:650}
 .detailbtn:hover{text-decoration:underline}
@@ -297,7 +309,15 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
     <div>
       <h1>Actions</h1>
       <p class="obsub">
-        {% if target %}
+        {% if target and kind == 'trademark' %}
+        Every {{ target.name }} trademark at the EUIPO, the USPTO, the DPMA and WIPO, from TMview,
+        with the observation, opposition and cancellation that reaches each one today. Countdowns
+        are computed for <strong>{{ today }}</strong>.
+        {% elif target and kind == 'design' %}
+        Every {{ target.name }} registered design the EUIPO and the USPTO list, with the invalidity
+        or review that reaches each one today. German and Hague designs are not sourced yet.
+        Countdowns are computed for <strong>{{ today }}</strong>.
+        {% elif target %}
         Every {{ target.name }} filing a third party can still act against, every instrument that
         reaches it at its office today and the date each door shuts. Countdowns are computed for
         <strong>{{ today }}</strong>, not stored, so they are never one build out of date.
@@ -328,7 +348,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
     <label for="obtarget">Target</label>
     <select id="obtarget" aria-label="Which target to show"{% if not targets %} disabled{% endif %}>
       {% for t in targets %}
-      <option value="{{ t.id }}"{% if target and t.id == target.id %} selected{% endif %}>{{ t.name }} ({{ t.cases }})</option>
+      <option value="{{ t.id }}"{% if target and t.id == target.id %} selected{% endif %}>{{ t.name }} ({{ t.cases if kind == 'patent' else (t.designs if kind == 'design' else t.trademarks) }})</option>
       {% else %}
       <option value="">No targets yet</option>
       {% endfor %}
@@ -341,7 +361,13 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
         &middot; {{ target.offices | join(' ') }} &middot; publications of the last {{ target.lookback_months }} months
       {% endif %}
     </span>
-    {% if target %}<button type="button" class="obtbtn" id="obeditbtn">Edit</button>{% endif %}
+    {% if target %}
+    <span class="obkinds" role="tablist" aria-label="Kind of right">
+      {% for k in kinds %}
+      <a href="{{ request.script_root }}/actions?target={{ target.id }}&kind={{ k }}" class="{{ 'on' if k == kind else '' }}" role="tab" aria-selected="{{ 'true' if k == kind else 'false' }}">{{ kind_label[k] }}<small>{{ target.cases if k == 'patent' else (target.designs if k == 'design' else target.trademarks) }}</small></a>
+      {% endfor %}
+    </span>
+    <button type="button" class="obtbtn" id="obeditbtn">Edit</button>{% endif %}
     <button type="button" class="obtbtn primary" id="obaddbtn">Add a target</button>
   </div>
 
@@ -389,14 +415,16 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   <div class="obrefresh">
     <button type="button" id="obrefreshbtn">Refresh from the registers</button>
     <span class="obrefreshnote{{ ' stale' if (stale_days is not none and stale_days >= 7) or stale_days is none else '' }}" id="obrefreshnote">
-      {% if target.refreshed_at %}Last pulled <b>{{ target.refreshed_at }}</b>{% if stale_days is not none and stale_days >= 7 %},
+      {% if refreshed_at %}Last pulled <b>{{ refreshed_at }}</b>{% if stale_days is not none and stale_days >= 7 %},
         <b>{{ stale_days }} days ago.</b> A grant in that time would have opened a window this page
         cannot see yet.{% else %}.{% endif %}
       {% else %}<b>Never pulled live.</b>{% if target.seeded %} The dates below come from the shipped {{ meta.as_of or 'baseline' }} sweep and a case may have granted, lapsed or been refused since.{% endif %}
       {% endif %}
-      USPTO Open Data Portal for status, windows and our own submissions on the file wrapper;
+      {% if kind == 'trademark' %}TMview for every office's status, publication and opposition period; new marks in the target's names are added.
+      {% elif kind == 'design' %}EUIPO design register and the USPTO Open Data Portal for status and dates; new designs in the target's names are added.
+      {% else %}USPTO Open Data Portal for status, windows and our own submissions on the file wrapper;
       EPO Register for European status and the mention of grant; INPADOC legal status for the
-      German cases. New publications by the target's names are added.
+      German cases. New publications by the target's names are added.{% endif %}
     </span>
     <div class="obbar" id="obrefreshbar" hidden><i></i></div>
     <div class="obrefreshlog" id="obrefreshlog" hidden></div>
@@ -404,10 +432,11 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
 
   {% if not cases %}
   <div class="obempty" id="obempty">
-    {% if job.running %}Finding what {{ target.name }} has published and reading each case's
-    register. This page reloads when it is done.
-    {% else %}Nothing on this docket yet. Press <b>Refresh from the registers</b> to search for
-    {{ target.name }}'s publications, or edit the target if the names need work.{% endif %}
+    {% if job.running %}Finding {{ target.name }}'s {{ kind_label[kind] | lower }} and reading each
+    one's register. This page reloads when it is done.
+    {% else %}No {{ kind_label[kind] | lower }} on this docket yet. Press <b>Refresh from the
+    registers</b> to search the offices for {{ target.name }}'s {{ kind_label[kind] | lower }}, or
+    edit the target if the names need work.{% endif %}
   </div>
   {% endif %}
 
@@ -472,10 +501,10 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   {# ── 2. the docket ──────────────────────────────────────────────────────── #}
   {% if cases %}
   <section class="obsec">
-    <h2>The full docket</h2>
-    <p class="lede">Sorted by the soonest deadline. Cases with no deadline stay open for as long
-      as the application is pending, so they carry no countdown and sit at the end. Open a row
-      for the whole instrument table, the register's own record and a private note.</p>
+    <h2>The full docket{% if kind != 'patent' %}: {{ kind_label[kind] | lower }}{% endif %}</h2>
+    <p class="lede">Sorted by the soonest deadline. Rows with no deadline stay open for as long
+      as the right is pending or registered, so they carry no countdown and sit at the end. Open
+      a row for the whole instrument table, the register's own record and a private note.</p>
 
     <div class="obtools">
       <input type="search" id="obq" placeholder="Search" aria-label="Search the docket">
@@ -483,7 +512,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
       <select id="obposture" aria-label="Filter by posture">
         <option value="">Posture</option>
         <option value="pending">Pending</option>
-        <option value="granted">Granted</option>
+        {% if kind == 'patent' %}<option value="granted">Granted</option>{% else %}<option value="registered">Registered</option>{% endif %}
         <option value="lapsed">Lapsed</option>
       </select>
       {#  THE INSTRUMENT FILTER. Every route that is open on at least one row today, named the
@@ -539,7 +568,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
         <tr>
           <th data-sort="deadline" aria-sort="ascending" scope="col">Deadline <span class="arw">&#9650;</span></th>
           <th data-sort="pub" scope="col">Number</th>
-          <th data-sort="title" scope="col">Title</th>
+          <th data-sort="title" scope="col">{{ 'Mark' if kind == 'trademark' else ('Design' if kind == 'design' else 'Title') }}</th>
           <th data-sort="posture" scope="col">Status</th>
           <th data-sort="route" scope="col">Can file now</th>
           <th data-sort="onfile" scope="col">On file</th>
@@ -565,7 +594,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             data-pkg="{{ c.package_state or 'none' }}" data-srch="{{ c.search_state or 'none' }}"
             data-filed="{{ c.filing_date or c.pubDate or '' }}"
             data-can="{{ c.can_keys | join(' ') }}"
-            data-hay="{{ (c.publication ~ ' ' ~ (c.granted_as or '') ~ ' ' ~ c.title ~ ' ' ~ (c.applicant or '') ~ ' ' ~ (c.inventors | join(' ') if c.inventors else '') ~ ' ' ~ (c.application or '') ~ ' ' ~ (c.ipc or '') ~ ' ' ~ (c.register_status or '') ~ ' ' ~ (live | map(attribute='instrument') | join(' ')) ~ ' ' ~ (live | map(attribute='statute') | join(' '))) | lower }}">
+            data-hay="{{ (c.publication ~ ' ' ~ (c.granted_as or '') ~ ' ' ~ c.title ~ ' ' ~ (c.applicant or '') ~ ' ' ~ (c.inventors | join(' ') if c.inventors else '') ~ ' ' ~ (c.application or '') ~ ' ' ~ (c.registration or '') ~ ' ' ~ (c.classes | join(' ') if c.classes else '') ~ ' ' ~ (c.ipc or '') ~ ' ' ~ (c.register_status or '') ~ ' ' ~ (c.status or '') ~ ' ' ~ (live | map(attribute='instrument') | join(' ')) ~ ' ' ~ (live | map(attribute='statute') | join(' '))) | lower }}">
           <td class="dl">
             {#  An undated window that is nonetheless about to shut gets its own rendering. Saying
                 "no deadline" here, which is literally true, reads as "no hurry", which is the
@@ -578,11 +607,18 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
               <br><span class="dldate">{{ c.deadline }}</span>
             {% endif %}
           </td>
+          {% if kind == 'patent' %}
           <td class="pub" title="{{ c.granted_as or c.publication }}{% if c.application %} · app. {{ c.application }}{% endif %}">{{ c.granted_as or c.publication }}<span class="office">{{ c.office }}{% if c.ipc %} &middot; {{ c.ipc }}{% endif %}</span></td>
           <td class="ttl" title="{{ c.title_full or c.title }}"><span class="t">{{ c.title }}</span><span class="who" title="{{ c.applicant }}{% if c.inventors %} · {{ c.inventors | join(', ') }}{% endif %}">{{ c.applicant_short or '' }}{% if c.inventors %} &middot; {{ c.inventors | join(', ') }}{% endif %}</span></td>
+          {% else %}
+          {#  A mark or a design is known by its registration or application number and its
+              classes, and the number the docket keys on (an ST13) is nobody's language. #}
+          <td class="pub" title="{{ c.publication }}">{{ c.registration or c.application or c.publication }}<span class="office">{{ c.office }}{% if c.mark_type %} &middot; {{ c.mark_type | lower }}{% endif %}</span>{% if c.classes %}<span class="cls">{{ 'Nice' if kind == 'trademark' else 'Locarno' }} {{ c.classes | join(', ') }}</span>{% endif %}</td>
+          <td class="ttl" title="{{ c.title_full or c.title }}">{% if c.image %}<img src="{{ c.image }}" alt="" loading="lazy">{% endif %}<span class="t" style="display:inline">{{ c.title }}</span><span class="who" title="{{ c.applicant }}">{{ c.applicant_short or c.applicant or '' }}</span></td>
+          {% endif %}
           <td class="st">
-            <span class="posture {{ (c.posture or 'unknown') | lower }}">{{ (c.posture or 'unread') | capitalize }}</span>
-            {% if c.grant_published %}<span class="dldate"> {{ c.grant_published }}</span>{% elif c.grant_date %}<span class="dldate"> {{ c.grant_date }}</span>{% endif %}
+            <span class="posture {{ (c.posture or 'unknown') | lower | replace('registered', 'granted') }}">{{ (c.posture or 'unread') | capitalize }}</span>
+            {% if c.grant_published %}<span class="dldate"> {{ c.grant_published }}</span>{% elif c.grant_date %}<span class="dldate"> {{ c.grant_date }}</span>{% elif c.registration_date and kind != 'patent' %}<span class="dldate"> {{ c.registration_date }}</span>{% endif %}
             <span class="regst" title="{{ c.register_status }}{% if c.register_updated %} · read {{ c.register_updated }}{% endif %}">{{ c.register_status or 'register not read yet' }}</span>
           </td>
           {#  THE LIVE ANSWER, all of it. One case can be past its observation window and inside
@@ -614,6 +650,8 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             {% if ours %}<span class="act open">ours</span> <span class="dldate">{{ ours[0].date }}</span>
             {% elif c.on_file %}<span class="act conditional">3rd party</span> <span class="dldate">{{ c.on_file[0].date }}</span>
             {% elif c.filed %}<span class="act open">filed</span>
+            {% elif c.oppositions %}<span class="act conditional">opposed</span> <span class="dldate">{{ c.oppositions | length }} on record</span>
+            {% elif c.cancellations %}<span class="act conditional">cancel.</span> <span class="dldate">{{ c.cancellations | length }} on record</span>
             {% else %}<span class="office">&ndash;</span>{% endif %}
           </td>
           {#  WHAT IS ALREADY BUILT, from the two systems that hold it. The filing app's packet for
@@ -646,10 +684,19 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
           </td>
           <td class="dts">
             {% if c.filing_date %}<span class="dtl"><b>filed</b>{{ c.filing_date }}</span>{% endif %}
+            {% if kind == 'patent' %}
             {% if c.pubDate %}<span class="dtl"><b>pub</b>{{ c.pubDate }}</span>{% endif %}
             {% if c.priority_date and c.priority_date != c.filing_date %}<span class="dtl"><b>prio</b>{{ c.priority_date }}</span>{% endif %}
+            {% else %}
+            {% if c.registration_date %}<span class="dtl"><b>reg</b>{{ c.registration_date }}</span>{% endif %}
+            {% if c.expiry_date %}<span class="dtl"><b>exp</b>{{ c.expiry_date }}</span>{% endif %}
+            {% endif %}
           </td>
-          <td><span class="prio {{ 'p1' if c.priority and '1' in c.priority else '' }}">{{ c.priority or '' }}</span></td>
+          {#  COUNSEL'S PRIORITY IS ABOUT A WINDOW. Once that window has shut, "1 - critical" beside a
+              row nothing can be done about is noise that drowns the rows that are still critical,
+              so a closed or lapsed case shows its old priority greyed and prefixed "was". #}
+          {% set spent = c.state == 'lapsed' or (c.days_left is not none and c.days_left < 0) %}
+          <td><span class="prio {{ 'was' if spent else ('p1' if c.priority and '1' in c.priority else '') }}">{% if c.priority and spent and c.priority != 'Filed' %}was {{ c.priority }}{% else %}{{ c.priority or '' }}{% endif %}</span></td>
           <td class="chev">&#9662;</td>
         </tr>
       {% endfor %}
@@ -667,34 +714,33 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   <script type="application/json" id="obfilings">{{ filings|tojson }}</script>
   <script type="application/json" id="obmissed">{{ missed|tojson }}</script>
   <script type="application/json" id="obtargets">{{ targets|tojson }}</script>
-  <script>window.OB_TARGET = {{ (target.id if target else None) | tojson }};</script>
+  <script>window.OB_TARGET = {{ (target.id if target else None) | tojson }}; window.OB_KIND = {{ kind | tojson }};</script>
 
   {# ── 3. what changed ────────────────────────────────────────────────────── #}
-  {% if target and target.refresh and (target.refresh.changes or target.refresh.errors) %}
+  {% if target and refresh and (refresh.changes or refresh.errors) %}
   <section class="obsec">
     <h2>Moved in the last live refresh</h2>
     <p class="lede">Every register fact that changed when the offices were last asked
-      {% if target.refreshed_at %}, {{ target.refreshed_at }}{% endif %}. A row
-      that did not move is not listed.</p>
-    {% if target.refresh.changes %}<ul class="changes">{% for ch in target.refresh.changes %}<li>{{ ch }}</li>{% endfor %}</ul>{% endif %}
-    {% if target.refresh.errors %}
+      {% if refreshed_at %}, {{ refreshed_at }}{% endif %}. A row that did not move is not listed.</p>
+    {% if refresh.changes %}<ul class="changes">{% for ch in refresh.changes %}<li>{{ ch }}</li>{% endfor %}</ul>{% endif %}
+    {% if refresh.errors %}
     <p class="lede">Could not be read, so these still carry whatever the last successful sweep
       said:</p>
-    <ul class="changes">{% for e in target.refresh.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    <ul class="changes">{% for e in refresh.errors %}<li>{{ e }}</li>{% endfor %}</ul>
     {% endif %}
   </section>
   {% endif %}
 
   {# ── the table itself, for somebody who wants it whole ──────────────────── #}
   <section class="obsec">
-    <h2>The instruments, by office</h2>
+    <h2>The instruments, by office{% if kind != 'patent' %}: {{ kind_label[kind] | lower }}{% endif %}</h2>
     <p class="lede">Every route a third party has, whatever is on the docket. The column in each
       row above picks whichever of these is open on that case today; this is the whole table, so
       that what is missing from a case is as visible as what is there. Fees are what the office
       charges and go stale: check one before you pay it.</p>
     <div class="obtablewrap" style="overflow-x:auto">
     <table class="obacts obmatrix">
-      <caption class="vh">The six stages of a third-party challenge across three offices.</caption>
+      <caption class="vh">The stages of a third-party challenge, by office.</caption>
       <thead>
         <tr><th scope="col">Stage</th>
           {% for key, label in matrix_offices %}<th scope="col">{{ label }}</th>{% endfor %}</tr>
@@ -1129,7 +1175,16 @@ function obLink(href, text){
     add('Applicant', (d.applicants && d.applicants.length > 1) ? d.applicants.join('; ') : d.applicant);
     add('Inventors', (d.inventors && d.inventors.length) ? d.inventors.join(', ') : null);
     add('IPC', d.ipc);
+    add('Classes', (d.classes && d.classes.length) ? d.classes.join(', ') : null);
+    add('Mark type', d.mark_type);
+    add('Status', d.status && !d.register_status ? d.status : null);
     add('Application', d.application);
+    add('Registration', d.registration);
+    add('Registered', d.registration_date);
+    add('Expires', d.expiry_date);
+    add('Published', d.publication_date ? (d.publication_date + (d.opposition_end ? '  ·  opposition until ' + d.opposition_end : '')) : null);
+    add('Designated', (d.designated && d.designated.length) ? d.designated.join(', ') : null);
+    add('Oppositions on record', (d.oppositions && d.oppositions.length) ? d.oppositions.map(function(o){ return (o.number || o.oppositionNumber || '') + ' ' + (o.status || ''); }).join('; ') : null);
     add('Filed', d.filing_date);
     add('Published', d.pubDate ? (d.pubDate + (d.priority_date ? '  ·  priority ' + d.priority_date : '')) : null);
     add('Granted', d.grant_published ? (d.grant_published + (d.granted_as ? '  ·  ' + d.granted_as : ''))
@@ -1361,7 +1416,7 @@ function obLink(href, text){
 
   var sel = document.getElementById('obtarget');
   sel.addEventListener('change', function(){
-    if (sel.value) window.location.href = window.APP_BASE + '/actions?target=' + encodeURIComponent(sel.value);
+    if (sel.value) window.location.href = window.APP_BASE + '/actions?target=' + encodeURIComponent(sel.value) + '&kind=' + encodeURIComponent(window.OB_KIND || 'patent');
   });
 
   // ── the form ──────────────────────────────────────────────────────────────────────────
@@ -1427,8 +1482,8 @@ function obLink(href, text){
       if (editing){
         //  Names changed, so the next sweep should search for them now rather than whenever
         //  somebody remembers to press the button.
-        return post('/api/actions/refresh', {target_id: id}).then(function(){
-          window.location.href = window.APP_BASE + '/actions?target=' + id;
+        return post('/api/actions/refresh', {target_id: id, kind: window.OB_KIND || 'patent'}).then(function(){
+          window.location.href = window.APP_BASE + '/actions?target=' + id + '&kind=' + encodeURIComponent(window.OB_KIND || 'patent');
         });
       }
       //  A new target: its first fetch is already running. Go and watch it.
@@ -1460,7 +1515,7 @@ function obLink(href, text){
       log = document.getElementById('obrefreshlog'),
       note = document.getElementById('obrefreshnote');
   var poll = null;
-  var stateUrl = window.APP_BASE + '/api/actions/refresh?target=' + encodeURIComponent(window.OB_TARGET);
+  var stateUrl = window.APP_BASE + '/api/actions/refresh?target=' + encodeURIComponent(window.OB_TARGET) + '&kind=' + encodeURIComponent(window.OB_KIND || 'patent');
 
   function say(html, bad){
     log.hidden = false;
@@ -1547,7 +1602,7 @@ function obLink(href, text){
     btn.textContent = 'Refreshing…';
     note.hidden = true;
     say('Starting.');
-    post('/api/actions/refresh', {target_id: window.OB_TARGET}).then(function(j){
+    post('/api/actions/refresh', {target_id: window.OB_TARGET, kind: window.OB_KIND || 'patent'}).then(function(j){
       if (!j || !j.ok) throw new Error((j && j.error) || 'refused');
       if (j.state) progress(j.state);
       watch();

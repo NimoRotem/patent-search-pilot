@@ -64,6 +64,7 @@ import auth
 import db
 import observation_actions
 import observation_links
+import observation_marks
 import observation_refresh
 
 bp = Blueprint("observations", __name__)
@@ -117,6 +118,10 @@ DETAIL_FIELDS = (
     #  What has already been built for the case elsewhere: the filing app's packets and this
     #  app's own searches, pinned to the row by number. See observation_links.
     "packages", "package_state", "searches", "search_state",
+    #  Designs and marks: what a row of those kinds carries that a patent row does not.
+    "kind", "status", "registration", "registration_date", "expiry_date", "publication_date",
+    "opposition_start", "opposition_end", "classes", "mark_type", "image", "oppositions",
+    "cancellations", "designated", "deferred",
     #  The German register's own event list. It is the evidence behind every German posture and
     #  deadline on this page: "granted 2026-08-20" is an assertion until you can see the R018 and
     #  the B4 it was read off.
@@ -229,7 +234,10 @@ def _target_row(r):
     for key in ("assignees", "inventors", "offices"):
         v = t.get(key)
         t[key] = list(v) if isinstance(v, (list, tuple)) else []
-    t["refresh"] = dict(t.get("refresh") or {})
+    #  One refresh record per kind. A record written before kinds existed has its `changes`
+    #  at the top; read it as the patent one.
+    raw = dict(t.get("refresh") or {})
+    t["refresh"] = {"patent": raw} if "changes" in raw else raw
     when = t.get("refreshed_at")
     #  To the minute, in UTC, with no offset suffix: "2026-09-05 00:25" is what a reader wants
     #  beside "last pulled", and every box in this fleet keeps UTC.
@@ -244,6 +252,8 @@ def _target_row(r):
         if isinstance(v, datetime.datetime):
             t[key] = v.replace(microsecond=0).isoformat()
     t["cases"] = int(t.get("cases") or 0)
+    t["designs"] = int(t.get("designs") or 0)
+    t["trademarks"] = int(t.get("trademarks") or 0)
     return t
 
 
@@ -348,12 +358,17 @@ def _adopt_orphans(cur):
 
 
 def targets_for(user_id):
-    """Every target this person has, the shipped one first, each with its row count."""
+    """Every target this person has, the shipped one first, each with its row counts per kind."""
     ensure_schema()
     with db.cursor(autocommit=True) as cur:
         cur.execute(
-            """SELECT t.*, (SELECT count(*) FROM app_observation_cases c
-                              WHERE c.target_id = t.id) AS cases
+            """SELECT t.*,
+                      (SELECT count(*) FROM app_observation_cases c WHERE c.target_id = t.id
+                          AND COALESCE(c.payload->>'kind', 'patent') = 'patent') AS cases,
+                      (SELECT count(*) FROM app_observation_cases c WHERE c.target_id = t.id
+                          AND c.payload->>'kind' = 'design') AS designs,
+                      (SELECT count(*) FROM app_observation_cases c WHERE c.target_id = t.id
+                          AND c.payload->>'kind' = 'trademark') AS trademarks
                  FROM app_observation_targets t
                 WHERE t.user_id = %s
                 ORDER BY t.seeded DESC, t.created_at, t.id""", (user_id,))
@@ -670,7 +685,8 @@ def can_file_options(cases):
     own table for completeness and would only pad the filter.
     """
     opts = {}
-    stage_order = {stage: i for i, (stage, _) in enumerate(observation_actions.STAGES)}
+    stage_order = {stage: i for i, (stage, _) in enumerate(
+        observation_actions.STAGES + observation_marks.TM_STAGES + observation_marks.DESIGN_STAGES)}
     for c in cases:
         keys = set()
         for a in c.get("actions") or []:
@@ -698,7 +714,9 @@ def can_file_options(cases):
 
 
 _DATE_FIELDS = ("filing_date", "pubDate", "priority_date", "grant_date", "grant_published",
-                "register_updated", "opposition_deadline", "scheduled_grant", "decision_on")
+                "register_updated", "opposition_deadline", "scheduled_grant", "decision_on",
+                "registration_date", "expiry_date", "publication_date", "opposition_start",
+                "opposition_end")
 #  ", 72293 Glatten, DE": the postal address the German register appends to every name.
 _ADDRESS = re.compile(r",\s*\d{4,}.*$")
 _IPC = re.compile(r"\s*([A-H]\d\d[A-Z])\s*(\d+)\s*/\s*(\d+)")
@@ -739,26 +757,36 @@ def _tidy_dates(row):
     return row
 
 
-def cases_for(user_id, target_id, today=None):
+def cases_for(user_id, target_id, today=None, kind="patent"):
+    """One target's rows of one kind: patents (the default and the rows from before kinds
+    existed), designs or trademarks. Each kind has its own instrument table."""
     ensure_schema()
     today = today or datetime.date.today()
+    kind = kind if kind in observation_marks.KINDS else "patent"
     with db.cursor(autocommit=True) as cur:
         cur.execute(
             """SELECT publication, payload, user_state, user_note
-                 FROM app_observation_cases WHERE user_id = %s AND target_id = %s""",
-            (user_id, target_id))
+                 FROM app_observation_cases
+                WHERE user_id = %s AND target_id = %s
+                  AND COALESCE(payload->>'kind', 'patent') = %s""",
+            (user_id, target_id, kind))
         rows = cur.fetchall()
     out = []
     for r in rows:
         row = dict(r["payload"])
         row["user_state"] = r["user_state"]
         row["user_note"] = r["user_note"]
+        row.setdefault("kind", kind)
         _tidy_dates(row)
         #  What can still be filed against this one, evaluated for today. Cheap enough to do on
         #  every read, and the alternative is a stored answer that rots exactly like the count did.
         #  BEFORE `recount`, which now takes the row's countdown from whichever of these is open.
-        row["actions"] = observation_actions.actions_for(row, today)
-        row["action_headline"] = observation_actions.headline(row, today)
+        if kind == "patent":
+            row["actions"] = observation_actions.actions_for(row, today)
+            row["action_headline"] = observation_actions.headline(row, today)
+        else:
+            row["actions"] = observation_marks.actions_for(row, today)
+            row["action_headline"] = observation_marks.headline(row, today)
         recount(row, today)
         out.append(row)
     #  Soonest deadline first, undated cases last. `sort_key` is already the day count.
@@ -834,10 +862,14 @@ def actions_page():
         traceback.print_exc()
         targets = []
     target = _pick(targets, request.args.get("target"))
+    #  Patents, designs or trademarks: one docket at a time, each with its own instruments.
+    kind = (request.args.get("kind") or "patent").strip().lower()
+    if kind not in observation_marks.KINDS:
+        kind = "patent"
     cases, filings, meta = [], [], {}
     if target:
         try:
-            cases = cases_for(uid, target["id"])
+            cases = cases_for(uid, target["id"], kind=kind)
             filings = filings_for(uid)
             meta = meta_for(uid)
         except Exception:
@@ -883,20 +915,33 @@ def actions_page():
     #  HOW OLD THE REGISTER FACTS ARE, said out loud. The countdowns are computed and cannot go
     #  stale, but the deadlines they count to can: a patent that granted last week opens a nine
     #  month opposition window this page knows nothing about until somebody presses the button.
+    refresh = dict((target or {}).get("refresh", {}).get(kind) or {})
+    refreshed_at = (target or {}).get("refreshed_at") if kind == "patent" else \
+        str(refresh.get("refreshed_at") or "")[:16].replace("T", " ") or None
     stale_days = None
-    if target and target.get("refreshed_at"):
-        pulled = observation_actions._date(str(target["refreshed_at"])[:10])
+    if refreshed_at:
+        pulled = observation_actions._date(str(refreshed_at)[:10])
         if pulled:
             stale_days = (datetime.date.today() - pulled).days
-    job = observation_refresh.state(uid, target["id"]) if target else {}
+    job = observation_refresh.state(uid, target["id"], kind) if target else {}
+    if kind == "patent":
+        matrix, matrix_offices = observation_actions.reference_matrix(), observation_actions.REFERENCE_OFFICES
+    else:
+        matrix, matrix_offices = observation_marks.reference_matrix(kind)
+    #  Filings and the hand-written missed list are patent things; the other two kinds have
+    #  neither yet.
+    if kind != "patent":
+        filings, missed = [], []
     return render_template("actions.html", cases=cases, filings=filings, missed=missed,
                            meta=meta, counts=counts, detail=detail, can_file=can_file,
                            targets=targets, target=target, offices=OFFICES,
                            lookbacks=LOOKBACKS, default_lookback=DEFAULT_LOOKBACK,
                            job=job, stages=observation_actions.STAGES,
+                           kind=kind, kinds=observation_marks.KINDS,
+                           kind_label=observation_marks.KIND_LABEL,
+                           refresh=refresh, refreshed_at=refreshed_at,
                            filing_url=observation_links.FILING_URL,
-                           matrix=observation_actions.reference_matrix(),
-                           matrix_offices=observation_actions.REFERENCE_OFFICES,
+                           matrix=matrix, matrix_offices=matrix_offices,
                            stale_days=stale_days,
                            today=datetime.date.today().isoformat())
 
@@ -1026,13 +1071,16 @@ def api_action_refresh():
     target = get_target(user["id"], body.get("target_id"))
     if not target:
         return jsonify({"ok": False, "error": "no such target"}), 404
+    kind = str(body.get("kind") or "patent").lower()
+    if kind not in observation_marks.KINDS:
+        return jsonify({"ok": False, "error": "unknown kind"}), 400
     try:
-        rows = cases_for(user["id"], target["id"])
+        rows = cases_for(user["id"], target["id"], kind=kind)
     except Exception as exc:
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(exc)[:160]}), 500
-    started = observation_refresh.start(user["id"], rows, target=target)
-    st = observation_refresh.state(user["id"], target["id"])
+    started = observation_refresh.start(user["id"], rows, target=target, kind=kind)
+    st = observation_refresh.state(user["id"], target["id"], kind)
     return jsonify({"ok": True, "already_running": not started, "state": st})
 
 
@@ -1043,7 +1091,8 @@ def api_action_refresh_state():
         tid = int(request.args.get("target"))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "target is required"}), 400
-    return jsonify({"ok": True, "state": observation_refresh.state(user["id"], tid)})
+    kind = str(request.args.get("kind") or "patent").lower()
+    return jsonify({"ok": True, "state": observation_refresh.state(user["id"], tid, kind)})
 
 
 @bp.route("/actions/package/<path:name>")

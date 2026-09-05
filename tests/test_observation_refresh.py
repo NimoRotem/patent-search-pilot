@@ -659,6 +659,8 @@ def test_every_word_of_a_name_has_to_be_on_the_record():
     assert refresh.name_matches([["vacuum", "technologies"]], ["Vacuum Technologies, Inc."])
     assert not refresh.name_matches([["vacuum", "technologies"]], ["Vacuum Gripper GmbH"])
     assert refresh.name_matches([["schmalz"]], ["Some Co", "J.Schmalz GmbH, 72293 Glatten"])
+    #  Whole words: a name that merely contains the word is somebody else.
+    assert not refresh.name_matches([["schmalz"]], ["SchmalzTech, LLC"])
     assert refresh.name_matches([["stockburger", "ralf"]], ["Stockburger, Ralf"])
     assert not refresh.name_matches([], ["anyone"])
 
