@@ -932,12 +932,16 @@ def _plain(text):
 
 
 def name_matches(words_list, candidates):
-    """True when any searched name has every one of its words inside one of the candidates."""
-    cands = [_plain(c) for c in (candidates or []) if c]
+    """True when any searched name has every one of its words, as WHOLE words, in one candidate.
+
+    Whole words, because a substring is how "Schmalz" came to own SchmalzTech, LLC's trademarks
+    for a moment. "J.Schmalz GmbH" still matches: punctuation is turned to spaces first.
+    """
+    cands = [" %s " % " ".join(_plain(c).split()) for c in (candidates or []) if c]
     for words in words_list or []:
         if not words:
             continue
-        if any(all(w in c for w in words) for c in cands):
+        if any(all((" %s " % w) in c for w in words) for c in cands):
             return True
     return False
 
@@ -1367,11 +1371,12 @@ def _describe(row, patch):
 # writing it back, per user
 # ---------------------------------------------------------------------------------------------
 
-def apply_to_user(user_id, result, target_id=None):
+def apply_to_user(user_id, result, target_id=None, kind="patent"):
     """Merge a sweep onto one of a person's targets. Only the register fields move.
 
-    The refresh record (when, what moved, what could not be read) lives on the target now,
-    because that is what the reader is looking at when they ask "how old is this". The per-user
+    The refresh record (when, what moved, what could not be read) lives on the target, one per
+    KIND: the trademark sweep and the design sweep are separate jobs and the page shows one kind
+    at a time, so a design page must not report what the trademark sweep found. The per-user
     meta keeps only the shipped file's own notes.
     """
     import observations
@@ -1401,14 +1406,23 @@ def apply_to_user(user_id, result, target_id=None):
                 (user_id, target_id, row["publication"], json.dumps(row)))
             n_new += cur.rowcount
         record = {"as_of": result["as_of"],
+                  "refreshed_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat(),
                   "sources": result.get("sources") or {},
                   "errors": (result.get("errors") or [])[:40],
                   "changes": (result.get("changes") or [])[:200],
                   "counts": {"updated": n_updated, "new": n_new,
                              "errors": len(result.get("errors") or [])}}
-        cur.execute("UPDATE app_observation_targets SET refreshed_at = now(), refresh = %s, "
-                    "updated_at = now() WHERE user_id = %s AND id = %s",
-                    (json.dumps(record), user_id, target_id))
+        kind = kind if kind in ("design", "trademark") else "patent"
+        #  `refreshed_at` on the row stays the PATENT pull, which is what the row meant before
+        #  kinds existed; the other kinds keep theirs inside the record.
+        cur.execute("""UPDATE app_observation_targets
+                          SET refresh = (CASE WHEN refresh ? 'changes' THEN jsonb_build_object('patent', refresh)
+                                              ELSE COALESCE(refresh, '{}'::jsonb) END)
+                                        || jsonb_build_object(%s, %s::jsonb),
+                              refreshed_at = CASE WHEN %s = 'patent' THEN now() ELSE refreshed_at END,
+                              updated_at = now()
+                        WHERE user_id = %s AND id = %s""",
+                    (kind, json.dumps(record), kind, user_id, target_id))
         cur.execute("SELECT payload FROM app_observation_meta WHERE user_id = %s", (user_id,))
         got = cur.fetchone()
         meta = dict(got["payload"]) if got else {}
@@ -1428,11 +1442,12 @@ def apply_to_user(user_id, result, target_id=None):
 # the job behind the button
 # ---------------------------------------------------------------------------------------------
 
-def _job_key(user_id, target_id):
-    return (int(user_id), int(target_id) if target_id is not None else None)
+def _job_key(user_id, target_id, kind="patent"):
+    return (int(user_id), int(target_id) if target_id is not None else None,
+            kind if kind in ("design", "trademark") else "patent")
 
 
-def state(user_id, target_id=None):
+def state(user_id, target_id=None, kind="patent"):
     """What this target's refresh is doing. `known` is False when there is no record of one.
 
     The job lives in this process's memory, which is right for a single-worker app and wrong
@@ -1442,7 +1457,7 @@ def state(user_id, target_id=None):
     state and has to be reported as one.
     """
     with _JOBS_LOCK:
-        job = _JOBS.get(_job_key(user_id, target_id))
+        job = _JOBS.get(_job_key(user_id, target_id, kind))
         if not job:
             return {"running": False, "known": False}
         out = dict(job)
@@ -1456,10 +1471,11 @@ def _set(key, **kw):
         job.update(kw)
 
 
-def start(user_id, rows, target=None):
-    """Kick off a refresh of one target. Returns False when one is already running for it."""
+def start(user_id, rows, target=None, kind="patent"):
+    """Kick off a refresh of one target's docket of one kind. Returns False when one is already
+    running for it. Designs and marks go through observation_marks; patents through sweep()."""
     target_id = (target or {}).get("id")
-    key = _job_key(user_id, target_id)
+    key = _job_key(user_id, target_id, kind)
     with _JOBS_LOCK:
         job = _JOBS.get(key)
         if job and job.get("running"):
@@ -1470,9 +1486,13 @@ def start(user_id, rows, target=None):
 
     def run():
         try:
-            res = sweep(rows, progress=lambda d, t, label: _set(
-                key, done=d, total=t, label=label), target=target)
-            counts = apply_to_user(user_id, res, target_id=target_id)
+            progress = lambda d, t, label: _set(key, done=d, total=t, label=label)  # noqa: E731
+            if kind in ("design", "trademark"):
+                import observation_marks
+                res = observation_marks.sweep(rows, target or {}, kind, progress=progress)
+            else:
+                res = sweep(rows, progress=progress, target=target)
+            counts = apply_to_user(user_id, res, target_id=target_id, kind=kind)
             _set(key, running=False, label="done",
                  result={"cases": len(rows) + counts["new"],
                          "updated": counts["updated"], "new": counts["new"],
