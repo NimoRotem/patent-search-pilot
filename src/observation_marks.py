@@ -886,10 +886,21 @@ MERGE_FIELDS = (
 # ---------------------------------------------------------------------------------------------
 
 def design_st13(number):
-    """DesignView's key for an EUIPO design: EM7 plus the application and design numbers with
-    the dash dropped, zero-filled to fourteen digits. 015132217-0001 -> EM700151322170001."""
-    digits = re.sub(r"\D", "", str(number or "").replace("RCD", "", 1))
-    return "EM7" + digits.zfill(14) if digits else ""
+    """DesignView's key for an EUIPO design, as its own index prints it: EM7, the application
+    number zero-filled to fourteen digits, a dash, the design sequence as four digits.
+    015132217-0001 -> EM700000015132217-0001. The views hang off that as -001, -002, ...
+    Any other spelling is answered with a placeholder "no image available" JPEG, not an error."""
+    raw = str(number or "").replace("RCD", "", 1).strip()
+    m = re.match(r"^(\d+)(?:-(\d+))?$", raw)
+    if not m:
+        return ""
+    app, seq = m.group(1), m.group(2) or "1"
+    return "EM7%s-%s" % (app.zfill(14), seq.zfill(4))
+
+
+#  DesignView answers an unknown key with this JPEG rather than a 404. Keeping it would put a
+#  "no image available" badge on every row that was mis-keyed, which is exactly what happened.
+PLACEHOLDER_MD5 = {"01af22af7c1b6a1509f6d6faac7312db"}
 
 
 def image_key(publication):
@@ -938,11 +949,14 @@ def fetch_euipo_view(row):
     st13 = design_st13(row.get("registration") or row.get("publication"))
     if not st13:
         return None
-    st, ctype, data = scrapingbee_get("https://www.tmdn.org/tmview/api/design/image/%s-1" % st13,
+    st, ctype, data = scrapingbee_get("https://www.tmdn.org/tmview/api/design/image/%s-001" % st13,
                                       headers={"Accept": "image/*", "Referer": "https://www.tmdn.org/tmdsview-web/"})
     ext = _kind_of_bytes(data) if st == 200 else None
     if not ext:
         raise RuntimeError("DesignView image %s: HTTP %s %s" % (st13, st, ctype[:30]))
+    import hashlib
+    if hashlib.md5(data).hexdigest() in PLACEHOLDER_MD5:
+        raise RuntimeError("DesignView has no view for %s (placeholder returned)" % st13)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     p = IMAGE_DIR / ("%s.%s" % (image_key(row["publication"]), ext))
     p.write_bytes(data)
