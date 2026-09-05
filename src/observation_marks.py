@@ -40,9 +40,12 @@ import datetime
 import json
 import os
 import re
+import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import observation_actions as acts
 import observation_refresh as R
@@ -61,6 +64,14 @@ TM_OFFICE_FOR = {"EP": "EM", "DE": "DE", "US": "US", "WO": "WO"}
 OFFICE_NAME = {"EM": "EUIPO", "US": "USPTO", "DE": "DPMA", "WO": "WIPO"}
 MAX_TM_PAGES = 4
 MAX_DESIGN_PAGES = 4
+
+#  Where a design's first view is kept once fetched, and served from by the docket. EU views come
+#  from DesignView through ScrapingBee (tmdn.org will not talk to a GCP address, see the module
+#  docstring); US views are the first sheet of the DRW paper in the file wrapper, rendered.
+IMAGE_DIR = Path(os.environ.get("OBS_IMAGE_DIR", str(Path(__file__).resolve().parent.parent / "data" / "observations" / "images")))
+SCRAPINGBEE_KEY = os.environ.get("SCRAPINGBEE_API_KEY", "")
+#  How many images one sweep may fetch. Each EU view is one ScrapingBee credit.
+MAX_IMAGES_PER_SWEEP = int(os.environ.get("OBS_MAX_IMAGES_PER_SWEEP", "80"))
 
 OPPOSITION_MONTHS_EM = 3
 OPPOSITION_MONTHS_DE = 3
@@ -871,6 +882,161 @@ MERGE_FIELDS = (
 
 
 # ---------------------------------------------------------------------------------------------
+# design images
+# ---------------------------------------------------------------------------------------------
+
+def design_st13(number):
+    """DesignView's key for an EUIPO design: EM7 plus the application and design numbers with
+    the dash dropped, zero-filled to fourteen digits. 015132217-0001 -> EM700151322170001."""
+    digits = re.sub(r"\D", "", str(number or "").replace("RCD", "", 1))
+    return "EM7" + digits.zfill(14) if digits else ""
+
+
+def image_key(publication):
+    return re.sub(r"[^A-Za-z0-9_-]", "_", str(publication or ""))[:80]
+
+
+def image_file(publication):
+    """The stored view for a docket row, or None."""
+    key = image_key(publication)
+    if not key:
+        return None
+    for ext in ("jpg", "png", "gif"):
+        p = IMAGE_DIR / ("%s.%s" % (key, ext))
+        if p.is_file() and p.stat().st_size > 0:
+            return p
+    return None
+
+
+def scrapingbee_get(url, headers=None, timeout=90):
+    """One page through ScrapingBee, headers forwarded. -> (status, content-type, bytes)"""
+    if not SCRAPINGBEE_KEY:
+        raise RuntimeError("SCRAPINGBEE_API_KEY not set")
+    q = urllib.parse.urlencode({"api_key": SCRAPINGBEE_KEY, "url": url, "render_js": "false",
+                                "forward_headers": "true"})
+    req = urllib.request.Request("https://app.scrapingbee.com/api/v1/?" + q,
+                                 headers={("Spb-" + k): v for k, v in (headers or {}).items()})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as fh:
+            return fh.status, fh.headers.get("Content-Type") or "", fh.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.headers.get("Content-Type") or "", exc.read()
+
+
+_IMAGE_MAGIC = {b"\xff\xd8\xff": "jpg", b"\x89PNG": "png", b"GIF8": "gif"}
+
+
+def _kind_of_bytes(data):
+    for magic, ext in _IMAGE_MAGIC.items():
+        if data[:len(magic)] == magic:
+            return ext
+    return None
+
+
+def fetch_euipo_view(row):
+    """The first view of a Community design, from DesignView. -> path or None."""
+    st13 = design_st13(row.get("registration") or row.get("publication"))
+    if not st13:
+        return None
+    st, ctype, data = scrapingbee_get("https://www.tmdn.org/tmview/api/design/image/%s-1" % st13,
+                                      headers={"Accept": "image/*", "Referer": "https://www.tmdn.org/tmdsview-web/"})
+    ext = _kind_of_bytes(data) if st == 200 else None
+    if not ext:
+        raise RuntimeError("DesignView image %s: HTTP %s %s" % (st13, st, ctype[:30]))
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    p = IMAGE_DIR / ("%s.%s" % (image_key(row["publication"]), ext))
+    p.write_bytes(data)
+    return p
+
+
+def fetch_uspto_drawing(row):
+    """The first sheet of the latest drawings in a US design application's file wrapper,
+    rendered to a PNG. -> path or None. Unpublished applications have no public wrapper."""
+    app = re.sub(r"\D", "", str(row.get("application") or ""))
+    if not app:
+        return None
+    d = R._odp("patent/applications/%s/documents" % app)
+    docs = [x for x in ((d or {}).get("documentBag") or []) if str(x.get("documentCode") or "").startswith("DRW")]
+    docs.sort(key=lambda x: str(x.get("officialDate") or ""), reverse=True)
+    url = None
+    for x in docs:
+        for opt in x.get("downloadOptionBag") or []:
+            if opt.get("mimeTypeIdentifier") == "PDF" and opt.get("downloadUrl"):
+                url = opt["downloadUrl"]
+                break
+        if url:
+            break
+    if not url:
+        return None
+    key = os.environ.get("USPTO_ODP_KEY", "") or os.environ.get("ODP_API_KEY", "")
+    #  The portal answers the download with a 302 to a short-lived signed URL, and the signed
+    #  URL must be fetched WITHOUT the API key header or the signature does not match.
+    req = urllib.request.Request(url, headers={"X-API-KEY": key})
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(req, timeout=60) as fh:
+            location = fh.headers.get("Location")
+            pdf = fh.read() if not location else b""
+    except urllib.error.HTTPError as exc:
+        if exc.code in (301, 302, 303, 307):
+            location = exc.headers.get("Location")
+            pdf = b""
+        else:
+            raise
+    if location:
+        with urllib.request.urlopen(location, timeout=60) as fh:
+            pdf = fh.read()
+    if not pdf.startswith(b"%PDF"):
+        raise RuntimeError("drawing download for %s was not a PDF" % app)
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    out = IMAGE_DIR / ("%s.png" % image_key(row["publication"]))
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "drw.pdf"
+        src.write_bytes(pdf)
+        subprocess.run(["pdftoppm", "-png", "-f", "1", "-l", "1", "-scale-to", "480", "-singlefile",
+                        str(src), str(Path(tmp) / "view")], check=True, timeout=60,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        data = (Path(tmp) / "view.png").read_bytes()
+    out.write_bytes(data)
+    return out
+
+
+def fetch_design_image(row):
+    """Fetch and store the first view for one design row if it has none. -> path or None."""
+    if row.get("kind") != "design":
+        return None
+    have = image_file(row.get("publication"))
+    if have:
+        return have
+    if row.get("office") == "EUIPO":
+        return fetch_euipo_view(row)
+    if row.get("office") == "USPTO":
+        return fetch_uspto_drawing(row)
+    return None
+
+
+def fetch_images(rows, limit=None):
+    """Images for the rows that lack one, up to the sweep's budget. -> (fetched, errors)"""
+    limit = MAX_IMAGES_PER_SWEEP if limit is None else limit
+    fetched, errors = 0, []
+    for row in rows:
+        if fetched >= limit:
+            break
+        if row.get("kind") != "design" or image_file(row.get("publication")):
+            continue
+        try:
+            if fetch_design_image(row):
+                fetched += 1
+        except Exception as exc:
+            errors.append("%s image: %s" % (row.get("publication"), str(exc)[:100]))
+    return fetched, errors
+
+
+# ---------------------------------------------------------------------------------------------
 # the sweep
 # ---------------------------------------------------------------------------------------------
 
@@ -1038,6 +1204,14 @@ def sweep(rows, target, kind, progress=None, workers=4, discover_new=True):
                 errors.append("%s: %s" % (row["publication"], err))
             changes.append("New on the docket: %s %s (%s), %s." % (
                 row.get("title") or "", row["publication"], row["office"], row.get("status") or "status unread"))
+
+    if kind == "design":
+        #  Views for every design that has none yet, the new rows first. Bounded per sweep, since
+        #  each EU view is one ScrapingBee credit.
+        got, img_errors = fetch_images(list(new) + list(rows))
+        errors.extend(img_errors[:10])
+        if got:
+            changes.append("Fetched the first view of %d design%s." % (got, "" if got == 1 else "s"))
 
     return {"patches": patches, "new": new, "errors": errors, "changes": changes,
             "as_of": today.isoformat(), "applicants": list(target.get("assignees") or []),

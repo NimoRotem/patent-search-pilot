@@ -37,7 +37,11 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .obkinds a.on{background:var(--accent);color:#fff}
 .obkinds a small{font-weight:500;opacity:.8;margin-left:4px}
 .obtable td.pub .cls{font-family:inherit;display:block;font-size:10.5px;color:var(--faint)}
-.obtable td.ttl img{height:22px;max-width:60px;vertical-align:middle;margin-right:6px;border:1px solid var(--line);background:#fff}
+.obtable td.ttl img{height:44px;max-width:76px;vertical-align:middle;margin-right:8px;border:1px solid var(--line);background:#fff;border-radius:3px;object-fit:contain}
+.obtable td.ttl .ttlwrap{display:inline-block;vertical-align:middle;max-width:calc(100% - 90px)}
+.obtable td.pub a.reg{display:block;font-family:inherit;font-size:10.5px;color:var(--accent);white-space:nowrap}
+.obxbody img.obximg{max-height:220px;max-width:320px;border:1px solid var(--line);background:#fff;border-radius:4px;margin:6px 16px 6px 0;float:left}
+.obxbody .obmact,.obxbody .obxcols,.obxbody .obxnote{clear:both}
 .obtargets select{font:inherit;font-size:14px;font-weight:650;padding:6px 30px 6px 10px;
   border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink);
   max-width:360px}
@@ -613,8 +617,10 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
           {% else %}
           {#  A mark or a design is known by its registration or application number and its
               classes, and the number the docket keys on (an ST13) is nobody's language. #}
-          <td class="pub" title="{{ c.publication }}">{{ c.registration or c.application or c.publication }}<span class="office">{{ c.office }}{% if c.mark_type %} &middot; {{ c.mark_type | lower }}{% endif %}</span>{% if c.classes %}<span class="cls">{{ 'Nice' if kind == 'trademark' else 'Locarno' }} {{ c.classes | join(', ') }}</span>{% endif %}</td>
-          <td class="ttl" title="{{ c.title_full or c.title }}">{% if c.image %}<img src="{{ c.image }}" alt="" loading="lazy">{% endif %}<span class="t" style="display:inline">{{ c.title }}</span><span class="who" title="{{ c.applicant }}">{{ c.applicant_short or c.applicant or '' }}</span></td>
+          {#  The number is the office's own; the link under it opens the office's record, EUIPO
+              eSearch for a Community design or an EU mark, Patent Center for a US design. #}
+          <td class="pub" title="{{ c.publication }}">{{ c.registration or c.application or c.publication }}<span class="office">{{ c.office }}{% if c.mark_type %} &middot; {{ c.mark_type | lower }}{% endif %}</span>{% if c.classes %}<span class="cls">{{ 'Nice' if kind == 'trademark' else 'Locarno' }} {{ c.classes | join(', ') }}</span>{% endif %}{% if c.register_url %}<a class="reg" href="{{ c.register_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">{{ 'EUIPO eSearch' if 'euipo.europa.eu' in c.register_url else ('USPTO Patent Center' if 'patentcenter' in c.register_url else 'Official record') }} &#8599;</a>{% endif %}</td>
+          <td class="ttl" title="{{ c.title_full or c.title }}">{% if c.image %}<img src="{{ c.image }}" alt="" loading="lazy">{% endif %}<span class="ttlwrap"><span class="t">{{ c.title }}</span><span class="who" title="{{ c.applicant }}">{{ c.applicant_short or c.applicant or '' }}</span></span></td>
           {% endif %}
           <td class="st">
             <span class="posture {{ (c.posture or 'unknown') | lower | replace('registered', 'granted') }}">{{ (c.posture or 'unread') | capitalize }}</span>
@@ -1218,11 +1224,20 @@ function obLink(href, text){
                         ? '  ·  published as ' + d.publication : '')
                      + (d.application ? '  ·  app. ' + d.application : '')));
     var links = obEl('div', 'obxlinks');
-    if (d.register_url) links.appendChild(obLink(d.register_url, 'Register'));
+    if (d.register_url) links.appendChild(obLink(d.register_url,
+        d.register_url.indexOf('euipo.europa.eu') >= 0 ? 'EUIPO eSearch record' :
+        d.register_url.indexOf('patentcenter') >= 0 ? 'USPTO Patent Center record' : 'Official record'));
     if (d.google) links.appendChild(obLink(d.google, 'Google Patents'));
     head.appendChild(links);
     head.appendChild(obEl('h3', null, d.title_full || d.title || ''));
     root.appendChild(head);
+    //  A design is its drawing. The stored first view sits at the top of the panel, large enough
+    //  to judge, and opens the office's own record on click.
+    if (d.image && d.kind !== 'patent'){
+      var fig = document.createElement('a'); fig.href = d.register_url || d.image; fig.target = '_blank'; fig.rel = 'noopener';
+      var img = document.createElement('img'); img.className = 'obximg'; img.src = d.image; img.alt = d.title || '';
+      fig.appendChild(img); root.appendChild(fig);
+    }
 
     var n = d.days_left;
     var undated = (n === null || n === undefined);

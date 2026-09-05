@@ -240,3 +240,50 @@ def test_a_challenge_page_from_tmview_is_reported_not_swallowed(monkeypatch):
     new, rejected, errors = marks.discover({"name": "X", "assignees": ["Schmalz"], "offices": ["EP", "US", "DE"]},
                                            "trademark", set())
     assert new == [] and errors and "challenge page" in errors[0] and "USPTO" in errors[0]
+
+
+# ---------------------------------------------------------------------------------------------
+# images
+# ---------------------------------------------------------------------------------------------
+
+def test_designview_key_and_the_stored_file_name():
+    assert marks.design_st13("015132217-0001") == "EM700151322170001"
+    assert marks.design_st13("RCD005888591-0002") == "EM700058885910002"
+    assert marks.image_key("RCD015132217-0001") == "RCD015132217-0001"
+    assert marks.image_key("US29996045") == "US29996045"
+    assert marks._kind_of_bytes(b"\xff\xd8\xff\xe0JFIF") == "jpg"
+    assert marks._kind_of_bytes(b"\x89PNG\r\n") == "png"
+    assert marks._kind_of_bytes(b"<html>") is None
+
+
+def test_a_design_with_a_stored_view_is_not_fetched_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(marks, "IMAGE_DIR", tmp_path)
+    (tmp_path / "RCD015132217-0001.jpg").write_bytes(b"\xff\xd8\xff\xe0")
+    monkeypatch.setattr(marks, "fetch_euipo_view", lambda row: (_ for _ in ()).throw(AssertionError("fetched")))
+    row = {"kind": "design", "office": "EUIPO", "publication": "RCD015132217-0001"}
+    assert marks.fetch_design_image(row).name == "RCD015132217-0001.jpg"
+    got, errors = marks.fetch_images([row, {"kind": "trademark", "publication": "EM1"}])
+    assert got == 0 and errors == []
+
+
+def test_an_eu_view_is_fetched_through_scrapingbee_and_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr(marks, "IMAGE_DIR", tmp_path)
+    seen = {}
+    def fake(url, headers=None, timeout=90):
+        seen["url"] = url
+        return 200, "image/jpeg", b"\xff\xd8\xff\xe0JFIF"
+    monkeypatch.setattr(marks, "scrapingbee_get", fake)
+    row = {"kind": "design", "office": "EUIPO", "publication": "RCD015132217-0002", "registration": "015132217-0002"}
+    p = marks.fetch_design_image(row)
+    assert p.name == "RCD015132217-0002.jpg" and p.read_bytes().startswith(b"\xff\xd8")
+    assert seen["url"].endswith("/design/image/EM700151322170002-1")
+    assert marks.image_file("RCD015132217-0002") == p
+
+
+def test_a_challenge_page_instead_of_a_view_is_an_error_not_a_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(marks, "IMAGE_DIR", tmp_path)
+    monkeypatch.setattr(marks, "scrapingbee_get", lambda url, headers=None, timeout=90: (200, "text/html", b"<html>Problem detected"))
+    row = {"kind": "design", "office": "EUIPO", "publication": "RCD015132217-0003", "registration": "015132217-0003"}
+    got, errors = marks.fetch_images([row])
+    assert got == 0 and errors and "RCD015132217-0003 image" in errors[0]
+    assert marks.image_file("RCD015132217-0003") is None
