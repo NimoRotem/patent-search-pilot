@@ -82,6 +82,9 @@ DATA_DIR = os.environ.get("OBSERVATIONS_DATA",
                           os.path.join(_HERE, "..", "data", "observations"))
 SEED_PATH = os.path.join(DATA_DIR, "seed.json")
 PACKAGE_DIR = os.path.join(DATA_DIR, "packages")
+#  The hand-kept board of what to do next, read on every page load so that editing the file is
+#  the whole deployment. A missing file is a page without a board, never an error.
+BOARD_PATH = os.path.join(DATA_DIR, "board.json")
 
 MAX_NOTE_CHARS = 4000
 MAX_TARGETS = 40
@@ -630,12 +633,13 @@ def attribute_filings(cases, filings):
     A submission we cannot tie to our own record is still worth showing: somebody else has put
     art in front of this examiner, and that changes what is worth adding.
     """
-    ours = set()
+    ours, by_key = set(), {}
     for f in filings or []:
         for key in ("target", "application"):
             value = re.sub(r"[^A-Z0-9]", "", str(f.get(key) or "").upper())
             if value:
                 ours.add(value)
+                by_key.setdefault(value, []).append(f)
     for c in cases:
         keys = {re.sub(r"[^A-Z0-9]", "", str(c.get(k) or "").upper())
                 for k in ("publication", "granted_as", "application")}
@@ -645,6 +649,40 @@ def attribute_filings(cases, filings):
             entry = dict(entry)
             entry["whose"] = "ours" if (mine and entry.get("whose") != "unknown") else "unknown"
             on_file.append(entry)
+        #  OUR OWN RECEIPT IS EVIDENCE UNTIL THE OFFICE PUBLISHES ITS OWN. A file wrapper carries
+        #  a third-party paper days after the office took it: two submissions filed and paid on
+        #  2026-09-05 were still absent from ODP on the 9th, so this column said nothing had ever
+        #  been filed on a case we had filed on twice. A filing of ours whose date the office has
+        #  not published yet is shown from our record, and drops out again the moment the wrapper
+        #  carries that same date itself.
+        seen, mine_rows = {str(e.get("date") or "")[:10] for e in on_file}, []
+        for key in sorted(keys - {""}):
+            for f in by_key.get(key, []):
+                if f not in mine_rows:
+                    mine_rows.append(f)
+        #  AN ANONYMOUS PAPER ON THE REGISTER, DATED THE DAY WE FILED ONE, IS OURS. An Art. 115
+        #  observation is filed without a name and the EPO lists it as nobody's, so the register
+        #  step for our own EP filing of 2026-09-05 read "3rd party" on the very row whose
+        #  receipt we hold. Only an exact date match claims it, and only when our own record says
+        #  that filing went in.
+        filed_dates = {str(f.get("filed_on") or "")[:10] for f in mine_rows
+                       if f.get("status") in ("filed", "posted")} - {""}
+        for entry in on_file:
+            if str(entry.get("date") or "")[:10] in filed_dates:
+                entry["whose"] = "ours"
+                entry["source"] = ("the office lists it without a name; our own receipt for that "
+                                   "day says it is ours")
+        for f in mine_rows:
+            when = str(f.get("filed_on") or "")[:10]
+            if not when or when in seen or f.get("status") not in ("filed", "posted"):
+                continue
+            seen.add(when)
+            on_file.append({
+                "date": when, "whose": "ours",
+                "instrument": f.get("route_label") or "Third-party submission",
+                "documents": f.get("references") or 0,
+                "source": "our own receipt; the register has not published it yet",
+                "evidence": f.get("evidence") or ""})
         on_file.sort(key=lambda e: e.get("date") or "", reverse=True)
         c["on_file"] = on_file
     return cases
@@ -800,8 +838,10 @@ def filings_for(user_id):
     with db.cursor(autocommit=True) as cur:
         cur.execute("SELECT payload FROM app_observation_filings WHERE user_id = %s", (user_id,))
         rows = [dict(r["payload"]) for r in cur.fetchall()]
-    order = {"prepared_not_filed": 0, "filed": 1}
-    rows.sort(key=lambda f: (order.get(f.get("status"), 2), f.get("filed_on") or "9999"))
+    #  WHAT IS NOT FILED COMES FIRST. A packet handed to a filing agent and never uploaded is
+    #  the one row here that is somebody's job today; everything filed is history.
+    order = {"handed_not_filed": 0, "prepared_not_filed": 1, "posted": 2, "filed": 3}
+    rows.sort(key=lambda f: (order.get(f.get("status"), 4), f.get("filed_on") or "9999"))
     return rows
 
 
@@ -811,6 +851,77 @@ def meta_for(user_id):
         cur.execute("SELECT payload FROM app_observation_meta WHERE user_id = %s", (user_id,))
         row = cur.fetchone()
     return dict(row["payload"]) if row else {}
+
+
+#  What a board entry's state means for the eye: red for a finished packet nobody has filed,
+#  amber for work that has to be written, green for what is done, grey for what is only watched.
+BOARD_STATE_CLASS = {"handed": "todo", "nothing": "prep", "part": "prep",
+                     "filed": "done", "posted": "done", "monitor": "watch"}
+
+
+def load_board():
+    """The board file, or nothing at all when there is none. Never raises: a malformed board
+    must cost the reader a panel, not the docket."""
+    try:
+        with open(BOARD_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def board_for(cases, today=None, have=None):
+    """The board with its countdowns computed for today, and every docket row it names marked.
+
+    THE BOARD IS HAND-KEPT AND THE DOCKET IS A SWEEP. They answer different questions: the sweep
+    knows what each register said this morning, the board says which ten of two hundred rows are
+    worth somebody's week and what is already done about them. Neither derives from the other, so
+    they are pinned together by publication number, the same way a packet is.
+
+    A COUNTDOWN IS COMPUTED HERE TOO. `due` is a date in the file and nothing else; the days are
+    counted on every read, for the same reason the rows are.
+    """
+    today = today or datetime.date.today()
+    data = load_board()
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        return {}
+    #  One row per number, so a case that two entries name is chipped by the first, which is the
+    #  more urgent one: the file is written in the order the work has to be done.
+    by_key = {}
+    for c in cases:
+        for field in ("publication", "granted_as"):
+            for key in observation_links.pub_keys(c.get(field)):
+                by_key.setdefault(key, c)
+    out = []
+    for raw in entries:
+        item = dict(raw)
+        due = observation_actions._date(item.get("due"))
+        item["deadline"] = due.isoformat() if due else None
+        n = (due - today).days if due else None
+        item["days_left"] = n
+        item["urgency"] = ("lapsed" if n is not None and n < 0 else
+                           "urgent" if n is not None and n <= 14 else
+                           "closing" if n is not None and n <= 30 else
+                           "soon" if n is not None and n <= 90 else "open")
+        item["state_class"] = BOARD_STATE_CLASS.get(item.get("state"), "watch")
+        for name in ("package", "package2"):
+            item[name + "_available"] = bool(item.get(name)) and have is not None \
+                and item[name] in have
+        rows = 0
+        for pub in item.get("pubs") or []:
+            for key in observation_links.pub_keys(pub):
+                case = by_key.get(key)
+                if case is not None:
+                    case.setdefault("board", {"n": item["n"], "title": item["title"],
+                                              "urgency": item["urgency"]})
+                    rows += 1
+                    break
+        item["on_docket"] = rows
+        out.append(item)
+    data = dict(data)
+    data["entries"] = out
+    return data
 
 
 def set_note(user_id, target_id, publication, note):
@@ -897,6 +1008,10 @@ def actions_page():
     have = set(os.listdir(PACKAGE_DIR)) if os.path.isdir(PACKAGE_DIR) else set()
     for f in filings:
         f["package_available"] = bool(f.get("package")) and f["package"] in have
+    #  The ten things to act on, above two hundred rows of docket. Only on the shipped docket and
+    #  only for patents: the board is written about this target's cases, and a design docket
+    #  showing another kind's actions would be a lie about which page you are on.
+    board = board_for(cases, have=have) if (seeded and kind == "patent") else {}
     #  THE CHIPS AND THE FILTER MUST AGREE. The urgency select offers "14 days or less" and "90
     #  days or less", which are nested bands; the chips used to be counted from the mutually
     #  exclusive `state` buckets and so reported a smaller number than the filter then showed.
@@ -913,6 +1028,7 @@ def actions_page():
         1 for c in cases
         if (c.get("action_headline") or {}).get("status") in ("open", "closing"))
     counts.update(observation_links.summary(cases))
+    counts["board"] = sum(1 for c in cases if c.get("board"))
     can_file = can_file_options(cases)
     #  THE EXPANDED ROW'S DATA, TRIMMED. The table row carries what you scan by; everything else
     #  is built on demand from this map by publication number. Only the fields the panel
@@ -939,6 +1055,7 @@ def actions_page():
     if kind != "patent":
         filings, missed = [], []
     return render_template("actions.html", cases=cases, filings=filings, missed=missed,
+                           board=board,
                            meta=meta, counts=counts, detail=detail, can_file=can_file,
                            targets=targets, target=target, offices=OFFICES,
                            lookbacks=LOOKBACKS, default_lookback=DEFAULT_LOOKBACK,

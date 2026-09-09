@@ -127,6 +127,43 @@ def _iso(ts):
 # the filing app's packets
 # ---------------------------------------------------------------------------------------------
 
+#  A run reports what it did in an outcome file beside its receipts, in the record or in the
+#  run's own work directory, and both spellings are in use.
+_OUTCOME_DATE = re.compile(r"\b(20\d\d-[01]\d-[0-3]\d)\b")
+
+
+def _outcome(path):
+    """What the run that was handed this packet says it did, and the receipts it kept.
+
+    A PACKET'S OWN STATUS IS NOT EVIDENCE THAT IT WAS NEVER FILED. On 2026-09-09 five packets read
+    "handed off" and every one of them had been filed, on the 4th or the 5th, with Patent Center,
+    EPO and postal receipts on disk: each filing run wrote its receipts and its outcome into its
+    work directory and never came back to flip the field. The docket repeated it, the packet
+    export repeated it and a hand-written board repeated it, including for a case reported as
+    three days from a deadline that cannot be restored and in fact filed four days earlier. So
+    the outcome file is read here, from either place a run leaves it, and it outranks the status.
+    """
+    for base in (path, path / "work"):
+        data = _read(base / "outcome.json")
+        if not isinstance(data, dict):
+            continue
+        detail = str(data.get("detail") or "")
+        when = _OUTCOME_DATE.search(detail)
+        receipts = []
+        d = base / "filed"
+        if d.is_dir():
+            try:
+                receipts = sorted(p.name for p in d.iterdir() if p.is_file())
+            except OSError:
+                receipts = []
+        return {"state": str(data.get("state") or "").strip().lower(),
+                "detail": detail,
+                "confirmation": str(data.get("confirmation_number") or "").strip(),
+                "filed_on": when.group(1) if when else "",
+                "receipts": receipts}
+    return {}
+
+
 def _package(meta, pipeline, default_kind, path):
     """One packet directory's meta.json -> the row the docket shows for it."""
     items = meta.get("items") or []
@@ -134,7 +171,11 @@ def _package(meta, pipeline, default_kind, path):
     files = meta.get("files") or []
     forms = meta.get("forms") or []
     status = str(meta.get("status") or "").strip().lower()
-    if meta.get("filing_date"):
+    outcome = _outcome(path)
+    #  A success with an office's own confirmation number on it. Not a success on its own: a run
+    #  that decided NOT to file also finishes successfully.
+    went_in = outcome.get("state") == "success" and bool(outcome.get("confirmation"))
+    if meta.get("filing_date") or went_in:
         state = "filed"
     elif status.startswith("handed"):
         state = "handed off"
@@ -177,7 +218,11 @@ def _package(meta, pipeline, default_kind, path):
         "state": state,
         "status": status,
         "session": str(meta.get("session") or ""),
-        "filing_date": str(meta.get("filing_date") or ""),
+        "filing_date": str(meta.get("filing_date") or "") or outcome.get("filed_on", ""),
+        #  What the office gave back, so a row can be checked without opening the packet.
+        "confirmation": outcome.get("confirmation", ""),
+        "receipts": len(outcome.get("receipts") or []),
+        "outcome": outcome.get("detail", "")[:600],
         "created": _iso(meta.get("created")),
         "created_ts": float(meta.get("created") or 0) if str(meta.get("created") or "").replace(".", "", 1).isdigit() else 0.0,
         "demo": bool(meta.get("demo")) or path.name.endswith("-demo"),
@@ -204,9 +249,17 @@ def packages(data_dir=None):
             m = p / "meta.json"
             if p.is_dir() and m.is_file():
                 try:
-                    metas.append((p, pipeline, kind, m.stat().st_mtime))
+                    #  The outcome file counts towards the cache signature too, or a run that
+                    #  finishes without touching meta.json would never be re-read.
+                    stamp = m.stat().st_mtime
                 except OSError:
-                    pass
+                    continue
+                for extra in (p / "outcome.json", p / "work" / "outcome.json"):
+                    try:
+                        stamp += extra.stat().st_mtime
+                    except OSError:
+                        pass
+                metas.append((p, pipeline, kind, stamp))
     sig = tuple(sorted((str(p), mt) for p, _, _, mt in metas))
     with _PKG_LOCK:
         if _PKG_CACHE["sig"] == sig and data_dir is None:
