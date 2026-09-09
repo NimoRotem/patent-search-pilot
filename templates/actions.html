@@ -1490,7 +1490,9 @@ function obLink(href, text){
       field('Route', d.route_label);
       field('Filed', d.filed_on);
       field('Handed off', d.handed_times > 1
-                        ? d.handed_on + ', and again ' + (d.handed_again_on || 'the same day')
+                        ? (d.handed_again_on && d.handed_again_on !== d.handed_on
+                           ? d.handed_on + ', and again ' + d.handed_again_on
+                           : d.handed_on + ', twice the same day')
                         : d.handed_on);
       field('Receipts', (d.receipts || []).join(', '));
       field('Payments', (d.payments || []).join(', '));
