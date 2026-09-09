@@ -177,6 +177,7 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
 .refs th,.refs td{border-bottom:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
 .refs th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);font-weight:650}
 .refs td.n{width:34px;color:var(--faint)}
+.refs td .ev{display:block;font-size:11px;color:var(--faint);line-height:1.45;margin-top:2px}
 
 /* ── the table ────────────────────────────────────────────────────────────── */
 /*  ONE ROW OF SMALL CONTROLS. The filters used to be five full-height inputs across the page,
@@ -325,6 +326,9 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
 .bdwhen .days{font-variant-numeric:tabular-nums}
 .bdwhen b{color:var(--ink);font-weight:650;font-variant-numeric:tabular-nums}
 .bdwhat{margin:6px 0 0;font-size:13px;line-height:1.6;max-width:98ch}
+/*  Where the office itself shows it, which is not the same question as whether we filed it. */
+.bdverify{margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line2);font-size:12.5px;
+  line-height:1.55;color:var(--muted);max-width:98ch}
 .bdlinks{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:7px;font-size:12px}
 .bdlinks a.dl{font-weight:650}
 .boardnote{color:var(--bad)}
@@ -506,6 +510,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             {% if b.cost %}<span>{{ b.cost }}</span>{% endif %}
           </div>
           <p class="bdwhat">{{ b.what }}</p>
+          {% if b.verify %}<p class="bdverify">{{ b.verify }}</p>{% endif %}
           <div class="bdlinks">
             {% for l in b.links %}<a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.label }} &#8599;</a>{% endfor %}
             {% if b.packet_url %}<a href="{{ b.packet_url }}" target="_blank" rel="noopener">The packet</a>{% endif %}
@@ -559,13 +564,15 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
               {% elif f.status == 'handed_not_filed' %}<span class="pill no">Handed, not filed</span>
               {% elif f.status == 'prepared_not_filed' %}<span class="pill no">Not filed</span>
               {% else %}<span class="pill neutral">{{ f.status }}</span>{% endif %}
-              {% if f.handed_times and f.handed_times > 1 %}<br><span class="bdst todo" title="{{ f.handed_note }}">Handed twice</span>{% endif %}</td>
+              {% if f.handed_times and f.handed_times > 1 %}<br><span class="bdst todo" title="{{ f.handed_note }}">Handed twice</span>{% endif %}
+              {% if f.public and f.public.state == 'published' %}<br><span class="bdst done" title="{{ f.public.note }}">On the office file</span>
+              {% elif f.public and f.public.state == 'not_yet' %}<br><span class="bdst watch" title="{{ f.public.note }}">Not public yet</span>{% endif %}</td>
           <td class="pub" title="{{ f.target }}{% if f.application %} · {{ f.application }}{% endif %}">{{ f.target }}{% if f.application %}<br><span class="dldate">{{ f.application }}</span>{% endif %}</td>
           <td class="ttl" title="{{ f.title }}"><span class="t">{{ f.title }}</span><span class="who">{{ f.target_owner }}</span></td>
           <td class="dl">{% if f.filed_on %}{{ f.filed_on }}{% else %}&ndash;{% endif %}{% if f.handed_on %}<br><span class="dldate">handed {{ f.handed_on }}</span>{% endif %}</td>
           <td>{% if f.references %}{{ f.references }}{% else %}&ndash;{% endif %}</td>
           <td class="small">{% if f.official_fee_usd is not none %}${{ f.official_fee_usd }}{% if f.counsel_fee_usd %} + {{ '{:,}'.format(f.counsel_fee_usd) }}{% endif %}{% else %}&ndash;{% endif %}</td>
-          <td>{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/actions/package/{{ f.package }}" download onclick="event.stopPropagation()">As handed</a>{% else %}<span class="office">&ndash;</span>{% endif %}{% if f.packet_url %}<br><a class="detailbtn" href="{{ f.packet_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">The packet</a>{% endif %}</td>
+          <td>{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/actions/package/{{ f.package }}" download onclick="event.stopPropagation()">{{ 'From the office' if f.package_note else 'As handed' }}</a>{% else %}<span class="office">&ndash;</span>{% endif %}{% if f.packet_url %}<br><a class="detailbtn" href="{{ f.packet_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">The packet</a>{% endif %}</td>
           <td class="chev">&#9662;</td>
         </tr>
         {% endfor %}
@@ -1453,6 +1460,9 @@ function obLink(href, text){
         if (k === 0) td.className = 'n';
         if (k === 1){
           if (r.url) td.appendChild(obLink(r.url, r.number)); else td.textContent = r.number || '';
+          //  A citation that did not go in, or that is evidence rather than art, says so under
+          //  its own number rather than in a paragraph the reader has to match back up.
+          if (r.note) td.appendChild(obEl('span', 'ev', r.note));
         } else { td.textContent = v; }
         tr.appendChild(td);
       });
@@ -1496,6 +1506,12 @@ function obLink(href, text){
                         : d.handed_on);
       field('Receipts', (d.receipts || []).join(', '));
       field('Payments', (d.payments || []).join(', '));
+      if (d.public && d.public.state){
+        field('Public record', (d.public.state === 'published'
+                                ? 'On the office\u2019s own file'
+                                : 'Not on the office\u2019s file yet')
+                             + (d.public.as_of ? ', as of ' + d.public.as_of : ''));
+      }
       field('Entered', d.entered_on);
       field('Acknowledged', d.acknowledged_on);
       field('Window', d.window_was);
@@ -1503,10 +1519,18 @@ function obLink(href, text){
       field('Fees', money(d));
       field('Counsel', d.counsel);
       field('{{ brand }} report', d.report);
+      block('How it was filed', d.how);
       block('What was filed', d.detail);
       block('Handed off twice', d.handed_note);
       block('Where it stands', d.outcome);
       block('Evidence', d.evidence);
+      //  WHAT THE OTHER SIDE CAN SEE. Our receipt and the office's own file are different facts
+      //  and the panel keeps them apart: the second one is what an examiner reads.
+      if (d.public && (d.public.note || d.public.evidence)){
+        block('The public record', [d.public.note, d.public.evidence]
+                                   .filter(Boolean).join(' '));
+      }
+      block('About this package', d.package_note);
       var refs = refsTable(d.references_list); if (refs) prose.appendChild(refs);
     } else {
       field('Status', 'Window lapsed');
@@ -1518,7 +1542,9 @@ function obLink(href, text){
     }
     root.appendChild(dl); root.appendChild(prose);
     if (kind === 'filing' && d.package_available && d.package){
-      var a = obEl('a', 'obmdl', 'The package exactly as it was handed over (zip)');
+      var a = obEl('a', 'obmdl', d.package_note
+                                 ? 'The package, rebuilt from the office\u2019s own file (zip)'
+                                 : 'The package exactly as it was handed over (zip)');
       a.href = window.APP_BASE + '/actions/package/' + encodeURIComponent(d.package);
       a.setAttribute('download', '');
       root.appendChild(a);
@@ -1528,6 +1554,14 @@ function obLink(href, text){
       p.href = d.packet_url; p.target = '_blank'; p.rel = 'noopener';
       p.style.marginLeft = '8px';
       root.appendChild(p);
+    }
+    if (kind === 'filing' && d.public && d.public.url){
+      var o = obEl('a', 'obmdl', d.public.state === 'published'
+                                 ? 'See it on the office\u2019s own record'
+                                 : 'The office\u2019s record for this case');
+      o.href = d.public.url; o.target = '_blank'; o.rel = 'noopener';
+      o.style.marginLeft = '8px';
+      root.appendChild(o);
     }
     return root;
   }

@@ -648,6 +648,10 @@ def attribute_filings(cases, filings):
         for entry in list(c.get("our_submissions") or []) + list(c.get("file_events") or []):
             entry = dict(entry)
             entry["whose"] = "ours" if (mine and entry.get("whose") != "unknown") else "unknown"
+            #  THE OFFICE PUT THIS ONE THERE. Both of these lists are read off a file wrapper or a
+            #  register, which is what makes them public; the entries added below are our own
+            #  receipts, which are not. Nothing downstream can tell them apart without saying so.
+            entry["origin"] = "office"
             on_file.append(entry)
         #  OUR OWN RECEIPT IS EVIDENCE UNTIL THE OFFICE PUBLISHES ITS OWN. A file wrapper carries
         #  a third-party paper days after the office took it: two submissions filed and paid on
@@ -678,7 +682,7 @@ def attribute_filings(cases, filings):
                 continue
             seen.add(when)
             on_file.append({
-                "date": when, "whose": "ours",
+                "date": when, "whose": "ours", "origin": "receipt",
                 "instrument": f.get("route_label") or "Third-party submission",
                 "documents": f.get("references") or 0,
                 "source": "our own receipt; the register has not published it yet",
@@ -686,6 +690,57 @@ def attribute_filings(cases, filings):
         on_file.sort(key=lambda e: e.get("date") or "", reverse=True)
         c["on_file"] = on_file
     return cases
+
+
+def refresh_public(filings, cases):
+    """Whether the OFFICE now shows each of our filings, as against our own receipt for it.
+
+    A RECEIPT IS NOT A PUBLIC RECORD. Ours proves we filed and pays for nothing else; the file
+    wrapper or the register is what an examiner, an applicant or a court will see, and it appears
+    days later. The July submission was public the same day, the 2026-09-05 ones were still
+    invisible five days on, and reading "filed" as "on the record" is how a docket ends up
+    asserting something the other side cannot see. So the state is recomputed here from whatever
+    the last register sweep actually found, and the line stored on the filing is only what
+    somebody last checked by hand: a hand-verified `published` is never downgraded by a sweep
+    that has not run since.
+    """
+    by_key = {}
+    for c in cases:
+        keys = observation_links.pub_keys(c.get("publication"))
+        keys |= observation_links.pub_keys(c.get("granted_as"))
+        keys |= {observation_links.app_key(c.get("application"))}
+        for k in keys - {""}:
+            by_key.setdefault(k, c)
+    for f in filings:
+        stored = dict(f.get("public") or {})
+        keys = observation_links.pub_keys(f.get("target"))
+        keys |= {observation_links.app_key(f.get("application"))}
+        case = None
+        for k in sorted(keys - {""}):
+            case = case or by_key.get(k)
+        when = str(f.get("filed_on") or "")[:10]
+        hit = None
+        for entry in ((case or {}).get("on_file") or []):
+            if str(entry.get("date") or "")[:10] == when and entry.get("origin") == "office":
+                hit = entry
+                break
+        if hit:
+            stored["state"] = "published"
+            stored["as_of"] = (case or {}).get("refreshed_at") or stored.get("checked")
+            stored["documents"] = hit.get("documents") or stored.get("documents")
+            stored["evidence"] = hit.get("evidence") or stored.get("evidence") or ""
+            stored["url"] = stored.get("url") or (case or {}).get("register_url") or ""
+        elif stored.get("state") != "published":
+            stored["state"] = stored.get("state") or ("not_yet" if when else "")
+            if case:
+                stored["as_of"] = case.get("refreshed_at") or stored.get("checked")
+                stored["url"] = stored.get("url") or case.get("register_url") or ""
+        if stored:
+            #  A filing whose case is not on this docket at all, the Nguyen family for one, has
+            #  no sweep to date it from. What somebody last checked by hand is then the date.
+            stored.setdefault("as_of", stored.get("checked"))
+            f["public"] = stored
+    return filings
 
 
 def filings_on(cases, filings, everything=False):
@@ -996,6 +1051,7 @@ def actions_page():
     #  member says nothing about the German one.
     observation_links.attach(cases, uid)
     seeded = bool(target and target.get("seeded"))
+    refresh_public(filings, cases)
     filings = filings_on(cases, filings, everything=seeded)
     missed = list(meta.get("missed") or []) if seeded else []
     #  A design's stored view becomes an image URL the row and the panel can show. A mark's
