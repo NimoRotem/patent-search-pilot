@@ -410,13 +410,17 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
       <a href="{{ request.script_root }}/actions?target={{ target.id }}&kind={{ k }}" class="{{ 'on' if k == kind else '' }}" role="tab" aria-selected="{{ 'true' if k == kind else 'false' }}">{{ kind_label[k] }}<small>{{ target.cases if k == 'patent' else (target.designs if k == 'design' else target.trademarks) }}</small></a>
       {% endfor %}
     </span>
-    <button type="button" class="obtbtn" id="obeditbtn">Edit</button>{% endif %}
-    <button type="button" class="obtbtn primary" id="obaddbtn">Add a target</button>
+    {#  WHAT IS WATCHED is the docket owner's decision, so a guest gets neither button and, below,
+        not the form they open. The routes behind them refuse a guest too; this keeps the page
+        from offering an action it would then decline. #}
+    {% if not current_scope %}<button type="button" class="obtbtn" id="obeditbtn">Edit</button>{% endif %}{% endif %}
+    {% if not current_scope %}<button type="button" class="obtbtn primary" id="obaddbtn">Add a target</button>{% endif %}
   </div>
 
   {#  THE FORM, for adding and for editing. A target is names, not a query: the page turns each
       name into the searches the two offices understand and checks every hit against its own
       bibliographic record before it is accepted, so a common surname does not pull strangers in. #}
+  {% if not current_scope %}
   <form class="obform" id="obform"{% if targets %} hidden{% endif %} autocomplete="off">
     <h3 id="obformtitle">Add a target</h3>
     <div class="obformgrid">
@@ -450,6 +454,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
     </div>
     <div class="obformerr" id="obformerr" hidden></div>
   </form>
+  {% endif %}
 
   {% if target %}
   {#  THE REFRESH. This asks the offices again, live, about this target only. It is deliberately
@@ -513,8 +518,11 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
           {% if b.verify %}<p class="bdverify">{{ b.verify }}</p>{% endif %}
           <div class="bdlinks">
             {% for l in b.links %}<a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.label }} &#8599;</a>{% endfor %}
-            {% if b.packet_url %}<a href="{{ b.packet_url }}" target="_blank" rel="noopener">The packet</a>{% endif %}
-            {% if b.packet_url2 %}<a href="{{ b.packet_url2 }}" target="_blank" rel="noopener">The second packet</a>{% endif %}
+            {#  The packet opens in the filing app, which admits administrators only, so a guest is
+                told it exists rather than sent to a sign-in they cannot pass. The ZIP below is
+                served by THIS app and stays a live download for them. #}
+            {% if b.packet_url %}{% if current_scope %}<span class="prepn">The packet is built</span>{% else %}<a href="{{ b.packet_url }}" target="_blank" rel="noopener">The packet</a>{% endif %}{% endif %}
+            {% if b.packet_url2 and not current_scope %}<a href="{{ b.packet_url2 }}" target="_blank" rel="noopener">The second packet</a>{% endif %}
             {% if b.package_available %}<a class="dl" href="{{ request.script_root }}/actions/package/{{ b.package }}" download>The package as it was handed over (zip)</a>{% endif %}
             {% if b.package2_available %}<a class="dl" href="{{ request.script_root }}/actions/package/{{ b.package2 }}" download>The second package (zip)</a>{% endif %}
             {% if b.on_docket %}<a href="#obtable" onclick="return !(window.obBoardFilter && window.obBoardFilter({{ b.n }}))">{{ b.on_docket }} row{{ 's' if b.on_docket > 1 else '' }} on the docket</a>{% endif %}
@@ -572,7 +580,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
           <td class="dl">{% if f.filed_on %}{{ f.filed_on }}{% else %}&ndash;{% endif %}{% if f.handed_on %}<br><span class="dldate">handed {{ f.handed_on }}</span>{% endif %}</td>
           <td>{% if f.references %}{{ f.references }}{% else %}&ndash;{% endif %}</td>
           <td class="small">{% if f.official_fee_usd is not none %}${{ f.official_fee_usd }}{% if f.counsel_fee_usd %} + {{ '{:,}'.format(f.counsel_fee_usd) }}{% endif %}{% else %}&ndash;{% endif %}</td>
-          <td>{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/actions/package/{{ f.package }}" download onclick="event.stopPropagation()">{{ 'From the office' if f.package_note else 'As handed' }}</a>{% else %}<span class="office">&ndash;</span>{% endif %}{% if f.packet_url %}<br><a class="detailbtn" href="{{ f.packet_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">The packet</a>{% endif %}</td>
+          <td>{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/actions/package/{{ f.package }}" download onclick="event.stopPropagation()">{{ 'From the office' if f.package_note else 'As handed' }}</a>{% else %}<span class="office">&ndash;</span>{% endif %}{% if f.packet_url and not current_scope %}<br><a class="detailbtn" href="{{ f.packet_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">The packet</a>{% endif %}</td>
           <td class="chev">&#9662;</td>
         </tr>
         {% endfor %}
@@ -761,7 +769,11 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             <div class="prepline"><span class="prepk">packet</span>
               {% if pk0 %}
                 <span class="act {{ 'filed' if pk0.state == 'filed' else ('handed' if pk0.state == 'handed off' else ('demo' if pk0.demo else 'built')) }}">{{ 'demo' if pk0.demo else ('handed' if pk0.state == 'handed off' else pk0.state) }}</span>
-                <a href="{{ pk0.url }}" target="_blank" rel="noopener" title="{{ pk0.label }} {{ pk0.id }}, built {{ pk0.created }}">{{ pk0['items'] }} docs</a>
+                {#  A guest sees WHAT exists but is not offered the way in: the packet lives in the
+                    filing app and the search report is another page of this one, and both would
+                    refuse them. The count and the date are the useful part and they stay. #}
+                {% if current_scope %}<span class="prepn">{{ pk0['items'] }} docs</span>
+                {% else %}<a href="{{ pk0.url }}" target="_blank" rel="noopener" title="{{ pk0.label }} {{ pk0.id }}, built {{ pk0.created }}">{{ pk0['items'] }} docs</a>{% endif %}
                 <span class="prepn">{% if pk0.filing_date %}filed {{ pk0.filing_date[5:10] }}{% elif pk0.created %}{{ pk0.created[5:10] }}{% endif %}{% if c.packages | length > 1 %} +{{ c.packages | length - 1 }}{% endif %}</span>
               {% else %}<span class="none">none</span>{% endif %}
             </div>
@@ -770,10 +782,13 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
                 {% set s0 = c.searches[0] %}
                 {% set sz = c.searches | selectattr('concise') | list %}
                 {% if sz %}<span class="act zip">zip</span>
-                  <a href="{{ request.script_root }}/report/{{ sz[0].slug }}/concise.zip" title="third-party-submission-{{ sz[0].slug }}.zip">{{ sz[0].concise }} docs</a>
-                  <a href="{{ request.script_root }}/report/{{ sz[0].slug }}" class="prepn" title="{{ sz[0].query }}">{{ sz[0].when[5:10] }}{% if c.searches | length > 1 %} +{{ c.searches | length - 1 }}{% endif %}</a>
+                  {% if current_scope %}<span class="prepn">{{ sz[0].concise }} docs</span>
+                    <span class="prepn">{{ sz[0].when[5:10] }}{% if c.searches | length > 1 %} +{{ c.searches | length - 1 }}{% endif %}</span>
+                  {% else %}<a href="{{ request.script_root }}/report/{{ sz[0].slug }}/concise.zip" title="third-party-submission-{{ sz[0].slug }}.zip">{{ sz[0].concise }} docs</a>
+                  <a href="{{ request.script_root }}/report/{{ sz[0].slug }}" class="prepn" title="{{ sz[0].query }}">{{ sz[0].when[5:10] }}{% if c.searches | length > 1 %} +{{ c.searches | length - 1 }}{% endif %}</a>{% endif %}
                 {% else %}<span class="act {{ 'done' if s0.status and s0.status.startswith('complete') else 'not_yet' }}">{{ 'done' if s0.status and s0.status.startswith('complete') else (s0.status or 'run') }}</span>
-                  <a href="{{ request.script_root }}/report/{{ s0.slug }}" title="{{ s0.query }}">{{ s0.when[5:10] }}</a>
+                  {% if current_scope %}<span class="prepn">{{ s0.when[5:10] }}</span>
+                  {% else %}<a href="{{ request.script_root }}/report/{{ s0.slug }}" title="{{ s0.query }}">{{ s0.when[5:10] }}</a>{% endif %}
                   {% if c.searches | length > 1 %}<span class="prepn">+{{ c.searches | length - 1 }}</span>{% endif %}
                 {% endif %}
               {% else %}<span class="none">none</span>{% endif %}
@@ -1612,9 +1627,14 @@ function obLink(href, text){
     form.scrollIntoView({block: 'nearest', behavior: 'smooth'});
     fld('assignees').focus();
   }
-  addBtn.addEventListener('click', function(){ showForm(null); });
+  /*  THE FORM IS NOT ALWAYS ON THE PAGE. A guest account is shown the docket without the
+      controls that define what is watched, so every one of these can be absent. Wiring them
+      unguarded threw on the first missing node and took the rest of this function with it,
+      including the refresh button two hundred lines below, which is the one control a guest
+      does have. */
+  if (addBtn) addBtn.addEventListener('click', function(){ showForm(null); });
   if (editBtn) editBtn.addEventListener('click', function(){ showForm(current); });
-  cancel.addEventListener('click', function(){ form.hidden = true; editing = null; });
+  if (cancel) cancel.addEventListener('click', function(){ form.hidden = true; editing = null; });
 
   function lines(text){
     return text.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
@@ -1627,7 +1647,7 @@ function obLink(href, text){
     }).then(function(r){ return r.json(); });
   }
 
-  form.addEventListener('submit', function(ev){
+  if (form) form.addEventListener('submit', function(ev){
     ev.preventDefault();
     err.hidden = true;
     var body = {
@@ -1661,7 +1681,7 @@ function obLink(href, text){
     });
   });
 
-  del.addEventListener('click', function(){
+  if (del) del.addEventListener('click', function(){
     if (!editing) return;
     if (!window.confirm('Remove ' + editing.name + ' and every case found for it? The cases can be found again by adding the target back.')) return;
     del.disabled = true;

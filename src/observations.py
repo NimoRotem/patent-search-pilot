@@ -60,6 +60,7 @@ import traceback
 from flask import (Blueprint, abort, jsonify, redirect, render_template, request,
                    send_from_directory, url_for)
 
+import accounts
 import auth
 import db
 import observation_actions
@@ -996,14 +997,39 @@ def set_note(user_id, target_id, publication, note):
 # ---------------------------------------------------------------------------------------------
 
 def _user():
-    """A named account, never the loopback exemption. See the module docstring."""
+    """Whose docket this request is for. A named account, never the loopback exemption.
+
+    Normally that is the signed-in account. A GUEST account (outside counsel, given this page
+    and nothing else) carries `docket_user_id` naming the account whose docket it works on, and
+    is handed that row instead: every query below keys on `user["id"]`, so a guest returning
+    their own id would be shown an empty docket, which is indistinguishable from a wiped one.
+    What a guest may not do is change the docket's SHAPE; see `_no_guests`.
+    """
     user = auth.current_user()
     if not user:
         if request.path.startswith("/api") or request.headers.get("Accept", "").startswith(
                 "application/json"):
             abort(401)
         abort(403)
+    host_id = auth.docket_owner_id()
+    if host_id and host_id != int(user["id"]):
+        host = accounts.get_user(host_id)
+        if not host or not host.get("is_active"):
+            abort(403)
+        return host
     return user
+
+
+def _no_guests():
+    """Refuse a guest the routes that define the docket rather than work it.
+
+    Adding, renaming and deleting a target is the owner's decision about what is watched, and a
+    guest's writes land on the OWNER's rows (see `_user`), so a deletion here would be somebody
+    else's docket disappearing. Notes, refreshes and downloads stay open: that is the work the
+    page was shared for.
+    """
+    if auth.current_scope():
+        abort(403)
 
 
 def _pick(targets, wanted):
@@ -1159,6 +1185,7 @@ def _many(body, key):
 def api_target_create():
     """Add a target and start finding its cases. The page follows the job by polling the refresh
     state for the new target's id, exactly as it does for a refresh."""
+    _no_guests()
     user = _user()
     auth.require_csrf()
     body = _body()
@@ -1180,6 +1207,7 @@ def api_target_create():
 
 @bp.route("/api/actions/targets/<int:target_id>", methods=["POST"])
 def api_target_update(target_id):
+    _no_guests()
     user = _user()
     auth.require_csrf()
     body = _body()
@@ -1201,6 +1229,7 @@ def api_target_update(target_id):
 
 @bp.route("/api/actions/targets/<int:target_id>/delete", methods=["POST"])
 def api_target_delete(target_id):
+    _no_guests()
     user = _user()
     auth.require_csrf()
     try:
