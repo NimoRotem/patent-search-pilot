@@ -57,6 +57,19 @@ _SCHEMA = (
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS signature_title text NOT NULL DEFAULT ''",
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS share_password_hash text NOT NULL DEFAULT ''",
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS autopublish boolean NOT NULL DEFAULT true",
+    #  A GUEST WHO IS GIVEN ONE PAGE AND NOT THE WORKBENCH. Outside counsel needs the actions
+    #  docket and has no business in the drafting studio, the search history or the filing
+    #  browser. `access_scope` empty is the normal account and means everything; a non-empty
+    #  value names the ONE surface the account may reach, and auth._gate refuses the rest. It is
+    #  a property of the account rather than a link or a separate deployment so that revoking it
+    #  is one UPDATE, and so that a guest signing in shares the workbench's own session
+    #  revocation, rate limits and password rules.
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS access_scope text NOT NULL DEFAULT ''",
+    #  WHOSE DOCKET the guest works on. The actions rows are keyed by user id, and a guest has an
+    #  empty docket of their own, so without this they would sign in successfully and be shown a
+    #  blank page. NULL is the ordinary case: your own.
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS docket_user_id bigint "
+    "REFERENCES app_users(id) ON DELETE SET NULL",
     """CREATE TABLE IF NOT EXISTS app_saved_searches (
          id bigserial PRIMARY KEY,
          user_id bigint NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
@@ -396,6 +409,32 @@ def update_user_role(user_id, *, is_admin=None, is_active=None):
         cur.execute(
             "UPDATE app_users SET is_admin=%s,is_active=%s,updated_at=now() WHERE id=%s RETURNING *",
             (new_admin, new_active, user_id))
+        return public_user(cur.fetchone())
+
+
+#  The surfaces an account can be narrowed to. One entry today; the tuple exists so that adding
+#  a second guest page is a list edit and a gate entry rather than a new string convention.
+ACCESS_SCOPES = ("actions",)
+
+
+def set_access_scope(user_id, scope, *, docket_user_id=None):
+    """Narrow an account to one page, or widen it back to the whole workbench.
+
+    An empty `scope` is the ordinary account. A named one must be in ACCESS_SCOPES, because a
+    typo here would not fail: auth._gate refuses everything outside the allowlist for ANY
+    non-empty scope, so a misspelt value locks the account out of the page it was created for
+    and reads as a broken password. A scoped account is never an administrator: the sibling
+    filing apps admit on is_admin alone, and one left set would hand a guest the filing browser.
+    """
+    ensure_schema()
+    scope = (scope or "").strip().lower()
+    if scope and scope not in ACCESS_SCOPES:
+        raise ValueError("Unknown access scope: %s" % scope)
+    with db.cursor() as cur:
+        cur.execute(
+            "UPDATE app_users SET access_scope=%s, docket_user_id=%s,"
+            " is_admin=(is_admin AND %s), updated_at=now() WHERE id=%s RETURNING *",
+            (scope, int(docket_user_id) if docket_user_id else None, not scope, int(user_id)))
         return public_user(cur.fetchone())
 
 

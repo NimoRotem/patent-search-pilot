@@ -2616,9 +2616,14 @@ def api_session_check():
     user = auth.current_user()
     if not user:
         return jsonify({"authenticated": False})
+    #  `access_scope` is non-empty for a guest who was given one page of this app and nothing
+    #  else. The three siblings that read this already admit on `is_admin` alone, which such an
+    #  account can never have, so they are closed without knowing the word; it is reported so
+    #  that a future sibling which does NOT require an admin still has a way to refuse.
     return jsonify({"authenticated": True, "email": user.get("email"),
                     "full_name": user.get("full_name"),
-                    "is_admin": bool(user.get("is_admin"))})
+                    "is_admin": bool(user.get("is_admin")),
+                    "access_scope": (user.get("access_scope") or "")})
 
 
 @app.route("/api/chrome")

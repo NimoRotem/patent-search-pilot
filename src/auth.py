@@ -640,6 +640,57 @@ def is_admin():
     return bool(user and user.get("is_admin"))
 
 
+#  THE ONE-PAGE GUEST. Outside counsel is given the actions docket and nothing else: not the
+#  drafting studio, not the search history, not the filing browser, not even their own profile
+#  page. The endpoints below are the whole of what such an account may call.
+#
+#  WHY THE PROFILE PAGE IS NOT HERE. /patents/sketch is a separate service that decides whether
+#  somebody is signed in by fetching THIS app's /account with their cookie and reading the status
+#  code. Letting a guest load /account would therefore also let them into the drawings app. The
+#  other three siblings (filing, click, trademarks) ask /api/session-check and admit on is_admin,
+#  which a scoped account can never have (see accounts.set_access_scope).
+_SCOPE_ENDPOINTS = {
+    "actions": {
+        "observations.actions_page",
+        "observations.observations_redirect",
+        "observations.observation_package_redirect",
+        "observations.api_action_case",
+        "observations.api_action_refresh",
+        "observations.api_action_refresh_state",
+        "observations.action_image",
+        "observations.action_package",
+    },
+}
+
+#  Reachable whatever the scope: the session itself, the stylesheet the page is unreadable
+#  without, and the endpoint the sibling services ask "who is this". `static` serves files, never
+#  data; `api_session_check` reports only the caller's own name and scope, and it must answer
+#  honestly for a guest or the siblings are left inferring a refusal from a 403.
+_SCOPE_ALWAYS = {"static", "auth.login", "auth.logout", "api_session_check"}
+
+#  Where a scoped account is sent when it asks for a page it may not have. A landing that is
+#  inside its own scope, so this can never loop.
+_SCOPE_HOME = {"actions": "/actions"}
+
+
+def current_scope():
+    """The one surface this session is narrowed to, or '' for a full workbench account."""
+    user = current_user()
+    return ((user or {}).get("access_scope") or "").strip().lower()
+
+
+def docket_owner_id():
+    """Whose actions docket the signed-in account works on: a guest's host, else their own.
+
+    The docket rows are keyed by user id. A guest account owns none, so without this they sign in
+    and are shown an empty page, which looks exactly like a docket that has been wiped.
+    """
+    user = current_user()
+    if not user:
+        return None
+    return int(user.get("docket_user_id") or user["id"])
+
+
 def _authenticated():
     if current_user() is not None:
         return True
@@ -716,6 +767,21 @@ def _after_login_target(nxt):
     return root + nxt
 
 
+def _landing(nxt):
+    """Where a sign-in ends up: the page that was asked for, else this account's own home.
+
+    A GUEST GOES TO THEIR OWN PAGE whatever `next` says. Theirs is the only link in the masthead,
+    so a `next` pointing anywhere else is a stale bookmark or a redirect this app issued before
+    it knew who was signing in, and honouring it would land them on the refusal rather than on
+    the docket they came for. It is also the no-`next` answer: sending them to the root instead
+    left a visible extra hop on the first screen anybody outside the company ever sees.
+    """
+    scope = current_scope()
+    if scope and _SCOPE_HOME.get(scope):
+        return (request.script_root or "") + _SCOPE_HOME[scope]
+    return _after_login_target(nxt) if nxt else url_for("index")
+
+
 # Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
 _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
@@ -749,8 +815,7 @@ def login():
     #  shows the form, so switching accounts never needs the sign-out link to be found first.
     if request.method == "GET" and not inline and request.args.get("force") != "1" \
             and current_user():
-        target = _safe_next(request.args.get("next"))
-        return redirect(_after_login_target(target) if target else url_for("index"))
+        return redirect(_landing(_safe_next(request.args.get("next"))))
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         supplied = request.form.get("password", "")
@@ -768,14 +833,18 @@ def login():
                 session["session_version"] = int(user.get("session_version") or 1)
                 session["csrf_token"] = secrets.token_urlsafe(32)
                 session.permanent = True
+                #  current_user() caches on `g`, and the gate already asked once this request,
+                #  when there was nobody. Without dropping it, everything that runs between here
+                #  and the redirect still sees a signed-out visitor: `_landing` reads the
+                #  account's scope, and a guest was being sent to the studio.
+                if hasattr(g, "patent_user"):
+                    del g.patent_user
                 _LIMITERS["auth.login"].mark_known_good(client_ip())
                 if inline:
                     return jsonify({"ok": True, "csrf_token": session["csrf_token"],
                                     "email": user["email"]})
-                nxt = _safe_next(request.form.get("next") or request.args.get("next"))
-                if nxt:
-                    return redirect(_after_login_target(nxt))
-                return redirect(url_for("index"))
+                return redirect(_landing(
+                    _safe_next(request.form.get("next") or request.args.get("next"))))
             if not error:
                 error = "Email or password is incorrect."
             time.sleep(0.5)
@@ -1120,6 +1189,32 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
+def _scope_denies(endpoint):
+    """A response when a scoped account asked for something outside its scope, else None.
+
+    A page navigation is redirected to the one page the account has, because a guest who follows
+    a stale link should land somewhere usable rather than on a bare 403 they cannot act on.
+    Anything a script called gets the refusal, so a fetch never silently reads an HTML redirect
+    as its answer.
+    """
+    scope = current_scope()
+    if not scope or endpoint in _SCOPE_ALWAYS:
+        return None
+    if endpoint in _SCOPE_ENDPOINTS.get(scope, ()):
+        return None
+    if _wants_json() or request.method != "GET":
+        return jsonify({"error": "this account does not have access to that"}), 403
+    home = _SCOPE_HOME.get(scope)
+    if not home:
+        abort(403)
+    #  Already on the landing and still refused: the scope names a page this build does not
+    #  serve. Say so once rather than bouncing the browser between two URLs for ever.
+    #  request.path excludes SCRIPT_NAME, so it is compared against the bare landing path.
+    if request.path.rstrip("/") == home.rstrip("/"):
+        abort(403)
+    return redirect((request.script_root or "") + home)
+
+
 def init_app(app, state_path=None):
     """Install the gate. Call AFTER all routes are registered."""
     import datetime
@@ -1133,8 +1228,15 @@ def init_app(app, state_path=None):
             user = current_user()
         except Exception:
             user = None
+        try:
+            scope = current_scope()
+        except Exception:
+            scope = ""
         return {"current_user": user, "account_mode": accounts_enabled(app),
-                "current_is_admin": is_admin(), "csrf_token": csrf_token}
+                "current_is_admin": is_admin(), "csrf_token": csrf_token,
+                #  Non-empty means the reader is a guest with one page. The masthead and the
+                #  docket use it to drop links they would only be refused at.
+                "current_scope": scope}
 
     @app.before_request
     def _gate():                                              # noqa: unused
@@ -1155,6 +1257,14 @@ def init_app(app, state_path=None):
                 if root and nxt.startswith(root):
                     nxt = nxt[len(root):] or "/"
                 return redirect(url_for("auth.login", next=nxt))
+        # ---- 1b. a guest account is narrowed to one page ----
+        # After the auth check and before anything else, and deliberately NOT keyed off
+        # _OPEN_ENDPOINTS: the root, the about page and a published report are all open to a
+        # signed-out stranger, but a signed-in guest asking for them should be put back on the
+        # page they were given rather than shown the rest of the workbench's furniture.
+        denied = _scope_denies(ep)
+        if denied is not None:
+            return denied
         # ---- 2. rate limits on expensive routes only ----
         lim = limiter_for(ep)
         # Only POST /login spends a login token; GETs just render the form, and charging them
