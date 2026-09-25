@@ -41,10 +41,11 @@ def _fetcher(calls):
     return fetch
 
 
-def _sync(tmp_path, rows, calls, active=()):
+def _sync(tmp_path, rows, calls, active=(), keys=()):
+    #  `keys` is always handed in: the module default reaches the real docket database.
     return ip.sync(archive=tmp_path / "kept", concise_dir=tmp_path / "reports" / "concise",
                    reports=tmp_path / "reports", filing_data=tmp_path / "filing", searches=rows,
-                   fetch=_fetcher(calls), active=set(active))
+                   fetch=_fetcher(calls), active=set(active), docket_keys=set(keys))
 
 
 ROWS = [{"slug": "adhoc-aaa111", "email": "ahmed@intellentpatents.com", "subject": "EP-4446072-B1"}]
@@ -157,6 +158,70 @@ def test_a_package_lands_on_its_row_by_number_and_the_rest_are_listed_apart(tmp_
     assert cases[1]["iptorch"] == []
     keys = links.pub_keys("EP4446072B1") | links.pub_keys("EP4349543A1")
     assert [v["slug"] for v in ip.unmatched(keys, kept)] == ["adhoc-ccc333"]
+
+
+def test_anybodys_package_for_a_docket_patent_is_kept_with_their_name(tmp_path):
+    """A second person rebuilding a docket patent's package is exactly what the row must show."""
+    _pkg(tmp_path, "adhoc-ddd444", built_at="2026-09-22T10:55:20Z", pub="US-20250332741-A1")
+    rows = [{"slug": "adhoc-ddd444", "email": "qa-searchlog@rotem.ai", "name": "QA Search"}]
+    calls = []
+    s = _sync(tmp_path, rows, calls, keys=links.pub_keys("US20250332741A1"))
+    assert s["added"] == 1 and calls == ["adhoc-ddd444"]
+    [v] = ip.kept(tmp_path / "kept")
+    assert v["account"] == "qa-searchlog@rotem.ai"
+    assert v["built_by"] == "QA Search (qa-searchlog@rotem.ai)"
+    cases = [{"publication": "US20250332741A1"}]
+    ip.attach(cases, ip.kept(tmp_path / "kept"))
+    assert [x["slug"] for x in cases[0]["iptorch"]] == ["adhoc-ddd444"]
+
+
+def test_anybodys_package_off_the_docket_is_never_read(tmp_path):
+    _pkg(tmp_path, "adhoc-ddd444", built_at="2026-09-22T10:55:20Z", pub="EP-4147831-A1")
+    rows = [{"slug": "adhoc-ddd444", "email": "stranger@example.com"}]
+    calls = []
+    s = _sync(tmp_path, rows, calls, keys=links.pub_keys("US20250332741A1"))
+    assert s["added"] == 0 and s["not_on_docket"] == 1 and calls == []
+    #  Nor when the docket could not be read: unknown is not "on it".
+    s = _sync(tmp_path, [{"slug": "adhoc-ddd444", "email": "stranger@example.com"}], calls)
+    assert s["added"] == 0 and calls == []
+
+
+def test_several_builds_by_several_people_all_land_on_the_row_newest_first(tmp_path):
+    _pkg(tmp_path, "adhoc-aaa111", built_at="2026-09-20T08:00:00Z", pub="US-20250332740-A1")
+    _pkg(tmp_path, "adhoc-eee555", built_at="2026-09-25T09:26:43Z", pub="US-20250332740-A1")
+    rows = [{"slug": "adhoc-aaa111", "email": "nimo@rotem.ai", "name": "Nimo"},
+            {"slug": "adhoc-eee555", "email": "someone@lawfirm.example", "name": "Dana"}]
+    calls = []
+    _sync(tmp_path, rows, calls, keys=links.pub_keys("US20250332740A1"))
+    _pkg(tmp_path, "adhoc-aaa111", built_at="2026-09-24T12:00:00Z", pub="US-20250332740-A1")
+    _sync(tmp_path, rows, calls, keys=links.pub_keys("US20250332740A1"))
+    cases = [{"publication": "US20250332740A1"}]
+    ip.attach(cases, ip.kept(tmp_path / "kept"))
+    got = [(v["built_at"], v["built_by"]) for v in cases[0]["iptorch"]]
+    assert got == [("2026-09-25T09:26:43Z", "Dana (someone@lawfirm.example)"),
+                   ("2026-09-24T12:00:00Z", "Nimo (nimo@rotem.ai)"),
+                   ("2026-09-20T08:00:00Z", "Nimo (nimo@rotem.ai)")]
+
+
+def test_a_folder_no_search_owns_is_kept_only_for_a_docket_patent(tmp_path, monkeypatch):
+    _pkg(tmp_path, "adhoc-fff666", built_at="2026-09-21T00:00:00Z", pub="US-20250332741-A1")
+    _pkg(tmp_path, "adhoc-ggg777", built_at="2026-09-21T00:00:00Z", pub="WO-2025255583-A1")
+    monkeypatch.setattr(ip, "owned_searches", lambda accounts=ip.ACCOUNTS: [])
+    calls = []
+    ip.sync(archive=tmp_path / "kept", concise_dir=tmp_path / "reports" / "concise",
+            reports=tmp_path / "reports", filing_data=tmp_path / "filing",
+            fetch=_fetcher(calls), active=set(), docket_keys=links.pub_keys("US20250332741A1"))
+    assert calls == ["adhoc-fff666"]
+    [v] = ip.kept(tmp_path / "kept")
+    assert v["built_by"] == "no account on record"
+
+
+def test_another_accounts_package_is_not_listed_off_the_docket(tmp_path):
+    _pkg(tmp_path, "adhoc-ddd444", built_at="2026-09-22T10:55:20Z", pub="US-20250332741-A1")
+    _sync(tmp_path, [{"slug": "adhoc-ddd444", "email": "qa-searchlog@rotem.ai"}], [],
+          keys=links.pub_keys("US20250332741A1"))
+    #  The row has since gone from the docket: the copy stays, the list does not show it.
+    assert ip.unmatched(set(), ip.kept(tmp_path / "kept")) == []
 
 
 def test_a_download_path_cannot_leave_the_archive(tmp_path):

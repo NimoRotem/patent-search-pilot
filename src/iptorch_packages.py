@@ -1,15 +1,18 @@
-"""Every package our own accounts build on iptorch.com, kept as a zip on the docket row it concerns.
+"""Every package built on iptorch.com for a docket patent, kept as a zip on the row it concerns.
 
 iptorch.com (a separate process on this box, supervisor program patent-v3-nimo7) is where the
 filing packages are built now: a search, then BUILD PACKAGE, then a zip. Nothing told the docket.
 A package for a Schmalz case could be built on Tuesday, rebuilt on Thursday and handed to the
 filing app on Friday, and the docket row for that case said "nothing prepared" throughout.
 
-WHOSE PACKAGES. Only the accounts named in `IPTORCH_PACKAGE_ACCOUNTS`: the owner's own admin
-account and the two people who build for this docket. iptorch.com takes public signups and a
-stranger's package on a competitor's patent is none of this docket's business. The owner of a
-package is not written anywhere in its folder, so it is read from iptorch's own search table,
-slug by slug, read-only.
+WHOSE PACKAGES. Every package built for a patent that is ON THIS DOCKET, whoever built it: a
+second person rebuilding the Schmalz protest is exactly what the row has to show, with their name
+and the time. Beyond the docket, only the accounts named in `IPTORCH_PACKAGE_ACCOUNTS` (the
+owner's own admin account and the two people who build for it) are kept, in the "not on this
+docket" list: iptorch.com takes public signups, and a stranger's package on a patent nobody here
+watches is none of this docket's business. The owner of a package is not written anywhere in its
+folder, so it is read from iptorch's own search table, slug by slug, read-only; a folder with no
+search row at all is kept only when it is for a docket patent, under "no account on record".
 
 A REBUILD DELETES THE PACKAGE IT REPLACES. iptorch keeps one package per search and a rebuild
 overwrites it in place, so "which version did we hand over" has no answer on iptorch itself a day
@@ -44,7 +47,8 @@ _HERE = Path(os.path.dirname(os.path.abspath(__file__)))
 IPTORCH_HOME = Path(os.environ.get("IPTORCH_HOME", "/home/nimrod_rotem/patent-v3-nimo7"))
 IPTORCH_LOCAL = os.environ.get("IPTORCH_LOCAL_URL", "http://127.0.0.1:8647").rstrip("/")
 IPTORCH_PUBLIC = os.environ.get("IPTORCH_PUBLIC_URL", "https://iptorch.com").rstrip("/")
-#  Whose packages are copied: iptorch.com accounts, by email.
+#  Whose packages are copied even when their patent is on no docket row: iptorch.com accounts, by
+#  email. A package for a docket patent is copied whoever built it.
 ACCOUNTS = tuple(a.strip().lower() for a in os.environ.get(
     "IPTORCH_PACKAGE_ACCOUNTS",
     "nimo@rotem.ai,nimo@grabo.com,ahmed@intellentpatents.com").split(",") if a.strip())
@@ -141,7 +145,8 @@ def _env_file(path):
 # ---------------------------------------------------------------------------------------------
 
 def owned_searches(accounts=ACCOUNTS):
-    """Every iptorch search the named accounts own. -> [{slug, email, subject, title, created}]
+    """Every iptorch search the named accounts own, or every account's when `accounts` is None.
+    -> [{slug, email, name, subject, title, created}]
 
     Read-only, on a connection Postgres itself holds read-only. The credentials are iptorch's own,
     read from its .env each time, so a rotated password there is never stale here.
@@ -158,15 +163,27 @@ def owned_searches(accounts=ACCOUNTS):
                          options="-c search_path=%s -c default_transaction_read_only=on "
                                  "-c statement_timeout=20000" % path) as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT s.slug, s.subject, s.title, s.query, s.created_at, lower(u.email) AS email
-                     FROM app_saved_searches s JOIN app_users u ON u.id = s.user_id
-                    WHERE lower(u.email) = ANY(%s)
-                    ORDER BY s.created_at""", (list(accounts),))
+            sql = """SELECT s.slug, s.subject, s.title, s.query, s.created_at,
+                            lower(u.email) AS email, u.full_name AS name
+                       FROM app_saved_searches s JOIN app_users u ON u.id = s.user_id"""
+            if accounts is None:
+                cur.execute(sql + " ORDER BY s.created_at")
+            else:
+                cur.execute(sql + " WHERE lower(u.email) = ANY(%s) ORDER BY s.created_at",
+                            (list(accounts),))
             rows = cur.fetchall()
-    return [{"slug": r["slug"], "email": r["email"], "subject": r.get("subject") or "",
-             "title": r.get("title") or r.get("query") or "",
+    return [{"slug": r["slug"], "email": r["email"], "name": (r.get("name") or "").strip(),
+             "subject": r.get("subject") or "", "title": r.get("title") or r.get("query") or "",
              "created": _iso(_parse_when(r.get("created_at")))} for r in rows]
+
+
+def package_slugs(concise_dir=None):
+    """Every package folder iptorch holds, whether or not a search row owns it."""
+    d = Path(concise_dir) if concise_dir else IPTORCH_HOME / "data" / "reports" / "concise"
+    try:
+        return sorted(p.name for p in d.iterdir() if p.is_dir() and _SLUG_OK.match(p.name))
+    except OSError:
+        return []
 
 
 def active_slugs():
@@ -320,10 +337,18 @@ def _mark_sent(slug, sent, archive, filing_data):
 _SYNC_LOCK = threading.Lock()
 _STATE = {"at": 0.0, "ok": None, "error": "", "added": 0, "seen": 0, "running": False}
 
+#  Every publication key on the docket(s) that show these packages. Set by observations.init_app,
+#  which owns that database; None here means "not known", and then only the named accounts'
+#  packages are copied, never a stranger's.
+DOCKET_KEYS = None
+
 
 def sync(archive=None, concise_dir=None, reports=None, filing_data=None, searches=None,
-         fetch=None, active=None):
+         fetch=None, active=None, docket_keys=None):
     """Copy every finished build not yet kept. Safe to call from any thread or process.
+
+    Which builds: every one the named accounts made, and every one ANY account made for a patent
+    whose key is in `docket_keys` (a set, or a callable returning one; default `DOCKET_KEYS`).
 
     Returns a summary. One process at a time holds a lock file beside the archive, so two
     gunicorn workers or a timer and a page load never download the same zip twice.
@@ -332,14 +357,32 @@ def sync(archive=None, concise_dir=None, reports=None, filing_data=None, searche
     filing_data = Path(filing_data) if filing_data else observation_links.FILING_DATA
     fetch = fetch or fetch_zip
     archive.mkdir(parents=True, exist_ok=True)
-    summary = {"seen": 0, "added": 0, "skipped_running": 0, "errors": []}
+    summary = {"seen": 0, "added": 0, "skipped_running": 0, "not_on_docket": 0, "errors": []}
     with open(archive / ".lock", "a+") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             summary["busy"] = True
             return summary
-        rows = owned_searches() if searches is None else searches
+        keys = docket_keys if docket_keys is not None else DOCKET_KEYS
+        if callable(keys):
+            try:
+                keys = keys()
+            except Exception as exc:
+                #  Unknown is not empty. Without the docket's keys a stranger's package cannot be
+                #  shown to be ours to keep, so this run copies the named accounts' only.
+                summary["errors"].append("docket keys: %s" % str(exc)[:160])
+                keys = None
+        if searches is None:
+            rows = owned_searches(None if keys else ACCOUNTS)
+            #  A package folder no search row owns (an internal or test run) is still somebody's
+            #  build; it is kept when it is for a docket patent, with no name to put on it.
+            if keys:
+                owned = {r["slug"] for r in rows}
+                rows = rows + [{"slug": s, "email": "", "name": "", "subject": "", "title": "",
+                                "created": ""} for s in package_slugs(concise_dir) if s not in owned]
+        else:
+            rows = searches
         if active is None:
             active, active_ok = active_slugs()
         else:
@@ -352,10 +395,15 @@ def sync(archive=None, concise_dir=None, reports=None, filing_data=None, searche
             b = build_of(slug, concise_dir)
             if not b:
                 continue
-            summary["seen"] += 1
             pub, title = _subject(slug, reports)
             pub = pub or row.get("subject") or ""
-            index[slug] = {"account": row.get("email") or "", "search_created": row.get("created") or "",
+            email = str(row.get("email") or "").lower()
+            if email not in ACCOUNTS and not (keys and observation_links.pub_keys(pub) & keys):
+                summary["not_on_docket"] += 1
+                continue
+            summary["seen"] += 1
+            index[slug] = {"account": email, "account_name": row.get("name") or "",
+                           "search_created": row.get("created") or "",
                            "subject": pub, "subject_title": title, "search_title": row.get("title") or ""}
             #  NOT WHILE IT IS BEING BUILT. iptorch's own list of live runs is the authority; a
             #  JOB.json left at "running" by a crashed worker is only believed when that list
@@ -478,6 +526,7 @@ def kept(archive=None):
                                     or ("%s package" % FORUM_LABEL.get(forum, forum)).strip()
                                     or "Package")
         meta["office"] = FORUM_LABEL.get(forum, forum)
+        meta["built_by"] = who(meta)
         meta["report_url"] = "%s/report/%s" % (IPTORCH_PUBLIC, slug)
         meta["history_url"] = "%s/history" % IPTORCH_PUBLIC
         meta["_pubs"] = observation_links.pub_keys(meta.get("subject"))
@@ -514,10 +563,21 @@ def attach(cases, rows=None):
 
 
 def unmatched(all_keys, rows=None):
-    """Kept packages whose patent is on none of the owner's docket rows, newest first."""
+    """The named accounts' kept packages whose patent is on none of the owner's docket rows,
+    newest first. Another account's package was only ever kept for its docket row; if that row
+    has gone, it is not listed here either."""
     rows = kept() if rows is None else rows
     return [{k: v for k, v in r.items() if not k.startswith("_")}
-            for r in rows if not (r["_pubs"] & all_keys)]
+            for r in rows if not (r["_pubs"] & all_keys)
+            and str(r.get("account") or "").lower() in ACCOUNTS]
+
+
+def who(meta):
+    """The person a kept package is attributed to, as the page prints it."""
+    name, email = str(meta.get("account_name") or "").strip(), str(meta.get("account") or "")
+    if name and email:
+        return "%s (%s)" % (name, email)
+    return name or email or "no account on record"
 
 
 def zip_path(slug, stamp, archive=None):

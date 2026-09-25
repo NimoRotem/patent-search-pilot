@@ -64,6 +64,7 @@ from flask import (Blueprint, abort, jsonify, redirect, render_template, request
 import accounts
 import auth
 import db
+import docket_files
 import iptorch_packages
 import observation_actions
 import observation_links
@@ -1271,6 +1272,13 @@ def actions_page():
         if pulled:
             stale_days = (datetime.date.today() - pulled).days
     job = observation_refresh.state(uid, target["id"], kind) if target else {}
+    #  The daily check (actions_daily.py on cron): when it last ran and whether it was clean.
+    try:
+        import actions_daily
+        daily = actions_daily.latest()
+    except Exception:
+        traceback.print_exc()
+        daily = None
     if kind == "patent":
         matrix, matrix_offices = observation_actions.reference_matrix(), observation_actions.REFERENCE_OFFICES
     else:
@@ -1291,6 +1299,7 @@ def actions_page():
                            filing_url=observation_links.FILING_URL,
                            matrix=matrix, matrix_offices=matrix_offices,
                            stale_days=stale_days,
+                           daily=daily, daily_at=os.environ.get("ACTIONS_DAILY_AT", "05:10 UTC"),
                            iptorch_on=iptorch_on, iptorch_unmatched=unmatched,
                            iptorch_sync=iptorch_packages.status() if iptorch_on else {},
                            iptorch_public=iptorch_packages.IPTORCH_PUBLIC,
@@ -1503,6 +1512,147 @@ def action_iptorch_zip(slug, stamp):
                                download_name=name, max_age=0)
 
 
+# ---------------------------------------------------------------------------------------------
+# the viewer: what is inside a package, and the USPTO file, without leaving the page
+# ---------------------------------------------------------------------------------------------
+#  Each source answers two routes: `files` (JSON, the list) and `file` or `doc` (one of them,
+#  inline, or as a download with ?download=1). Every one repeats the check its zip download makes,
+#  so the viewer can never show a file the reader could not have downloaded.
+
+def _iptorch_found(slug, stamp):
+    user = _user()
+    if not iptorch_packages.visible_to(user):
+        abort(404)
+    found = iptorch_packages.zip_path(slug, stamp)
+    if not found:
+        abort(404)
+    return found
+
+
+def _package_path(name):
+    user = _user()
+    if "/" in name or "\\" in name or name.startswith("."):
+        abort(404)
+    wanted = {f.get("package") for f in filings_for(user["id"]) if f.get("package")}
+    path = os.path.join(PACKAGE_DIR, name)
+    if name not in wanted or not os.path.isfile(path):
+        abort(404)
+    return path
+
+
+def _zip_listing(path, title, subtitle, zip_url, file_base):
+    try:
+        files = docket_files.list_zip(path)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": "This zip could not be opened (%s)." % type(exc).__name__}), 500
+    return jsonify({"ok": True, "title": title, "subtitle": subtitle, "zip_url": zip_url,
+                    "file_base": file_base, "files": files})
+
+
+def _zip_member(path, member):
+    data = docket_files.read_member(path, member)
+    if data is None:
+        abort(404)
+    return docket_files.respond(data, member, download=bool(request.args.get("download")))
+
+
+@bp.route("/actions/view/iptorch/<slug>/<stamp>/files")
+def action_view_iptorch(slug, stamp):
+    path, meta = _iptorch_found(slug, stamp)
+    base = "%s/actions/view/iptorch/%s/%s/file/" % (request.script_root, slug, stamp)
+    title = "%s  ·  %s" % (meta.get("subject") or slug, iptorch_packages.INSTRUMENT_LABEL.get(
+        meta.get("instrument") or "", meta.get("label") or "iptorch.com package"))
+    sub = "Built %s UTC by %s" % (str(meta.get("built_at") or "")[:16].replace("T", " "),
+                                  iptorch_packages.who(meta))
+    return _zip_listing(path, title, sub,
+                        "%s/actions/iptorch/%s/%s.zip" % (request.script_root, slug, stamp), base)
+
+
+@bp.route("/actions/view/iptorch/<slug>/<stamp>/file/<path:member>")
+def action_view_iptorch_file(slug, stamp, member):
+    path, _ = _iptorch_found(slug, stamp)
+    return _zip_member(path, member)
+
+
+@bp.route("/actions/view/package/<name>/files")
+def action_view_package(name):
+    path = _package_path(name)
+    return _zip_listing(path, name, "The package as filed or handed over",
+                        "%s/actions/package/%s" % (request.script_root, name),
+                        "%s/actions/view/package/%s/file/" % (request.script_root, name))
+
+
+@bp.route("/actions/view/package/<name>/file/<path:member>")
+def action_view_package_file(name, member):
+    return _zip_member(_package_path(name), member)
+
+
+def _uspto_app(app):
+    """The application, only when it is on the reader's own docket: this app spends its USPTO key
+    on the cases it follows, not on whatever number somebody types into a URL."""
+    user = _user()
+    app = docket_files.app_number(app)
+    if not app:
+        abort(404)
+    with db.cursor(autocommit=True) as cur:
+        cur.execute("""SELECT 1 FROM app_observation_cases
+                        WHERE user_id = %s
+                          AND (regexp_replace(COALESCE(payload->>'application', ''), '[^0-9]', '', 'g') = %s
+                               OR payload->>'register_url' LIKE %s)
+                        LIMIT 1""", (user["id"], app, "%%/applications/%s%%" % app))
+        if not cur.fetchone():
+            abort(404)
+    return app
+
+
+@bp.route("/actions/view/uspto/<app>/files")
+def action_view_uspto(app):
+    app = _uspto_app(app)
+    try:
+        docs = docket_files.uspto_documents(app, fresh=bool(request.args.get("fresh")))
+    except observation_refresh.OdpUnavailable as exc:
+        return jsonify({"ok": False, "error": "The USPTO did not answer (%s). Try again in a "
+                                              "minute." % exc}), 502
+    pretty = "%s/%s,%s" % (app[:2], app[2:5], app[5:]) if len(app) == 8 else app
+    files = [{"name": "%s  %s" % (d["date"], d["description"] or d["code"]), "key": d["id"],
+              "kind": "pdf" if d["has_pdf"] else "download", "label": d["code"],
+              "date": d["date"], "code": d["code"], "direction": d["direction"],
+              "pages": d["pages"], "has_pdf": d["has_pdf"]} for d in docket_files.public_list(docs)]
+    return jsonify({"ok": True, "title": "US %s: the USPTO file wrapper" % pretty,
+                    "subtitle": "%d documents, newest first, read live from the USPTO Open Data "
+                                "Portal. Patent Center's own page for this file loads empty for "
+                                "anyone not signed in to USPTO.gov." % len(files),
+                    "zip_url": "", "office_url": "https://patentcenter.uspto.gov/applications/%s/ifw/docs" % app,
+                    "file_base": "%s/actions/view/uspto/%s/doc/" % (request.script_root, app),
+                    "file_suffix": ".pdf", "files": files})
+
+
+@bp.route("/actions/view/uspto/<app>/doc/<doc_id>.pdf")
+def action_view_uspto_doc(app, doc_id):
+    app = _uspto_app(app)
+    try:
+        data = docket_files.uspto_pdf(app, doc_id)
+    except observation_refresh.OdpUnavailable as exc:
+        return jsonify({"ok": False, "error": "The USPTO did not answer (%s)." % exc}), 502
+    if not data:
+        abort(404)
+    return docket_files.respond(data, "US%s_%s.pdf" % (app, doc_id),
+                                download=bool(request.args.get("download")))
+
+
+def _iptorch_docket_keys():
+    """Every publication key on the dockets that show iptorch packages, for the package sync."""
+    ids = []
+    for email in iptorch_packages.DOCKET_OWNERS:
+        u = accounts.get_user_by_email(email)
+        if u:
+            ids.append(int(u["id"]))
+    keys = set()
+    for uid in ids:
+        keys |= docket_keys(uid)
+    return keys
+
+
 def init_app(app):
     """Register the docket. Called before `auth.init_app`, like every other blueprint here."""
     app.register_blueprint(bp)
@@ -1514,6 +1664,9 @@ def init_app(app):
     #  The iptorch.com package copier runs whether or not anybody opens the page: a package
     #  rebuilt twice while nobody looked would otherwise lose its first version. Never under a
     #  test run, which must not reach a real database or a real iptorch.
+    #  Which patents are on the docket, so a package ANY iptorch account builds for one of them is
+    #  kept, not only our own accounts'.
+    iptorch_packages.DOCKET_KEYS = _iptorch_docket_keys
     if "pytest" not in sys.modules:
         iptorch_packages.start_background()
     return app

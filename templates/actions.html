@@ -42,6 +42,8 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .obtable td.ttl img{height:44px;max-width:76px;vertical-align:middle;margin-right:8px;border:1px solid var(--line);background:#fff;border-radius:3px;object-fit:contain}
 .obtable td.ttl .ttlwrap{display:inline-block;vertical-align:middle;max-width:calc(100% - 90px)}
 .obtable td.pub a.reg{display:block;font-family:inherit;font-size:10.5px;color:var(--accent);white-space:nowrap}
+.obtable td.pub button.reg{display:block;font-size:10.5px;white-space:nowrap;text-align:left}
+.obtable td.stgc .stgline button.obview{font-size:inherit}
 .obxbody img.obximg{max-height:220px;max-width:320px;border:1px solid var(--line);background:#fff;border-radius:4px;margin:6px 16px 6px 0;float:left}
 .obxbody .obmact,.obxbody .obxcols,.obxbody .obxnote{clear:both}
 .obtargets select{font:inherit;font-size:14px;font-weight:650;padding:6px 30px 6px 10px;
@@ -396,6 +398,45 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
 @media(max-width:820px){
   .obformgrid,.obxcols{grid-template-columns:1fr}
 }
+/* ── the viewer: a package's files, or the USPTO file, without leaving the page ─────────── */
+/*  One overlay for every zip and for the file wrapper: the list on the left, the document on the
+    right, in the browser's own PDF viewer or rendered. Esc closes, the arrow keys walk the list. */
+button.obview{font:inherit;font-size:inherit;background:none;border:0;padding:0;color:var(--accent);
+  cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+button.obview:hover{color:var(--accent-d, var(--accent))}
+.obviewer{position:fixed;inset:0;z-index:1000;background:rgba(15,20,30,.55);display:flex;
+  align-items:center;justify-content:center;padding:max(12px, env(safe-area-inset-top, 0px)) 12px 12px}
+.obvpanel{background:var(--s0, #fff);color:var(--ink);border-radius:var(--r);box-shadow:0 18px 60px rgba(0,0,0,.35);
+  width:min(1500px, 100%);height:min(94vh, 100%);display:flex;flex-direction:column;overflow:hidden}
+.obvhead{display:flex;gap:10px 18px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;
+  padding:12px 16px;border-bottom:1px solid var(--line)}
+.obvhead h2{font-size:16px;margin:0;line-height:1.35;overflow-wrap:anywhere}
+.obvhead p{margin:3px 0 0;font-size:12.5px;color:var(--muted);max-width:90ch}
+.obvacts{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap;font-size:13px}
+.obvclose{font:inherit;font-size:20px;line-height:1;width:34px;height:34px;border:1px solid var(--line2);
+  border-radius:var(--r-sm);background:var(--s1);color:var(--ink);cursor:pointer}
+.obvclose:hover{background:var(--s2)}
+.obvbody{flex:1;min-height:0;display:grid;grid-template-columns:minmax(240px, 340px) 1fr}
+.obvlist{overflow:auto;border-right:1px solid var(--line);background:var(--s1);padding:6px 0}
+.obvlist button{display:block;width:100%;text-align:left;font:inherit;font-size:12.5px;line-height:1.35;
+  padding:7px 12px;border:0;border-left:3px solid transparent;background:none;color:var(--ink);cursor:pointer}
+.obvlist button:hover{background:var(--s2)}
+.obvlist button[aria-selected="true"]{background:var(--accent-soft);border-left-color:var(--accent)}
+.obvlist button .fn{display:block;overflow-wrap:anywhere}
+.obvlist button .fm{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.obvlist .dir{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;padding:9px 12px 3px}
+.obvmain{display:flex;flex-direction:column;min-width:0;min-height:0}
+.obvbar{display:flex;gap:6px 14px;align-items:center;flex-wrap:wrap;padding:7px 14px;border-bottom:1px solid var(--line);
+  font-size:12.5px;color:var(--muted)}
+.obvbar .nm{font-weight:650;color:var(--ink);margin-right:auto;overflow-wrap:anywhere}
+.obvframe{flex:1;width:100%;border:0;background:#fff;min-height:0}
+.obvmsg{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;
+  color:var(--muted);font-size:14px;line-height:1.6}
+.obviewer[hidden],.obvmsg[hidden],.obvframe[hidden]{display:none}
+@media (max-width:760px){
+  .obvbody{grid-template-columns:1fr;grid-template-rows:minmax(110px, 34%) 1fr}
+  .obvlist{border-right:0;border-bottom:1px solid var(--line)}
+}
 </style>
 
 <div class="wrap obwrap">
@@ -511,17 +552,19 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   {% endif %}
 
   {% if target %}
-  {#  THE REFRESH. This asks the offices again, live, about this target only. It is deliberately
-      one button and not a cron: a sweep costs API budget at the EPO and the person reading the
-      page is the one who knows whether today's numbers are worth spending it on. #}
+  {#  THE REFRESH. Every target is asked about again automatically once a day (actions_daily.py,
+      on cron), which re-reads each case, finds new applications in the target's names and picks
+      up new packages. The button asks again NOW, for this target only. A pull more than a day
+      old means the daily check did not run, and is flagged. #}
   <div class="obrefresh">
     <button type="button" id="obrefreshbtn">Refresh from the registers</button>
-    <span class="obrefreshnote{{ ' stale' if (stale_days is not none and stale_days >= 7) or stale_days is none else '' }}" id="obrefreshnote">
-      {% if refreshed_at %}Last pulled <b>{{ refreshed_at }}</b>{% if stale_days is not none and stale_days >= 7 %},
+    <span class="obrefreshnote{{ ' stale' if (stale_days is not none and stale_days >= 2) or stale_days is none else '' }}" id="obrefreshnote">
+      {% if refreshed_at %}Last pulled <b>{{ refreshed_at }}</b>{% if refresh.trigger == 'daily' %} by the daily check{% endif %}{% if stale_days is not none and stale_days >= 2 %},
         <b>{{ stale_days }} days ago.</b> A grant in that time would have opened a window this page
         cannot see yet.{% else %}.{% endif %}
       {% else %}<b>Never pulled live.</b>{% if target.seeded %} The dates below come from the shipped {{ meta.as_of or 'baseline' }} sweep and a case may have granted, lapsed or been refused since.{% endif %}
       {% endif %}
+      Checked automatically every day at {{ daily_at }}{% if daily %}; the last run {{ 'finished' if daily.finished else 'started' }} {{ (daily.finished or daily.started)[:16] | replace('T', ' ') }} UTC{% if not daily.ok %} <b>with a failed sweep</b>{% elif daily.read_errors %}, {{ daily.read_errors }} case{{ '' if daily.read_errors == 1 else 's' }} unreadable{% endif %}{% else %}; it has not run yet{% endif %}.
       {% if kind == 'trademark' %}TMview for every office's status, publication and opposition period; new marks in the target's names are added.
       {% elif kind == 'design' %}EUIPO design register and the USPTO Open Data Portal for status and dates; new designs in the target's names are added.
       {% else %}USPTO Open Data Portal for status, windows and our own submissions on the file wrapper;
@@ -781,7 +824,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
               classes, and the number the docket keys on (an ST13) is nobody's language. #}
           {#  The number is the office's own; the link under it opens the office's record, EUIPO
               eSearch for a Community design or an EU mark, Patent Center for a US design. #}
-          <td class="pub" title="{{ c.publication }}">{{ c.registration or c.application or c.publication }}<span class="office">{{ c.office }}{% if c.mark_type %} &middot; {{ c.mark_type | lower }}{% endif %}</span>{% if c.classes %}<span class="cls">{{ 'Nice' if kind == 'trademark' else 'Locarno' }} {{ c.classes | join(', ') }}</span>{% endif %}{% if c.register_url %}<a class="reg" href="{{ c.register_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">{{ 'EUIPO eSearch' if 'euipo.europa.eu' in c.register_url else ('USPTO Patent Center' if 'patentcenter' in c.register_url else 'Official record') }} &#8599;</a>{% endif %}</td>
+          <td class="pub" title="{{ c.publication }}">{{ c.registration or c.application or c.publication }}<span class="office">{{ c.office }}{% if c.mark_type %} &middot; {{ c.mark_type | lower }}{% endif %}</span>{% if c.classes %}<span class="cls">{{ 'Nice' if kind == 'trademark' else 'Locarno' }} {{ c.classes | join(', ') }}</span>{% endif %}{% if c.register_url and 'patentcenter' in c.register_url and '/applications/' in c.register_url %}<button type="button" class="obview reg" data-view="uspto" data-app="{{ c.register_url.split('/applications/')[1].split('/')[0] }}" title="Every document on the USPTO file, read through the Open Data Portal">USPTO file</button>{% elif c.register_url %}<a class="reg" href="{{ c.register_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">{{ 'EUIPO eSearch' if 'euipo.europa.eu' in c.register_url else 'Official record' }} &#8599;</a>{% endif %}</td>
           <td class="ttl" title="{{ c.title_full or c.title }}">{% if c.image %}<img src="{{ c.image }}" alt="" loading="lazy">{% endif %}<span class="ttlwrap"><span class="t">{{ c.title }}</span><span class="who" title="{{ c.applicant }}">{{ c.applicant_short or c.applicant or '' }}</span></span></td>
           {% endif %}
           <td class="st">
@@ -823,7 +866,8 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             {% if c.built_count %}
               {% set v0 = c.iptorch[0] if c.iptorch else none %}
               <div class="stgline"><span class="stgpill s1">{{ c.built_count }} built</span>
-                {% if v0 %}<a href="{{ request.script_root }}/actions/iptorch/{{ v0.slug }}/{{ v0.stamp }}.zip" onclick="event.stopPropagation()" title="{{ v0.instrument_label }}, built {{ v0.built_at | replace('T', ' ') | replace('Z', ' UTC') }} by {{ v0.account }}">zip</a>{% endif %}</div>
+                {% if v0 %}<a href="{{ request.script_root }}/actions/iptorch/{{ v0.slug }}/{{ v0.stamp }}.zip" onclick="event.stopPropagation()" title="{{ v0.instrument_label }}, built {{ v0.built_at | replace('T', ' ') | replace('Z', ' UTC') }} by {{ v0.built_by }}">zip</a>
+                <button type="button" class="obview" data-view="iptorch" data-slug="{{ v0.slug }}" data-stamp="{{ v0.stamp }}" title="See the files in this zip">view</button>{% endif %}</div>
               <span class="stgsub" title="{% if c.iptorch %}{{ c.iptorch | length }} from iptorch.com, each kept as its own zip{% endif %}">latest {{ c.built_latest[5:10] if c.built_latest else '' }}</span>
             {% else %}<span class="stgnone">none</span>{% endif %}
           </td>
@@ -882,9 +926,9 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   {% if iptorch_on and iptorch_unmatched %}
   <section class="obsec" id="iptorch-unmatched">
     <h2>Built on iptorch.com for patents not on this docket</h2>
-    <p class="lede">Every package from the three iptorch.com accounts is kept here as a zip, one per
-      build. These were run on patents that no target on this docket tracks, so they have no row.
-      Add the owner as a target and they move onto their rows.</p>
+    <p class="lede">Every package built on iptorch.com for a patent on this docket is kept on its
+      row, whoever built it. Packages from our own three accounts are also kept when their patent
+      is on no row: these. Add the owner as a target and they move onto their rows.</p>
     <div class="obtablewrap" style="overflow-x:auto">
     <table class="iporphans">
       <thead><tr><th scope="col">Built (UTC)</th><th scope="col">Patent</th><th scope="col">Package</th>
@@ -895,8 +939,9 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
           <td class="dt">{{ v.built_at[:16] | replace('T', ' ') }}</td>
           <td>{{ v.subject }}{% if v.subject_title %}<br><span class="dldate">{{ v.subject_title[:90] }}</span>{% endif %}</td>
           <td>{{ v.instrument_label }}{% if v.docs %} &middot; {{ v.docs }} docs{% endif %}{% if v.sent %}<br><span class="dldate">sent to the filing app {{ v.sent.at[:10] }}</span>{% endif %}</td>
-          <td>{{ v.account }}</td>
-          <td style="white-space:nowrap"><a href="{{ request.script_root }}/actions/iptorch/{{ v.slug }}/{{ v.stamp }}.zip">Download zip</a>
+          <td>{{ v.built_by }}</td>
+          <td style="white-space:nowrap"><button type="button" class="obview" data-view="iptorch" data-slug="{{ v.slug }}" data-stamp="{{ v.stamp }}">View files</button>
+            &middot; <a href="{{ request.script_root }}/actions/iptorch/{{ v.slug }}/{{ v.stamp }}.zip">Download zip</a>
             &middot; <a href="{{ v.report_url }}" target="_blank" rel="noopener">iptorch.com</a></td>
         </tr>
       {% endfor %}
@@ -976,6 +1021,31 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   </section>
   {% endif %}
 
+  {#  THE VIEWER. One overlay for every package zip and for the USPTO file wrapper; filled by
+      window.obViewer from the source's `files` route. #}
+  <div class="obviewer" id="obviewer" hidden role="dialog" aria-modal="true" aria-labelledby="obvtitle">
+    <div class="obvpanel">
+      <div class="obvhead">
+        <div><h2 id="obvtitle">Loading</h2><p id="obvsub"></p></div>
+        <div class="obvacts">
+          <a id="obvzip" hidden>Download the zip</a>
+          <a id="obvoffice" target="_blank" rel="noopener" hidden title="Loads empty unless you are signed in to USPTO.gov">Patent Center</a>
+          <button type="button" class="obvclose" id="obvclose" aria-label="Close the viewer">&times;</button>
+        </div>
+      </div>
+      <div class="obvbody">
+        <div class="obvlist" id="obvlist" role="listbox" aria-label="Files" tabindex="0"></div>
+        <div class="obvmain">
+          <div class="obvbar"><span class="nm" id="obvname"></span>
+            <a id="obvopen" target="_blank" rel="noopener" hidden>Open in a new tab</a>
+            <a id="obvdl" hidden>Download this file</a></div>
+          <iframe class="obvframe" id="obvframe" title="Preview of the selected file" hidden></iframe>
+          <div class="obvmsg" id="obvmsg">Pick a file on the left.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}
 
@@ -1032,6 +1102,163 @@ function obLink(href, text){
   a.href = href; a.textContent = text; a.target = '_blank'; a.rel = 'noopener';
   return a;
 }
+//  A button that opens the viewer on one source: {view: 'iptorch', slug, stamp},
+//  {view: 'package', name} or {view: 'uspto', app}. The page listens for [data-view] clicks.
+function obViewBtn(text, src){
+  var b = obEl('button', 'obview', text);
+  b.type = 'button';
+  Object.keys(src).forEach(function(k){ b.dataset[k] = src[k]; });
+  return b;
+}
+//  The US application number a case's USPTO file is keyed by, or '' for any other office.
+function obUsptoApp(d){
+  var m = String(d.register_url || '').match(/patentcenter\.uspto\.gov\/applications\/(\d{6,9})/);
+  if (m) return m[1];
+  if (d.office === 'USPTO' && d.application) return String(d.application).replace(/\D/g, '');
+  return '';
+}
+</script>
+
+<script>
+/*  THE VIEWER. Lists the files of one source and shows the chosen one in an iframe: a PDF in the
+    browser's own viewer, Markdown, Word, text, CSV and JSON rendered by the server under a
+    sandbox, images as they are. Anything else is offered as a download. */
+window.obViewer = (function(){
+  var box = document.getElementById('obviewer');
+  if (!box) return {open: function(){}};
+  var $ = function(id){ return document.getElementById(id); };
+  var list = $('obvlist'), frame = $('obvframe'), msg = $('obvmsg');
+  var state = {files: [], base: '', suffix: '', sel: -1, opener: null, token: 0};
+  var enc = function(s){ return encodeURIComponent(s); };
+
+  function listUrl(src){
+    var b = window.APP_BASE + '/actions/view/';
+    if (src.view === 'iptorch') return b + 'iptorch/' + enc(src.slug) + '/' + enc(src.stamp) + '/files';
+    if (src.view === 'package') return b + 'package/' + enc(src.name) + '/files';
+    if (src.view === 'uspto') return b + 'uspto/' + enc(src.app) + '/files';
+    return '';
+  }
+  function fileUrl(f){
+    var key = f.key || f.name;
+    return state.base + String(key).split('/').map(enc).join('/') + (state.suffix || '');
+  }
+  function size(n){
+    if (!n && n !== 0) return '';
+    return n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+  }
+  function say(text){
+    frame.hidden = true; frame.removeAttribute('src');
+    msg.hidden = false; msg.textContent = text;
+  }
+  function select(i){
+    if (i < 0 || i >= state.files.length) return;
+    state.sel = i;
+    Array.prototype.forEach.call(list.querySelectorAll('button'), function(b){
+      b.setAttribute('aria-selected', String(+b.dataset.i === i));
+      if (+b.dataset.i === i) b.scrollIntoView({block: 'nearest'});
+    });
+    var f = state.files[i], url = fileUrl(f);
+    $('obvname').textContent = f.name;
+    var open = $('obvopen'), dl = $('obvdl');
+    dl.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'download=1'; dl.hidden = false;
+    open.href = url; open.hidden = (f.kind === 'download');
+    if (f.kind === 'download'){
+      say(f.uspto ? 'The office has no PDF of this document. It is listed on the file wrapper only.'
+                  : 'No preview for this kind of file. Use "Download this file".');
+      if (f.uspto) dl.hidden = true;
+      return;
+    }
+    //  Android Chrome and some others cannot show a PDF inside a frame and would leave a blank
+    //  pane. They say so, and the PDF opens in its own tab instead.
+    if (f.kind === 'pdf' && navigator.pdfViewerEnabled === false){
+      say('This browser cannot show a PDF inside the page. ');
+      msg.appendChild(obLink(url, 'Open the PDF'));
+      return;
+    }
+    msg.hidden = true; frame.hidden = false;
+    frame.src = url;
+  }
+  function render(j){
+    $('obvtitle').textContent = j.title || '';
+    $('obvsub').textContent = j.subtitle || '';
+    var z = $('obvzip');
+    if (j.zip_url){ z.href = j.zip_url; z.hidden = false; } else z.hidden = true;
+    var o = $('obvoffice');
+    if (j.office_url){ o.href = j.office_url; o.hidden = false; } else o.hidden = true;
+    state.files = j.files || []; state.base = j.file_base || ''; state.suffix = j.file_suffix || '';
+    list.innerHTML = '';
+    var lastDir = null;
+    state.files.forEach(function(f, i){
+      f.uspto = !!state.suffix;
+      var parts = String(f.name).split('/'), leaf = parts.pop(), dir = parts.join('/');
+      if (!f.uspto && dir !== lastDir){
+        if (dir) list.appendChild(obEl('div', 'dir', dir));
+        lastDir = dir;
+      }
+      var b = obEl('button');
+      b.type = 'button'; b.dataset.i = i; b.setAttribute('role', 'option');
+      b.appendChild(obEl('span', 'fn', f.uspto ? (f.name.slice(12) || f.code) : leaf));
+      b.appendChild(obEl('span', 'fm', f.uspto
+        ? [f.date, f.code, f.direction, f.pages ? f.pages + ' p.' : '', f.has_pdf ? '' : 'no PDF'].filter(Boolean).join('  ·  ')
+        : [f.label, size(f.size)].filter(Boolean).join('  ·  ')));
+      b.addEventListener('click', function(){ select(i); });
+      list.appendChild(b);
+    });
+    if (!state.files.length){ say('This source has no files.'); return; }
+    //  Open on the first document worth reading, not on a font or a stylesheet.
+    var first = state.files.findIndex(function(f){ return f.kind !== 'download'; });
+    select(first >= 0 ? first : 0);
+  }
+  function open(src){
+    var url = listUrl(src);
+    if (!url) return;
+    state.opener = document.activeElement;
+    state.token += 1;
+    var mine = state.token;
+    box.hidden = false;
+    document.body.style.overflow = 'hidden';
+    $('obvtitle').textContent = 'Loading';
+    $('obvsub').textContent = src.view === 'uspto' ? 'Asking the USPTO for the file wrapper.' : '';
+    $('obvname').textContent = ''; $('obvopen').hidden = true; $('obvdl').hidden = true;
+    $('obvzip').hidden = true; $('obvoffice').hidden = true;
+    list.innerHTML = '';
+    say('Loading the list of files.');
+    $('obvclose').focus();
+    fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
+      .then(function(r){ return r.json().catch(function(){ return {ok: false, error: 'HTTP ' + r.status}; }); })
+      .then(function(j){
+        if (mine !== state.token) return;
+        if (!j || !j.ok){ $('obvtitle').textContent = 'Could not open this'; say((j && j.error) || 'Not found.'); return; }
+        render(j);
+      })
+      .catch(function(){ if (mine === state.token) say('The list could not be loaded. Check the connection and try again.'); });
+  }
+  function close(){
+    box.hidden = true;
+    frame.removeAttribute('src');
+    document.body.style.overflow = '';
+    state.token += 1;
+    if (state.opener && state.opener.focus) state.opener.focus();
+  }
+  $('obvclose').addEventListener('click', close);
+  box.addEventListener('click', function(ev){ if (ev.target === box) close(); });
+  document.addEventListener('keydown', function(ev){
+    if (box.hidden) return;
+    if (ev.key === 'Escape'){ ev.preventDefault(); close(); }
+    else if ((ev.key === 'ArrowDown' || ev.key === 'ArrowUp') && !/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)){
+      ev.preventDefault();
+      select(Math.min(Math.max(state.sel + (ev.key === 'ArrowDown' ? 1 : -1), 0), state.files.length - 1));
+    }
+  });
+  //  Every [data-view] control on the page, including the ones panels build later.
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest('[data-view]');
+    if (!b || box.contains(b)) return;
+    ev.preventDefault(); ev.stopPropagation();
+    open(b.dataset);
+  });
+  return {open: open, close: close};
+})();
 </script>
 
 <script>
@@ -1312,9 +1539,10 @@ function obLink(href, text){
       head.appendChild(obEl('b', null, when16(v.built_at) + ' UTC'));
       head.appendChild(document.createTextNode('  ·  ' + (v.instrument_label || 'Package')
         + (v.docs ? '  ·  ' + v.docs + ' document' + (v.docs === 1 ? '' : 's') : '')
-        + (v.account ? '  ·  built by ' + v.account : '')));
+        + '  ·  built by ' + (v.built_by || v.account || 'no account on record')));
       li.appendChild(head);
       var acts = obEl('div', 'acts');
+      acts.appendChild(obViewBtn('View the files', {view: 'iptorch', slug: v.slug, stamp: v.stamp}));
       acts.appendChild(obLink(window.APP_BASE + '/actions/iptorch/' + encodeURIComponent(v.slug) + '/'
                               + encodeURIComponent(v.stamp) + '.zip', 'Download this zip'));
       if (v.origin !== 'handed-copy') acts.appendChild(obLink(v.report_url, 'Open on iptorch.com'));
@@ -1389,7 +1617,10 @@ function obLink(href, text){
       head.appendChild(obEl('span', 'src', s.source || ''));
       li.appendChild(head);
       var acts = obEl('div', 'acts');
-      if (s.package) acts.appendChild(obLink(window.APP_BASE + '/actions/package/' + encodeURIComponent(s.package), 'The package as filed'));
+      if (s.package){
+        acts.appendChild(obViewBtn('View the files', {view: 'package', name: s.package}));
+        acts.appendChild(obLink(window.APP_BASE + '/actions/package/' + encodeURIComponent(s.package), 'The package as filed'));
+      }
       if (s.packet_url && !window.OB_GUEST) acts.appendChild(obLink(s.packet_url, 'Open in the filing app'));
       if (acts.childNodes.length) li.appendChild(acts);
       if (s.how || s.evidence) li.appendChild(obEl('span', 'ev', s.how || s.evidence));
@@ -1413,7 +1644,8 @@ function obLink(href, text){
       wrap.appendChild(obEl('p', 'empty', blind ? blind
         : filed ? ('Not on the office record yet.' + (d.refreshed_at ? ' Register last read ' + d.refreshed_at + '.' : ''))
         : 'Nothing from anyone on the office record.'));
-      if (d.register_url) wrap.appendChild(obLink(d.register_url, 'Open the office record'));
+      if (obUsptoApp(d)) wrap.appendChild(obViewBtn('View the USPTO file', {view: 'uspto', app: obUsptoApp(d)}));
+      else if (d.register_url) wrap.appendChild(obLink(d.register_url, 'Open the office record'));
       return wrap;
     }
     var ul = obEl('ul', 'obsubs');
@@ -1464,7 +1696,10 @@ function obLink(href, text){
       var src = obEl('span', 'ev', (e.office_source || e.evidence || '')
         + (e.source && e.whose === 'ours' ? '  ·  ' + e.source : '') + '  ');
       var url = e.record_url || d.register_url;
-      if (url) src.appendChild(obLink(url, 'Open at the office'));
+      //  A US file is shown through here: Patent Center renders an empty page to anybody not
+      //  signed in to a USPTO.gov account.
+      if (obUsptoApp(d)) src.appendChild(obViewBtn('View the USPTO file', {view: 'uspto', app: obUsptoApp(d)}));
+      else if (url) src.appendChild(obLink(url, 'Open at the office'));
       li.appendChild(src);
       ul.appendChild(li);
     });
@@ -1549,9 +1784,14 @@ function obLink(href, text){
                         ? '  ·  published as ' + d.publication : '')
                      + (d.application ? '  ·  app. ' + d.application : '')));
     var links = obEl('div', 'obxlinks');
-    if (d.register_url) links.appendChild(obLink(d.register_url,
-        d.register_url.indexOf('euipo.europa.eu') >= 0 ? 'EUIPO eSearch record' :
-        d.register_url.indexOf('patentcenter') >= 0 ? 'USPTO Patent Center record' : 'Official record'));
+    var usApp = obUsptoApp(d);
+    if (usApp){
+      links.appendChild(obViewBtn('USPTO file', {view: 'uspto', app: usApp}));
+      var pc = obLink('https://patentcenter.uspto.gov/applications/' + usApp + '/ifw/docs', 'Patent Center');
+      pc.title = 'Loads empty unless you are signed in to USPTO.gov';
+      links.appendChild(pc);
+    } else if (d.register_url) links.appendChild(obLink(d.register_url,
+        d.register_url.indexOf('euipo.europa.eu') >= 0 ? 'EUIPO eSearch record' : 'Official record'));
     if (d.google) links.appendChild(obLink(d.google, 'Google Patents'));
     head.appendChild(links);
     head.appendChild(obEl('h3', null, d.title_full || d.title || ''));
@@ -1769,6 +2009,9 @@ function obLink(href, text){
       a.href = window.APP_BASE + '/actions/package/' + encodeURIComponent(d.package);
       a.setAttribute('download', '');
       root.appendChild(a);
+      var vb = obViewBtn('View the files', {view: 'package', name: d.package});
+      vb.style.marginLeft = '12px';
+      root.appendChild(vb);
     }
     if (kind === 'filing' && d.packet_url){
       var p = obEl('a', 'obmdl', 'Open the packet in the filing app');
