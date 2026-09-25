@@ -564,7 +564,7 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
         cannot see yet.{% else %}.{% endif %}
       {% else %}<b>Never pulled live.</b>{% if target.seeded %} The dates below come from the shipped {{ meta.as_of or 'baseline' }} sweep and a case may have granted, lapsed or been refused since.{% endif %}
       {% endif %}
-      Checked automatically every day at {{ daily_at }}{% if daily %}; the last run {{ 'finished' if daily.finished else 'started' }} {{ (daily.finished or daily.started)[:16] | replace('T', ' ') }} UTC{% if not daily.ok %} <b>with a failed sweep</b>{% elif daily.read_errors %}, {{ daily.read_errors }} case{{ '' if daily.read_errors == 1 else 's' }} unreadable{% endif %}{% else %}; it has not run yet{% endif %}.
+      Checked automatically every day at {{ daily_at }}{% if daily %}; the last run {{ 'finished' if daily.finished else 'started' }} {{ (daily.finished or daily.started)[:16] | replace('T', ' ') }} UTC{% if not daily.ok %} <b>with a failed sweep</b>{% endif %}{% else %}; it has not run yet{% endif %}.
       {% if kind == 'trademark' %}TMview for every office's status, publication and opposition period; new marks in the target's names are added.
       {% elif kind == 'design' %}EUIPO design register and the USPTO Open Data Portal for status and dates; new designs in the target's names are added.
       {% else %}USPTO Open Data Portal for status, windows and our own submissions on the file wrapper;
