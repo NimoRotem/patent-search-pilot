@@ -660,6 +660,13 @@ _SCOPE_ENDPOINTS = {
         "observations.action_image",
         "observations.action_package",
         "observations.action_iptorch_zip",
+        #  The viewer: the same packages, file by file, and the USPTO file of a docket case.
+        "observations.action_view_iptorch",
+        "observations.action_view_iptorch_file",
+        "observations.action_view_package",
+        "observations.action_view_package_file",
+        "observations.action_view_uspto",
+        "observations.action_view_uspto_doc",
     },
 }
 

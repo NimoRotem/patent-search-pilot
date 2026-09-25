@@ -1417,13 +1417,14 @@ def _describe(row, patch):
 # writing it back, per user
 # ---------------------------------------------------------------------------------------------
 
-def apply_to_user(user_id, result, target_id=None, kind="patent"):
+def apply_to_user(user_id, result, target_id=None, kind="patent", trigger="button"):
     """Merge a sweep onto one of a person's targets. Only the register fields move.
 
     The refresh record (when, what moved, what could not be read) lives on the target, one per
     KIND: the trademark sweep and the design sweep are separate jobs and the page shows one kind
     at a time, so a design page must not report what the trademark sweep found. The per-user
-    meta keeps only the shipped file's own notes.
+    meta keeps only the shipped file's own notes. `trigger` says who asked: the page's button, or
+    the daily check (actions_daily.py).
     """
     import observations
     observations.ensure_schema()
@@ -1451,7 +1452,7 @@ def apply_to_user(user_id, result, target_id=None, kind="patent"):
                    ON CONFLICT (user_id, target_id, publication) DO NOTHING""",
                 (user_id, target_id, row["publication"], json.dumps(row)))
             n_new += cur.rowcount
-        record = {"as_of": result["as_of"],
+        record = {"as_of": result["as_of"], "trigger": trigger,
                   "refreshed_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat(),
                   "sources": result.get("sources") or {},
                   "errors": (result.get("errors") or [])[:40],
