@@ -296,6 +296,10 @@ def ep_procedural(publication):
         if EP_OPPOSITION_STEP.search(desc):
             out["opposition_pending"] = True
         if EP_OBSERVATION_STEP.search(desc):
+            date_type = ""
+            for dt in _aslist(step.get("reg:procedural-step-date")):
+                if isinstance(dt, dict):
+                    date_type = str(dt.get("@step-date-type") or "") or date_type
             events.append({
                 "date": when or "",
                 "instrument": desc.strip() or "Observations by a third party, Art. 115 EPC",
@@ -306,6 +310,12 @@ def ep_procedural(publication):
                 #  does not say whose they are, so the page must not claim them.
                 "whose": "unknown",
                 "evidence": "European Patent Register, procedural step %s." % (code or desc),
+                #  The register's own step, unedited: code, description, date and what the date
+                #  is (the EPO dates an observation by the day it was received).
+                "office_source": "European Patent Register, procedural steps",
+                "office_docs": [{"date": when or "", "code": str(code), "description": desc.strip(),
+                                 "date_type": date_type.replace("_", " ").lower(),
+                                 "id": str(step.get("@id") or "")}],
             })
     if events:
         out["file_events"] = sorted(events, key=lambda e: e["date"], reverse=True)
@@ -445,10 +455,15 @@ def de_case(publication):
             desc = (leg.get("@desc") or "").strip()
             codes.add(code)
             when = _iso(_first(leg, "ops:L007EP") or _first(leg, "ops:L525EP"))
+            #  WHICH DATE THIS IS, said with it. INPADOC's L007EP is the gazette date of the
+            #  event, which is not the day the office received a paper: an Einspruch faxed across
+            #  midnight on its last day carried the next day's date here.
+            date_type = ("gazette date" if _first(leg, "ops:L007EP")
+                         else ("effective date" if _first(leg, "ops:L525EP") else ""))
             if not when:
                 m2 = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(_first(leg, "ops:pre") or ""))
                 when = m2.group(0) if m2 else None
-            events.append({"code": code, "desc": desc, "date": when})
+            events.append({"code": code, "desc": desc, "date": when, "date_type": date_type})
 
     events.sort(key=lambda e: e.get("date") or "")
     out["register_events"] = events[-12:]
@@ -525,6 +540,19 @@ def de_case(publication):
 
     if any(DE_OPPOSITION.search(e.get("desc") or "") for e in events):
         out["opposition_pending"] = True
+    #  AN EINSPRUCH DOES REACH THE REGISTER, unlike a § 43(3) Einwendung: the opposition becomes a
+    #  legal-status event on the German file. Listed as the register words it and, like every
+    #  paper the office does not name a filer for, never claimed as ours here.
+    opp = [e for e in events if DE_OPPOSITION.search(e.get("desc") or "")]
+    if opp:
+        out["file_events"] = [{
+            "date": e.get("date") or "", "instrument": e.get("desc") or "Opposition",
+            "documents": 0, "fee_paid": False, "acknowledged": False, "whose": "unknown",
+            "evidence": "German legal status (INPADOC), event %s." % (e.get("code") or "?"),
+            "office_source": "DPMA legal status, as INPADOC carries it (EPO OPS)",
+            "office_docs": [{"date": e.get("date") or "", "code": e.get("code") or "",
+                             "description": e.get("desc") or "",
+                             "date_type": e.get("date_type") or ""}]} for e in reversed(opp)]
     return out
 
 
@@ -722,8 +750,19 @@ def us_submissions(app, events=None):
         when = str(d.get("officialDate") or d.get("mailRoomDate") or "")[:10]
         if not when:
             continue
-        slot = by_day.setdefault(when, {"date": when, "codes": {}})
+        slot = by_day.setdefault(when, {"date": when, "codes": {}, "docs": []})
         slot["codes"][code] = slot["codes"].get(code, 0) + 1
+        #  THE OFFICE'S OWN LINE, UNEDITED: its code, its description, its date, its direction
+        #  and its page count. The summary below is ours; this is what Patent Center shows.
+        pages = 0
+        for opt in d.get("downloadOptionBag") or []:
+            if isinstance(opt, dict) and str(opt.get("mimeTypeIdentifier") or "").upper() == "PDF":
+                pages = int(opt.get("pageTotalQuantity") or 0)
+        slot["docs"].append({"date": when, "code": str(d.get("documentCode") or ""),
+                             "description": str(d.get("documentCodeDescriptionText") or ""),
+                             "direction": str(d.get("directionCategory") or ""),
+                             "pages": pages, "id": str(d.get("documentIdentifier") or "")})
+    record_url = "https://patentcenter.uspto.gov/applications/%s/ifw/docs" % app
     out = []
     for when in sorted(by_day, reverse=True):
         codes = by_day[when]["codes"]
@@ -746,6 +785,10 @@ def us_submissions(app, events=None):
                          + (". The office stores each concise description twice, as filed and as "
                             "its own scan, so the reference count is about half of that."
                             if n_rel > 1 else "")),
+            "office_source": "USPTO file wrapper (Patent Center)",
+            "record_url": record_url,
+            #  In the order the file wrapper returned them, which is the office's own.
+            "office_docs": by_day[when]["docs"],
         })
     if out:
         return out
@@ -756,7 +799,10 @@ def us_submissions(app, events=None):
         if US_SUBMISSION_EVENT.search(text):
             out.append({"date": when, "instrument": text.strip(), "documents": 0,
                         "fee_paid": False, "acknowledged": False,
-                        "evidence": "USPTO transaction history: %s" % code})
+                        "evidence": "USPTO transaction history: %s" % code,
+                        "office_source": "USPTO transaction history (Patent Center)",
+                        "record_url": record_url,
+                        "office_docs": [{"date": when, "code": code, "description": text}]})
     return out
 
 

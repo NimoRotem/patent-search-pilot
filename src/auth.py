@@ -659,6 +659,7 @@ _SCOPE_ENDPOINTS = {
         "observations.api_action_refresh_state",
         "observations.action_image",
         "observations.action_package",
+        "observations.action_iptorch_zip",
     },
 }
 
