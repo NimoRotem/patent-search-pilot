@@ -104,7 +104,7 @@ def test_guest_keeps_the_endpoints_its_page_actually_calls(secured):
         for ep in ("observations.actions_page", "observations.api_action_case",
                    "observations.api_action_refresh", "observations.api_action_refresh_state",
                    "observations.action_image", "observations.action_package",
-                   "static", "auth.logout"):
+                   "observations.action_iptorch_zip", "static", "auth.logout"):
             assert ep in auth._SCOPE_ENDPOINTS["actions"] or ep in auth._SCOPE_ALWAYS, ep
 
 

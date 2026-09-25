@@ -122,6 +122,21 @@ def test_a_german_grant_is_read_off_the_legal_family_not_a_search(monkeypatch):
     assert got["exam_requested"] is True
 
 
+def test_an_einspruch_on_the_german_file_is_listed_as_the_register_words_it(monkeypatch):
+    legal = {"ops:world-patent-data": {"ops:patent-family": {"ops:family-member": [
+        _de_member("B4", "20260820", [
+            {"@code": "R026", "@desc": "OPPOSITION FILED AGAINST PATENT",
+             "ops:pre": {"$": "DE102024133318B  2026-09-18R026+OPPOSITION FILED"}}])]}}}
+    monkeypatch.setattr(refresh, "_ops_json", _ops(legal))
+    got = refresh.de_case("DE102024133318B4")
+    assert got["opposition_pending"] is True
+    [ev] = got["file_events"]
+    assert ev["whose"] == "unknown"
+    assert ev["office_docs"] == [{"date": "2026-09-18", "code": "R026",
+                                  "description": "OPPOSITION FILED AGAINST PATENT",
+                                  "date_type": ""}]
+
+
 def test_no_request_for_examination_on_the_file_leaves_44_2_open(monkeypatch):
     monkeypatch.setattr(refresh, "_ops_json", _ops(DE_PENDING_UNEXAMINED))
     got = refresh.de_case("DE102024133318A1")
@@ -259,6 +274,24 @@ def test_our_own_submission_is_read_out_of_the_file_wrapper(monkeypatch):
     assert "twice" in subs[0]["evidence"]
 
 
+def test_the_office_lines_behind_a_submission_are_kept_as_the_office_wrote_them(monkeypatch):
+    """The docket's third stage prints these unedited: code, description, date, pages."""
+    meta = _wrapper("Docketed New Case - Ready for Examination", "2025-09-10",
+                    "US20260109053A1", "2026-04-23", [])
+    docs = {"documentBag": [
+        {"documentCode": "IDS.3P", "documentCodeDescriptionText": "Third-Party Submission Under 37 CFR 1.290",
+         "officialDate": "2026-08-02T00:00:00.000-0400", "directionCategory": "INCOMING",
+         "documentIdentifier": "MX1", "downloadOptionBag": [{"mimeTypeIdentifier": "PDF", "pageTotalQuantity": 3}]},
+        {"documentCode": "N417.PYMT", "documentCodeDescriptionText": "Electronic Fee Payment",
+         "officialDate": "2026-08-02T00:00:00.000-0400", "directionCategory": "INCOMING"}]}
+    monkeypatch.setattr(refresh, "_odp", _odp_stub(meta, docs))
+    [sub] = refresh.us_case("19315746")["our_submissions"]
+    assert sub["record_url"].endswith("/applications/19315746/ifw/docs")
+    assert [(d["code"], d["description"], d["date"], d["pages"]) for d in sub["office_docs"]] == [
+        ("IDS.3P", "Third-Party Submission Under 37 CFR 1.290", "2026-08-02", 3),
+        ("N417.PYMT", "Electronic Fee Payment", "2026-08-02", 0)]
+
+
 def test_a_lone_office_letter_is_not_counted_as_a_submission(monkeypatch):
     meta = _wrapper("Docketed New Case", "2025-09-10", "US20260109053A1", "2026-04-23", [])
     monkeypatch.setattr(refresh, "_odp", _odp_stub(meta, {"documentBag": [
@@ -379,6 +412,15 @@ def test_observations_already_on_the_european_file_are_found_and_not_claimed(mon
     #  must never report them as ours.
     assert ev["whose"] == "unknown"
     assert "opposition_pending" not in got
+
+
+def test_the_registers_own_step_is_kept_unedited(monkeypatch):
+    monkeypatch.setattr(refresh, "_ops_json", _ops(_steps(
+        ("TIPA", "Observations by a third party", "20260905"))))
+    [ev] = refresh.ep_procedural("EP4349543A1")["file_events"]
+    assert ev["office_docs"] == [{"date": "2026-09-05", "code": "TIPA",
+                                  "description": "Observations by a third party",
+                                  "date_type": "date of dispatch", "id": ""}]
 
 
 def test_a_pending_opposition_is_read_off_the_procedural_file(monkeypatch):

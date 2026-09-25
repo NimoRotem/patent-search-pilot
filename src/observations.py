@@ -54,6 +54,7 @@ import datetime
 import json
 import os
 import re
+import sys
 import threading
 import traceback
 
@@ -63,6 +64,7 @@ from flask import (Blueprint, abort, jsonify, redirect, render_template, request
 import accounts
 import auth
 import db
+import iptorch_packages
 import observation_actions
 import observation_links
 import observation_marks
@@ -122,6 +124,10 @@ DETAIL_FIELDS = (
     #  What has already been built for the case elsewhere: the filing app's packets and this
     #  app's own searches, pinned to the row by number. See observation_links.
     "packages", "package_state", "searches", "search_state",
+    #  The three stages a package goes through, kept apart on purpose: every zip built for the
+    #  case (iptorch.com's among them), what was actually submitted to the office, and what the
+    #  office itself now shows publicly, as the office words it. See `stages`.
+    "iptorch", "submitted", "public", "stage", "built_count", "built_latest", "office_blind",
     #  Designs and marks: what a row of those kinds carries that a patent row does not.
     "kind", "status", "registration", "registration_date", "expiry_date", "publication_date",
     "opposition_start", "opposition_end", "classes", "mark_type", "image", "oppositions",
@@ -690,7 +696,126 @@ def attribute_filings(cases, filings):
                 "evidence": f.get("evidence") or ""})
         on_file.sort(key=lambda e: e.get("date") or "", reverse=True)
         c["on_file"] = on_file
+        #  Our own filing records for this case, whatever their state, for `stages`.
+        c["our_filings"] = mine_rows
     return cases
+
+
+#  What an office shows of a third party's paper, when it shows nothing, said in the cell rather
+#  than left as a dash that reads "not public yet".
+OFFICE_BLIND = {"DPMA": "DPMA does not publish these", "WIPO (PCT)": "PATENTSCOPE only"}
+#  Except an opposition, which every register records. A filed Einspruch is watched for on the
+#  German legal status rather than written off as invisible.
+_OPPOSITION = re.compile(r"opposition|einspruch", re.I)
+STAGE_RANK = {"public": 4, "submitted": 3, "handed": 2, "built": 1, "none": 0}
+
+
+def stages(cases, have=()):
+    """Split what has been done on each case into the three stages a package goes through.
+
+    1. BUILT. Every package made for the case: iptorch.com's zips (one kept per build, see
+       iptorch_packages), the filing app's packets and this app's own search zips. Building one
+       puts nothing in front of anybody.
+    2. SUBMITTED. What went to the office, from our own records: the filing ledger and the filing
+       app's receipts. A package handed to the filing app and not filed yet is listed here too,
+       flagged, because that is somebody's job today. This is our word, not the office's.
+    3. PUBLIC. What the office's own file wrapper or register now shows, exactly as the office
+       lists it. Only this is something an examiner or the other side can see.
+
+    These used to share two columns. "On file" mixed our own receipts with the register's
+    entries and "Prepared" mixed packets with searches, so a zip built for a case and a paper the
+    examiner already has could read the same at a glance.
+    """
+    for c in cases:
+        packets = [p for p in (c.get("packages") or []) if not p.get("demo")]
+        zips = [s for s in (c.get("searches") or []) if s.get("concise")]
+        c["built_count"] = len(c.get("iptorch") or []) + len(packets) + len(zips)
+        dates = ([str(v.get("built_at") or "")[:10] for v in c.get("iptorch") or []]
+                 + [str(p.get("created") or "")[:10] for p in packets]
+                 + [str(s.get("when") or "")[:10] for s in zips])
+        c["built_latest"] = max([d for d in dates if d] or [""])
+        subs, packet_ids = [], set()
+        for f in c.get("our_filings") or []:
+            st = str(f.get("status") or "")
+            state = "filed" if st in ("filed", "posted") else ("handed" if st == "handed_not_filed" else "")
+            if not state:
+                continue            # prepared and never handed over: stage 1, not 2
+            if f.get("packet_id"):
+                packet_ids.add(str(f["packet_id"]))
+            receipts = f.get("receipts")
+            subs.append({
+                "state": state, "posted": st == "posted",
+                "date": str((f.get("filed_on") if state == "filed" else f.get("handed_on")) or "")[:10],
+                "label": (f.get("route_label") or iptorch_packages.INSTRUMENT_LABEL.get(f.get("route"))
+                          or f.get("route") or "Submission"),
+                "how": f.get("how") or "", "evidence": f.get("evidence") or "",
+                "references": f.get("references") or 0,
+                "receipts": len(receipts) if isinstance(receipts, list) else (receipts or 0),
+                "package": f.get("package") if f.get("package") in have else "",
+                "id": f.get("id") or "", "source": "our filing record"})
+        for p in packets:
+            if p.get("id") in packet_ids or p.get("state") not in ("filed", "handed off"):
+                continue
+            packet_ids.add(p.get("id"))
+            subs.append({
+                "state": "filed" if p["state"] == "filed" else "handed",
+                "date": str(p.get("filing_date") or p.get("created") or "")[:10],
+                "label": p.get("label") or "Packet", "confirmation": p.get("confirmation") or "",
+                "receipts": p.get("receipts") or 0, "evidence": p.get("outcome") or "",
+                "packet_url": p.get("url") or "", "id": p.get("id") or "", "source": "filing app"})
+        for v in c.get("iptorch") or []:
+            sent = v.get("sent") or {}
+            if not sent or sent.get("id") in packet_ids:
+                continue
+            packet_ids.add(sent.get("id"))
+            there = next((p for p in (c.get("packages") or []) if p.get("id") == sent.get("id")), None)
+            subs.append({
+                "state": "handed", "date": str(sent.get("at") or "")[:10],
+                "label": "Sent from iptorch.com to the filing app",
+                "by": sent.get("by") or "", "packet_url": sent.get("url") or "",
+                "evidence": ("The filing app shows it as %s, not filed." % there["state"]) if there
+                            else "Not filed by the filing app.",
+                "id": sent.get("id") or "", "source": "iptorch.com", "version": v.get("stamp")})
+        #  The shipped docket marks a few rows filed by hand, from before any of the records
+        #  above existed. That is still our word that it went in.
+        if c.get("filed") and not any(s["state"] == "filed" for s in subs):
+            subs.append({"state": "filed", "date": str(c.get("filed_on") or "")[:10],
+                         "label": "Marked filed on the docket", "evidence": "",
+                         "source": "docket"})
+        subs.sort(key=lambda s: s["date"] or "", reverse=True)
+        c["submitted"] = subs
+        #  Stage 3 is ONLY what the office put there. Our own receipts sit in `on_file` too, as
+        #  evidence until the register catches up, and they belong to stage 2.
+        public = [e for e in (c.get("on_file") or []) if e.get("origin") == "office"]
+        public.sort(key=lambda e: (e.get("whose") == "ours", e.get("date") or ""), reverse=True)
+        c["public"] = public
+        if any(e.get("whose") == "ours" for e in public):
+            c["stage"] = "public"
+        elif any(s["state"] == "filed" for s in subs):
+            c["stage"] = "submitted"
+        elif subs:
+            c["stage"] = "handed"
+        elif c["built_count"]:
+            c["stage"] = "built"
+        else:
+            c["stage"] = "none"
+        opposed = any(_OPPOSITION.search("%s %s" % (s.get("label"), s.get("id"))) for s in subs
+                      if s["state"] == "filed")
+        c["office_blind"] = "" if opposed else OFFICE_BLIND.get(c.get("office") or "", "")
+    return cases
+
+
+def docket_keys(user_id):
+    """Every publication key on any of this person's docket rows, all targets and kinds."""
+    keys = set()
+    with db.cursor(autocommit=True) as cur:
+        cur.execute("""SELECT publication, payload->>'granted_as' AS g, payload->>'patent_number' AS p
+                         FROM app_observation_cases WHERE user_id = %s""", (user_id,))
+        for r in cur.fetchall():
+            for v in (r["publication"], r["g"], r["p"]):
+                keys |= observation_links.pub_keys(v)
+    keys.discard("")
+    return keys
 
 
 def refresh_public(filings, cases):
@@ -1076,6 +1201,20 @@ def actions_page():
     #  Pinned by application and publication number, never by family: the packet for the US
     #  member says nothing about the German one.
     observation_links.attach(cases, uid)
+    #  Every package our own accounts built on iptorch.com, kept here one zip per build. Only on
+    #  the owner's docket (a guest is handed that docket, so counsel sees them too), and a sync
+    #  is asked for in the background so a package built a minute ago shows on the next load.
+    iptorch_on = iptorch_packages.visible_to(user)
+    unmatched = []
+    if iptorch_on:
+        iptorch_packages.start_background()
+        iptorch_packages.kick()
+        try:
+            iptorch_packages.attach(cases)
+            if kind == "patent":
+                unmatched = iptorch_packages.unmatched(docket_keys(uid))
+        except Exception:
+            traceback.print_exc()
     seeded = bool(target and target.get("seeded"))
     refresh_public(filings, cases)
     filings = filings_on(cases, filings, everything=seeded)
@@ -1088,6 +1227,7 @@ def actions_page():
                 c["image"] = url_for("observations.action_image", publication=c["publication"])
     #  Which package files actually exist on disk, so the page never offers a dead download.
     have = set(os.listdir(PACKAGE_DIR)) if os.path.isdir(PACKAGE_DIR) else set()
+    stages(cases, have)
     for f in filings:
         f["package_available"] = bool(f.get("package")) and f["package"] in have
     #  The ten things to act on, above two hundred rows of docket. Only on the shipped docket and
@@ -1111,6 +1251,9 @@ def actions_page():
         if (c.get("action_headline") or {}).get("status") in ("open", "closing"))
     counts.update(observation_links.summary(cases))
     counts["board"] = sum(1 for c in cases if c.get("board"))
+    counts["stage_built"] = sum(1 for c in cases if c.get("built_count"))
+    counts["stage_submitted"] = sum(1 for c in cases if c.get("stage") in ("submitted", "public"))
+    counts["stage_public"] = sum(1 for c in cases if c.get("stage") == "public")
     can_file = can_file_options(cases)
     #  THE EXPANDED ROW'S DATA, TRIMMED. The table row carries what you scan by; everything else
     #  is built on demand from this map by publication number. Only the fields the panel
@@ -1148,6 +1291,9 @@ def actions_page():
                            filing_url=observation_links.FILING_URL,
                            matrix=matrix, matrix_offices=matrix_offices,
                            stale_days=stale_days,
+                           iptorch_on=iptorch_on, iptorch_unmatched=unmatched,
+                           iptorch_sync=iptorch_packages.status() if iptorch_on else {},
+                           iptorch_public=iptorch_packages.IPTORCH_PUBLIC,
                            today=datetime.date.today().isoformat())
 
 
@@ -1336,6 +1482,27 @@ def action_package(name):
     return send_from_directory(PACKAGE_DIR, name, as_attachment=True)
 
 
+@bp.route("/actions/iptorch/<slug>/<stamp>.zip")
+def action_iptorch_zip(slug, stamp):
+    """One kept iptorch.com package, the zip exactly as it was when that build finished.
+
+    Only to the docket it is shown on: the owner's, and a guest working on it."""
+    user = _user()
+    if not iptorch_packages.visible_to(user):
+        abort(404)
+    found = iptorch_packages.zip_path(slug, stamp)
+    if not found:
+        abort(404)
+    path, meta = found
+    name = meta.get("download_name") or path.name
+    #  The build time goes in the saved file's name, or two builds of one package land in the
+    #  Downloads folder under one name and the second silently replaces the first.
+    stem, dot, ext = name.rpartition(".")
+    name = "%s_%s.%s" % (stem or name, stamp, ext or "zip")
+    return send_from_directory(str(path.parent), path.name, as_attachment=True,
+                               download_name=name, max_age=0)
+
+
 def init_app(app):
     """Register the docket. Called before `auth.init_app`, like every other blueprint here."""
     app.register_blueprint(bp)
@@ -1344,4 +1511,9 @@ def init_app(app):
     except Exception:
         #  A docket that cannot seed must not stop the search product booting.
         traceback.print_exc()
+    #  The iptorch.com package copier runs whether or not anybody opens the page: a package
+    #  rebuilt twice while nobody looked would otherwise lose its first version. Never under a
+    #  test run, which must not reach a real database or a real iptorch.
+    if "pytest" not in sys.modules:
+        iptorch_packages.start_background()
     return app

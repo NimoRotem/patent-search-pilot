@@ -17,6 +17,8 @@
 .stat.lapsedstat b{color:var(--faint)}
 .stat.good b{color:var(--good)}
 .stat.prep b{color:var(--accent)}
+.stat.prep.s2 b{color:var(--warn)} .stat.prep.s3 b{color:var(--good)}
+.stat .stgn{font-size:9.5px;letter-spacing:0;text-transform:none}
 button.stat{font:inherit;text-align:center;cursor:pointer;color:inherit}
 button.stat:hover{background:var(--s2);border-color:var(--line2)}
 button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
@@ -111,13 +113,8 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .canline.dim .canins{color:var(--muted)}
 .canmore{font-size:10.5px;color:var(--faint)}
 .subdot{color:var(--good);font-weight:700}
-/*  What is already built for the row, from the filing app and from our own searches. One line
-    each, a pill for the state and the count beside it, a link where there is something to open. */
-.prepline{display:flex;gap:5px;align-items:baseline;white-space:nowrap;overflow:hidden;line-height:1.55}
-.prepline .prepk{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;width:38px;flex-shrink:0}
-.prepline a{font-size:11.5px;white-space:nowrap;flex-shrink:0}
-.prepline .prepn{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;min-width:0}
-.prepline .none{color:var(--faint);font-size:11px}
+/*  The quiet count beside a board entry's packet link. */
+.prepn{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;min-width:0}
 .act.built{background:var(--accent-soft);color:var(--accent);border-color:var(--line2)}
 .act.handed{background:var(--good-soft);color:var(--good);border-color:#bfe3ce}
 .act.filed{background:var(--good);color:#fff;border-color:var(--good)}
@@ -129,6 +126,64 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .obprep li:first-child{border-top:0}
 .obprep .ev{color:var(--faint);font-size:11px;display:block}
 .obprep a.obmdl{margin:6px 8px 0 0;padding:5px 10px;font-size:12px}
+/*  THE THREE STAGES of a package, one colour each and the same numbers everywhere they appear:
+    1 built (blue), 2 submitted to the office (amber), 3 on the office's public record (green).
+    A stage that is not reached is grey text, never a pill, so the eye only lands on what exists. */
+.stgn{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
+  border-radius:50%;font-size:9.5px;font-weight:700;margin-right:4px;flex-shrink:0;
+  vertical-align:1px;border:1px solid}
+.stgn.s1{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.stgn.s2{color:var(--warn);border-color:var(--warn);background:var(--s2)}
+.stgn.s3{color:#fff;border-color:var(--good);background:var(--good)}
+.stgpill{display:inline-block;font-size:10.5px;font-weight:650;padding:0 6px;border-radius:9px;
+  border:1px solid;white-space:nowrap;line-height:16px}
+.stgpill.s1{background:var(--accent-soft);color:var(--accent);border-color:var(--line2)}
+.stgpill.s2{background:var(--s2);color:var(--warn);border-color:var(--warn)}
+.stgpill.s2x{background:var(--bad-soft);color:var(--bad);border-color:#f0c2be}
+.stgpill.s3{background:var(--good);color:#fff;border-color:var(--good)}
+.stgpill.s3w{background:transparent;color:var(--muted);border-color:var(--line2);border-style:dashed}
+.stgpill.s3o{background:var(--s2);color:var(--muted);border-color:var(--line)}
+.obtable td.stgc{white-space:nowrap;overflow:hidden}
+.obtable td.stgc .stgline{display:flex;gap:5px;align-items:baseline;overflow:hidden}
+.obtable td.stgc a{font-size:11.5px;flex-shrink:0}
+.obtable td.stgc .stgsub{display:block;font-size:10.5px;color:var(--faint);overflow:hidden;
+  text-overflow:ellipsis}
+.obtable td.stgc .stgnone{font-size:11px;color:var(--faint)}
+.obtable th .stgn{vertical-align:0}
+.stglegend{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:12px;
+  color:var(--muted);margin:2px 0 10px}
+.stglegend span.k{display:inline-flex;align-items:center}
+.stglegend .sync{color:var(--faint);font-size:11px}
+.stglegend .sync.bad{color:var(--bad)}
+.obstage{border-left:3px solid var(--line2);padding-left:10px;margin-top:12px}
+.obstage.s1{border-left-color:var(--accent)} .obstage.s2{border-left-color:var(--warn)}
+.obstage.s3{border-left-color:var(--good)}
+.obstage h4{display:flex;align-items:center}
+.obstage .empty{font-size:12px;color:var(--faint);margin:4px 0 0}
+.obstage .src{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);
+  border:1px solid var(--line);border-radius:3px;padding:0 4px;margin-right:4px}
+.obstage li .acts{margin-top:3px;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px}
+.offrec{width:100%;border-collapse:collapse;font-size:12px;margin:5px 0 2px}
+.offrec th,.offrec td{border-bottom:1px solid var(--line);padding:3px 8px 3px 0;text-align:left;
+  vertical-align:top}
+.offrec th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);
+  font-weight:650;white-space:nowrap}
+.offrec td.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+  white-space:nowrap}
+.offrec td.dt{white-space:nowrap;font-variant-numeric:tabular-nums}
+.offrecwrap{overflow-x:auto}
+/*  It sits inside the docket table's expanded row, so the docket's own cell padding and its
+    sticky header would otherwise apply to it and float its header down the panel. */
+.obtable .offrec th,.obtable .offrec td{padding:3px 12px 3px 0;border-bottom:1px solid var(--line);
+  font-size:12px}
+.obtable .offrec thead th{position:static;top:auto;z-index:auto;background:transparent;
+  font-size:10px;color:var(--faint);cursor:default}
+.iporphans{width:100%;border-collapse:collapse;font-size:12.5px}
+.iporphans th,.iporphans td{border-bottom:1px solid var(--line);padding:6px 9px;text-align:left;
+  vertical-align:top}
+.iporphans th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);
+  font-weight:650;white-space:nowrap}
+.iporphans td.dt{white-space:nowrap;font-variant-numeric:tabular-nums}
 
 .obacts{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
 .obacts th,.obacts td{border-bottom:1px solid var(--line);padding:6px 9px;text-align:left;
@@ -192,7 +247,7 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
 .obtools select{padding-right:20px;width:104px;text-overflow:ellipsis}
 .obtools select#obcan{width:330px}
 .obtools select#obstate{width:150px}
-.obtools select#obprep{width:120px}
+.obtools select#obprep{width:150px}
 .obcount{font-size:12px;color:var(--muted);margin-left:auto;white-space:nowrap}
 .obclear{font:inherit;font-size:11.5px;color:var(--accent);background:none;border:0;cursor:pointer;
   padding:0 4px}
@@ -208,7 +263,7 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
     and the two controls on the right scrolled off the screen: `max-width` on a cell does not bind
     in an auto-laid table. Fixed also makes the title's ellipsis behave. `min-width` keeps it
     honest on a narrow screen, where the wrapper is allowed to scroll instead. */
-.obtable{width:100%;min-width:1120px;table-layout:fixed;border-collapse:collapse;font-size:12.5px}
+.obtable{width:100%;min-width:1140px;table-layout:fixed;border-collapse:collapse;font-size:12.5px}
 .obtable th,.obtable td{padding:7px 9px;text-align:left;vertical-align:top;
   border-bottom:1px solid var(--line)}
 .obtable tbody tr:last-child td{border-bottom:0}
@@ -240,8 +295,6 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
 .obtable td.dts{white-space:nowrap;font-variant-numeric:tabular-nums}
 .obtable td.dts .dtl{display:block;font-size:11px;color:var(--muted)}
 .obtable td.dts .dtl b{color:var(--faint);font-weight:500;display:inline-block;width:30px}
-.obtable td.onf{white-space:nowrap;overflow:hidden}
-.obtable td.onf .dldate{display:block}
 .obtable td.chev{text-align:center;color:var(--faint);font-size:11px;padding-left:4px;padding-right:6px}
 .obtable tr.case[aria-expanded="true"] td.chev{color:var(--accent)}
 .posture{font-size:12px;font-weight:650}
@@ -336,7 +389,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
     scrolling. Both in the urgent colour: an entry is on the board because of a date. */
 .act.board{background:var(--bad-soft);color:var(--bad);border-color:#f0c2be;text-decoration:none}
 .obtable tbody tr.case.onboard td.dl{box-shadow:inset 3px 0 0 var(--bad)}
-@media(max-width:1180px){
+@media(max-width:1200px){
   .obtablewrap{overflow-x:auto}
   .obtable thead th{position:static}
 }
@@ -380,8 +433,9 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
       <button type="button" class="stat closing" data-urgency="soon"><b>{{ counts.get('within_90', 0) }}</b><span>&le; 90 days</span></button>
       <button type="button" class="stat lapsedstat" data-urgency="lapsed"><b>{{ counts.get('lapsed', 0) }}</b><span>lapsed</span></button>
       {% if counts.get('board') %}<button type="button" class="stat urgent" data-board="1"><b>{{ counts.get('board', 0) }}</b><span>on the board</span></button>{% endif %}
-      <button type="button" class="stat prep" data-prep="packet"><b>{{ counts.get('packets', 0) }}</b><span>packets built</span></button>
-      <button type="button" class="stat prep" data-prep="zip"><b>{{ counts.get('zipped', 0) }}</b><span>zips ready</span></button>
+      <button type="button" class="stat prep" data-prep="built"><b>{{ counts.get('stage_built', 0) }}</b><span><span class="stgn s1">1</span>package built</span></button>
+      <button type="button" class="stat prep s2" data-prep="submitted"><b>{{ counts.get('stage_submitted', 0) }}</b><span><span class="stgn s2">2</span>submitted</span></button>
+      <button type="button" class="stat prep s3" data-prep="public"><b>{{ counts.get('stage_public', 0) }}</b><span><span class="stgn s3">3</span>public at the office</span></button>
     </div>
     {% endif %}
   </div>
@@ -607,6 +661,14 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
     <p class="lede">Sorted by the soonest deadline. Rows with no deadline stay open for as long
       as the right is pending or registered, so they carry no countdown and sit at the end. Open
       a row for the whole instrument table, the register's own record and a private note.</p>
+    {#  What the three stage columns mean, once, above them. The sync line says when iptorch.com
+        was last checked for new packages, and says so in red when it could not be. #}
+    <div class="stglegend">
+      <span class="k"><span class="stgn s1">1</span>Built: a package exists (iptorch.com, filing app or search zip)</span>
+      <span class="k"><span class="stgn s2">2</span>Submitted: our records say it went to the office</span>
+      <span class="k"><span class="stgn s3">3</span>Public: the office's own record shows it</span>
+      {% if iptorch_on %}<span class="sync{{ ' bad' if iptorch_sync.ok == false else '' }}" title="{{ iptorch_sync.error or '' }}">{% if iptorch_sync.at_iso %}iptorch.com packages checked {{ iptorch_sync.at_iso[11:16] }} UTC{% if iptorch_sync.ok == false %}, with errors{% endif %}{% else %}iptorch.com packages: checking now{% endif %}</span>{% endif %}
+    </div>
 
     <div class="obtools">
       <input type="search" id="obq" placeholder="Search" aria-label="Search the docket">
@@ -642,16 +704,17 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
         <option value="lapsed">Lapsed</option>
         <option value="submitted">Something is already on the file</option>
       </select>
-      {#  What is already built for the row. "Packet" is the filing app's record for THIS
-          application; "zip" is a third-party-submission archive compiled from one of our own
-          searches. Either says somebody has started, and the last option says nobody has. #}
-      <select id="obprep" aria-label="Filter by what is prepared">
-        <option value="">Prepared</option>
-        <option value="packet">Packet built</option>
-        <option value="handed">Packet handed off or filed</option>
-        <option value="searched">Searched</option>
-        <option value="zip">Zip compiled</option>
-        <option value="nothing">Nothing prepared yet</option>
+      {#  How far our own work on the row has got, in the three stages the table's columns show.
+          "Built" is any package at all: an iptorch.com zip, a filing-app packet or a search zip. #}
+      <select id="obprep" aria-label="Filter by stage">
+        <option value="">Stage</option>
+        <option value="built">1 Package built</option>
+        <option value="built_only">1 Built, not submitted</option>
+        <option value="handed">2 Handed to filing, not filed</option>
+        <option value="submitted">2 Submitted to the office</option>
+        <option value="waiting">2 Submitted, not public yet</option>
+        <option value="public">3 Public on the office record</option>
+        <option value="nothing">Nothing built yet</option>
       </select>
       <button type="button" class="obclear" id="obclear" hidden>clear</button>
       <span class="obcount" id="obcount"></span>
@@ -661,10 +724,10 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
     <table class="obtable" id="obtable">
       <caption class="vh">The docket. Choose a row to open its full detail beneath it.</caption>
       <colgroup>
-        <col style="width:78px"><col style="width:128px"><col>
-        <col style="width:134px"><col style="width:190px"><col style="width:84px">
-        <col style="width:196px">
-        <col style="width:102px"><col style="width:60px"><col style="width:26px">
+        <col style="width:72px"><col style="width:122px"><col>
+        <col style="width:112px"><col style="width:186px">
+        <col style="width:116px"><col style="width:104px"><col style="width:108px">
+        <col style="width:90px"><col style="width:60px"><col style="width:26px">
       </colgroup>
       <thead>
         <tr>
@@ -673,8 +736,9 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
           <th data-sort="title" scope="col">{{ 'Mark' if kind == 'trademark' else ('Design' if kind == 'design' else 'Title') }}</th>
           <th data-sort="posture" scope="col">Status</th>
           <th data-sort="route" scope="col">Can file now</th>
-          <th data-sort="onfile" scope="col">On file</th>
-          <th data-sort="prep" scope="col">Prepared</th>
+          <th data-sort="built" scope="col" title="Every package made for this patent: iptorch.com zips, filing-app packets, search zips"><span class="stgn s1">1</span>Built</th>
+          <th data-sort="submitted" scope="col" title="What went to the office, from our own filing records"><span class="stgn s2">2</span>Submitted</th>
+          <th data-sort="public" scope="col" title="What the office's own file wrapper or register shows, as the office lists it"><span class="stgn s3">3</span>Public</th>
           <th data-sort="filed" scope="col">Dates</th>
           <th data-sort="prio" scope="col">Priority</th>
           <th class="nosort" scope="col"><span class="vh">Open</span></th>
@@ -684,7 +748,6 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
       {% for c in cases %}
         {% set head = c.action_headline %}
         {% set live = c.actions | selectattr('status', 'in', ['open', 'closing']) | rejectattr('weak') | list %}
-        {% set ours = c.on_file | selectattr('whose', 'equalto', 'ours') | list %}
         <tr class="case{{ ' lapsed' if c.state == 'lapsed' else '' }}{{ ' onboard' if c.board else '' }}" data-pub="{{ c.publication }}" tabindex="0" aria-expanded="false"
             data-board="{{ c.board.n if c.board else '' }}"
             data-office="{{ c.office }}" data-route="{{ head.label if head else 'Nothing open' }}"
@@ -693,8 +756,8 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
             data-posture="{{ (c.posture or '') | lower }}"
             data-act="{{ head.status if head else '' }}"
             data-sub="{{ '1' if (c.on_file or c.filed) else '' }}"
-            data-onfile="{{ 'a' if ours else ('b' if c.on_file else 'z') }}"
-            data-pkg="{{ c.package_state or 'none' }}" data-srch="{{ c.search_state or 'none' }}"
+            data-stage="{{ c.stage or 'none' }}" data-built="{{ c.built_count or 0 }}"
+            data-bdate="{{ c.built_latest or '' }}"
             data-filed="{{ c.filing_date or c.pubDate or '' }}"
             data-can="{{ c.can_keys | join(' ') }}"
             data-hay="{{ (c.publication ~ ' ' ~ (c.granted_as or '') ~ ' ' ~ c.title ~ ' ' ~ (c.applicant or '') ~ ' ' ~ (c.inventors | join(' ') if c.inventors else '') ~ ' ' ~ (c.application or '') ~ ' ' ~ (c.registration or '') ~ ' ' ~ (c.classes | join(' ') if c.classes else '') ~ ' ' ~ (c.ipc or '') ~ ' ' ~ (c.register_status or '') ~ ' ' ~ (c.status or '') ~ ' ' ~ (live | map(attribute='instrument') | join(' ')) ~ ' ' ~ (live | map(attribute='statute') | join(' '))) | lower }}">
@@ -751,48 +814,43 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
               <span class="instr none">Nothing, ever again</span>
             {% endif %}
           </td>
-          <td class="onf">
-            {% if ours %}<span class="act open">ours</span> <span class="dldate">{{ ours[0].date }}</span>
-            {% elif c.on_file %}<span class="act conditional">3rd party</span> <span class="dldate">{{ c.on_file[0].date }}</span>
-            {% elif c.filed %}<span class="act open">filed</span>
-            {% elif c.oppositions %}<span class="act conditional">opposed</span> <span class="dldate">{{ c.oppositions | length }} on record</span>
-            {% elif c.cancellations %}<span class="act conditional">cancel.</span> <span class="dldate">{{ c.cancellations | length }} on record</span>
-            {% else %}<span class="office">&ndash;</span>{% endif %}
+          {#  THE THREE STAGES, one column each, never merged. 1: every package built for this
+              patent, newest zip one click away. 2: what our own records say went to the office,
+              or was handed to the filing app and has not. 3: what the office itself now shows,
+              with the office's own document code, which is the only one of the three an
+              examiner or the other side can see. #}
+          <td class="stgc">
+            {% if c.built_count %}
+              {% set v0 = c.iptorch[0] if c.iptorch else none %}
+              <div class="stgline"><span class="stgpill s1">{{ c.built_count }} built</span>
+                {% if v0 %}<a href="{{ request.script_root }}/actions/iptorch/{{ v0.slug }}/{{ v0.stamp }}.zip" onclick="event.stopPropagation()" title="{{ v0.instrument_label }}, built {{ v0.built_at | replace('T', ' ') | replace('Z', ' UTC') }} by {{ v0.account }}">zip</a>{% endif %}</div>
+              <span class="stgsub" title="{% if c.iptorch %}{{ c.iptorch | length }} from iptorch.com, each kept as its own zip{% endif %}">latest {{ c.built_latest[5:10] if c.built_latest else '' }}</span>
+            {% else %}<span class="stgnone">none</span>{% endif %}
           </td>
-          {#  WHAT IS ALREADY BUILT, from the two systems that hold it. The filing app's packet for
-              this application on the first line, our own search on the second, each a link into
-              the thing itself. Pinned by number, so a sibling's packet never shows here. #}
-          <td class="prep">
-            {% set pk = c.packages | rejectattr('demo') | list %}
-            {% set pk0 = pk[0] if pk else (c.packages[0] if c.packages else none) %}
-            {#  pk0['items'], never pk0.items: on a dict Jinja resolves .items to the METHOD. #}
-            <div class="prepline"><span class="prepk">packet</span>
-              {% if pk0 %}
-                <span class="act {{ 'filed' if pk0.state == 'filed' else ('handed' if pk0.state == 'handed off' else ('demo' if pk0.demo else 'built')) }}">{{ 'demo' if pk0.demo else ('handed' if pk0.state == 'handed off' else pk0.state) }}</span>
-                {#  A guest sees WHAT exists but is not offered the way in: the packet lives in the
-                    filing app and the search report is another page of this one, and both would
-                    refuse them. The count and the date are the useful part and they stay. #}
-                {% if current_scope %}<span class="prepn">{{ pk0['items'] }} docs</span>
-                {% else %}<a href="{{ pk0.url }}" target="_blank" rel="noopener" title="{{ pk0.label }} {{ pk0.id }}, built {{ pk0.created }}">{{ pk0['items'] }} docs</a>{% endif %}
-                <span class="prepn">{% if pk0.filing_date %}filed {{ pk0.filing_date[5:10] }}{% elif pk0.created %}{{ pk0.created[5:10] }}{% endif %}{% if c.packages | length > 1 %} +{{ c.packages | length - 1 }}{% endif %}</span>
-              {% else %}<span class="none">none</span>{% endif %}
-            </div>
-            <div class="prepline"><span class="prepk">search</span>
-              {% if c.searches %}
-                {% set s0 = c.searches[0] %}
-                {% set sz = c.searches | selectattr('concise') | list %}
-                {% if sz %}<span class="act zip">zip</span>
-                  {% if current_scope %}<span class="prepn">{{ sz[0].concise }} docs</span>
-                    <span class="prepn">{{ sz[0].when[5:10] }}{% if c.searches | length > 1 %} +{{ c.searches | length - 1 }}{% endif %}</span>
-                  {% else %}<a href="{{ request.script_root }}/report/{{ sz[0].slug }}/concise.zip" title="third-party-submission-{{ sz[0].slug }}.zip">{{ sz[0].concise }} docs</a>
-                  <a href="{{ request.script_root }}/report/{{ sz[0].slug }}" class="prepn" title="{{ sz[0].query }}">{{ sz[0].when[5:10] }}{% if c.searches | length > 1 %} +{{ c.searches | length - 1 }}{% endif %}</a>{% endif %}
-                {% else %}<span class="act {{ 'done' if s0.status and s0.status.startswith('complete') else 'not_yet' }}">{{ 'done' if s0.status and s0.status.startswith('complete') else (s0.status or 'run') }}</span>
-                  {% if current_scope %}<span class="prepn">{{ s0.when[5:10] }}</span>
-                  {% else %}<a href="{{ request.script_root }}/report/{{ s0.slug }}" title="{{ s0.query }}">{{ s0.when[5:10] }}</a>{% endif %}
-                  {% if c.searches | length > 1 %}<span class="prepn">+{{ c.searches | length - 1 }}</span>{% endif %}
-                {% endif %}
-              {% else %}<span class="none">none</span>{% endif %}
-            </div>
+          <td class="stgc">
+            {% set filed = c.submitted | selectattr('state', 'equalto', 'filed') | list %}
+            {% if filed %}<span class="stgpill s2">submitted</span>
+              <span class="stgsub">{{ filed[0].date or 'date not recorded' }}{% if c.submitted | length > 1 %} +{{ c.submitted | length - 1 }}{% endif %}</span>
+            {% elif c.submitted %}<span class="stgpill s2x">handed, not filed</span>
+              <span class="stgsub">{{ c.submitted[0].date }}</span>
+            {% else %}<span class="stgnone">not submitted</span>{% endif %}
+          </td>
+          <td class="stgc">
+            {% set pubours = c.public | selectattr('whose', 'equalto', 'ours') | list %}
+            {% if pubours %}
+              {% set od = pubours[0].office_docs[0] if pubours[0].office_docs else none %}
+              <span class="stgpill s3">public</span>
+              <span class="stgsub" title="{{ od.description if od else pubours[0].instrument }}">{{ pubours[0].date }}{% if od %} &middot; {{ od.code }}{% endif %}</span>
+            {% elif filed and c.public %}<span class="stgpill s3o" title="The office lists {{ c.public[0].instrument }} without naming the filer, dated {{ c.public[0].date }}, which is not the date our own record gives. Open the row to compare the two.">not named</span>
+              <span class="stgsub">{{ c.public[0].date }}</span>
+            {% elif filed and c.office_blind %}<span class="stgnone" title="The register does not show third-party papers">{{ c.office_blind }}</span>
+            {% elif filed %}<span class="stgpill s3w">not public yet</span>
+              <span class="stgsub">{% if c.refreshed_at %}read {{ c.refreshed_at[5:10] }}{% else %}register not read{% endif %}</span>
+            {% elif c.public %}<span class="stgpill s3o">3rd party</span>
+              <span class="stgsub">{{ c.public[0].date }}</span>
+            {% elif c.oppositions %}<span class="stgpill s3o">opposed</span> <span class="stgsub">{{ c.oppositions | length }} on record</span>
+            {% elif c.cancellations %}<span class="stgpill s3o">cancel.</span> <span class="stgsub">{{ c.cancellations | length }} on record</span>
+            {% else %}<span class="stgnone">&ndash;</span>{% endif %}
           </td>
           <td class="dts">
             {% if c.filing_date %}<span class="dtl"><b>filed</b>{{ c.filing_date }}</span>{% endif %}
@@ -818,6 +876,36 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   </section>
   {% endif %}
 
+  {#  PACKAGES WITH NO ROW TO GO ON. Built on iptorch.com by one of our accounts for a patent that
+      is on none of this account's docket targets. Listed rather than dropped, so a package never
+      exists only on iptorch.com. #}
+  {% if iptorch_on and iptorch_unmatched %}
+  <section class="obsec" id="iptorch-unmatched">
+    <h2>Built on iptorch.com for patents not on this docket</h2>
+    <p class="lede">Every package from the three iptorch.com accounts is kept here as a zip, one per
+      build. These were run on patents that no target on this docket tracks, so they have no row.
+      Add the owner as a target and they move onto their rows.</p>
+    <div class="obtablewrap" style="overflow-x:auto">
+    <table class="iporphans">
+      <thead><tr><th scope="col">Built (UTC)</th><th scope="col">Patent</th><th scope="col">Package</th>
+        <th scope="col">Account</th><th scope="col"><span class="vh">Links</span></th></tr></thead>
+      <tbody>
+      {% for v in iptorch_unmatched %}
+        <tr>
+          <td class="dt">{{ v.built_at[:16] | replace('T', ' ') }}</td>
+          <td>{{ v.subject }}{% if v.subject_title %}<br><span class="dldate">{{ v.subject_title[:90] }}</span>{% endif %}</td>
+          <td>{{ v.instrument_label }}{% if v.docs %} &middot; {{ v.docs }} docs{% endif %}{% if v.sent %}<br><span class="dldate">sent to the filing app {{ v.sent.at[:10] }}</span>{% endif %}</td>
+          <td>{{ v.account }}</td>
+          <td style="white-space:nowrap"><a href="{{ request.script_root }}/actions/iptorch/{{ v.slug }}/{{ v.stamp }}.zip">Download zip</a>
+            &middot; <a href="{{ v.report_url }}" target="_blank" rel="noopener">iptorch.com</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
+
   {% endif %}
 
   {#  Only the fields each panel renders. `tojson` escapes < and &, so a title carrying markup
@@ -826,7 +914,7 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   <script type="application/json" id="obfilings">{{ filings|tojson }}</script>
   <script type="application/json" id="obmissed">{{ missed|tojson }}</script>
   <script type="application/json" id="obtargets">{{ targets|tojson }}</script>
-  <script>window.OB_TARGET = {{ (target.id if target else None) | tojson }}; window.OB_KIND = {{ kind | tojson }};</script>
+  <script>window.OB_TARGET = {{ (target.id if target else None) | tojson }}; window.OB_KIND = {{ kind | tojson }}; window.OB_GUEST = {{ (current_scope | default('')) | tojson }};</script>
 
   {# ── 3. what changed ────────────────────────────────────────────────────── #}
   {% if target and refresh and (refresh.changes or refresh.errors) %}
@@ -955,7 +1043,7 @@ function obLink(href, text){
   var DETAIL = {};
   try { DETAIL = JSON.parse(document.getElementById('obdetail').textContent) || {}; }
   catch (e) { DETAIL = {}; }
-  var COLS = 10;
+  var COLS = 11;
 
   // ── filters, populated from the data so they can never list a dead option ──────────────
   function fill(sel, values){
@@ -997,14 +1085,18 @@ function obLink(href, text){
     if (!want) return true;
     return (' ' + tr.dataset.can + ' ').indexOf(' ' + want + ' ') >= 0;
   }
+  //  The stage filter. `data-stage` is the furthest stage the row has reached (see
+  //  observations.stages); `data-built` counts every package, whatever stage it went on to.
   function prepOk(tr, want){
-    var pk = tr.dataset.pkg || 'none', sr = tr.dataset.srch || 'none';
+    var st = tr.dataset.stage || 'none', built = parseInt(tr.dataset.built || '0', 10) > 0;
     if (!want) return true;
-    if (want === 'packet')   return pk !== 'none' && pk !== 'demo';
-    if (want === 'handed')   return pk === 'handed off' || pk === 'filed';
-    if (want === 'searched') return sr === 'done' || sr === 'zip';
-    if (want === 'zip')      return sr === 'zip';
-    if (want === 'nothing')  return (pk === 'none' || pk === 'demo') && sr === 'none';
+    if (want === 'built')      return built;
+    if (want === 'built_only') return st === 'built';
+    if (want === 'handed')     return st === 'handed';
+    if (want === 'submitted')  return st === 'submitted' || st === 'public';
+    if (want === 'waiting')    return st === 'submitted';
+    if (want === 'public')     return st === 'public';
+    if (want === 'nothing')    return !built && st === 'none';
     return true;
   }
 
@@ -1088,17 +1180,19 @@ function obLink(href, text){
       return isNaN(k) ? 999999 : k;
     }
     if (key === 'prio'){
-      var t = tr.cells[8].textContent.trim();
+      var t = tr.cells[9].textContent.trim();
       var m = t.match(/\d/);            // "1 - critical" sorts above "3"; words sort last
       return m ? parseInt(m[0], 10) : (t ? 50 : 99);
     }
     if (key === 'posture') return {pending: 0, granted: 1, lapsed: 2}[tr.dataset.posture] || 3;
-    if (key === 'onfile')  return tr.dataset.onfile || 'z';
-    if (key === 'prep'){
-      var PK = {filed: 0, 'handed off': 1, built: 2, draft: 3, started: 4, demo: 6, none: 7};
-      var SR = {zip: 0, done: 1, running: 2, none: 3};
-      return (PK[tr.dataset.pkg] === undefined ? 5 : PK[tr.dataset.pkg]) * 10
-           + (SR[tr.dataset.srch] === undefined ? 3 : SR[tr.dataset.srch]);
+    //  Furthest stage first, then the newest build: the rows with the most done lead.
+    var STG = {public: 0, submitted: 1, handed: 2, built: 3, none: 4};
+    if (key === 'built')     return (parseInt(tr.dataset.built || '0', 10) > 0 ? '0' : '1')
+                                  + (9e8 - parseInt((tr.dataset.bdate || '0').replace(/-/g, ''), 10));
+    if (key === 'submitted' || key === 'public'){
+      var r = STG[tr.dataset.stage]; r = r === undefined ? 4 : r;
+      if (key === 'public') r = tr.dataset.stage === 'public' ? 0 : 1 + r;
+      return r;
     }
     if (key === 'filed')   return tr.dataset.filed || '9999';
     var idx = {pub: 1, title: 2, route: 4}[key];
@@ -1189,51 +1283,53 @@ function obLink(href, text){
           + 'register this page reads, so nothing can be shown here.'
   };
 
-  function submissions(d){
-    var subs = d.on_file || d.our_submissions || [];
-    var blind = BLIND[d.office];
-    if (!subs.length && !blind) return null;
-    var wrap = obEl('div', 'obmact');
-    wrap.appendChild(obEl('h4', null, 'Already on this file'));
-    var ul = obEl('ul', 'obsubs');
-    if (!subs.length){
-      var li = document.createElement('li');
-      li.appendChild(obEl('span', 'ev', blind));
-      ul.appendChild(li);
-    }
-    subs.forEach(function(s){
-      var li = document.createElement('li');
-      var head = document.createElement('div');
-      //  Whose it is comes FIRST, because "somebody has already filed here" and "we have already
-      //  filed here" lead to opposite decisions and the office tells you neither.
-      head.appendChild(obEl('span', 'act ' + (s.whose === 'ours' ? 'open' : 'conditional'),
-                            s.whose === 'ours' ? 'Ours' : 'Filer not named'));
-      head.appendChild(document.createTextNode('  ' + (s.date || 'undated') + '  ·  '
-        + (s.instrument || '')
-        + (s.documents ? '  ·  ' + s.documents + ' document' + (s.documents === 1 ? '' : 's')
-             + (s.references_about && s.references_about !== s.documents
-                ? ', about ' + s.references_about + ' references' : '') : '')
-        + (s.fee_paid ? '  ·  fee paid' : '')
-        + (s.acknowledged ? '  ·  acknowledged by the office' : '')));
-      li.appendChild(head);
-      li.appendChild(obEl('span', 'ev', s.evidence || ''));
-      ul.appendChild(li);
-    });
-    wrap.appendChild(ul);
+  //  THE THREE STAGES, in the panel, in order and each under its own number: every package
+  //  built for this patent, what went to the office, and what the office itself shows. A row
+  //  with nothing in any of them gets no section at all; a row with anything gets all three, so
+  //  an empty stage 2 or 3 reads as "not yet" rather than being missing.
+  function stageBox(n, title){
+    var wrap = obEl('div', 'obmact obstage s' + n);
+    var h = obEl('h4');
+    h.appendChild(obEl('span', 'stgn s' + n, String(n)));
+    h.appendChild(document.createTextNode(title));
+    wrap.appendChild(h);
     return wrap;
   }
+  function when16(iso){ return String(iso || '').replace('T', ' ').replace(/:\d\dZ$|Z$/, '').slice(0, 16); }
 
-  //  WHAT IS ALREADY BUILT, in full: every packet the filing app holds for this application and
-  //  every search of ours that was run from this publication, each a link into the thing itself.
-  function prepared(d){
-    var pks = d.packages || [], srs = d.searches || [];
-    if (!pks.length && !srs.length) return null;
-    var wrap = obEl('div', 'obmact');
-    wrap.appendChild(obEl('h4', null, 'Already built for this one'));
+  function stageBuilt(d){
+    var ips = d.iptorch || [], pks = d.packages || [], srs = d.searches || [];
+    var wrap = stageBox(1, 'Built: every package made for this patent');
+    if (!ips.length && !pks.length && !srs.length){
+      wrap.appendChild(obEl('p', 'empty', 'Nothing built yet.'));
+      return wrap;
+    }
     var ul = obEl('ul', 'obprep');
+    ips.forEach(function(v){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      head.appendChild(obEl('span', 'src', 'iptorch.com'));
+      head.appendChild(obEl('b', null, when16(v.built_at) + ' UTC'));
+      head.appendChild(document.createTextNode('  ·  ' + (v.instrument_label || 'Package')
+        + (v.docs ? '  ·  ' + v.docs + ' document' + (v.docs === 1 ? '' : 's') : '')
+        + (v.account ? '  ·  built by ' + v.account : '')));
+      li.appendChild(head);
+      var acts = obEl('div', 'acts');
+      acts.appendChild(obLink(window.APP_BASE + '/actions/iptorch/' + encodeURIComponent(v.slug) + '/'
+                              + encodeURIComponent(v.stamp) + '.zip', 'Download this zip'));
+      if (v.origin !== 'handed-copy') acts.appendChild(obLink(v.report_url, 'Open on iptorch.com'));
+      li.appendChild(acts);
+      li.appendChild(obEl('span', 'ev', (v.note ? v.note + '  ' : '')
+        + (v.sent && v.sent.at ? 'Sent to the filing app ' + when16(v.sent.at) + ' UTC'
+           + (v.sent.by ? ' by ' + v.sent.by : '') + '.  ' : '')
+        + (v.qa ? 'QA on iptorch: ' + v.qa + (v.qa_notes && v.qa_notes !== '0' ? ', ' + v.qa_notes + ' notes' : '') + '.  ' : '')
+        + 'Run on ' + (v.subject || '?') + '  ·  ' + v.slug + '  ·  ' + (v.download_name || '')));
+      ul.appendChild(li);
+    });
     pks.forEach(function(p){
       var li = document.createElement('li');
       var head = document.createElement('div');
+      head.appendChild(obEl('span', 'src', 'filing app'));
       head.appendChild(obEl('span', 'act ' + (p.demo ? 'demo' : p.state === 'filed' ? 'filed'
                             : p.state === 'handed off' ? 'handed' : 'built'),
                             p.demo ? 'demo' : p.state));
@@ -1242,10 +1338,8 @@ function obLink(href, text){
         + (p.concise ? ', ' + p.concise + ' concise descriptions' : '')
         + (p.forms ? ', ' + p.forms + ' form' + (p.forms === 1 ? '' : 's') : '')
         + (p.created ? '  ·  built ' + p.created : '')
-        + (p.filing_date ? '  ·  filed ' + p.filing_date : '')
-        + (p.session ? '  ·  session ' + p.session : '')
         + (p.signer ? '  ·  signer ' + p.signer : '') + '  '));
-      head.appendChild(obLink(p.url, 'Open in the filing app'));
+      if (!window.OB_GUEST) head.appendChild(obLink(p.url, 'Open in the filing app'));
       li.appendChild(head);
       li.appendChild(obEl('span', 'ev', (p.title || '') + (p.application ? '  ·  app. ' + p.application : '')
                           + (p.number ? '  ·  ' + p.number : '') + '  ·  ' + p.id));
@@ -1254,17 +1348,124 @@ function obLink(href, text){
     srs.forEach(function(s){
       var li = document.createElement('li');
       var head = document.createElement('div');
+      head.appendChild(obEl('span', 'src', 'search'));
       head.appendChild(obEl('span', 'act ' + (s.concise ? 'zip' : (String(s.status || '').indexOf('complete') === 0 ? 'done' : 'not_yet')),
                             s.concise ? 'zip' : (String(s.status || '').indexOf('complete') === 0 ? 'searched' : (s.status || 'run'))));
       head.appendChild(document.createTextNode('  ' + (s.when || '') + '  ·  ' + (s.mode || 'novelty') + ' search'
         + (s.concise ? '  ·  ' + s.concise + ' concise description' + (s.concise === 1 ? '' : 's') + ' built' : '') + '  '));
-      head.appendChild(obLink(window.APP_BASE + '/report/' + encodeURIComponent(s.slug), 'Report'));
-      if (s.concise){
-        head.appendChild(document.createTextNode('  '));
-        head.appendChild(obLink(window.APP_BASE + '/report/' + encodeURIComponent(s.slug) + '/concise.zip', 'Download the submission zip'));
+      if (!window.OB_GUEST){
+        head.appendChild(obLink(window.APP_BASE + '/report/' + encodeURIComponent(s.slug), 'Report'));
+        if (s.concise){
+          head.appendChild(document.createTextNode('  '));
+          head.appendChild(obLink(window.APP_BASE + '/report/' + encodeURIComponent(s.slug) + '/concise.zip', 'Download the submission zip'));
+        }
       }
       li.appendChild(head);
       li.appendChild(obEl('span', 'ev', (s.query || '') + (s.pub ? '  ·  run from ' + s.pub : '') + '  ·  ' + s.slug));
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+
+  function stageSubmitted(d){
+    var subs = d.submitted || [];
+    var wrap = stageBox(2, 'Submitted: what our own records say went to the office');
+    if (!subs.length){
+      wrap.appendChild(obEl('p', 'empty', 'Nothing submitted to the office yet.'));
+      return wrap;
+    }
+    var ul = obEl('ul', 'obsubs');
+    subs.forEach(function(s){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      head.appendChild(obEl('span', 'stgpill ' + (s.state === 'filed' ? 's2' : 's2x'),
+                            s.state === 'filed' ? (s.posted ? 'posted' : 'submitted') : 'handed, not filed'));
+      head.appendChild(document.createTextNode('  ' + (s.date || 'undated') + '  ·  ' + (s.label || '')
+        + (s.references ? '  ·  ' + s.references + ' references' : '')
+        + (s.confirmation ? '  ·  confirmation ' + s.confirmation : '')
+        + (s.receipts ? '  ·  ' + s.receipts + ' receipt' + (s.receipts === 1 ? '' : 's') + ' kept' : '')
+        + (s.by ? '  ·  by ' + s.by : '') + '  '));
+      head.appendChild(obEl('span', 'src', s.source || ''));
+      li.appendChild(head);
+      var acts = obEl('div', 'acts');
+      if (s.package) acts.appendChild(obLink(window.APP_BASE + '/actions/package/' + encodeURIComponent(s.package), 'The package as filed'));
+      if (s.packet_url && !window.OB_GUEST) acts.appendChild(obLink(s.packet_url, 'Open in the filing app'));
+      if (acts.childNodes.length) li.appendChild(acts);
+      if (s.how || s.evidence) li.appendChild(obEl('span', 'ev', s.how || s.evidence));
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+
+  //  STAGE 3 IS THE OFFICE'S OWN WORDS. Each entry carries the office's document lines as the
+  //  register or the file wrapper returned them (code, description, date, pages), and they are
+  //  printed unedited in a table, with a link to the office's own page for the case.
+  function stageOffice(d){
+    var list = d['public'] || [];
+    var wrap = stageBox(3, 'On the office record: exactly as the office lists it');
+    //  `office_blind` is set by the server only when nothing we filed here is an opposition:
+    //  the German register shows no Einwendung, but it does record an Einspruch.
+    var blind = d.office_blind ? BLIND[d.office] : '';
+    var filed = (d.submitted || []).some(function(s){ return s.state === 'filed'; });
+    if (!list.length){
+      wrap.appendChild(obEl('p', 'empty', blind ? blind
+        : filed ? ('Not on the office record yet.' + (d.refreshed_at ? ' Register last read ' + d.refreshed_at + '.' : ''))
+        : 'Nothing from anyone on the office record.'));
+      if (d.register_url) wrap.appendChild(obLink(d.register_url, 'Open the office record'));
+      return wrap;
+    }
+    var ul = obEl('ul', 'obsubs');
+    list.forEach(function(e){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      //  Whose it is comes FIRST, because "somebody has already filed here" and "we have already
+      //  filed here" lead to opposite decisions and the office tells you neither.
+      head.appendChild(obEl('span', 'stgpill ' + (e.whose === 'ours' ? 's3' : 's3o'),
+                            e.whose === 'ours' ? 'Ours, public' : 'Filer not named'));
+      head.appendChild(document.createTextNode('  ' + (e.date || 'undated') + '  ·  ' + (e.instrument || '')
+        + (e.fee_paid ? '  ·  fee paid' : '') + (e.acknowledged ? '  ·  acknowledged by the office' : '')));
+      li.appendChild(head);
+      var docs = e.office_docs || [];
+      if (docs.length){
+        var tw = obEl('div', 'offrecwrap');
+        var t = obEl('table', 'offrec');
+        var hasPages = docs.some(function(x){ return x.pages; });
+        var hasType = docs.some(function(x){ return x.date_type; });
+        t.innerHTML = '<thead><tr><th scope="col">Date</th><th scope="col">Code</th><th scope="col">Description</th>'
+          + (hasType ? '<th scope="col">Date is</th>' : '')
+          + (hasPages ? '<th scope="col">Pages</th><th scope="col">Direction</th>' : '') + '</tr></thead>';
+        var tb = document.createElement('tbody');
+        //  Every line, in the office's order; past eight they fold behind one button so a
+        //  twenty-document submission does not push the rest of the panel off the screen.
+        docs.forEach(function(x, i){
+          var tr = document.createElement('tr');
+          if (i >= 8) { tr.hidden = true; tr.className = 'more'; }
+          tr.appendChild(obEl('td', 'dt', x.date || ''));
+          tr.appendChild(obEl('td', 'code', x.code || ''));
+          tr.appendChild(obEl('td', null, x.description || ''));
+          if (hasType) tr.appendChild(obEl('td', null, x.date_type || ''));
+          if (hasPages){ tr.appendChild(obEl('td', null, x.pages ? String(x.pages) : '')); tr.appendChild(obEl('td', null, x.direction || '')); }
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb); tw.appendChild(t); li.appendChild(tw);
+        if (docs.length > 8){
+          var more = obEl('button', 'obclear', 'Show all ' + docs.length + ' lines the office lists');
+          more.type = 'button';
+          more.addEventListener('click', function(ev){
+            ev.stopPropagation();
+            Array.prototype.forEach.call(tb.querySelectorAll('tr.more'), function(r){ r.hidden = false; });
+            more.remove();
+          });
+          li.appendChild(more);
+        }
+      }
+      var src = obEl('span', 'ev', (e.office_source || e.evidence || '')
+        + (e.source && e.whose === 'ours' ? '  ·  ' + e.source : '') + '  ');
+      var url = e.record_url || d.register_url;
+      if (url) src.appendChild(obLink(url, 'Open at the office'));
+      li.appendChild(src);
       ul.appendChild(li);
     });
     wrap.appendChild(ul);
@@ -1380,8 +1581,13 @@ function obLink(href, text){
     //  WHAT WE HAVE ALREADY DONE COMES FIRST, on the rows that have any. "Did we already file
     //  on this one" has to be answered before "what could we file", or the second question is
     //  being asked in ignorance.
-    var s = submissions(d); if (s) root.appendChild(s);
-    var pr = prepared(d); if (pr) root.appendChild(pr);
+    var any = (d.iptorch || []).length || (d.packages || []).length || (d.searches || []).length
+            || (d.submitted || []).length || (d['public'] || []).length;
+    if (any){
+      root.appendChild(stageBuilt(d));
+      root.appendChild(stageSubmitted(d));
+      root.appendChild(stageOffice(d));
+    }
     var o = optionsTable(d); if (o) root.appendChild(o);
 
     var cols = obEl('div', 'obxcols');
