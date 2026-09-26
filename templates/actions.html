@@ -570,7 +570,9 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
     <label for="obtarget">Target</label>
     <select id="obtarget" aria-label="Which target to show"{% if not targets %} disabled{% endif %}>
       {% for t in targets %}
-      <option value="{{ t.id }}"{% if target and t.id == target.id %} selected{% endif %}>{{ t.name }} ({{ t.cases if kind == 'patent' else (t.designs if kind == 'design' else t.trademarks) }})</option>
+      {#  All three kinds in the label: a competitor with fourteen EU designs and no patents is not
+          a "(0)". The data attributes let the switch land on a tab that has rows. #}
+      <option value="{{ t.id }}" data-patent="{{ t.cases or 0 }}" data-design="{{ t.designs or 0 }}" data-trademark="{{ t.trademarks or 0 }}"{% if target and t.id == target.id %} selected{% endif %}>{{ t.name }} ({{ t.cases or 0 }} patents &middot; {{ t.designs or 0 }} designs &middot; {{ t.trademarks or 0 }} marks)</option>
       {% else %}
       <option value="">No targets yet</option>
       {% endfor %}
@@ -2085,7 +2087,13 @@ window.obViewer = (function(){
 
   var sel = document.getElementById('obtarget');
   sel.addEventListener('change', function(){
-    if (sel.value) window.location.href = window.APP_BASE + '/actions?target=' + encodeURIComponent(sel.value) + '&kind=' + encodeURIComponent(window.OB_KIND || 'patent');
+    if (!sel.value) return;
+    //  Stay on this tab when the new target has rows there, else go to the first tab that does.
+    var opt = sel.options[sel.selectedIndex], want = window.OB_KIND || 'patent';
+    if (!(+opt.getAttribute('data-' + want))){
+      want = ['patent', 'design', 'trademark'].filter(function(k){ return +opt.getAttribute('data-' + k); })[0] || want;
+    }
+    window.location.href = window.APP_BASE + '/actions?target=' + encodeURIComponent(sel.value) + '&kind=' + encodeURIComponent(want);
   });
 
   // ── the form ──────────────────────────────────────────────────────────────────────────
