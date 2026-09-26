@@ -40,6 +40,10 @@ def test_an_owner_search_skips_a_leading_place_name():
     #  A name that does not start with one keeps its first word, as every target did before.
     assert M.search_word(R.name_words("J. Schmalz GmbH")) == "schmalz"
     assert M.search_word(R.name_words("Binar Quick-Lift Systems")) == "binar"
+    #  Too short or too common to search on its own.
+    assert M.search_word(R.name_words("HG Commerciale")) == "commerciale"
+    assert M.search_word(R.name_words("Lark Quzhou")) == "quzhou"
+    assert M.search_word(R.name_words("Weha Ludwig Werwein")) == "werwein"
 
 
 def test_a_strangers_designs_cost_one_detail_call(monkeypatch):
