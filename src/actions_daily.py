@@ -41,6 +41,7 @@ import iptorch_packages
 import observation_marks
 import observation_refresh
 import observations
+import patent_cards
 
 LOG_DIR = Path(os.environ.get("ACTIONS_DAILY_DIR", str(
     Path(__file__).resolve().parent.parent / "data" / "observations" / "daily")))
@@ -84,7 +85,7 @@ def check(uid, target, kind):
             "changes": (res.get("changes") or [])[:200], "seconds": round(time.time() - started, 1)}
 
 
-def run(kinds=observation_marks.KINDS, user=None, iptorch=True):
+def run(kinds=observation_marks.KINDS, user=None, iptorch=True, cards=True):
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     summary = {"started": _now().isoformat(), "ok": True, "targets": [], "failures": [],
                "iptorch": None}
@@ -110,6 +111,21 @@ def run(kinds=observation_marks.KINDS, user=None, iptorch=True):
                     summary["failures"].append({"user_id": uid, "target_id": target["id"],
                                                 "target": target.get("name") or "", "kind": kind,
                                                 "error": "%s: %s" % (type(exc).__name__, str(exc)[:300])})
+        #  Every patent's first drawing and abstract, for the ones not read yet (patent_cards).
+        try:
+            if not cards:
+                raise StopIteration
+            pubs = []
+            for uid, target in all_targets(user):
+                pubs += [{"publication": c.get("publication"), "application": c.get("application")}
+                         for c in observations.cases_for(uid, target["id"], kind="patent")]
+            summary["cards"] = patent_cards.fill(pubs)
+            print("patent cards: %s" % summary["cards"], flush=True)
+        except StopIteration:
+            pass
+        except Exception as exc:
+            traceback.print_exc()
+            summary["cards"] = {"error": "%s: %s" % (type(exc).__name__, str(exc)[:200])}
         if iptorch:
             try:
                 s = iptorch_packages.sync(docket_keys=observations._iptorch_docket_keys)
@@ -149,9 +165,10 @@ def main(argv=None):
                     help="only this kind (repeatable); default all three")
     ap.add_argument("--user", type=int, help="only this account's targets")
     ap.add_argument("--no-iptorch", action="store_true", help="skip the iptorch.com package sweep")
+    ap.add_argument("--no-cards", action="store_true", help="skip the drawings and abstracts")
     args = ap.parse_args(argv)
     s = run(kinds=tuple(args.kind or observation_marks.KINDS), user=args.user,
-            iptorch=not args.no_iptorch)
+            iptorch=not args.no_iptorch, cards=not args.no_cards)
     if s is None:
         return 0
     print("done: %d new cases, %d re-read, %d read errors, %d failed sweeps"

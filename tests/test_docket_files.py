@@ -161,7 +161,7 @@ def test_the_daily_check_writes_what_the_page_shows(tmp_path, monkeypatch):
                 "errors": ["x: HTTP 500"] if target["id"] == 1 and kind == "patent" else [],
                 "changes": ["New on the docket: US2026..."], "seconds": 1.0}
     monkeypatch.setattr(ad, "check", check)
-    s = ad.run(iptorch=False)
+    s = ad.run(iptorch=False, cards=False)
     assert s["new"] == 2 and s["read_errors"] == 1 and not s["ok"]
     assert s["failures"][0]["target"] == "Piab" and "TMview" in s["failures"][0]["error"]
     last = ad.latest(tmp_path)
