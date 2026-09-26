@@ -354,21 +354,26 @@ section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-wid
   margin-top:12px}
 .obmdl:hover{background:var(--s2);text-decoration:none}
 ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px}
-/* ── the board ─────────────────────────────────────────── */
-/*  Ten things in the order they have to be done, above a docket of two hundred rows. The colour
-    down the left edge is the only thing scanned: red is a finished packet nobody has filed. */
-.bdlist{list-style:none;margin:10px 0 0;padding:0}
-.bditem{display:flex;gap:12px;padding:11px 13px;margin-bottom:8px;border:1px solid var(--line);
-  border-left:4px solid var(--line2);border-radius:var(--r);background:var(--s1)}
-.bditem.bd-handed{border-left-color:var(--bad);background:var(--bad-soft)}
-.bditem.bd-nothing,.bditem.bd-part{border-left-color:var(--warn)}
-.bditem.bd-filed,.bditem.bd-posted{border-left-color:var(--good)}
-.bdn{font-size:19px;font-weight:800;color:var(--faint);min-width:24px;line-height:1.3;
-  font-variant-numeric:tabular-nums}
-.bditem.bd-handed .bdn{color:var(--bad)}
-.bdbody{flex:1;min-width:0}
-.bdhead{display:flex;flex-wrap:wrap;gap:5px 10px;align-items:baseline}
-.bdhead h3{font-size:14.5px;margin:0;line-height:1.35}
+/* ── the action list, on its rows ────────────────────────── */
+/*  The hand-kept list of what to do next used to be a section of its own above the docket. Its
+    entries now open the panels of the rows they name, with the same colour down the edge: red
+    is a finished packet nobody has filed, amber work to write, green done, grey only watched. */
+.obaction{border:1px solid var(--line);border-left:4px solid var(--line2);border-radius:var(--r);
+  background:var(--s1);padding:10px 13px;margin:10px 0}
+.obaction.bd-todo{border-left-color:var(--bad);background:var(--bad-soft)}
+.obaction.bd-prep{border-left-color:var(--warn)}
+.obaction.bd-done{border-left-color:var(--good)}
+.obaction h4{font-size:14px;margin:0 0 2px;line-height:1.4;text-transform:none;letter-spacing:0;color:var(--ink)}
+.obaction .acts{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:7px;font-size:12px;align-items:baseline}
+.bdcost{margin:5px 0 0;font-size:12.5px;color:var(--muted)}
+.obextra{margin:8px 0 0;font-size:12.5px;color:var(--warn);font-weight:600}
+.obabout{margin:2px 0 10px;font-size:12.5px;color:var(--muted);max-width:98ch}
+.obabout summary{cursor:pointer;color:var(--accent);font-weight:600}
+.obabout p{margin:6px 0 0;line-height:1.6}
+.obfold{margin-top:6px}
+.obfold summary{cursor:pointer;font-size:12px;color:var(--accent);font-weight:600}
+.obfold .obrecord{margin-top:6px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s0, #fff)}
+.obsubs .obrecord{margin-top:6px}
 .bdst{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;
   letter-spacing:.05em;padding:1px 7px;border-radius:var(--r-pill);border:1px solid transparent;
   white-space:nowrap;vertical-align:middle}
@@ -386,11 +391,20 @@ ul.changes{font-size:12.5px;line-height:1.6;color:var(--muted);padding-left:20px
   line-height:1.55;color:var(--muted);max-width:98ch}
 .bdlinks{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:7px;font-size:12px}
 .bdlinks a.dl{font-weight:650}
-.boardnote{color:var(--bad)}
-/*  The chip that ties a docket row back to the board, and the edge that finds it while
-    scrolling. Both in the urgent colour: an entry is on the board because of a date. */
-.act.board{background:var(--bad-soft);color:var(--bad);border-color:#f0c2be;text-decoration:none}
+/*  The chip that ties a docket row to the action list, coloured by where that action stands,
+    and the edge that finds the row while scrolling. */
+.act.board{background:var(--bad-soft);color:var(--bad);border-color:#f0c2be;text-decoration:none;cursor:pointer}
+.act.board.bd-prep{background:var(--s2);color:var(--warn);border-color:var(--line2)}
+.act.board.bd-done{background:var(--good-soft);color:var(--good);border-color:#bfe3ce}
+.act.board.bd-watch{background:var(--s2);color:var(--muted);border-color:var(--line)}
+.bdlbl{display:inline-block;margin-left:4px;font-size:10px;color:var(--good);font-weight:650}
+.obtable td .actdue{color:var(--warn);font-weight:600}
+.obtable td .actdue.urgent{color:var(--bad)}
 .obtable tbody tr.case.onboard td.dl{box-shadow:inset 3px 0 0 var(--bad)}
+/*  A row the docket has no case for: a filing on a patent no target tracks, or an action naming
+    no docket patent. Same table, visibly apart. */
+.obtable tbody tr.case.extra td{background:var(--s1)}
+.obtable tbody tr.case.extra td.dl{box-shadow:inset 3px 0 0 var(--line2)}
 @media(max-width:1200px){
   .obtablewrap{overflow-x:auto}
   .obtable thead th{position:static}
@@ -473,7 +487,7 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
       <button type="button" class="stat urgent" data-urgency="urgent"><b>{{ counts.get('within_14', 0) }}</b><span>&le; 14 days</span></button>
       <button type="button" class="stat closing" data-urgency="soon"><b>{{ counts.get('within_90', 0) }}</b><span>&le; 90 days</span></button>
       <button type="button" class="stat lapsedstat" data-urgency="lapsed"><b>{{ counts.get('lapsed', 0) }}</b><span>lapsed</span></button>
-      {% if counts.get('board') %}<button type="button" class="stat urgent" data-board="1"><b>{{ counts.get('board', 0) }}</b><span>on the board</span></button>{% endif %}
+      {% if counts.get('board') %}<button type="button" class="stat urgent" data-board="1"><b>{{ counts.get('board', 0) }}</b><span>on the action list</span></button>{% endif %}
       <button type="button" class="stat prep" data-prep="built"><b>{{ counts.get('stage_built', 0) }}</b><span><span class="stgn s1">1</span>package built</span></button>
       <button type="button" class="stat prep s2" data-prep="submitted"><b>{{ counts.get('stage_submitted', 0) }}</b><span><span class="stgn s2">2</span>submitted</span></button>
       <button type="button" class="stat prep s3" data-prep="public"><b>{{ counts.get('stage_public', 0) }}</b><span><span class="stgn s3">3</span>public at the office</span></button>
@@ -585,125 +599,25 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
   </div>
   {% endif %}
 
-  {# ── 0. what to do next ─────────────────────────────────────────────────── #}
-  {#  `board['entries']`, never `board.entries`: the same attribute-versus-key trap the packet
-      column pays for with `pk0['items']`. Every countdown here is computed on the server for
-      today, exactly like the ones in the table. #}
-  {% if board and board['entries'] %}
-  <section class="obsec">
-    <h2>{{ board.title or 'What to do next' }}</h2>
-    {% if board.lede %}<p class="lede">{{ board.lede }}</p>{% endif %}
-    {% if board.source_note %}<p class="lede boardnote">{{ board.source_note }}</p>{% endif %}
-    <ol class="bdlist">
-      {% for b in board['entries'] %}
-      <li class="bditem bd-{{ b.state }}" id="action-{{ b.n }}">
-        <div class="bdn">{{ b.n }}</div>
-        <div class="bdbody">
-          <div class="bdhead">
-            <h3>{{ b.title }}</h3>
-            <span class="bdst {{ b.state_class }}">{{ b.state_label }}</span>
-          </div>
-          <div class="bdwhen">
-            {% if b.days_left is not none %}
-              <span class="days {{ 'urgent' if b.days_left <= 14 else ('closing' if b.days_left <= 30 else '') }}">{% if b.days_left < 0 %}{{ -b.days_left }} days ago{% else %}{{ b.days_left }} days{% endif %}</span>
-              <b>{{ b.deadline }}</b>
-            {% elif b.state not in ('filed', 'posted') %}<span class="days none">no date</span>{% endif %}
-            {% if b.due_note %}<span>{{ b.due_note }}</span>{% endif %}
-            {% if b.cost %}<span>{{ b.cost }}</span>{% endif %}
-          </div>
-          <p class="bdwhat">{{ b.what }}</p>
-          {% if b.verify %}<p class="bdverify">{{ b.verify }}</p>{% endif %}
-          <div class="bdlinks">
-            {% for l in b.links %}<a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.label }} &#8599;</a>{% endfor %}
-            {#  The packet opens in the filing app, which admits administrators only, so a guest is
-                told it exists rather than sent to a sign-in they cannot pass. The ZIP below is
-                served by THIS app and stays a live download for them. #}
-            {% if b.packet_url %}{% if current_scope %}<span class="prepn">The packet is built</span>{% else %}<a href="{{ b.packet_url }}" target="_blank" rel="noopener">The packet</a>{% endif %}{% endif %}
-            {% if b.packet_url2 and not current_scope %}<a href="{{ b.packet_url2 }}" target="_blank" rel="noopener">The second packet</a>{% endif %}
-            {% if b.package_available %}<a class="dl" href="{{ request.script_root }}/actions/package/{{ b.package }}" download>The package as it was handed over (zip)</a>{% endif %}
-            {% if b.package2_available %}<a class="dl" href="{{ request.script_root }}/actions/package/{{ b.package2 }}" download>The second package (zip)</a>{% endif %}
-            {% if b.on_docket %}<a href="#obtable" onclick="return !(window.obBoardFilter && window.obBoardFilter({{ b.n }}))">{{ b.on_docket }} row{{ 's' if b.on_docket > 1 else '' }} on the docket</a>{% endif %}
-          </div>
-        </div>
-      </li>
-      {% endfor %}
-    </ol>
-  </section>
-  {% endif %}
-
-  {# ── 1. what we have filed ──────────────────────────────────────────────── #}
-  {% if filings or missed %}
-  <section class="obsec">
-    <h2>Observations we have filed, and the ones we have not</h2>
-    <p class="lede">Every entry is corroborated against the primary source named in its evidence
-      line, not only against correspondence. Where the two disagree the register wins. Open a
-      row for the filing memo, the references it carried and the package exactly as it was
-      handed over. A packet handed to a filing agent and never filed sorts to the top: in
-      outcome that is the same thing as nothing prepared, and a packet's own status field is
-      not evidence that it went in.</p>
-    <div class="obtablewrap">
-    <table class="obtable" id="filingtable" style="min-width:820px">
-      <caption class="vh">Observations filed. Choose a row to open its full detail.</caption>
-      <colgroup>
-        <col style="width:110px"><col style="width:152px"><col>
-        <col style="width:100px"><col style="width:60px"><col style="width:110px">
-        <col style="width:92px"><col style="width:28px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th class="nosort" scope="col">Status</th>
-          <th class="nosort" scope="col">Target</th>
-          <th class="nosort" scope="col">Title</th>
-          <th class="nosort" scope="col">Filed</th>
-          <th class="nosort" scope="col">Refs</th>
-          <th class="nosort" scope="col">Cost</th>
-          <th class="nosort" scope="col">Package</th>
-          <th class="nosort" scope="col"><span class="vh">Open</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for f in filings %}
-        <tr class="case" data-kind="filing" data-idx="{{ loop.index0 }}" tabindex="0" aria-expanded="false">
-          <td>{% if f.status == 'filed' %}<span class="pill ok">Filed</span>
-              {% elif f.status == 'posted' %}<span class="pill ok">Posted</span>
-              {% elif f.status == 'handed_not_filed' %}<span class="pill no">Handed, not filed</span>
-              {% elif f.status == 'prepared_not_filed' %}<span class="pill no">Not filed</span>
-              {% else %}<span class="pill neutral">{{ f.status }}</span>{% endif %}
-              {% if f.handed_times and f.handed_times > 1 %}<br><span class="bdst todo" title="{{ f.handed_note }}">Handed twice</span>{% endif %}
-              {% if f.public and f.public.state == 'published' %}<br><span class="bdst done" title="{{ f.public.note }}">On the office file</span>
-              {% elif f.public and f.public.state == 'not_yet' %}<br><span class="bdst watch" title="{{ f.public.note }}">Not public yet</span>{% endif %}</td>
-          <td class="pub" title="{{ f.target }}{% if f.application %} · {{ f.application }}{% endif %}">{{ f.target }}{% if f.application %}<br><span class="dldate">{{ f.application }}</span>{% endif %}</td>
-          <td class="ttl" title="{{ f.title }}"><span class="t">{{ f.title }}</span><span class="who">{{ f.target_owner }}</span></td>
-          <td class="dl">{% if f.filed_on %}{{ f.filed_on }}{% else %}&ndash;{% endif %}{% if f.handed_on %}<br><span class="dldate">handed {{ f.handed_on }}</span>{% endif %}</td>
-          <td>{% if f.references %}{{ f.references }}{% else %}&ndash;{% endif %}</td>
-          <td class="small">{% if f.official_fee_usd is not none %}${{ f.official_fee_usd }}{% if f.counsel_fee_usd %} + {{ '{:,}'.format(f.counsel_fee_usd) }}{% endif %}{% else %}&ndash;{% endif %}</td>
-          <td>{% if f.package_available %}<a class="detailbtn" href="{{ request.script_root }}/actions/package/{{ f.package }}" download onclick="event.stopPropagation()">{{ 'From the office' if f.package_note else 'As handed' }}</a>{% else %}<span class="office">&ndash;</span>{% endif %}{% if f.packet_url and not current_scope %}<br><a class="detailbtn" href="{{ f.packet_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">The packet</a>{% endif %}</td>
-          <td class="chev">&#9662;</td>
-        </tr>
-        {% endfor %}
-        {% for m in missed %}
-        <tr class="case" data-kind="missed" data-idx="{{ loop.index0 }}" tabindex="0" aria-expanded="false">
-          <td><span class="pill neutral">Lapsed</span></td>
-          <td class="pub" title="{{ m.target }}{% if m.application %} · {{ m.application }}{% endif %}">{{ m.target }}{% if m.application %}<br><span class="dldate">{{ m.application }}</span>{% endif %}</td>
-          <td class="ttl" title="{{ m.title }}"><span class="t">{{ m.title }}</span><span class="who">window closed {{ m.window_closed }}</span></td>
-          <td class="dl">&ndash;</td><td>&ndash;</td><td class="small">&ndash;</td>
-          <td><span class="office">&ndash;</span></td>
-          <td class="chev">&#9662;</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-  </section>
-  {% endif %}
-
   {# ── 2. the docket ──────────────────────────────────────────────────────── #}
   {% if cases %}
   <section class="obsec">
     <h2>The full docket{% if kind != 'patent' %}: {{ kind_label[kind] | lower }}{% endif %}</h2>
     <p class="lede">Sorted by the soonest deadline. Rows with no deadline stay open for as long
       as the right is pending or registered, so they carry no countdown and sit at the end. Open
-      a row for the whole instrument table, the register's own record and a private note.</p>
+      a row for the whole instrument table, the register's own record and a private note.
+      Everything that used to sit above this table is on its rows now: an <b>Action</b> chip marks a
+      case on the action list and its panel opens with what to do, by when, what it costs and the
+      packet; stage 2 carries each filing's whole record (fees, references, receipts, public
+      state); a missed window says so in the same column.{% if n_extra %} The last
+      {{ n_extra }} row{{ 's' if n_extra != 1 else '' }}, marked <i>not on this docket</i>, hold
+      what has no docket row of its own.{% endif %}</p>
+    {% if board and (board.lede or board.source_note) %}
+    <details class="obabout"><summary>{{ board.title or 'The action list' }}: how it was built{% if board.as_of %}, {{ board.as_of }}{% endif %}</summary>
+      {% if board.lede %}<p>{{ board.lede }}</p>{% endif %}
+      {% if board.source_note %}<p>{{ board.source_note }}</p>{% endif %}
+    </details>
+    {% endif %}
     {#  What the three stage columns mean, once, above them. The sync line says when iptorch.com
         was last checked for new packages, and says so in red when it could not be. #}
     <div class="stglegend">
@@ -791,7 +705,7 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
       {% for c in cases %}
         {% set head = c.action_headline %}
         {% set live = c.actions | selectattr('status', 'in', ['open', 'closing']) | rejectattr('weak') | list %}
-        <tr class="case{{ ' lapsed' if c.state == 'lapsed' else '' }}{{ ' onboard' if c.board else '' }}" data-pub="{{ c.publication }}" tabindex="0" aria-expanded="false"
+        <tr class="case{{ ' lapsed' if c.state == 'lapsed' else '' }}{{ ' onboard' if c.board else '' }}{{ ' extra' if c.extra else '' }}" data-pub="{{ c.publication }}" tabindex="0" aria-expanded="false"
             data-board="{{ c.board.n if c.board else '' }}"
             data-office="{{ c.office }}" data-route="{{ head.label if head else 'Nothing open' }}"
             data-days="{{ c.days_left if c.days_left is not none else '' }}"
@@ -815,9 +729,18 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
               <span class="days {{ 'urgent' if c.days_left <= 14 else ('closing' if c.days_left <= 30 else '') }}">{{ c.days_left }}d</span>
               <br><span class="dldate">{{ c.deadline }}</span>
             {% endif %}
+            {#  The action list keeps its own date (confirm a fee, send an original) beside the
+                register's window. Said on the row when the two differ. #}
+            {% if not c.extra %}{% for b in c.boards or [] %}{% if b.days_left is not none and b.deadline != c.deadline %}
+              <br><span class="dldate actdue {{ 'urgent' if 0 <= b.days_left <= 14 else '' }}" title="Action {{ b.n }}: {{ b.title }}">act. {{ b.n }}: {{ b.deadline[5:] }}{% if b.days_left >= 0 %} &middot; {{ b.days_left }}d{% endif %}</span>
+            {% endif %}{% endfor %}{% endif %}
           </td>
           {% if kind == 'patent' %}
+          {% if c.extra == 'board' %}
+          <td class="pub"><span class="stgnone">no patent</span><span class="office">action list</span></td>
+          {% else %}
           <td class="pub" title="{{ c.granted_as or c.publication }}{% if c.application %} · app. {{ c.application }}{% endif %}">{{ c.granted_as or c.publication }}<span class="office">{{ c.office }}{% if c.ipc %} &middot; {{ c.ipc }}{% endif %}</span></td>
+          {% endif %}
           <td class="ttl" title="{{ c.title_full or c.title }}"><span class="t">{{ c.title }}</span><span class="who" title="{{ c.applicant }}{% if c.inventors %} · {{ c.inventors | join(', ') }}{% endif %}">{{ c.applicant_short or '' }}{% if c.inventors %} &middot; {{ c.inventors | join(', ') }}{% endif %}</span></td>
           {% else %}
           {#  A mark or a design is known by its registration or application number and its
@@ -828,16 +751,23 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
           <td class="ttl" title="{{ c.title_full or c.title }}">{% if c.image %}<img src="{{ c.image }}" alt="" loading="lazy">{% endif %}<span class="ttlwrap"><span class="t">{{ c.title }}</span><span class="who" title="{{ c.applicant }}">{{ c.applicant_short or c.applicant or '' }}</span></span></td>
           {% endif %}
           <td class="st">
+            {% if c.extra %}
+            <span class="posture unknown">not on this docket</span>
+            <span class="regst" title="{{ c.extra_note }}">{{ c.extra_note }}</span>
+            {% else %}
             <span class="posture {{ (c.posture or 'unknown') | lower | replace('registered', 'granted') }}">{{ (c.posture or 'unread') | capitalize }}</span>
             {% if c.grant_published %}<span class="dldate"> {{ c.grant_published }}</span>{% elif c.grant_date %}<span class="dldate"> {{ c.grant_date }}</span>{% elif c.registration_date and kind != 'patent' %}<span class="dldate"> {{ c.registration_date }}</span>{% endif %}
             <span class="regst" title="{{ c.register_status }}{% if c.register_updated %} · read {{ c.register_updated }}{% endif %}">{{ c.register_status or 'register not read yet' }}</span>
+            {% endif %}
           </td>
           {#  THE LIVE ANSWER, all of it. One case can be past its observation window and inside
               its opposition window on the same day, and a single label could only ever name one
               of the two. Up to three open instruments, each with its fee and its countdown; then,
               when nothing is open, what to check or what opens next, greyed. #}
           <td>
-            {% if live %}
+            {% if c.extra %}
+              <span class="instr none">{{ 'see the action' if c.extra == 'board' else 'not tracked here' }}</span>
+            {% elif live %}
               {% for a in live[:3] %}
               <div class="canline"><span class="act {{ a.status }}">{{ 'closing' if a.status == 'closing' else 'now' }}</span>
                 <span class="canins" title="{{ a.stage_label }}: {{ a.instrument }}, {{ a.statute }}">{{ a.instrument }}</span>
@@ -877,6 +807,9 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
               <span class="stgsub">{{ filed[0].date or 'date not recorded' }}{% if c.submitted | length > 1 %} +{{ c.submitted | length - 1 }}{% endif %}</span>
             {% elif c.submitted %}<span class="stgpill s2x">handed, not filed</span>
               <span class="stgsub">{{ c.submitted[0].date }}</span>
+            {% elif c.missed %}<span class="stgpill s2x" title="{{ c.missed[0].route_label }}">window missed</span>
+              <span class="stgsub">closed {{ c.missed[0].window_closed }}</span>
+            {% elif c.not_filed %}<span class="stgpill s2x">prepared, not handed</span>
             {% else %}<span class="stgnone">not submitted</span>{% endif %}
           </td>
           <td class="stgc">
@@ -910,7 +843,7 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
               row nothing can be done about is noise that drowns the rows that are still critical,
               so a closed or lapsed case shows its old priority greyed and prefixed "was". #}
           {% set spent = c.state == 'lapsed' or (c.days_left is not none and c.days_left < 0) %}
-          <td>{% if c.board %}<a class="act board" href="#action-{{ c.board.n }}" title="{{ c.board.title }}" onclick="event.stopPropagation()">Action {{ c.board.n }}</a><br>{% endif %}<span class="prio {{ 'was' if spent else ('p1' if c.priority and '1' in c.priority else '') }}">{% if c.priority and spent and c.priority != 'Filed' %}was {{ c.priority }}{% else %}{{ c.priority or '' }}{% endif %}</span></td>
+          <td>{% for b in c.boards or [] %}<span class="act board bd-{{ b.state_class }}" title="Action {{ b.n }}: {{ b.title }}{% if b.state_label %}. {{ b.state_label }}{% endif %}. Open the row for the whole action.">Action {{ b.n }}</span>{% if b.state in ('filed', 'posted') %}<span class="bdlbl">{{ b.state }}</span>{% endif %}<br>{% endfor %}<span class="prio {{ 'was' if spent else ('p1' if c.priority and '1' in c.priority else '') }}">{% if c.priority and spent and c.priority != 'Filed' %}was {{ c.priority }}{% else %}{{ c.priority or '' }}{% endif %}</span></td>
           <td class="chev">&#9662;</td>
         </tr>
       {% endfor %}
@@ -956,8 +889,6 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
   {#  Only the fields each panel renders. `tojson` escapes < and &, so a title carrying markup
       cannot close these script elements. #}
   <script type="application/json" id="obdetail">{{ detail|tojson }}</script>
-  <script type="application/json" id="obfilings">{{ filings|tojson }}</script>
-  <script type="application/json" id="obmissed">{{ missed|tojson }}</script>
   <script type="application/json" id="obtargets">{{ targets|tojson }}</script>
   <script>window.OB_TARGET = {{ (target.id if target else None) | tojson }}; window.OB_KIND = {{ kind | tojson }}; window.OB_GUEST = {{ (current_scope | default('')) | tojson }};</script>
 
@@ -1109,6 +1040,112 @@ function obViewBtn(text, src){
   b.type = 'button';
   Object.keys(src).forEach(function(k){ b.dataset[k] = src[k]; });
   return b;
+}
+//  WHAT THE FILINGS TABLE AND THE ACTION LIST USED TO PRINT, now rendered inside a row's panel.
+function obMoney(f){
+  if (f.official_fee_usd === null || f.official_fee_usd === undefined) return null;
+  return 'USD ' + f.official_fee_usd + ' official'
+       + (f.counsel_fee_usd ? ' + ' + Number(f.counsel_fee_usd).toLocaleString() + ' counsel' : '');
+}
+function obRefsTable(list){
+  if (!list || !list.length) return null;
+  var sec = document.createElement('section');
+  sec.appendChild(obEl('h4', null, 'References filed (' + list.length + ')'));
+  var tbl = obEl('table', 'refs');
+  tbl.innerHTML = '<thead><tr><th class="n">#</th><th>Document</th><th>Kind</th>'
+                + '<th>Date</th><th>First named inventor</th></tr></thead>';
+  var tb = document.createElement('tbody');
+  list.forEach(function(r, i){
+    var tr = document.createElement('tr');
+    [String(i + 1), null, r.kind || '', r.date || '', r.inventor || ''].forEach(function(v, k){
+      var td = document.createElement('td');
+      if (k === 0) td.className = 'n';
+      if (k === 1){
+        if (r.url) td.appendChild(obLink(r.url, r.number)); else td.textContent = r.number || '';
+        if (r.note) td.appendChild(obEl('span', 'ev', r.note));
+      } else { td.textContent = v; }
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb); sec.appendChild(tbl);
+  return sec;
+}
+function obRecord(){
+  var root = obEl('div', 'obrecord'), dl = obEl('dl', 'obmgrid'), prose = obEl('div', 'obmprose');
+  root.appendChild(dl); root.appendChild(prose);
+  return {root: root,
+    field: function(label, value){
+      if (value === null || value === undefined || value === '' || (value && value.length === 0)) return;
+      dl.appendChild(obEl('dt', null, label)); dl.appendChild(obEl('dd', null, String(value)));
+    },
+    block: function(heading, text){
+      if (!text) return;
+      var sec = document.createElement('section');
+      sec.appendChild(obEl('h4', null, heading)); sec.appendChild(obEl('p', null, text));
+      prose.appendChild(sec);
+    },
+    add: function(el){ if (el) prose.appendChild(el); }};
+}
+//  One filing, everything our record holds about it.
+function obFilingRecord(d){
+  var r = obRecord();
+  var STATUS = {filed: 'Filed', posted: 'Posted, not yet on the register',
+                handed_not_filed: 'Handed to a filing agent, never filed',
+                prepared_not_filed: 'Prepared, not filed'};
+  r.field('Filing', d.title);
+  r.field('Status', STATUS[d.status] || d.status);
+  r.field('Route', d.route_label);
+  r.field('Filed', d.filed_on);
+  r.field('Handed off', d.handed_times > 1
+                        ? (d.handed_again_on && d.handed_again_on !== d.handed_on
+                           ? d.handed_on + ', and again ' + d.handed_again_on
+                           : d.handed_on + ', twice the same day')
+                        : d.handed_on);
+  r.field('Receipts', Array.isArray(d.receipts) ? d.receipts.join(', ') : (d.receipts || ''));
+  r.field('Payments', (d.payments || []).join(', '));
+  if (d.public && d.public.state){
+    r.field('Public record', (d.public.state === 'published' ? 'On the office\u2019s own file'
+                              : 'Not on the office\u2019s file yet')
+                           + (d.public.as_of || d.public.checked ? ', checked ' + (d.public.as_of || d.public.checked) : ''));
+  }
+  r.field('Entered', d.entered_on);
+  r.field('Acknowledged', d.acknowledged_on);
+  r.field('Window', d.window_was);
+  r.field('References', d.references);
+  r.field('Fees', obMoney(d));
+  r.field('Counsel', d.counsel);
+  r.field('Report', d.report);
+  r.block('How it was filed', d.how);
+  r.block('What was filed', d.detail);
+  r.block('Handed off twice', d.handed_note);
+  r.block('Where it stands', d.outcome);
+  r.block('Evidence', d.evidence);
+  if (d.public && (d.public.note || d.public.evidence)){
+    r.block('The public record', [d.public.note, d.public.evidence].filter(Boolean).join(' '));
+  }
+  r.block('About this package', d.package_note);
+  r.block('About the packet', d.packet_note);
+  r.add(obRefsTable(d.references_list));
+  return r.root;
+}
+//  A window we let close, and what is left.
+function obMissedRecord(m){
+  var r = obRecord();
+  r.field('Status', 'Window lapsed');
+  r.field('Route', m.route_label);
+  r.field('Window closed', m.window_closed);
+  r.block('What happened', m.detail);
+  r.block('Still available', m.still_available);
+  r.block('Evidence', m.evidence);
+  return r.root;
+}
+//  A folded "whole record" under a line, so the panel stays scannable.
+function obFold(label, el){
+  var det = obEl('details', 'obfold');
+  det.appendChild(obEl('summary', null, label));
+  det.appendChild(el);
+  return det;
 }
 //  The US application number a case's USPTO file is keyed by, or '' for any other office.
 function obUsptoApp(d){
@@ -1343,7 +1380,12 @@ window.obViewer = (function(){
       if (tr._x) tr._x.hidden = !ok || !tr._open;
       if (ok) visible.push(tr);
     });
-    count.textContent = visible.length + ' of ' + rows.length + ' cases';
+    //  The rows that are not cases (a filing or an action with no docket row) are counted apart,
+    //  so this agrees with the cases chip above the table.
+    var isX = function(tr){ return tr.classList.contains('extra'); };
+    var vx = visible.filter(isX).length, rx = rows.filter(isX).length;
+    count.textContent = (visible.length - vx) + ' of ' + (rows.length - rx) + ' cases'
+      + (rx ? ' + ' + vx + ' of ' + rx + ' other rows' : '');
     clear.hidden = !(needle || fo.value || fp.value || fc.value || fs.value || fr.value || boardOnly);
   }
   [q, fo, fp, fc, fs, fr].forEach(function(el){
@@ -1354,19 +1396,6 @@ window.obViewer = (function(){
     boardOnly = false;
     apply(); paintChips();
   });
-
-  //  A board entry points at its own rows. Narrowing to the board and jumping to the case is the
-  //  same act as pressing the chip, so it goes through the one filter rather than hiding rows on
-  //  its own.
-  window.obBoardFilter = function(n){
-    boardOnly = true;
-    q.value = '';
-    apply(); paintChips();
-    var first = visible.filter(function(tr){ return tr.dataset.board === String(n); })[0];
-    (first || table).scrollIntoView({block: 'center', behavior: 'smooth'});
-    if (first) first.focus({preventScroll: true});
-    return true;
-  };
 
   //  The summary chips drive the same urgency filter the select does, so there is one filter and
   //  two ways to reach it rather than two filters that can disagree.
@@ -1597,9 +1626,9 @@ window.obViewer = (function(){
   }
 
   function stageSubmitted(d){
-    var subs = d.submitted || [];
+    var subs = d.submitted || [], held = d.not_filed || [], missed = d.missed || [];
     var wrap = stageBox(2, 'Submitted: what our own records say went to the office');
-    if (!subs.length){
+    if (!subs.length && !held.length && !missed.length){
       wrap.appendChild(obEl('p', 'empty', 'Nothing submitted to the office yet.'));
       return wrap;
     }
@@ -1609,24 +1638,100 @@ window.obViewer = (function(){
       var head = document.createElement('div');
       head.appendChild(obEl('span', 'stgpill ' + (s.state === 'filed' ? 's2' : 's2x'),
                             s.state === 'filed' ? (s.posted ? 'posted' : 'submitted') : 'handed, not filed'));
+      var f = s.filing || {};
       head.appendChild(document.createTextNode('  ' + (s.date || 'undated') + '  ·  ' + (s.label || '')
         + (s.references ? '  ·  ' + s.references + ' references' : '')
+        + (obMoney(f) ? '  ·  ' + obMoney(f) : '')
         + (s.confirmation ? '  ·  confirmation ' + s.confirmation : '')
         + (s.receipts ? '  ·  ' + s.receipts + ' receipt' + (s.receipts === 1 ? '' : 's') + ' kept' : '')
         + (s.by ? '  ·  by ' + s.by : '') + '  '));
       head.appendChild(obEl('span', 'src', s.source || ''));
+      if (f.public && f.public.state){
+        head.appendChild(obEl('span', 'bdst ' + (f.public.state === 'published' ? 'done' : 'watch'),
+          f.public.state === 'published' ? 'on the office file' : 'not public yet'));
+      }
+      if (f.handed_times > 1) head.appendChild(obEl('span', 'bdst todo', 'handed twice'));
       li.appendChild(head);
       var acts = obEl('div', 'acts');
       if (s.package){
         acts.appendChild(obViewBtn('View the files', {view: 'package', name: s.package}));
-        acts.appendChild(obLink(window.APP_BASE + '/actions/package/' + encodeURIComponent(s.package), 'The package as filed'));
+        acts.appendChild(obLink(window.APP_BASE + '/actions/package/' + encodeURIComponent(s.package),
+                                f.package_note ? 'The package, rebuilt from the office\u2019s own file' : 'The package as filed'));
       }
       if (s.packet_url && !window.OB_GUEST) acts.appendChild(obLink(s.packet_url, 'Open in the filing app'));
+      if (f.public && f.public.url) acts.appendChild(obLink(f.public.url, 'The office\u2019s record for it'));
       if (acts.childNodes.length) li.appendChild(acts);
       if (s.how || s.evidence) li.appendChild(obEl('span', 'ev', s.how || s.evidence));
+      if (s.filing) li.appendChild(obFold('The whole filing record', obFilingRecord(s.filing)));
+      ul.appendChild(li);
+    });
+    held.forEach(function(f){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      head.appendChild(obEl('span', 'stgpill s2x', 'prepared, not handed'));
+      head.appendChild(document.createTextNode('  ' + (f.route_label || '') + (f.window_was ? '  ·  window ' + f.window_was : '')));
+      li.appendChild(head);
+      if (f.package){
+        var acts = obEl('div', 'acts');
+        acts.appendChild(obViewBtn('View the files', {view: 'package', name: f.package}));
+        acts.appendChild(obLink(window.APP_BASE + '/actions/package/' + encodeURIComponent(f.package), 'The package'));
+        li.appendChild(acts);
+      }
+      li.appendChild(obFold('The whole filing record', obFilingRecord(f)));
+      ul.appendChild(li);
+    });
+    missed.forEach(function(m){
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      head.appendChild(obEl('span', 'stgpill s2x', 'window missed'));
+      head.appendChild(document.createTextNode('  ' + (m.route_label || '') + '  ·  closed ' + (m.window_closed || '?')));
+      li.appendChild(head);
+      li.appendChild(obMissedRecord(m));
       ul.appendChild(li);
     });
     wrap.appendChild(ul);
+    return wrap;
+  }
+
+  //  ONE ENTRY ON THE ACTION LIST, at the top of its row's panel: what to do, by when, what it
+  //  costs, how to verify it, the packet and the package. This is what the board used to print.
+  function actionBox(b){
+    var cls = b.state_class || 'watch';
+    var wrap = obEl('div', 'obmact obaction bd-' + cls);
+    var h = obEl('h4');
+    h.appendChild(obEl('span', 'act board bd-' + cls, 'Action ' + b.n));
+    h.appendChild(document.createTextNode('  ' + (b.title || '')));
+    wrap.appendChild(h);
+    var line = obEl('div', 'bdwhen');
+    if (b.state_label) line.appendChild(obEl('span', 'bdst ' + cls, b.state_label));
+    if (b.days_left !== null && b.days_left !== undefined){
+      line.appendChild(obEl('span', 'days ' + (b.days_left < 0 ? 'lapsed' : b.days_left <= 14 ? 'urgent' : b.days_left <= 30 ? 'closing' : ''),
+                            b.days_left < 0 ? (-b.days_left) + ' days ago' : b.days_left + ' days'));
+      line.appendChild(obEl('b', null, b.deadline));
+    } else if (b.state !== 'filed' && b.state !== 'posted'){
+      line.appendChild(obEl('span', 'days none', 'no date'));
+    }
+    if (b.due_note) line.appendChild(obEl('span', null, b.due_note));
+    wrap.appendChild(line);
+    if (b.cost) wrap.appendChild(obEl('p', 'bdcost', 'Cost: ' + b.cost));
+    if (b.what) wrap.appendChild(obEl('p', 'bdwhat', b.what));
+    if (b.verify) wrap.appendChild(obEl('p', 'bdverify', b.verify));
+    var acts = obEl('div', 'acts');
+    (b.links || []).forEach(function(l){ if (l && l.url) acts.appendChild(obLink(l.url, l.label || l.url)); });
+    if (b.packet_url){
+      if (window.OB_GUEST) acts.appendChild(obEl('span', 'prepn', 'The packet is built'));
+      else acts.appendChild(obLink(b.packet_url, 'The packet'));
+    }
+    if (b.packet_url2 && !window.OB_GUEST) acts.appendChild(obLink(b.packet_url2, 'The second packet'));
+    [['package', 'package_available', 'The package as handed over (zip)'],
+     ['package2', 'package2_available', 'The second package (zip)']].forEach(function(p){
+      if (!b[p[0]] || !b[p[1]]) return;
+      acts.appendChild(obViewBtn('View the files', {view: 'package', name: b[p[0]]}));
+      var a = obLink(window.APP_BASE + '/actions/package/' + encodeURIComponent(b[p[0]]), p[2]);
+      a.removeAttribute('target'); a.setAttribute('download', '');
+      acts.appendChild(a);
+    });
+    if (acts.childNodes.length) wrap.appendChild(acts);
     return wrap;
   }
 
@@ -1779,7 +1884,7 @@ window.obViewer = (function(){
     var head = obEl('div', 'obxhead');
     //  Only when they differ. A granted EP whose docket key is already the B1 number was
     //  printing "EP4446072B1 · published as EP4446072B1".
-    head.appendChild(obEl('span', 'obmnum', (d.granted_as || d.publication)
+    head.appendChild(obEl('span', 'obmnum', d.extra === 'board' ? 'On the action list, no patent on this docket' : (d.granted_as || d.publication)
                      + (d.granted_as && d.granted_as !== d.publication
                         ? '  ·  published as ' + d.publication : '')
                      + (d.application ? '  ·  app. ' + d.application : '')));
@@ -1816,13 +1921,17 @@ window.obViewer = (function(){
       : n === 0 ? ('Closes today, ' + d.deadline + '.')
       : (n + ' day' + (n === 1 ? '' : 's') + ' left  ·  ' + d.deadline
          + (KIND[d.deadline_kind] ? '  ·  ' + KIND[d.deadline_kind] : ''));
+    if (d.extra && undated) when.textContent = 'No deadline on this row.';
     root.appendChild(when);
+    if (d.extra_note) root.appendChild(obEl('p', 'obextra', d.extra_note));
+    (d.boards || []).forEach(function(b){ root.appendChild(actionBox(b)); });
 
     //  WHAT WE HAVE ALREADY DONE COMES FIRST, on the rows that have any. "Did we already file
     //  on this one" has to be answered before "what could we file", or the second question is
     //  being asked in ignorance.
     var any = (d.iptorch || []).length || (d.packages || []).length || (d.searches || []).length
-            || (d.submitted || []).length || (d['public'] || []).length;
+            || (d.submitted || []).length || (d['public'] || []).length
+            || (d.missed || []).length || (d.not_filed || []).length;
     if (any){
       root.appendChild(stageBuilt(d));
       root.appendChild(stageSubmitted(d));
@@ -1888,150 +1997,6 @@ window.obViewer = (function(){
 })();
 </script>
 
-<script>
-/*  THE FILINGS TABLE. Same pattern as the docket: the row carries what you scan by, the panel
-    under it carries the rest. */
-(function(){
-  var t = document.getElementById('filingtable');
-  if (!t) return;
-  function payload(id){
-    var el = document.getElementById(id);
-    try { return JSON.parse(el.textContent) || []; } catch (e) { return []; }
-  }
-  var DATA = {filing: payload('obfilings'), missed: payload('obmissed')};
-
-  function money(f){
-    if (f.official_fee_usd === null || f.official_fee_usd === undefined) return null;
-    return 'USD ' + f.official_fee_usd + ' official'
-         + (f.counsel_fee_usd ? ' + ' + f.counsel_fee_usd.toLocaleString() + ' counsel' : '');
-  }
-  function refsTable(list){
-    if (!list || !list.length) return null;
-    var sec = document.createElement('section');
-    sec.appendChild(obEl('h4', null, 'References filed (' + list.length + ')'));
-    var tbl = obEl('table', 'refs');
-    tbl.innerHTML = '<thead><tr><th class="n">#</th><th>Document</th><th>Kind</th>'
-                  + '<th>Date</th><th>First named inventor</th></tr></thead>';
-    var tb = document.createElement('tbody');
-    list.forEach(function(r, i){
-      var tr = document.createElement('tr');
-      var cells = [String(i + 1), null, r.kind || '', r.date || '', r.inventor || ''];
-      cells.forEach(function(v, k){
-        var td = document.createElement('td');
-        if (k === 0) td.className = 'n';
-        if (k === 1){
-          if (r.url) td.appendChild(obLink(r.url, r.number)); else td.textContent = r.number || '';
-          //  A citation that did not go in, or that is evidence rather than art, says so under
-          //  its own number rather than in a paragraph the reader has to match back up.
-          if (r.note) td.appendChild(obEl('span', 'ev', r.note));
-        } else { td.textContent = v; }
-        tr.appendChild(td);
-      });
-      tb.appendChild(tr);
-    });
-    tbl.appendChild(tb); sec.appendChild(tbl);
-    return sec;
-  }
-
-  function build(tr){
-    var kind = tr.dataset.kind, d = (DATA[kind] || [])[parseInt(tr.dataset.idx, 10)] || {};
-    var root = obEl('div', 'obxbody');
-    var head = obEl('div', 'obxhead');
-    head.appendChild(obEl('span', 'obmnum', d.target + (d.application ? '  ·  app. ' + d.application : '')
-                     + (d.target_owner ? '  ·  ' + d.target_owner : '')));
-    head.appendChild(obEl('h3', null, d.title || ''));
-    root.appendChild(head);
-    var dl = obEl('dl', 'obmgrid');
-    function field(label, value){
-      if (value === null || value === undefined || value === '') return;
-      dl.appendChild(obEl('dt', null, label)); dl.appendChild(obEl('dd', null, value));
-    }
-    var prose = obEl('div', 'obmprose');
-    function block(heading, text){
-      if (!text) return;
-      var sec = document.createElement('section');
-      sec.appendChild(obEl('h4', null, heading)); sec.appendChild(obEl('p', null, text));
-      prose.appendChild(sec);
-    }
-    if (kind === 'filing'){
-      var STATUS = {filed: 'Filed', posted: 'Posted, not yet on the register',
-                    handed_not_filed: 'Handed to a filing agent, never filed',
-                    prepared_not_filed: 'Prepared, not filed'};
-      field('Status', STATUS[d.status] || d.status);
-      field('Route', d.route_label);
-      field('Filed', d.filed_on);
-      field('Handed off', d.handed_times > 1
-                        ? (d.handed_again_on && d.handed_again_on !== d.handed_on
-                           ? d.handed_on + ', and again ' + d.handed_again_on
-                           : d.handed_on + ', twice the same day')
-                        : d.handed_on);
-      field('Receipts', (d.receipts || []).join(', '));
-      field('Payments', (d.payments || []).join(', '));
-      if (d.public && d.public.state){
-        field('Public record', (d.public.state === 'published'
-                                ? 'On the office\u2019s own file'
-                                : 'Not on the office\u2019s file yet')
-                             + (d.public.as_of ? ', as of ' + d.public.as_of : ''));
-      }
-      field('Entered', d.entered_on);
-      field('Acknowledged', d.acknowledged_on);
-      field('Window', d.window_was);
-      field('References', d.references);
-      field('Fees', money(d));
-      field('Counsel', d.counsel);
-      field('{{ brand }} report', d.report);
-      block('How it was filed', d.how);
-      block('What was filed', d.detail);
-      block('Handed off twice', d.handed_note);
-      block('Where it stands', d.outcome);
-      block('Evidence', d.evidence);
-      //  WHAT THE OTHER SIDE CAN SEE. Our receipt and the office's own file are different facts
-      //  and the panel keeps them apart: the second one is what an examiner reads.
-      if (d.public && (d.public.note || d.public.evidence)){
-        block('The public record', [d.public.note, d.public.evidence]
-                                   .filter(Boolean).join(' '));
-      }
-      block('About this package', d.package_note);
-      var refs = refsTable(d.references_list); if (refs) prose.appendChild(refs);
-    } else {
-      field('Status', 'Window lapsed');
-      field('Route', d.route_label);
-      field('Window closed', d.window_closed);
-      block('What happened', d.detail);
-      block('Still available', d.still_available);
-      block('Evidence', d.evidence);
-    }
-    root.appendChild(dl); root.appendChild(prose);
-    if (kind === 'filing' && d.package_available && d.package){
-      var a = obEl('a', 'obmdl', d.package_note
-                                 ? 'The package, rebuilt from the office\u2019s own file (zip)'
-                                 : 'The package exactly as it was handed over (zip)');
-      a.href = window.APP_BASE + '/actions/package/' + encodeURIComponent(d.package);
-      a.setAttribute('download', '');
-      root.appendChild(a);
-      var vb = obViewBtn('View the files', {view: 'package', name: d.package});
-      vb.style.marginLeft = '12px';
-      root.appendChild(vb);
-    }
-    if (kind === 'filing' && d.packet_url){
-      var p = obEl('a', 'obmdl', 'Open the packet in the filing app');
-      p.href = d.packet_url; p.target = '_blank'; p.rel = 'noopener';
-      p.style.marginLeft = '8px';
-      root.appendChild(p);
-    }
-    if (kind === 'filing' && d.public && d.public.url){
-      var o = obEl('a', 'obmdl', d.public.state === 'published'
-                                 ? 'See it on the office\u2019s own record'
-                                 : 'The office\u2019s record for this case');
-      o.href = d.public.url; o.target = '_blank'; o.rel = 'noopener';
-      o.style.marginLeft = '8px';
-      root.appendChild(o);
-    }
-    return root;
-  }
-  window.obExpand.wire(t.tBodies[0], build, 8);
-})();
-</script>
 
 <script>
 /*  THE TARGET BAR, THE FORM AND THE REFRESH. A refresh and a first fetch are the same job on
