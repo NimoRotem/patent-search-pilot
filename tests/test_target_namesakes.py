@@ -30,3 +30,13 @@ def test_a_target_without_guards_matches_exactly_as_before():
     w = [R.name_words("Schmalz")]
     for cand in (["J. Schmalz GmbH"], ["Schmalz, Kurt"], ["SCHMALZ KURT"]):
         assert R.owner_matches({}, w, cand) == R.name_matches(w, cand)
+
+
+def test_an_owner_search_skips_a_leading_place_name():
+    import observation_marks as M
+    assert M.search_word(R.name_words("Zhejiang Kaikai One Tool Co., Ltd.")) == "kaikai"
+    assert M.search_word(R.name_words("Shanghai Vinon")) == "vinon"
+    assert M.search_word(R.name_words("Guangzhou Cowest Machinery")) == "cowest"
+    #  A name that does not start with one keeps its first word, as every target did before.
+    assert M.search_word(R.name_words("J. Schmalz GmbH")) == "schmalz"
+    assert M.search_word(R.name_words("Binar Quick-Lift Systems")) == "binar"
