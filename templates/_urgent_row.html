@@ -1,0 +1,9 @@
+{#  One line of the folded detail under the "closing soon" strip. `it` is one urgent_items() entry. #}
+<tr>
+  <td class="ud {{ 'r' if it.days is not none and it.days <= 3 else ('o' if it.days is not none and it.days <= 7 else '') }}">{% if it.days is not none %}{{ it.days }}d{% else %}any day{% endif %}</td>
+  <td class="un"><svg class="ic"><use href="#i-{{ it.kind }}"/></svg><a href="{{ request.script_root }}/actions?target={{ it.target_id }}&amp;kind={{ it.tab }}&amp;open={{ it.pub | urlencode }}" data-open="{{ it.pub }}"{% if it.here %} data-here="1"{% endif %}>{{ it.number }}</a> <span class="urgoff">{{ it.office }}</span></td>
+  <td class="uw">{{ it.what }}{% if it.fee %} <span class="urgoff">{{ it.fee }}</span>{% endif %}</td>
+  <td class="uc">{{ it.company }}</td>
+  <td class="ux">{% if it.context %}{{ it.context }}{% else %}{{ it.title }}{% endif %}</td>
+  <td class="ul">{% if it.us_app %}<button type="button" class="urgic" data-view="uspto" data-app="{{ it.us_app }}" title="The USPTO file"><svg class="ic"><use href="#i-file"/></svg></button>{% elif it.office_url %}<a class="urgic" href="{{ it.office_url }}" target="_blank" rel="noopener" title="The office's record"><svg class="ic"><use href="#i-ext"/></svg></a>{% endif %}{% if it.package %}<button type="button" class="urgic" data-view="iptorch" data-slug="{{ it.package.slug }}" data-stamp="{{ it.package.stamp }}" title="View the latest package"><svg class="ic"><use href="#i-box"/></svg></button>{% endif %}</td>
+</tr>

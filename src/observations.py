@@ -1227,6 +1227,110 @@ def board_for(cases, today=None, have=None):
     return data
 
 
+#  THE TOP OF THE PAGE IS EVERY COMPANY AT ONCE. Whichever target the table below shows, the strip
+#  above it lists what shuts within this many days on ANY target and ANY kind (patent, design,
+#  trademark), plus the dated items on the action list.
+URGENT_DAYS = int(os.environ.get("ACTIONS_URGENT_DAYS", "15"))
+
+
+def _soonest(c, horizon):
+    """(days, instrument, fee, more) for the first door this row shuts within `horizon`, or None."""
+    live = [a for a in c.get("actions") or [] if a.get("status") in ("open", "closing")
+            and not a.get("weak") and a.get("days_left") is not None and 0 <= a["days_left"] <= horizon]
+    live.sort(key=lambda a: a["days_left"])
+    n = c.get("days_left")
+    if live and (n is None or n < 0 or live[0]["days_left"] <= n):
+        a = live[0]
+        return a["days_left"], a.get("instrument") or a.get("stage_label") or "", a.get("fee") or "", len(live) - 1
+    if n is not None and 0 <= n <= horizon and c.get("state") != "lapsed":
+        head = c.get("action_headline") or {}
+        return n, head.get("label") or "window closes", head.get("fee") or "", max(len(live) - 1, 0)
+    return None
+
+
+def _us_app(c):
+    m = re.search(r"patentcenter\.uspto\.gov/applications/(\d{6,9})", str(c.get("register_url") or ""))
+    if m:
+        return m.group(1)
+    if c.get("office") == "USPTO" and c.get("application"):
+        return re.sub(r"\D", "", str(c["application"]))
+    return ""
+
+
+def _card(c, t, kind, days, what, fee, more, here):
+    v0 = (c.get("iptorch") or [None])[0]
+    return {"kind": kind, "tab": kind, "target_id": t["id"], "company": t.get("name") or "",
+            "office": c.get("office") or "", "pub": c.get("publication") or "",
+            "number": c.get("granted_as") or c.get("registration") or c.get("publication") or "",
+            "title": c.get("title") or "", "days": days, "date": c.get("deadline") or "",
+            "what": what, "fee": fee, "more": more, "here": here,
+            "built": c.get("built_count") or 0, "stage": c.get("stage") or "none",
+            "boards": [b.get("n") for b in c.get("boards") or []],
+            "us_app": _us_app(c) if kind == "patent" else "",
+            "office_url": "" if _us_app(c) else (c.get("register_url") or ""),
+            "package": {"slug": v0["slug"], "stamp": v0["stamp"]} if v0 else None,
+            "context": (c.get("closing_note") or c.get("next_action") or "")[:400]}
+
+
+def urgent_items(user_id, targets, current=None, filings=None, have=(), with_iptorch=False,
+                 horizon=URGENT_DAYS):
+    """What shuts within `horizon` days on every target and kind this person watches.
+
+    -> {"items": [card], "anyday": [card], "horizon": n}. `current` is (target_id, kind, rows)
+    for the docket the page is already showing, so its rows are not read twice. Rows of every
+    other docket are read the same way the page reads its own, then given the same stages.
+    """
+    today = datetime.date.today()
+    items, anyday, acted = [], [], {}
+    for t in targets or []:
+        for kind in observation_marks.KINDS:
+            here = bool(current and current[0] == t["id"] and current[1] == kind)
+            if here:
+                rows = current[2]
+            else:
+                try:
+                    rows = cases_for(user_id, t["id"], today=today, kind=kind)
+                    attribute_filings(rows, filings or [])
+                    if with_iptorch and kind == "patent":
+                        iptorch_packages.attach(rows)
+                    if t.get("seeded") and kind == "patent":
+                        board_for(rows, today=today, have=set(have))
+                    stages(rows, have)
+                except Exception:
+                    traceback.print_exc()
+                    continue
+            for c in rows:
+                if c.get("extra"):
+                    continue
+                hit = _soonest(c, horizon)
+                if hit:
+                    items.append(_card(c, t, kind, hit[0], hit[1], hit[2], hit[3], here))
+                elif c.get("days_left") is None and c.get("closing_soon") and c.get("state") != "lapsed":
+                    head = c.get("action_headline") or {}
+                    anyday.append(_card(c, t, kind, None, head.get("label") or "could close any day",
+                                        head.get("fee") or "", 0, here))
+                #  The action list keeps its own dates (confirm a fee, post an original), which are
+                #  not register windows and can be the sooner of the two.
+                for b in c.get("boards") or []:
+                    n = b.get("days_left")
+                    if n is not None and 0 <= n <= horizon and not (hit and hit[0] == n):
+                        #  One card per action, however many patents it names.
+                        key = (t["id"], b.get("n"))
+                        if key in acted:
+                            acted[key]["more"] += 1
+                            continue
+                        card = _card(c, t, kind, n, "Action %s: %s" % (b.get("n"), b.get("title") or ""),
+                                     "", 0, here)
+                        acted[key] = card
+                        card.update(kind="action", date=b.get("deadline") or "",
+                                    context=(b.get("due_note") or b.get("what") or "")[:400])
+                        items.append(card)
+    items.sort(key=lambda i: (i["days"], i["kind"] != "action"))
+    anyday.sort(key=lambda i: (i["company"], i["kind"], i["number"]))
+    return {"items": items, "anyday": anyday, "horizon": horizon,
+            "companies": len({i["target_id"] for i in items})}
+
+
 def set_note(user_id, target_id, publication, note):
     """The one field a person owns on a row. Refuses a row that is not theirs, by construction:
     the WHERE clause carries the user id, so a mismatched publication updates nothing."""
@@ -1306,10 +1410,12 @@ def actions_page():
     if kind not in observation_marks.KINDS:
         kind = "patent"
     cases, filings, meta = [], [], {}
+    all_filings = []
     if target:
         try:
             cases = cases_for(uid, target["id"], kind=kind)
             filings = filings_for(uid)
+            all_filings = list(filings)
             meta = meta_for(uid)
         except Exception:
             traceback.print_exc()
@@ -1382,6 +1488,13 @@ def actions_page():
     counts["stage_submitted"] = sum(1 for c in cases if c.get("stage") in ("submitted", "public"))
     counts["stage_public"] = sum(1 for c in cases if c.get("stage") == "public")
     can_file = can_file_options(cases)
+    #  The strip at the top: what shuts within URGENT_DAYS on every target and every kind.
+    try:
+        urgent = urgent_items(uid, targets, current=(target["id"], kind, cases) if target else None,
+                              filings=all_filings, have=have, with_iptorch=iptorch_on)
+    except Exception:
+        traceback.print_exc()
+        urgent = {"items": [], "anyday": [], "horizon": URGENT_DAYS, "companies": 0}
     #  THE EXPANDED ROW'S DATA, TRIMMED. The table row carries what you scan by; everything else
     #  is built on demand from this map by publication number. Only the fields the panel
     #  actually renders are serialised.
@@ -1413,7 +1526,7 @@ def actions_page():
     #  neither yet.
     if kind != "patent":
         filings, missed = [], []
-    return render_template("actions.html", cases=cases + extras, n_extra=len(extras),
+    return render_template("actions.html", cases=cases + extras, n_extra=len(extras), urgent=urgent,
                            board=board,
                            meta=meta, counts=counts, detail=detail, can_file=can_file,
                            targets=targets, target=target, offices=OFFICES,
