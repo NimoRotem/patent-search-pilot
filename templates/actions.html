@@ -109,6 +109,7 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .obform{margin:8px 0 4px;padding:14px 16px;border:1px solid var(--line2);border-radius:var(--r);
   background:var(--s3)}
 .obform h3{font-size:15px;margin:0 0 10px}
+.obform .fldchk{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);margin-top:6px}
 .obformgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}
 .obform label.fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--faint);
   text-transform:uppercase;letter-spacing:.04em}
@@ -608,6 +609,11 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
         <textarea name="inventors" placeholder="Stockburger, Ralf"></textarea></label>
       <label class="fld">Name on this page (optional)
         <input type="text" name="name" placeholder="Defaults to the first assignee or inventor"></label>
+      <div>
+        <label class="fld">Not these look-alikes, one per line
+          <textarea name="exclude" placeholder="Probst Preserves&#10;Raimondi Cranes"></textarea></label>
+        <label class="fldchk"><input type="checkbox" name="companies_only"> Companies only: skip private persons who share the name</label>
+      </div>
       <div>
         <label class="fld" for="oblookback">Publications of the last</label>
         <select name="lookback_months" id="oblookback">
@@ -2099,6 +2105,8 @@ window.obViewer = (function(){
     fld('name').value = target ? target.name : '';
     fld('assignees').value = target ? target.assignees.join('\n') : '';
     fld('inventors').value = target ? target.inventors.join('\n') : '';
+    fld('exclude').value = target ? (target.exclude || []).join('\n') : '';
+    fld('companies_only').checked = !!(target && target.companies_only);
     fld('lookback_months').value = target ? String(target.lookback_months) : fld('lookback_months').value;
     Array.prototype.forEach.call(form.querySelectorAll('input[name=offices]'), function(cb){
       cb.checked = target ? target.offices.indexOf(cb.value) >= 0 : true;
@@ -2135,6 +2143,8 @@ window.obViewer = (function(){
       name: fld('name').value,
       assignees: lines(fld('assignees').value),
       inventors: lines(fld('inventors').value),
+      exclude: lines(fld('exclude').value),
+      companies_only: fld('companies_only').checked,
       lookback_months: fld('lookback_months').value,
       offices: Array.prototype.filter.call(form.querySelectorAll('input[name=offices]'), function(cb){
         return cb.checked; }).map(function(cb){ return cb.value; })

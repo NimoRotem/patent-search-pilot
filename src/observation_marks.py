@@ -1075,7 +1075,7 @@ def discover(target, kind, known, progress=None):
                 try:
                     for t in euipo_trademarks(words[0]):
                         row = euipo_tm_row(t, name)
-                        if not R.name_matches([words], row["applicants"]):
+                        if not R.owner_matches(target, [words], row["applicants"]):
                             rejected.append("EM %s (%s)" % (row["title"], row["applicant"] or "no owner"))
                             continue
                         if row["publication"].upper() not in known:
@@ -1098,7 +1098,7 @@ def discover(target, kind, known, progress=None):
                 errors.append("TMview search for %s: %s" % (" ".join(words), str(exc)[:120]))
                 continue
             for h in hits:
-                if not R.name_matches([words], h.get("applicantName") or []):
+                if not R.owner_matches(target, [words], h.get("applicantName") or []):
                     rejected.append("%s %s (%s)" % (h.get("tmOffice"), h.get("tmName"), "; ".join(h.get("applicantName") or []) or "no owner"))
                     continue
                 row = tm_row(h, name)
@@ -1114,7 +1114,7 @@ def discover(target, kind, known, progress=None):
                 try:
                     for d in euipo_designs(words[0]):
                         row = euipo_design_row(d, name)
-                        if not R.name_matches([words], row["applicants"]):
+                        if not R.owner_matches(target, [words], row["applicants"]):
                             rejected.append("%s (%s)" % (row["publication"], row["applicant"] or "no owner"))
                             continue
                         if row["publication"].upper() not in known:
@@ -1129,7 +1129,7 @@ def discover(target, kind, known, progress=None):
                 try:
                     for w in odp_designs(words):
                         row = odp_design_row(w, name)
-                        if not R.name_matches([words], row["applicants"]):
+                        if not R.owner_matches(target, [words], row["applicants"]):
                             rejected.append("%s (%s)" % (row["publication"], row["applicant"] or "no owner"))
                             continue
                         if re.search(r"abandon|expired", row["status"], re.I):

@@ -970,7 +970,45 @@ def name_words(name):
     and address gone, anything under three letters gone. "J. Schmalz GmbH" -> ["schmalz"],
     "Stockburger, Ralf" -> ["stockburger", "ralf"], "Vacuum Technologies Inc" ->
     ["vacuum", "technologies"]. Searched AND-ed, so every word has to be on the record."""
-    return [w for w in normalise_applicant(name).split() if len(w) >= 3]
+    caps = _initialisms(name)
+    return [w for w in normalise_applicant(name).split() if len(w) >= 3 or w in caps]
+
+
+#  Two capitals that are a company form, not a name: "Piab AB" is Piab.
+_FORMS2 = {"ab", "ag", "as", "bv", "co", "ek", "kg", "kk", "nv", "oy", "sa", "se", "sl", "uk", "us"}
+
+
+def _initialisms(name):
+    """Two-capital tokens that ARE the distinctive part of a name ("HG Commerciale"), kept by
+    `name_words`; otherwise the name shrinks to "commerciale" and matches half of Italy."""
+    return {t.lower() for t in re.findall(r"\b[A-Z]{2}\b", str(name or ""))} - _FORMS2
+
+
+#  A company form or trade word on an applicant string. With `companies_only` on a target, an
+#  applicant must carry one of these: "PROBST GMBH" is the company, "PROBST, RICARDO CARREON" and
+#  "PROBST HANS" are people who share its name.
+_COMPANY_MARK = re.compile(
+    r"\b(gmbh|mbh|ag|kg|kgaa|se|co|corp|corporation|compan(?:y|ies)|ltd|limited|llc|inc|"
+    r"incorporated|plc|pty|spa|srl|sas|sarl|sa|sl|ab|as|asa|oy|bv|nv|kk|gesellschaft|factory|"
+    r"works?|industr(?:y|ies|ial)|technolog(?:y|ies)|tech|tools?|machinery|trading|trade|group|"
+    r"holdings?|enterprises?|manufactur\w*)\b|\bs\.\s?[pr]\.\s?[al]\b|\bco\.", re.I)
+
+
+def is_company(name):
+    return bool(_COMPANY_MARK.search(str(name or "")))
+
+
+def owner_matches(target, words_list, candidates):
+    """`name_matches` with the target's own guards against namesakes: with `companies_only`, a
+    candidate must be a company, and a candidate carrying every word of one of the target's
+    `exclude` names ("Probst Preserves", "Raimondi Cranes") never counts."""
+    cands = [c for c in candidates or [] if c]
+    if (target or {}).get("companies_only"):
+        cands = [c for c in cands if is_company(c)]
+    excl = [w for w in (name_words(n) for n in (target or {}).get("exclude") or []) if w]
+    if excl:
+        cands = [c for c in cands if not name_matches(excl, [c])]
+    return name_matches(words_list, cands)
 
 
 def _plain(text):
@@ -1063,7 +1101,8 @@ def discover_target_ops(target, known, since, today):
         except Exception:
             pass
         applicants = facts.get("applicants") or ([facts["applicant"]] if facts.get("applicant") else [])
-        if not (name_matches(a_words, applicants) or name_matches(i_words, facts.get("inventors"))):
+        if not (owner_matches(target, a_words, applicants)
+                or name_matches(i_words, facts.get("inventors"))):
             rejected.append("%s (%s)" % (pub, facts.get("applicant") or "no applicant on the record"))
             continue
         new.append(_new_row(pub, office, facts))
@@ -1097,7 +1136,7 @@ def discover_target_odp(target, known, since, today):
                 if not app or app in seen or app in known:
                     continue
                 seen.add(app)
-                if not (name_matches(a_words, hit["applicants"])
+                if not (owner_matches(target, a_words, hit["applicants"])
                         or name_matches(i_words, hit["inventors"])):
                     rejected.append("%s (%s)" % (hit["publication"] or app,
                                                  hit["applicant"] or "no applicant on the record"))
