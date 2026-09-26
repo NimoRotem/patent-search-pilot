@@ -1138,15 +1138,26 @@ def discover(target, kind, known, progress=None):
         if "EP" in offices:
             for words in words_list:
                 try:
+                    verdict = {}
                     for d in euipo_designs(search_word(words)):
-                        #  The search hit names its owner already: a stranger is set aside before
-                        #  the detail call, which is the slow part.
+                        #  THE DETAIL CALL IS THE SLOW PART, so a stranger is set aside before it
+                        #  when possible: by the owner name when the hit carries one, else by the
+                        #  owner's EUIPO id once one of its designs has been read. A stranger with
+                        #  ninety designs costs one detail call, not ninety.
                         listed = _listed_owners(d)
                         if listed and not R.owner_matches(target, [words], listed):
                             rejected.append("RCD%s (%s)" % (d.get("designNumber") or "", "; ".join(listed)))
                             continue
+                        ids = tuple(sorted(str(a.get("identifier")) for a in (d.get("applicants") or [])
+                                           if isinstance(a, dict) and a.get("identifier")))
+                        if ids and verdict.get(ids) is False:
+                            rejected.append("RCD%s (owner %s, as above)" % (d.get("designNumber") or "", ", ".join(ids)))
+                            continue
                         row = euipo_design_row(d, name)
-                        if not R.owner_matches(target, [words], row["applicants"]):
+                        ok = R.owner_matches(target, [words], row["applicants"])
+                        if ids and row["applicants"]:
+                            verdict[ids] = ok
+                        if not ok:
                             rejected.append("%s (%s)" % (row["publication"], row["applicant"] or "no owner"))
                             continue
                         if row["publication"].upper() not in known:

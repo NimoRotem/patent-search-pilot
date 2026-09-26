@@ -40,3 +40,20 @@ def test_an_owner_search_skips_a_leading_place_name():
     #  A name that does not start with one keeps its first word, as every target did before.
     assert M.search_word(R.name_words("J. Schmalz GmbH")) == "schmalz"
     assert M.search_word(R.name_words("Binar Quick-Lift Systems")) == "binar"
+
+
+def test_a_strangers_designs_cost_one_detail_call(monkeypatch):
+    import observation_marks as M
+    hits = [{"designNumber": "00%d-0001" % i, "applicants": [{"office": "EM", "identifier": "959818"}]}
+            for i in range(5)]
+    calls = []
+    monkeypatch.setattr(M, "euipo_designs", lambda word, **k: hits)
+
+    def row(d, name=""):
+        calls.append(d["designNumber"])
+        return {"publication": "RCD" + d["designNumber"], "applicants": ["The KaiKai Company GbR"],
+                "applicant": "The KaiKai Company GbR"}
+    monkeypatch.setattr(M, "euipo_design_row", row)
+    new, rejected, errors = M.discover({"name": "Kaikai", "assignees": ["Zhejiang Kaikai One Tool"],
+                                        "offices": ["EP"], "companies_only": True}, "design", set())
+    assert new == [] and len(rejected) == 5 and len(calls) == 1
