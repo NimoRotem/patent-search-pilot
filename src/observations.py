@@ -137,6 +137,10 @@ DETAIL_FIELDS = (
     #  deadline on this page: "granted 2026-08-20" is an assertion until you can see the R018 and
     #  the B4 it was read off.
     "register_events",
+    #  What used to sit in two sections above the table, now on the rows themselves: the hand-kept
+    #  action list's entries for the case, a window we missed on it, filings prepared and never
+    #  handed over, and, for a row the docket itself does not have, why it is here at all.
+    "boards", "missed", "not_filed", "extra", "extra_note",
 )
 #  Kept on the row for anyone who set one before the column left the page; nothing writes it now.
 USER_STATES = ("open", "watch", "queued", "filed", "declined", "done")
@@ -707,8 +711,88 @@ def attribute_filings(cases, filings):
 OFFICE_BLIND = {"DPMA": "DPMA does not publish these", "WIPO (PCT)": "PATENTSCOPE only"}
 #  Except an opposition, which every register records. A filed Einspruch is watched for on the
 #  German legal status rather than written off as invisible.
-_OPPOSITION = re.compile(r"opposition|einspruch", re.I)
+_OPPOSITION = re.compile(r"opposition|opposed|einspruch", re.I)
 STAGE_RANK = {"public": 4, "submitted": 3, "handed": 2, "built": 1, "none": 0}
+
+
+#  Everything the filings table used to print for one filing, carried onto its row's stage 2.
+FILING_FIELDS = ("id", "title", "target", "application", "target_owner", "office", "status",
+                 "route_label", "filed_on", "handed_on", "handed_times", "handed_note",
+                 "handed_again_on", "entered_on", "acknowledged_on", "window_was", "counsel",
+                 "references", "references_list", "official_fee_usd", "counsel_fee_usd", "payments",
+                 "report", "detail", "outcome", "evidence", "how", "package", "package_note",
+                 "packet_note", "packet_url", "public")
+
+
+def filing_view(f):
+    out = {k: f.get(k) for k in FILING_FIELDS if f.get(k) not in (None, "", [])}
+    receipts = f.get("receipts")
+    out["receipts"] = receipts if isinstance(receipts, list) else (receipts or 0)
+    return out
+
+
+def _keys_of(record, fields):
+    return {re.sub(r"[^A-Z0-9]", "", str(record.get(k) or "").upper()) for k in fields} - {""}
+
+
+def attach_missed(cases, missed):
+    """Pin each hand-written missed window to its row, by number, as the filings are."""
+    for c in cases:
+        keys = _keys_of(c, ("publication", "granted_as", "application"))
+        c["missed"] = [dict(m) for m in missed or [] if _keys_of(m, ("target", "application")) & keys]
+    return cases
+
+
+def extra_rows(cases, filings, missed, board):
+    """Rows for what the docket has no row for and the page must still show: a filing whose
+    patent no target tracks (the Nguyen family), a missed window with no row, and an action on
+    the list that names no docket patent. They sit in the same table, marked, and count in none
+    of the totals above it."""
+    out = []
+    attached = {str(f.get("id")) for c in cases for f in c.get("our_filings") or []}
+    for f in filings or []:
+        if str(f.get("id")) in attached:
+            continue
+        pub = str(f.get("target") or f.get("application") or f.get("id") or "")
+        #  No register sweep reads a patent no target tracks, so the office's side is the hand
+        #  check kept on the filing itself.
+        seen = f.get("public") or {}
+        on_file = [{"date": str(f.get("filed_on") or "")[:10], "whose": "ours", "origin": "office",
+                    "instrument": f.get("route_label") or "Third-party submission",
+                    "office_source": seen.get("note") or "checked by hand on the office's file",
+                    "record_url": seen.get("url") or ""}] if seen.get("state") == "published" else []
+        out.append({"publication": pub, "application": f.get("application") or "",
+                    "title": f.get("title") or pub, "title_full": f.get("title") or pub,
+                    "applicant": f.get("target_owner") or "", "applicant_short": f.get("target_owner") or "",
+                    "office": f.get("office") or "", "kind": "patent", "extra": "filing",
+                    "extra_note": "Filed by us, on a patent no target on this docket tracks.",
+                    "register_url": (f.get("public") or {}).get("url") or "",
+                    "our_filings": [f], "on_file": on_file, "actions": [], "can_keys": [],
+                    "days_left": None, "sort_key": 99999})
+    have_rows = {k for c in cases for k in _keys_of(c, ("publication", "granted_as", "application"))}
+    for m in missed or []:
+        if _keys_of(m, ("target", "application")) & have_rows:
+            continue
+        pub = str(m.get("target") or m.get("application") or "")
+        out.append({"publication": pub, "application": m.get("application") or "",
+                    "title": m.get("title") or pub, "kind": "patent", "extra": "missed",
+                    "extra_note": "A window we missed, on a patent this docket has no row for.",
+                    "missed": [dict(m)], "actions": [], "can_keys": [], "days_left": None,
+                    "sort_key": 99999})
+    for e in (board or {}).get("entries") or []:
+        if e.get("on_docket"):
+            continue
+        view = board_view(e)
+        out.append({"publication": "action-%s" % e.get("n"), "title": e.get("title") or "",
+                    "title_full": e.get("title") or "", "kind": "patent", "extra": "board",
+                    "extra_note": ("An action on the list that names no patent on this docket"
+                                   + (": " + ", ".join(e.get("pubs")) if e.get("pubs") else "") + "."),
+                    "boards": [view], "board": {"n": e.get("n"), "title": e.get("title")},
+                    "deadline": view["deadline"], "days_left": view["days_left"],
+                    "state": "lapsed" if (view["days_left"] is not None and view["days_left"] < 0) else "open",
+                    "actions": [], "can_keys": [],
+                    "sort_key": view["days_left"] if view["days_left"] is not None else 99999})
+    return out
 
 
 def stages(cases, have=()):
@@ -736,11 +820,15 @@ def stages(cases, have=()):
                  + [str(s.get("when") or "")[:10] for s in zips])
         c["built_latest"] = max([d for d in dates if d] or [""])
         subs, packet_ids = [], set()
+        #  Prepared and never handed over is stage 1, not 2, but the record of it is kept on the
+        #  row: the filings table used to be the only place it was said.
+        c["not_filed"] = [filing_view(f) for f in c.get("our_filings") or []
+                          if str(f.get("status") or "") not in ("filed", "posted", "handed_not_filed")]
         for f in c.get("our_filings") or []:
             st = str(f.get("status") or "")
             state = "filed" if st in ("filed", "posted") else ("handed" if st == "handed_not_filed" else "")
             if not state:
-                continue            # prepared and never handed over: stage 1, not 2
+                continue
             if f.get("packet_id"):
                 packet_ids.add(str(f["packet_id"]))
             receipts = f.get("receipts")
@@ -753,6 +841,8 @@ def stages(cases, have=()):
                 "references": f.get("references") or 0,
                 "receipts": len(receipts) if isinstance(receipts, list) else (receipts or 0),
                 "package": f.get("package") if f.get("package") in have else "",
+                "packet_url": f.get("packet_url") or "",
+                "filing": filing_view(f),
                 "id": f.get("id") or "", "source": "our filing record"})
         for p in packets:
             if p.get("id") in packet_ids or p.get("state") not in ("filed", "handed off"):
@@ -783,6 +873,17 @@ def stages(cases, have=()):
             subs.append({"state": "filed", "date": str(c.get("filed_on") or "")[:10],
                          "label": "Marked filed on the docket", "evidence": "",
                          "source": "docket"})
+        #  THE ACTION LIST'S WORD COUNTS TOO. The German opposition faxed on 2026-09-18 has no
+        #  filing record, only its entry on the action list, and without this its row read "not
+        #  submitted" beside a list that said filed.
+        for b in c.get("boards") or []:
+            if b.get("state") in ("filed", "posted") and not any(s["state"] == "filed" for s in subs):
+                subs.append({"state": "filed", "posted": b["state"] == "posted",
+                             "date": b.get("filed_date") or "",
+                             "label": "Action %s: %s" % (b.get("n"), b.get("title") or ""),
+                             "evidence": b.get("state_label") or "",
+                             "package": b.get("package") if b.get("package_available") else "",
+                             "id": "action-%s" % b.get("n"), "source": "the action list"})
         subs.sort(key=lambda s: s["date"] or "", reverse=True)
         c["submitted"] = subs
         #  Stage 3 is ONLY what the office put there. Our own receipts sit in `on_file` too, as
@@ -1052,6 +1153,20 @@ def load_board():
     return data if isinstance(data, dict) else {}
 
 
+BOARD_FIELDS = ("n", "title", "deadline", "days_left", "urgency", "state", "state_label",
+                "state_class", "due_note", "cost", "what", "verify", "links", "packet_url",
+                "packet_url2", "package", "package_available", "package2", "package2_available")
+
+
+def board_view(item):
+    """One action-list entry as its row's panel shows it. `filed_date` is read off the state
+    line ("Faxed 2026-09-18 ..."), because the list keeps a due date and no filing date."""
+    out = {k: item.get(k) for k in BOARD_FIELDS}
+    m = re.search(r"\d{4}-\d{2}-\d{2}", str(item.get("state_label") or ""))
+    out["filed_date"] = m.group(0) if (m and item.get("state") in ("filed", "posted")) else ""
+    return out
+
+
 def board_for(cases, today=None, have=None):
     """The board with its countdowns computed for today, and every docket row it names marked.
 
@@ -1091,12 +1206,18 @@ def board_for(cases, today=None, have=None):
             item[name + "_available"] = bool(item.get(name)) and have is not None \
                 and item[name] in have
         rows = 0
+        view = board_view(item)
         for pub in item.get("pubs") or []:
             for key in observation_links.pub_keys(pub):
                 case = by_key.get(key)
                 if case is not None:
                     case.setdefault("board", {"n": item["n"], "title": item["title"],
                                               "urgency": item["urgency"]})
+                    #  Every entry that names the row, not only the first: DE 10 2021 119 687 B4
+                    #  is both the opposition that was filed and a case still to work.
+                    mine = case.setdefault("boards", [])
+                    if not any(b["n"] == view["n"] for b in mine):
+                        mine.append(dict(view))
                     rows += 1
                     break
         item["on_docket"] = rows
@@ -1228,13 +1349,18 @@ def actions_page():
                 c["image"] = url_for("observations.action_image", publication=c["publication"])
     #  Which package files actually exist on disk, so the page never offers a dead download.
     have = set(os.listdir(PACKAGE_DIR)) if os.path.isdir(PACKAGE_DIR) else set()
-    stages(cases, have)
     for f in filings:
         f["package_available"] = bool(f.get("package")) and f["package"] in have
-    #  The ten things to act on, above two hundred rows of docket. Only on the shipped docket and
-    #  only for patents: the board is written about this target's cases, and a design docket
-    #  showing another kind's actions would be a lie about which page you are on.
+    #  ONE TABLE. The hand-kept action list, the filings table and the missed windows used to be
+    #  three sections above the docket; each is now pinned to the rows it is about, before the
+    #  stages are worked out, because an action that says "filed" is stage 2 on its row. Only on
+    #  the shipped docket and only for patents: the list is written about this target's cases.
     board = board_for(cases, have=have) if (seeded and kind == "patent") else {}
+    attach_missed(cases, missed)
+    #  What has no row of its own (a filing on a patent no target tracks, an action naming no
+    #  docket patent) becomes a marked row at the end of the same table, never a separate list.
+    extras = extra_rows(cases, filings, missed, board) if kind == "patent" else []
+    stages(cases + extras, have)
     #  THE CHIPS AND THE FILTER MUST AGREE. The urgency select offers "14 days or less" and "90
     #  days or less", which are nested bands; the chips used to be counted from the mutually
     #  exclusive `state` buckets and so reported a smaller number than the filter then showed.
@@ -1259,7 +1385,7 @@ def actions_page():
     #  THE EXPANDED ROW'S DATA, TRIMMED. The table row carries what you scan by; everything else
     #  is built on demand from this map by publication number. Only the fields the panel
     #  actually renders are serialised.
-    detail = {c["publication"]: {k: c.get(k) for k in DETAIL_FIELDS} for c in cases}
+    detail = {c["publication"]: {k: c.get(k) for k in DETAIL_FIELDS} for c in cases + extras}
     #  HOW OLD THE REGISTER FACTS ARE, said out loud. The countdowns are computed and cannot go
     #  stale, but the deadlines they count to can: a patent that granted last week opens a nine
     #  month opposition window this page knows nothing about until somebody presses the button.
@@ -1287,7 +1413,7 @@ def actions_page():
     #  neither yet.
     if kind != "patent":
         filings, missed = [], []
-    return render_template("actions.html", cases=cases, filings=filings, missed=missed,
+    return render_template("actions.html", cases=cases + extras, n_extra=len(extras),
                            board=board,
                            meta=meta, counts=counts, detail=detail, can_file=can_file,
                            targets=targets, target=target, offices=OFFICES,
@@ -1477,13 +1603,27 @@ def action_image(publication):
     return resp
 
 
+def _allowed_packages(user_id):
+    """Every filed package this person's docket references: their filing records, and on the
+    shipped docket the action list too, which names the German opposition's zip and nothing
+    else does."""
+    wanted = {f.get("package") for f in filings_for(user_id) if f.get("package")}
+    try:
+        if any(t.get("seeded") for t in targets_for(user_id)):
+            for e in load_board().get("entries") or []:
+                wanted |= {e.get(k) for k in ("package", "package2") if e.get(k)}
+    except Exception:
+        traceback.print_exc()
+    return wanted
+
+
 @bp.route("/actions/package/<path:name>")
 def action_package(name):
     """One filed package, as a zip. Served only to somebody whose own docket references it."""
     user = _user()
     if "/" in name or "\\" in name or name.startswith("."):
         abort(404)
-    wanted = {f.get("package") for f in filings_for(user["id"]) if f.get("package")}
+    wanted = _allowed_packages(user["id"])
     if name not in wanted:
         abort(404)
     if not os.path.isfile(os.path.join(PACKAGE_DIR, name)):
@@ -1533,7 +1673,7 @@ def _package_path(name):
     user = _user()
     if "/" in name or "\\" in name or name.startswith("."):
         abort(404)
-    wanted = {f.get("package") for f in filings_for(user["id"]) if f.get("package")}
+    wanted = _allowed_packages(user["id"])
     path = os.path.join(PACKAGE_DIR, name)
     if name not in wanted or not os.path.isfile(path):
         abort(404)
