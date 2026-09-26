@@ -1059,6 +1059,32 @@ def _tm_offices(target):
     return [c for c in codes if c]
 
 
+#  Place names and trade words that open many company names. Searching the EUIPO for the first
+#  word of "Zhejiang Kaikai One Tool" returns every Zhejiang company's designs, and each hit costs a
+#  detail call. When a name starts with one of these, its most distinctive word is searched.
+_WEAK_WORDS = {
+    "zhejiang", "shanghai", "guangzhou", "guangdong", "dongguan", "shenzhen", "yongkang", "jinhua",
+    "quzhou", "ningbo", "hangzhou", "suzhou", "jiangsu", "beijing", "tianjin", "foshan", "xiamen",
+    "qingdao", "fujian", "wenzhou", "taizhou", "changzhou", "wuxi", "nanjing", "china", "hong",
+    "kong", "machinery", "technology", "tech", "tools", "tool", "industrial", "industry", "trading",
+    "trade", "intelligent", "automation", "electronic", "electronics", "network", "practical",
+    "smart", "international", "equipment", "mechanical", "electrical", "manufacturing", "factory",
+    "products", "one"}
+
+
+def search_word(words):
+    """The word an owner search at the EUIPO is run on: the name's first word, unless that is a
+    place or a trade word, then its longest distinctive word."""
+    if words and words[0] not in _WEAK_WORDS:
+        return words[0]
+    good = [w for w in words if w not in _WEAK_WORDS and len(w) >= 3]
+    return max(good, key=len) if good else words[0]
+
+
+def _listed_owners(d):
+    return [a.get("name") for a in (d.get("applicants") or []) if isinstance(a, dict) and a.get("name")]
+
+
 def discover(target, kind, known, progress=None):
     """Every design or mark the target's assignee names hold at the offices it tracks.
     -> ([row], [str rejected], [str errors])"""
@@ -1073,7 +1099,7 @@ def discover(target, kind, known, progress=None):
         if "EM" in offices:
             for words in words_list:
                 try:
-                    for t in euipo_trademarks(words[0]):
+                    for t in euipo_trademarks(search_word(words)):
                         row = euipo_tm_row(t, name)
                         if not R.owner_matches(target, [words], row["applicants"]):
                             rejected.append("EM %s (%s)" % (row["title"], row["applicant"] or "no owner"))
@@ -1112,7 +1138,13 @@ def discover(target, kind, known, progress=None):
         if "EP" in offices:
             for words in words_list:
                 try:
-                    for d in euipo_designs(words[0]):
+                    for d in euipo_designs(search_word(words)):
+                        #  The search hit names its owner already: a stranger is set aside before
+                        #  the detail call, which is the slow part.
+                        listed = _listed_owners(d)
+                        if listed and not R.owner_matches(target, [words], listed):
+                            rejected.append("RCD%s (%s)" % (d.get("designNumber") or "", "; ".join(listed)))
+                            continue
                         row = euipo_design_row(d, name)
                         if not R.owner_matches(target, [words], row["applicants"]):
                             rejected.append("%s (%s)" % (row["publication"], row["applicant"] or "no owner"))
