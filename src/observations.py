@@ -68,6 +68,7 @@ import db
 import docket_files
 import iptorch_packages
 import observation_actions
+import patent_cards
 import observation_links
 import observation_marks
 import observation_refresh
@@ -142,6 +143,8 @@ DETAIL_FIELDS = (
     #  action list's entries for the case, a window we missed on it, filings prepared and never
     #  handed over, and, for a row the docket itself does not have, why it is here at all.
     "boards", "missed", "not_filed", "extra", "extra_note",
+    #  The first drawing and the abstract, from patent_cards.
+    "abstract",
 )
 #  Kept on the row for anyone who set one before the column left the page; nothing writes it now.
 USER_STATES = ("open", "watch", "queued", "filed", "declined", "done")
@@ -1489,6 +1492,20 @@ def actions_page():
         for c in cases:
             if observation_marks.image_file(c.get("publication")):
                 c["image"] = url_for("observations.action_image", publication=c["publication"])
+    #  A patent is read by its first drawing and two lines of its abstract (patent_cards), kept
+    #  once per publication. The ones not read yet are fetched in the background, so the next
+    #  load has them; the daily check fills the rest.
+    if kind == "patent":
+        cards = patent_cards.load()
+        for c in cases:
+            card = cards.get(c.get("publication")) or {}
+            if card.get("abstract"):
+                c["abstract"] = card["abstract"]
+            if card.get("image") and observation_marks.image_file(c.get("publication")):
+                c["image"] = url_for("observations.action_image", publication=c["publication"])
+        if "pytest" not in sys.modules:
+            patent_cards.kick([{"publication": c.get("publication"), "application": c.get("application")}
+                               for c in cases if c.get("publication")])
     #  Which package files actually exist on disk, so the page never offers a dead download.
     have = set(os.listdir(PACKAGE_DIR)) if os.path.isdir(PACKAGE_DIR) else set()
     for f in filings:

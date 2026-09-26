@@ -87,6 +87,22 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
 .obkinds a.on{background:var(--accent);color:#fff}
 .obkinds a small{font-weight:500;opacity:.8;margin-left:4px}
 .obtable td.pub .cls{font-family:inherit;display:block;font-size:10.5px;color:var(--faint)}
+/*  A patent's title cell: the first drawing, the title, two lines of the abstract. */
+.obtable td.ttl.pt .ptc{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.obtable td.ttl.pt img.pthumb,.obtable td.ttl.pt .pthumb{width:58px;height:58px;max-width:none;flex:none;margin:0;
+  object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:4px;vertical-align:top}
+.obtable td.ttl.pt .pthumb.none{display:flex;align-items:center;justify-content:center;color:var(--line2);background:var(--s1)}
+.obtable td.ttl.pt .ptx{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.obtable td.ttl.pt .t{font-weight:650}
+.obtable td.ttl.pt .abs{font-size:11.5px;line-height:1.45;color:var(--muted);white-space:normal;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.obtable td.pub .owner{display:block;font-family:inherit;font-size:10.5px;color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.obxabs{display:flex;gap:14px;align-items:flex-start;margin:8px 0 4px}
+.obxabs img{width:150px;height:150px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px;flex:none}
+.obxabs p{margin:0;font-size:13px;line-height:1.6;max-width:100ch}
+/*  The docket is the page: on a wide screen it takes the width the title cell needs. */
+.obdocket .obtablewrap{margin-inline:min(0px, calc((100% - min(100vw - 48px, 1560px)) / 2))}
 .obtable td.ttl img{height:44px;max-width:76px;vertical-align:middle;margin-right:8px;border:1px solid var(--line);background:#fff;border-radius:3px;object-fit:contain}
 .obtable td.ttl .ttlwrap{display:inline-block;vertical-align:middle;max-width:calc(100% - 90px)}
 .obtable td.pub a.reg{display:block;font-family:inherit;font-size:10.5px;color:var(--accent);white-space:nowrap}
@@ -787,16 +803,23 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
             {#  The action list keeps its own date (confirm a fee, send an original) beside the
                 register's window. Said on the row when the two differ. #}
             {% if not c.extra %}{% for b in c.boards or [] %}{% if b.days_left is not none and b.deadline != c.deadline %}
-              <br><span class="dldate actdue {{ 'urgent' if 0 <= b.days_left <= 14 else '' }}" title="Action {{ b.n }}: {{ b.title }}">act. {{ b.n }}: {{ b.deadline[5:] }}{% if b.days_left >= 0 %} &middot; {{ b.days_left }}d{% endif %}</span>
+              <br><span class="dldate actdue {{ 'urgent' if 0 <= b.days_left <= 14 else '' }}" title="Action {{ b.n }}: {{ b.title }}, due {{ b.deadline }}{% if b.days_left >= 0 %}, {{ b.days_left }} days{% endif %}">A{{ b.n }} {{ b.deadline[5:] }}</span>
             {% endif %}{% endfor %}{% endif %}
           </td>
           {% if kind == 'patent' %}
           {% if c.extra == 'board' %}
           <td class="pub"><span class="stgnone">no patent</span><span class="office">action list</span></td>
           {% else %}
-          <td class="pub" title="{{ c.granted_as or c.publication }}{% if c.application %} · app. {{ c.application }}{% endif %}">{{ c.granted_as or c.publication }}<span class="office">{{ c.office }}{% if c.ipc %} &middot; {{ c.ipc }}{% endif %}</span></td>
+          <td class="pub" title="{{ c.granted_as or c.publication }}{% if c.application %} · app. {{ c.application }}{% endif %}{% if c.applicant %} · {{ c.applicant }}{% endif %}">{{ c.granted_as or c.publication }}<span class="office">{{ c.office }}{% if c.ipc %} &middot; {{ c.ipc }}{% endif %}</span>{% if c.applicant_short or c.applicant %}<span class="owner">{{ c.applicant_short or c.applicant }}</span>{% endif %}</td>
           {% endif %}
-          <td class="ttl" title="{{ c.title_full or c.title }}"><span class="t">{{ c.title }}</span><span class="who" title="{{ c.applicant }}{% if c.inventors %} · {{ c.inventors | join(', ') }}{% endif %}">{{ c.applicant_short or '' }}{% if c.inventors %} &middot; {{ c.inventors | join(', ') }}{% endif %}</span></td>
+          {#  WHAT THE PATENT IS, at a glance: its first drawing, its title and two lines of its
+              abstract (patent_cards). The whole abstract is in the panel. #}
+          <td class="ttl pt" title="{{ c.title_full or c.title }}{% if c.inventors %} · {{ c.inventors | join(', ') }}{% endif %}">
+            <div class="ptc">
+              {% if c.image %}<img class="pthumb" src="{{ c.image }}" alt="" loading="lazy">{% elif not c.extra %}<span class="pthumb none" aria-hidden="true"><svg class="ic"><use href="#i-patent"/></svg></span>{% endif %}
+              <span class="ptx"><span class="t">{{ c.title }}</span>{% if c.abstract %}<span class="abs">{{ c.abstract }}</span>{% elif c.inventors %}<span class="who">{{ c.inventors | join(', ') }}</span>{% endif %}</span>
+            </div>
+          </td>
           {% else %}
           {#  A mark or a design is known by its registration or application number and its
               classes, and the number the docket keys on (an ST13) is nobody's language. #}
@@ -1958,10 +1981,21 @@ window.obViewer = (function(){
     root.appendChild(head);
     //  A design is its drawing. The stored first view sits at the top of the panel, large enough
     //  to judge, and opens the office's own record on click.
-    if (d.image && d.kind !== 'patent'){
+    if (d.image && d.kind && d.kind !== 'patent'){
       var fig = document.createElement('a'); fig.href = d.register_url || d.image; fig.target = '_blank'; fig.rel = 'noopener';
       var img = document.createElement('img'); img.className = 'obximg'; img.src = d.image; img.alt = d.title || '';
       fig.appendChild(img); root.appendChild(fig);
+    }
+    //  A patent: its first drawing beside the whole abstract, the drawing opening Google Patents.
+    if ((!d.kind || d.kind === 'patent') && (d.abstract || d.image)){
+      var ab = obEl('div', 'obxabs');
+      if (d.image){
+        var pf = document.createElement('a'); pf.href = d.google || d.image; pf.target = '_blank'; pf.rel = 'noopener';
+        var pi = document.createElement('img'); pi.src = d.image; pi.alt = 'First drawing of ' + (d.publication || '');
+        pf.appendChild(pi); ab.appendChild(pf);
+      }
+      if (d.abstract) ab.appendChild(obEl('p', null, d.abstract));
+      root.appendChild(ab);
     }
 
     var n = d.days_left;
