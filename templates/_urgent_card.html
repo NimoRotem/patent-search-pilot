@@ -1,0 +1,22 @@
+{#  One card on the "closing soon" strip of the actions page. `it` is one urgent_items() entry. #}
+{% set tone = 'r' if it.days is not none and it.days <= 3 else ('o' if it.days is not none and it.days <= 7 else 'y') %}
+<div class="urgcard t-{{ tone }}">
+  <a class="urgmain" href="{{ request.script_root }}/actions?target={{ it.target_id }}&amp;kind={{ it.tab }}&amp;open={{ it.pub | urlencode }}"
+     data-open="{{ it.pub }}"{% if it.here %} data-here="1"{% endif %}
+     title="{{ it.company }}: {{ it.title }}{% if it.fee %} · {{ it.fee }}{% endif %}{% if it.context %} · {{ it.context }}{% endif %}">
+    <span class="urgdays"><b>{{ it.days }}</b><i>{{ 'day' if it.days == 1 else 'days' }}</i></span>
+    <span class="urgtxt">
+      <span class="urg1"><svg class="ic"><use href="#i-{{ it.kind }}"/></svg><span class="urgnum">{{ it.number }}</span><span class="urgoff">{{ it.office }}{% if it.kind == 'action' and it.more %} +{{ it.more }}{% endif %}</span></span>
+      <span class="urg2">{{ it.what }}{% if it.more and it.kind != 'action' %} <span class="urgplus">+{{ it.more }}</span>{% endif %}</span>
+      <span class="urg3">{{ it.company }}{% if it.date %} &middot; {{ it.date[5:] }}{% endif %}</span>
+    </span>
+  </a>
+  <span class="urgacts">
+    {% for n in it.boards %}<span class="urgact" title="On the action list as action {{ n }}">A{{ n }}</span>{% endfor %}
+    {% if it.stage in ('submitted', 'public') %}<span class="urgic ok" title="{{ 'Public at the office' if it.stage == 'public' else 'Submitted by us' }}"><svg class="ic"><use href="#i-send"/></svg></span>{% endif %}
+    {% if it.package %}<button type="button" class="urgic" data-view="iptorch" data-slug="{{ it.package.slug }}" data-stamp="{{ it.package.stamp }}" title="{{ it.built }} built · view the latest package"><svg class="ic"><use href="#i-box"/></svg>{{ it.built }}</button>
+    {% elif it.built %}<span class="urgic" title="{{ it.built }} package{{ 's' if it.built != 1 else '' }} built"><svg class="ic"><use href="#i-box"/></svg>{{ it.built }}</span>{% endif %}
+    {% if it.us_app %}<button type="button" class="urgic" data-view="uspto" data-app="{{ it.us_app }}" title="The USPTO file"><svg class="ic"><use href="#i-file"/></svg></button>
+    {% elif it.office_url %}<a class="urgic" href="{{ it.office_url }}" target="_blank" rel="noopener" title="The office's record"><svg class="ic"><use href="#i-ext"/></svg></a>{% endif %}
+  </span>
+</div>

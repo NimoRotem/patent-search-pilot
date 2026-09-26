@@ -5,28 +5,76 @@
 <style>
 /*  A docket is read in three passes: what closes soonest, what has already been filed, and then
     the long tail. The page is laid out in that order and nothing below the fold is needed to act. */
-.obwrap{padding-top:22px;padding-bottom:20px}
-.obhead{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-end;justify-content:space-between;margin-bottom:6px}
-.obhead h1{font-size:26px}
-.obsub{color:var(--muted);font-size:13px;max-width:76ch;margin-top:6px;line-height:1.6}
-.obstats{display:flex;gap:8px;flex-wrap:wrap}
-.stat{background:var(--s1);border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 11px;min-width:70px}
-.stat b{display:block;font-size:18px;line-height:1.2}
-.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.obwrap{padding-top:14px;padding-bottom:20px}
+/*  Above the fold is scarce: the title and the sync line share one row. */
+.obhead{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.obhead h1{font-size:22px;margin:0}
+.obsync{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.obsync .bad,.obsub .bad{color:var(--bad)}
+.obsub{color:var(--muted);font-size:13px;max-width:76ch;margin:0 0 8px;line-height:1.6}
+svg.ic{width:14px;height:14px;flex:none;vertical-align:-2px}
+/*  THE COUNTERS: one thin row of filters for the table, not a band of tiles. */
+.obstats{display:flex;gap:5px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;min-width:0;flex:1 1 auto}
+.obstats .stat{display:inline-flex;align-items:center;gap:5px;background:var(--s1);border:1px solid var(--line);
+  border-radius:var(--r-pill);padding:2px 10px;height:26px;white-space:nowrap;flex:none}
+.obstats .stat b{display:inline;font-size:13px;line-height:1;letter-spacing:0;font-variant-numeric:tabular-nums}
+.obstats .stat span{display:inline-flex;align-items:center;margin:0;font-size:11px;line-height:1;color:var(--muted)}
 .stat.urgent b{color:var(--bad)} .stat.closing b{color:var(--warn)}
 .stat.lapsedstat b{color:var(--faint)}
 .stat.good b{color:var(--good)}
 .stat.prep b{color:var(--accent)}
 .stat.prep.s2 b{color:var(--warn)} .stat.prep.s3 b{color:var(--good)}
-.stat .stgn{font-size:9.5px;letter-spacing:0;text-transform:none}
-button.stat{font:inherit;text-align:center;cursor:pointer;color:inherit}
+.obstats .stat .stgn{font-size:9px;letter-spacing:0;margin-right:4px;width:14px;height:14px}
+button.stat{font:inherit;cursor:pointer;color:inherit}
 button.stat:hover{background:var(--s2);border-color:var(--line2)}
 button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+
+/* ── closing soon, every company, every tab ──────────────────────────────── */
+.urg{border:1px solid var(--line);border-radius:var(--r);background:var(--s1);padding:9px 11px 8px;margin:0 0 10px}
+.urghead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin-bottom:7px}
+.urghead h2{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;margin:0}
+.urgsum{font-size:11.5px;color:var(--muted)}
+.urgnone{margin:0;font-size:12.5px;color:var(--muted)}
+.urgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(262px,1fr));gap:6px}
+.urgcard{display:flex;align-items:stretch;background:var(--s0,#fff);border:1px solid var(--line);
+  border-left:3px solid var(--warn);border-radius:var(--r-sm);min-width:0}
+.urgcard.t-o{border-left-color:#e07b24} .urgcard.t-r{border-left-color:var(--bad)}
+.urgmain{display:flex;gap:9px;align-items:center;padding:5px 8px;min-width:0;flex:1;color:inherit;text-decoration:none}
+.urgmain:hover{background:var(--s2)}
+.urgdays{display:flex;flex-direction:column;align-items:center;min-width:34px;line-height:1}
+.urgdays b{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--warn)}
+.t-o .urgdays b{color:#e07b24} .t-r .urgdays b{color:var(--bad)}
+.urgdays i{font-style:normal;font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.urgtxt{display:flex;flex-direction:column;min-width:0;gap:1px}
+.urg1{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:650;min-width:0}
+.urgnum{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.urgoff{font-size:10.5px;color:var(--faint);font-weight:500;white-space:nowrap}
+.urg2,.urg3{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.urg3{color:var(--muted);font-size:11px}
+.urgplus{color:var(--faint);font-size:10.5px}
+.urgacts{display:grid;grid-template-columns:auto auto;gap:3px 5px;align-content:center;justify-items:end;padding:4px 7px 4px 0}
+.urgic{display:inline-flex;align-items:center;gap:2px;font:inherit;font-size:10.5px;color:var(--muted);background:none;
+  border:0;padding:1px 2px;cursor:pointer;text-decoration:none;line-height:1}
+.urgic:hover{color:var(--accent)}
+.urgic.ok{color:var(--good);cursor:default}
+.urgact{font-size:9.5px;font-weight:700;color:var(--bad);background:var(--bad-soft);border-radius:var(--r-pill);padding:0 5px;line-height:1.5}
+.urgmore{margin-top:6px;font-size:12px}
+.urgmore summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:11.5px}
+.urgtbl{width:100%;border-collapse:collapse;margin-top:6px;font-size:12px}
+.urgtbl td{border-top:1px solid var(--line);padding:4px 7px;vertical-align:top}
+.urgtbl .ud{font-weight:700;color:var(--warn);white-space:nowrap;font-variant-numeric:tabular-nums}
+.urgtbl .ud.o{color:#e07b24} .urgtbl .ud.r{color:var(--bad)}
+.urgtbl .un{white-space:nowrap} .urgtbl .un a{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;margin-left:4px}
+.urgtbl .uc{white-space:nowrap;color:var(--muted)}
+.urgtbl .ux{color:var(--muted);max-width:52ch}
+.urgtbl .ul{white-space:nowrap}
+.urgtbl .urgsep td{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);padding-top:9px}
+@media (max-width:760px){ .urgtbl .ux,.urgtbl .uc{display:none} }
 
 /* ── the target bar ───────────────────────────────────────────────────────── */
 /*  Which company this docket is about sits ABOVE everything, because every number on the page
     is about exactly one of them and switching is the first thing a reader with two does. */
-.obtargets{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:14px 0 4px;
+.obtargets{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 4px;
   padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--s1)}
 .obtargets label{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
 /*  One docket, three kinds of right. The switch sits beside the target because both answer
@@ -78,10 +126,10 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
   color:var(--muted);font-size:13.5px;line-height:1.6}
 
 /* ── refreshing the registers ─────────────────────────────────────────────── */
-.obrefresh{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:10px}
-.obrefresh button{font:inherit;font-size:12.5px;font-weight:650;padding:6px 13px;cursor:pointer;
-  border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink)}
-.obrefresh button:hover:not(:disabled){background:var(--s2);border-color:var(--accent)}
+.obrefresh{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:8px}
+#obrefreshbtn{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;font-weight:650;
+  padding:3px 11px;cursor:pointer;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--s1);color:var(--ink)}
+#obrefreshbtn:hover:not(:disabled){background:var(--s2);border-color:var(--accent)}
 .obrefresh button:disabled{opacity:.55;cursor:progress}
 .obrefreshnote{font-size:12px;color:var(--muted);line-height:1.5;max-width:70ch}
 .obrefreshnote b{color:var(--ink);font-weight:650}
@@ -222,6 +270,8 @@ button.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--acc
   font-size:11px;min-width:44px}
 
 section.obsec{margin-top:30px}
+.obsec.obdocket{margin-top:14px}
+.obsec.obdocket h2{font-size:15px;margin-bottom:6px}
 section.obsec>h2{font-size:17px;margin-bottom:4px}
 section.obsec>p.lede{color:var(--muted);font-size:13px;margin:5px 0 12px;max-width:80ch;line-height:1.6}
 
@@ -455,45 +505,64 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
 
 <div class="wrap obwrap">
 
+  <svg class="vh" aria-hidden="true" focusable="false">
+    <symbol id="i-patent" viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z M9.5 1.5V5H13 M6 8h5 M6 10.5h5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-design" viewBox="0 0 16 16"><path d="M2.5 13.5l2.8-.7 7.6-7.6-2.1-2.1-7.6 7.6z M9.6 4.3l2.1 2.1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-trademark" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 11V5h2.3a1.7 1.7 0 010 3.4H6 M8.2 8.4L10.3 11" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-action" viewBox="0 0 16 16"><path d="M3.5 14.5V2 M3.5 2.5h8.5l-2 3 2 3H3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-box" viewBox="0 0 16 16"><path d="M2 5l6-3 6 3v6.5l-6 3-6-3z M2 5l6 3 6-3 M8 8v6.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-send" viewBox="0 0 16 16"><path d="M14.5 1.5L1.5 7l5 2 2 5z M6.5 9l8-7.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-file" viewBox="0 0 16 16"><path d="M2 3.5h4.5l1.5 1.5h6v8.5H2z M2 7h12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 16 16"><path d="M9 2.5h4.5V7 M13.5 2.5L7 9 M11.5 9.5v4h-9v-9h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 16 16"><path d="M13.5 6A5.8 5.8 0 003 4.5 M2.5 10a5.8 5.8 0 0010.5 1.5 M13.5 2.5V6H10 M2.5 13.5V10H6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.5V8l2.5 1.8" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  </svg>
+
   <div class="obhead">
-    <div>
-      <h1>Actions</h1>
-      <p class="obsub">
-        {% if target and kind == 'trademark' %}
-        Every {{ target.name }} trademark at the EUIPO, the USPTO, the DPMA and WIPO, from TMview,
-        with the observation, opposition and cancellation that reaches each one today. Countdowns
-        are computed for <strong>{{ today }}</strong>.
-        {% elif target and kind == 'design' %}
-        Every {{ target.name }} registered design the EUIPO and the USPTO list, with the invalidity
-        or review that reaches each one today. German and Hague designs are not sourced yet.
-        Countdowns are computed for <strong>{{ today }}</strong>.
-        {% elif target %}
-        Every {{ target.name }} filing a third party can still act against, every instrument that
-        reaches it at its office today and the date each door shuts. Countdowns are computed for
-        <strong>{{ today }}</strong>, not stored, so they are never one build out of date.
-        {% else %}
-        Pick a company, a person or several of either, and this page finds what they have
-        published, reads each office's register and lists every instrument a third party can
-        still file against each case, with the date it shuts.
-        {% endif %}
-      </p>
-    </div>
-    {% if target %}
-    {#  THE CHIPS ARE THE WAY INTO THE DOCKET: each one sets the urgency filter on the table below
-        rather than repeating its rows up here. #}
-    <div class="obstats">
-      <button type="button" class="stat" data-urgency=""><b>{{ counts.total }}</b><span>cases</span></button>
-      <button type="button" class="stat good" data-urgency="actionable"><b>{{ counts.get('actionable', 0) }}</b><span>can file now</span></button>
-      <button type="button" class="stat urgent" data-urgency="urgent"><b>{{ counts.get('within_14', 0) }}</b><span>&le; 14 days</span></button>
-      <button type="button" class="stat closing" data-urgency="soon"><b>{{ counts.get('within_90', 0) }}</b><span>&le; 90 days</span></button>
-      <button type="button" class="stat lapsedstat" data-urgency="lapsed"><b>{{ counts.get('lapsed', 0) }}</b><span>lapsed</span></button>
-      {% if counts.get('board') %}<button type="button" class="stat urgent" data-board="1"><b>{{ counts.get('board', 0) }}</b><span>on the action list</span></button>{% endif %}
-      <button type="button" class="stat prep" data-prep="built"><b>{{ counts.get('stage_built', 0) }}</b><span><span class="stgn s1">1</span>package built</span></button>
-      <button type="button" class="stat prep s2" data-prep="submitted"><b>{{ counts.get('stage_submitted', 0) }}</b><span><span class="stgn s2">2</span>submitted</span></button>
-      <button type="button" class="stat prep s3" data-prep="public"><b>{{ counts.get('stage_public', 0) }}</b><span><span class="stgn s3">3</span>public at the office</span></button>
-    </div>
-    {% endif %}
+    <h1>Actions</h1>
+    {#  When the offices and iptorch.com were last read, in one line. The detail is in the tooltip. #}
+    <span class="obsync" title="Every target is re-read from the registers daily at {{ daily_at }}{% if daily and not daily.ok %}; the last run had a failed sweep{% endif %}. iptorch.com packages are copied every 5 minutes{% if iptorch_sync.error %}; last error: {{ iptorch_sync.error }}{% endif %}.">
+      <svg class="ic"><use href="#i-sync"/></svg>
+      {% if daily %}registers {{ (daily.finished or daily.started)[5:16] | replace('T', ' ') }} UTC{% if not daily.ok %} <b class="bad">sweep failed</b>{% endif %}{% else %}registers: daily at {{ daily_at }}{% endif %}
+      {% if iptorch_on %}&middot; packages {% if iptorch_sync.at_iso %}{{ iptorch_sync.at_iso[11:16] }}{% else %}now{% endif %}{% if iptorch_sync.ok == false %} <b class="bad">error</b>{% endif %}{% endif %}
+    </span>
   </div>
+  {% if not target %}
+  <p class="obsub">Pick a company, a person or several of either, and this page finds what they have
+    published, reads each office's register and lists every instrument a third party can still
+    file against each case, with the date it shuts.</p>
+  {% endif %}
+
+  {#  ── WHAT SHUTS SOON, EVERY COMPANY, EVERY KIND ──────────────────────────
+      Above the target bar on purpose: it is not about the target the table shows. A card opens
+      its row (on this page, or on the target and tab it belongs to). #}
+  {% if urgent and (urgent['items'] or urgent['anyday']) %}
+  {% set shown = urgent['items'][:8] %}
+  {% set rest = urgent['items'][8:] %}
+  <section class="urg" aria-label="Closing within {{ urgent.horizon }} days">
+    <div class="urghead">
+      <h2><svg class="ic"><use href="#i-clock"/></svg>Closing in {{ urgent.horizon }} days</h2>
+      <span class="urgsum">{{ urgent['items'] | length }} across {{ urgent.companies }} compan{{ 'y' if urgent.companies == 1 else 'ies' }} &middot; all tabs</span>
+    </div>
+    {% if shown %}
+    <div class="urgrid">
+      {% for it in shown %}{% include "_urgent_card.html" %}{% endfor %}
+    </div>
+    {% else %}<p class="urgnone">Nothing dated shuts in the next {{ urgent.horizon }} days.</p>{% endif %}
+    {% if rest or urgent['anyday'] %}
+    <details class="urgmore">
+      <summary>{% if rest %}{{ rest | length }} more{% endif %}{% if rest and urgent['anyday'] %} &middot; {% endif %}{% if urgent['anyday'] %}{{ urgent['anyday'] | length }} could shut any day{% endif %} &middot; details</summary>
+      <table class="urgtbl">
+        <tbody>
+        {% for it in urgent['items'] %}{% include "_urgent_row.html" %}{% endfor %}
+        {% if urgent['anyday'] %}<tr class="urgsep"><td colspan="6">No fixed date, but the register says the window can shut any day</td></tr>{% endif %}
+        {% for it in urgent['anyday'] %}{% include "_urgent_row.html" %}{% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
 
   {# ── the target ─────────────────────────────────────────────────────────── #}
   <div class="obtargets">
@@ -571,19 +640,21 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
       up new packages. The button asks again NOW, for this target only. A pull more than a day
       old means the daily check did not run, and is flagged. #}
   <div class="obrefresh">
-    <button type="button" id="obrefreshbtn">Refresh from the registers</button>
-    <span class="obrefreshnote{{ ' stale' if (stale_days is not none and stale_days >= 2) or stale_days is none else '' }}" id="obrefreshnote">
-      {% if refreshed_at %}Last pulled <b>{{ refreshed_at }}</b>{% if refresh.trigger == 'daily' %} by the daily check{% endif %}{% if stale_days is not none and stale_days >= 2 %},
-        <b>{{ stale_days }} days ago.</b> A grant in that time would have opened a window this page
-        cannot see yet.{% else %}.{% endif %}
-      {% else %}<b>Never pulled live.</b>{% if target.seeded %} The dates below come from the shipped {{ meta.as_of or 'baseline' }} sweep and a case may have granted, lapsed or been refused since.{% endif %}
-      {% endif %}
-      Checked automatically every day at {{ daily_at }}{% if daily %}; the last run {{ 'finished' if daily.finished else 'started' }} {{ (daily.finished or daily.started)[:16] | replace('T', ' ') }} UTC{% if not daily.ok %} <b>with a failed sweep</b>{% endif %}{% else %}; it has not run yet{% endif %}.
-      {% if kind == 'trademark' %}TMview for every office's status, publication and opposition period; new marks in the target's names are added.
-      {% elif kind == 'design' %}EUIPO design register and the USPTO Open Data Portal for status and dates; new designs in the target's names are added.
-      {% else %}USPTO Open Data Portal for status, windows and our own submissions on the file wrapper;
-      EPO Register for European status and the mention of grant; INPADOC legal status for the
-      German cases. New publications by the target's names are added.{% endif %}
+    <div class="obstats" role="group" aria-label="Filter the table">
+      <button type="button" class="stat" data-urgency=""><b>{{ counts.total }}</b><span>cases</span></button>
+      <button type="button" class="stat good" data-urgency="actionable"><b>{{ counts.get('actionable', 0) }}</b><span>can file</span></button>
+      <button type="button" class="stat urgent" data-urgency="urgent"><b>{{ counts.get('within_14', 0) }}</b><span>&le;14d</span></button>
+      <button type="button" class="stat closing" data-urgency="soon"><b>{{ counts.get('within_90', 0) }}</b><span>&le;90d</span></button>
+      <button type="button" class="stat lapsedstat" data-urgency="lapsed"><b>{{ counts.get('lapsed', 0) }}</b><span>lapsed</span></button>
+      {% if counts.get('board') %}<button type="button" class="stat urgent" data-board="1"><b>{{ counts.get('board', 0) }}</b><span>actions</span></button>{% endif %}
+      <button type="button" class="stat prep" data-prep="built"><b>{{ counts.get('stage_built', 0) }}</b><span><span class="stgn s1">1</span>built</span></button>
+      <button type="button" class="stat prep s2" data-prep="submitted"><b>{{ counts.get('stage_submitted', 0) }}</b><span><span class="stgn s2">2</span>submitted</span></button>
+      <button type="button" class="stat prep s3" data-prep="public"><b>{{ counts.get('stage_public', 0) }}</b><span><span class="stgn s3">3</span>public</span></button>
+    </div>
+    <button type="button" id="obrefreshbtn" title="Ask the offices again now, for this target and tab"><svg class="ic"><use href="#i-sync"/></svg>Refresh</button>
+    <span class="obrefreshnote{{ ' stale' if (stale_days is not none and stale_days >= 2) or stale_days is none else '' }}" id="obrefreshnote"
+          title="{% if kind == 'trademark' %}TMview and the EUIPO{% elif kind == 'design' %}EUIPO design register and the USPTO Open Data Portal{% else %}USPTO Open Data Portal, EPO Register, INPADOC for DPMA{% endif %}; new filings in the target's names are added. Re-read automatically every day at {{ daily_at }}.{% if target.seeded and not refreshed_at %} Dates come from the shipped {{ meta.as_of or 'baseline' }} sweep.{% endif %}">
+      {% if refreshed_at %}pulled {{ refreshed_at[5:16] }}{% if stale_days is not none and stale_days >= 2 %} <b>{{ stale_days }}d old</b>{% endif %}{% else %}<b>never pulled</b>{% endif %}
     </span>
     <div class="obbar" id="obrefreshbar" hidden><i></i></div>
     <div class="obrefreshlog" id="obrefreshlog" hidden></div>
@@ -601,32 +672,8 @@ button.obview:hover{color:var(--accent-d, var(--accent))}
 
   {# ── 2. the docket ──────────────────────────────────────────────────────── #}
   {% if cases %}
-  <section class="obsec">
+  <section class="obsec obdocket">
     <h2>The full docket{% if kind != 'patent' %}: {{ kind_label[kind] | lower }}{% endif %}</h2>
-    <p class="lede">Sorted by the soonest deadline. Rows with no deadline stay open for as long
-      as the right is pending or registered, so they carry no countdown and sit at the end. Open
-      a row for the whole instrument table, the register's own record and a private note.
-      Everything that used to sit above this table is on its rows now: an <b>Action</b> chip marks a
-      case on the action list and its panel opens with what to do, by when, what it costs and the
-      packet; stage 2 carries each filing's whole record (fees, references, receipts, public
-      state); a missed window says so in the same column.{% if n_extra %} The last
-      {{ n_extra }} row{{ 's' if n_extra != 1 else '' }}, marked <i>not on this docket</i>, hold
-      what has no docket row of its own.{% endif %}</p>
-    {% if board and (board.lede or board.source_note) %}
-    <details class="obabout"><summary>{{ board.title or 'The action list' }}: how it was built{% if board.as_of %}, {{ board.as_of }}{% endif %}</summary>
-      {% if board.lede %}<p>{{ board.lede }}</p>{% endif %}
-      {% if board.source_note %}<p>{{ board.source_note }}</p>{% endif %}
-    </details>
-    {% endif %}
-    {#  What the three stage columns mean, once, above them. The sync line says when iptorch.com
-        was last checked for new packages, and says so in red when it could not be. #}
-    <div class="stglegend">
-      <span class="k"><span class="stgn s1">1</span>Built: a package exists (iptorch.com, filing app or search zip)</span>
-      <span class="k"><span class="stgn s2">2</span>Submitted: our records say it went to the office</span>
-      <span class="k"><span class="stgn s3">3</span>Public: the office's own record shows it</span>
-      {% if iptorch_on %}<span class="sync{{ ' bad' if iptorch_sync.ok == false else '' }}" title="{{ iptorch_sync.error or '' }}">{% if iptorch_sync.at_iso %}iptorch.com packages checked {{ iptorch_sync.at_iso[11:16] }} UTC{% if iptorch_sync.ok == false %}, with errors{% endif %}{% else %}iptorch.com packages: checking now{% endif %}</span>{% endif %}
-    </div>
-
     <div class="obtools">
       <input type="search" id="obq" placeholder="Search" aria-label="Search the docket">
       <select id="oboffice" aria-label="Filter by office"><option value="">Office</option></select>
@@ -1993,6 +2040,26 @@ window.obViewer = (function(){
   }
 
   window.obExpand.wire(body, build, COLS, function(tr){ return !!tr.dataset.pub; });
+
+  //  OPEN ONE ROW BY ITS NUMBER: a card on the strip above, a line in its fold, or ?open= in the
+  //  URL when the card belongs to another target or tab. A row the filters hide is shown first.
+  window.obOpenRow = function(pub){
+    var tr = rows.filter(function(r){ return r.dataset.pub === pub; })[0];
+    if (!tr) return false;
+    if (tr.hidden) document.getElementById('obclear').click();
+    window.obExpand.toggle(tr, build, COLS, true);
+    tr.scrollIntoView({block: 'center', behavior: 'smooth'});
+    tr.focus({preventScroll: true});
+    return true;
+  };
+  document.addEventListener('click', function(ev){
+    var a = ev.target.closest('a[data-here="1"]');
+    if (a && window.obOpenRow(a.dataset.open)) ev.preventDefault();
+  });
+  try {
+    var want = new URLSearchParams(window.location.search).get('open');
+    if (want) setTimeout(function(){ window.obOpenRow(want); }, 60);
+  } catch (e) { /* an old browser simply lands on the table */ }
   apply();
 })();
 </script>
