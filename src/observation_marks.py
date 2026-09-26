@@ -1064,7 +1064,7 @@ def _tm_offices(target):
 #  detail call. When a name starts with one of these, its most distinctive word is searched.
 _WEAK_WORDS = {
     "zhejiang", "shanghai", "guangzhou", "guangdong", "dongguan", "shenzhen", "yongkang", "jinhua",
-    "quzhou", "ningbo", "hangzhou", "suzhou", "jiangsu", "beijing", "tianjin", "foshan", "xiamen",
+    "ningbo", "hangzhou", "suzhou", "jiangsu", "beijing", "tianjin", "foshan", "xiamen",
     "qingdao", "fujian", "wenzhou", "taizhou", "changzhou", "wuxi", "nanjing", "china", "hong",
     "kong", "machinery", "technology", "tech", "tools", "tool", "industrial", "industry", "trading",
     "trade", "intelligent", "automation", "electronic", "electronics", "network", "practical",
@@ -1073,12 +1073,14 @@ _WEAK_WORDS = {
 
 
 def search_word(words):
-    """The word an owner search at the EUIPO is run on: the name's first word, unless that is a
-    place or a trade word, then its longest distinctive word."""
-    if words and words[0] not in _WEAK_WORDS:
+    """The word an owner search at the EUIPO is run on. The search is a substring match capped at
+    four hundred hits, so the word must be rare: the name's first word when it is five letters or
+    more and not a place or a trade word, else its longest such word ("hg" and "lark" would match
+    thousands of owners; "commerciale" and "quzhou" do not)."""
+    if words and words[0] not in _WEAK_WORDS and len(words[0]) >= 5:
         return words[0]
-    good = [w for w in words if w not in _WEAK_WORDS and len(w) >= 3]
-    return max(good, key=len) if good else words[0]
+    good = [w for w in words if w not in _WEAK_WORDS and len(w) >= 4]
+    return max(good, key=len) if good else max(words, key=len)
 
 
 def _listed_owners(d):
