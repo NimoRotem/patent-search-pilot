@@ -1,5 +1,13 @@
 """The strip at the top of the actions page: what shuts soon on EVERY target and tab."""
+import pytest
+
 import observations as obs
+
+
+@pytest.fixture(autouse=True)
+def _fresh_cache(monkeypatch):
+    """The strip keeps other dockets' cards in a module cache; each test starts without it."""
+    monkeypatch.setattr(obs, "_URGENT_CACHE", {})
 
 
 def _row(pub, days, instrument="Third-party observations", office="EPO", **kw):
@@ -57,3 +65,22 @@ def test_an_action_naming_two_patents_is_one_card(monkeypatch):
     u = obs.urgent_items(4, [{"id": 1, "name": "Schmalz"}], current=(1, "patent", rows), filings=[])
     [card] = u["items"]
     assert card["more"] == 1 and card["pub"] == "EP3995267B1"
+
+
+def test_other_dockets_are_read_once_until_they_are_refreshed(monkeypatch):
+    monkeypatch.setattr(obs, "_URGENT_CACHE", {})
+    reads = []
+
+    def fake(user_id, target_id, today=None, kind="patent"):
+        reads.append((target_id, kind))
+        return [_row("EP%d" % target_id, 3)] if kind == "patent" else []
+    monkeypatch.setattr(obs, "cases_for", fake)
+    targets = [{"id": 1, "name": "A", "refresh": {"patent": {"refreshed_at": "2026-09-26T05:10"}}},
+               {"id": 2, "name": "B", "refresh": {}}]
+    first = obs.urgent_items(4, targets, filings=[])
+    second = obs.urgent_items(4, targets, filings=[])
+    assert [i["pub"] for i in first["items"]] == [i["pub"] for i in second["items"]] == ["EP1", "EP2"]
+    assert len(reads) == 6                                   # 2 targets x 3 kinds, once
+    targets[0]["refresh"]["patent"]["refreshed_at"] = "2026-09-27T05:10"
+    obs.urgent_items(4, targets, filings=[])
+    assert len(reads) == 7                                   # only the refreshed docket again

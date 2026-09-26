@@ -56,6 +56,7 @@ import os
 import re
 import sys
 import threading
+import time
 import traceback
 
 from flask import (Blueprint, abort, jsonify, redirect, render_template, request,
@@ -1244,6 +1245,12 @@ def board_for(cases, today=None, have=None):
 #  above it lists what shuts within this many days on ANY target and ANY kind (patent, design,
 #  trademark), plus the dated items on the action list.
 URGENT_DAYS = int(os.environ.get("ACTIONS_URGENT_DAYS", "15"))
+#  The strip reads every target and kind on every load, which with sixteen targets doubled the
+#  page time. The OTHER dockets' cards are kept for a few minutes, keyed on the day and on when
+#  that docket was last read from the registers, so a refresh or a new day recomputes them.
+URGENT_TTL = int(os.environ.get("ACTIONS_URGENT_TTL", "600"))
+_URGENT_CACHE = {}
+_URGENT_LOCK = threading.Lock()
 
 
 def _soonest(c, horizon):
@@ -1298,6 +1305,18 @@ def urgent_items(user_id, targets, current=None, filings=None, have=(), with_ipt
     for t in targets or []:
         for kind in observation_marks.KINDS:
             here = bool(current and current[0] == t["id"] and current[1] == kind)
+            key = None
+            if not here:
+                stamp = ((t.get("refresh") or {}).get(kind) or {}).get("refreshed_at") or ""
+                key = (user_id, t["id"], kind, today.isoformat(), str(stamp),
+                       str(t.get("refreshed_at")), horizon, bool(with_iptorch))
+                with _URGENT_LOCK:
+                    hit = _URGENT_CACHE.get(key)
+                if hit and time.time() - hit[0] < URGENT_TTL:
+                    items.extend(dict(i) for i in hit[1])
+                    anyday.extend(dict(i) for i in hit[2])
+                    continue
+            n_items, n_any = len(items), len(anyday)
             if here:
                 rows = current[2]
             else:
@@ -1338,6 +1357,10 @@ def urgent_items(user_id, targets, current=None, filings=None, have=(), with_ipt
                         card.update(kind="action", date=b.get("deadline") or "",
                                     context=(b.get("due_note") or b.get("what") or "")[:400])
                         items.append(card)
+            if key is not None:
+                with _URGENT_LOCK:
+                    _URGENT_CACHE[key] = (time.time(), [dict(i) for i in items[n_items:]],
+                                          [dict(i) for i in anyday[n_any:]])
     items.sort(key=lambda i: (i["days"], i["kind"] != "action"))
     anyday.sort(key=lambda i: (i["company"], i["kind"], i["number"]))
     return {"items": items, "anyday": anyday, "horizon": horizon,
