@@ -160,6 +160,12 @@ _SCHEMA = (
          created_at timestamptz NOT NULL DEFAULT now(),
          updated_at timestamptz NOT NULL DEFAULT now(),
          UNIQUE (user_id, name))""",
+    #  A target's guards against namesakes (see observation_refresh.owner_matches): names that
+    #  only look like it, and whether a private person with the same surname counts.
+    "ALTER TABLE app_observation_targets ADD COLUMN IF NOT EXISTS exclude jsonb NOT NULL "
+    "DEFAULT '[]'::jsonb",
+    "ALTER TABLE app_observation_targets ADD COLUMN IF NOT EXISTS companies_only boolean NOT NULL "
+    "DEFAULT false",
     """CREATE TABLE IF NOT EXISTS app_observation_cases (
          id bigserial PRIMARY KEY,
          user_id bigint NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
@@ -246,9 +252,10 @@ def _owner_id(cur=None):
 def _target_row(r):
     """A database row -> the dict the page and the sweep use."""
     t = dict(r)
-    for key in ("assignees", "inventors", "offices"):
+    for key in ("assignees", "inventors", "offices", "exclude"):
         v = t.get(key)
         t[key] = list(v) if isinstance(v, (list, tuple)) else []
+    t["companies_only"] = bool(t.get("companies_only"))
     #  One refresh record per kind. A record written before kinds existed has its `changes`
     #  at the top; read it as the patent one.
     raw = dict(t.get("refresh") or {})
@@ -417,11 +424,13 @@ def default_target_id(cur, user_id):
     return _ensure_target(cur, user_id, "My docket")
 
 
-def create_target(user_id, name="", assignees=(), inventors=(), offices=(), lookback=None):
+def create_target(user_id, name="", assignees=(), inventors=(), offices=(), lookback=None,
+                  exclude=(), companies_only=False):
     """A new target for this person. Raises ValueError with a sentence the form can show."""
     ensure_schema()
     assignees = _clean_names(assignees)
     inventors = _clean_names(inventors)
+    exclude = _clean_names(exclude)
     if not assignees and not inventors:
         raise ValueError("Name at least one assignee or one inventor to search for.")
     name = _clean_names([name])[:1]
@@ -439,16 +448,17 @@ def create_target(user_id, name="", assignees=(), inventors=(), offices=(), look
             raise ValueError("There is already a target called %s." % name)
         cur.execute(
             """INSERT INTO app_observation_targets
-                 (user_id, name, assignees, inventors, offices, lookback_months)
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                 (user_id, name, assignees, inventors, offices, lookback_months, exclude,
+                  companies_only)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (user_id, name, json.dumps(assignees), json.dumps(inventors), json.dumps(offices),
-             lookback))
+             lookback, json.dumps(exclude), bool(companies_only)))
         tid = cur.fetchone()["id"]
     return get_target(user_id, tid)
 
 
 def update_target(user_id, target_id, name=None, assignees=None, inventors=None, offices=None,
-                  lookback=None):
+                  lookback=None, exclude=None, companies_only=None):
     """Change what a target searches for. Rows already found are kept: a sweep adds, it never
     removes, so narrowing the names does not silently empty a docket."""
     ensure_schema()
@@ -466,6 +476,8 @@ def update_target(user_id, target_id, name=None, assignees=None, inventors=None,
             new_name = cleaned[0]
     new_offices = _clean_offices(offices) if offices is not None else current["offices"]
     new_lookback = _clean_lookback(lookback) if lookback is not None else current["lookback_months"]
+    new_exclude = _clean_names(exclude) if exclude is not None else current["exclude"]
+    new_companies = bool(companies_only) if companies_only is not None else current["companies_only"]
     with db.cursor(autocommit=True) as cur:
         cur.execute("SELECT id FROM app_observation_targets WHERE user_id = %s "
                     "AND lower(name) = lower(%s) AND id <> %s", (user_id, new_name, current["id"]))
@@ -474,10 +486,11 @@ def update_target(user_id, target_id, name=None, assignees=None, inventors=None,
         cur.execute(
             """UPDATE app_observation_targets
                   SET name = %s, assignees = %s, inventors = %s, offices = %s,
-                      lookback_months = %s, updated_at = now()
+                      lookback_months = %s, exclude = %s, companies_only = %s, updated_at = now()
                 WHERE user_id = %s AND id = %s""",
             (new_name, json.dumps(new_assignees), json.dumps(new_inventors),
-             json.dumps(new_offices), new_lookback, user_id, current["id"]))
+             json.dumps(new_offices), new_lookback, json.dumps(new_exclude), new_companies,
+             user_id, current["id"]))
     return get_target(user_id, current["id"])
 
 
@@ -1568,6 +1581,10 @@ def _one(body, key):
     return v
 
 
+def _flag(value):
+    return str(value).strip().lower() in ("1", "true", "on", "yes")
+
+
 def _many(body, key):
     v = body.get(key)
     if v is None:
@@ -1588,7 +1605,9 @@ def api_target_create():
                                assignees=_many(body, "assignees"),
                                inventors=_many(body, "inventors"),
                                offices=_many(body, "offices"),
-                               lookback=_one(body, "lookback_months"))
+                               lookback=_one(body, "lookback_months"),
+                               exclude=_many(body, "exclude"),
+                               companies_only=_flag(_one(body, "companies_only")))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
@@ -1610,7 +1629,10 @@ def api_target_update(target_id):
                                assignees=_many(body, "assignees") if "assignees" in body else None,
                                inventors=_many(body, "inventors") if "inventors" in body else None,
                                offices=_many(body, "offices") if "offices" in body else None,
-                               lookback=_one(body, "lookback_months"))
+                               lookback=_one(body, "lookback_months"),
+                               exclude=_many(body, "exclude") if "exclude" in body else None,
+                               companies_only=(_flag(_one(body, "companies_only"))
+                                               if "companies_only" in body else None))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
